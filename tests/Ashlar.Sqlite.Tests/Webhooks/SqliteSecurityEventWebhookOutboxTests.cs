@@ -428,6 +428,23 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     }
 
     [Test]
+    public async Task LocksExpiringExactlyNowCanBeReclaimed()
+    {
+        await EnqueueAsync(CreateDelivery());
+        await ExecuteAsync("UPDATE ashlar_security_event_webhook_outbox SET locked_until = $lockedUntil, locked_by = 'other'", command =>
+            command.AddDateTimeOffsetParameter("$lockedUntil", _now));
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+
+        var count = await CreateDispatcher(transport).ProcessBatchAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(1));
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task DispatcherUsesPersistedTimeoutForHttpSend()
     {
         await EnqueueAsync(CreateDelivery(timeout: TimeSpan.FromMilliseconds(1)));

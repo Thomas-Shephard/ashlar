@@ -1,7 +1,8 @@
 using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.Identity.Features.Mfa;
+using Ashlar.Identity.Models.Mfa;
 using Ashlar.Identity.Abstractions.Tenancy;
 using Ashlar.Identity.Models.Tenants;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 
@@ -16,6 +17,8 @@ namespace Ashlar.OAuth;
 /// </remarks>
 public sealed class AshlarExternalAccountLinkService
 {
+    private const string LinkPurpose = "external-account-linking";
+
     private readonly ICredentialService _credentialService;
     private readonly IAccountSecurityService _accountSecurityService;
     private readonly IUserRepository _repository;
@@ -46,24 +49,37 @@ public sealed class AshlarExternalAccountLinkService
     /// <param name="httpContext">The current HTTP context.</param>
     /// <param name="currentUserId">The currently authenticated Ashlar user id.</param>
     /// <param name="providerName">The configured Ashlar provider name.</param>
-    /// <param name="tenant">The tenant scope, when the application is tenant-aware.</param>
+    /// <param name="freshMfaProof">Ashlar-issued fresh MFA proof minted for <c>external-account-linking</c>.</param>
+    /// <param name="currentSessionId">Current Ashlar session id from the authenticated request. It must match <paramref name="freshMfaProof" />.</param>
+    /// <param name="tenant">The tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
     /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The account-link result, including provider mismatch or invalid-principal statuses when the temporary ticket cannot be trusted for the configured provider.</returns>
     /// <remarks>
-    /// The ASP.NET Core external authentication middleware must have already validated the remote provider response
-    /// and written the temporary external ticket. This method verifies that ticket against the configured Ashlar
-    /// provider, clears it, and then links the stable external provider key to the current user.
+    /// Account linking mutates future sign-in methods. The caller must pass an Ashlar-issued fresh MFA proof for
+    /// the target user, tenant, current session, and <c>external-account-linking</c> purpose. The ASP.NET Core
+    /// external authentication middleware must have already validated the remote provider response and written the
+    /// temporary external ticket. This method verifies that ticket against the configured Ashlar provider, clears it,
+    /// and then links the stable external provider key to the current user.
     /// </remarks>
     public async Task<AshlarExternalAccountLinkResult> CompleteExternalLinkAsync(
         HttpContext httpContext,
         Guid currentUserId,
         string providerName,
-        TenantContext? tenant = null,
+        FreshMfaVerificationProof? freshMfaProof,
+        Guid? currentSessionId,
+        TenantContext tenant,
         string? credentialMetadata = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(httpContext);
+        ArgumentNullException.ThrowIfNull(tenant);
+
+        var proofFailure = ValidateFreshLinkProof(currentUserId, freshMfaProof, currentSessionId, tenant);
+        if (proofFailure != null)
+        {
+            return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.Failed);
+        }
 
         var provider = AshlarExternalProviderResolver.GetProvider(_options.CurrentValue, providerName);
         if (provider == null)
@@ -84,38 +100,38 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.ProviderMismatch);
         }
 
-        return await LinkValidatedExternalAccountAsync(
-            currentUserId,
-            new AshlarValidatedExternalPrincipal(provider, result.Principal),
-            tenant,
-            credentialMetadata,
-            cancellationToken);
+        return await LinkValidatedExternalAccountCoreAsync(currentUserId, new AshlarValidatedExternalPrincipal(provider, result.Principal), tenant, credentialMetadata, cancellationToken);
     }
 
     /// <summary>
-    /// Links a completed ASP.NET Core external authentication ticket to the current Ashlar user.
+    /// Links a completed ASP.NET Core external authentication ticket to the current Ashlar user after fresh verification.
     /// </summary>
     /// <param name="currentUserId">The currently authenticated Ashlar user id.</param>
     /// <param name="providerName">The configured Ashlar provider name.</param>
-    /// <param name="authenticateResult">The completed external authentication result.</param>
-    /// <param name="tenant">The tenant scope, when the application is tenant-aware.</param>
-    /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
+    /// <param name="request">Validated external ticket, Ashlar-issued fresh MFA proof, current session id, tenant scope, and non-secret metadata.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The account-link result, including provider mismatch or invalid-principal statuses when the ticket cannot be trusted for the configured provider.</returns>
     /// <remarks>
-    /// The completed authentication result must come from ASP.NET Core external authentication middleware. The
-    /// provider metadata embedded in the ticket must match the configured Ashlar provider before any account link is
-    /// created.
+    /// Account linking mutates future sign-in methods. The request must include an Ashlar-issued fresh MFA proof
+    /// bound to the target user, tenant scope, current session, and <c>external-account-linking</c> purpose. The
+    /// completed authentication result must come from ASP.NET Core external authentication middleware. The provider
+    /// metadata embedded in the ticket must match the configured Ashlar provider before any account link is created.
     /// </remarks>
     public async Task<AshlarExternalAccountLinkResult> LinkExternalAccountAsync(
         Guid currentUserId,
         string providerName,
-        AuthenticateResult authenticateResult,
-        TenantContext? tenant = null,
-        string? credentialMetadata = null,
+        AshlarExternalAccountLinkRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(authenticateResult);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.AuthenticateResult);
+        ArgumentNullException.ThrowIfNull(request.Tenant);
+
+        var proofFailure = ValidateFreshLinkProof(currentUserId, request.FreshMfaProof, request.CurrentSessionId, request.Tenant);
+        if (proofFailure != null)
+        {
+            return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.Failed);
+        }
 
         var provider = AshlarExternalProviderResolver.GetProvider(_options.CurrentValue, providerName);
         if (provider == null)
@@ -123,28 +139,37 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.UnsupportedProvider);
         }
 
-        if (!authenticateResult.Succeeded || authenticateResult.Principal == null)
+        if (!request.AuthenticateResult.Succeeded || request.AuthenticateResult.Principal == null)
         {
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.AuthenticationFailed);
         }
 
-        if (!AshlarExternalProviderResolver.MatchesProvider(authenticateResult, provider))
+        if (!AshlarExternalProviderResolver.MatchesProvider(request.AuthenticateResult, provider))
         {
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.ProviderMismatch);
         }
 
-        return await LinkValidatedExternalAccountAsync(
+        return await LinkValidatedExternalAccountCoreAsync(
             currentUserId,
-            new AshlarValidatedExternalPrincipal(provider, authenticateResult.Principal),
-            tenant,
-            credentialMetadata,
+            new AshlarValidatedExternalPrincipal(provider, request.AuthenticateResult.Principal),
+            request.Tenant,
+            request.CredentialMetadata,
             cancellationToken);
     }
 
-    private async Task<AshlarExternalAccountLinkResult> LinkValidatedExternalAccountAsync(
+    private static AshlarFailureCode? ValidateFreshLinkProof(
+        Guid currentUserId,
+        FreshMfaVerificationProof? freshMfaProof,
+        Guid? currentSessionId,
+        TenantContext tenant)
+    {
+        return FreshVerificationProofValidator.ValidateMfaProof(currentUserId, tenant, freshMfaProof, currentSessionId, TimeProvider.System.GetUtcNow(), LinkPurpose);
+    }
+
+    private async Task<AshlarExternalAccountLinkResult> LinkValidatedExternalAccountCoreAsync(
         Guid currentUserId,
         AshlarValidatedExternalPrincipal principal,
-        TenantContext? tenant = null,
+        TenantContext tenant,
         string? credentialMetadata = null,
         CancellationToken cancellationToken = default)
     {

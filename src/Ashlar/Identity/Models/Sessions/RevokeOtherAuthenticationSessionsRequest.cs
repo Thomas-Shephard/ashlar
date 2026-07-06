@@ -18,12 +18,26 @@ public sealed record RevokeOtherAuthenticationSessionsRequest
     public string? Reason { get; init; }
 
     /// <summary>
-    /// Tenant scope to revoke within. Use <see cref="TenantContext.Global" /> for global users; omit only when intentionally applying revocation across all tenant scopes.
+    /// Tenant scope to revoke within. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <see cref="IncludeAllTenants" /> is enabled.
     /// </summary>
     public TenantContext? Tenant { get; init; }
+
+    /// <summary>
+    /// Whether to revoke other sessions across all tenant scopes. Cannot be combined with <see cref="Tenant" />.
+    /// </summary>
+    public bool IncludeAllTenants { get; init; }
 
     /// <summary>
     /// Audit metadata describing who requested revocation.
     /// </summary>
     public AuditContext? Audit { get; init; }
+
+    /// <summary>
+    /// Throws when required metadata is missing or revocation scope is ambiguous.
+    /// </summary>
+    public void ThrowIfInvalid()
+    {
+        ArgumentNullException.ThrowIfNull(Audit);
+        AdministrationScopeValidation.ThrowIfInvalidScope(Tenant, IncludeAllTenants);
+    }
 }

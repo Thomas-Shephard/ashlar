@@ -171,8 +171,10 @@ internal sealed class PostgresAuthenticationSessionRepository(IPostgresConnectio
         }
     }
 
-    public async Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
+    public async Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason, TenantContext? tenant, bool includeAllTenants, CancellationToken cancellationToken = default)
     {
+        ValidateRevocationScope(tenant, includeAllTenants);
+
         const string sql = """
             UPDATE ashlar_sessions
             SET revoked_at = @RevokedAt, revocation_reason = @Reason
@@ -182,7 +184,7 @@ internal sealed class PostgresAuthenticationSessionRepository(IPostgresConnectio
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var parameters = CreateRevocationParameters(revokedAt, reason, tenant);
+            var parameters = CreateRevocationParameters(revokedAt, reason, includeAllTenants ? null : tenant);
             parameters.Add(UserIdParameterName, userId);
             var command = new CommandDefinition(sql + TenantRevocationFilterSql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.ExecuteAsync(command);
@@ -218,8 +220,10 @@ internal sealed class PostgresAuthenticationSessionRepository(IPostgresConnectio
         }
     }
 
-    public async Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
+    public async Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason, TenantContext? tenant, bool includeAllTenants, CancellationToken cancellationToken = default)
     {
+        ValidateRevocationScope(tenant, includeAllTenants);
+
         const string sql = """
             UPDATE ashlar_sessions
             SET revoked_at = @RevokedAt, revocation_reason = @Reason
@@ -229,7 +233,7 @@ internal sealed class PostgresAuthenticationSessionRepository(IPostgresConnectio
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var parameters = CreateRevocationParameters(revokedAt, reason, tenant);
+            var parameters = CreateRevocationParameters(revokedAt, reason, includeAllTenants ? null : tenant);
             parameters.Add("Id", sessionId);
             parameters.Add(UserIdParameterName, userId);
             var command = new CommandDefinition(sql + TenantRevocationFilterSql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
@@ -238,8 +242,10 @@ internal sealed class PostgresAuthenticationSessionRepository(IPostgresConnectio
         }
     }
 
-    public async Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
+    public async Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason, TenantContext? tenant, bool includeAllTenants, CancellationToken cancellationToken = default)
     {
+        ValidateRevocationScope(tenant, includeAllTenants);
+
         const string sql = """
             UPDATE ashlar_sessions
             SET revoked_at = @RevokedAt, revocation_reason = @Reason
@@ -249,7 +255,7 @@ internal sealed class PostgresAuthenticationSessionRepository(IPostgresConnectio
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var parameters = CreateRevocationParameters(revokedAt, reason, tenant);
+            var parameters = CreateRevocationParameters(revokedAt, reason, includeAllTenants ? null : tenant);
             parameters.Add(UserIdParameterName, userId);
             parameters.Add("ExcludedSessionId", excludedSessionId);
             var command = new CommandDefinition(sql + TenantRevocationFilterSql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
@@ -265,6 +271,19 @@ internal sealed class PostgresAuthenticationSessionRepository(IPostgresConnectio
         parameters.Add("TenantFilter", tenant != null);
         parameters.Add("TenantId", tenant?.TenantId);
         return parameters;
+    }
+
+    private static void ValidateRevocationScope(TenantContext? tenant, bool includeAllTenants)
+    {
+        if (tenant == null && !includeAllTenants)
+        {
+            throw new ArgumentException("Tenant scope must be explicit. Set tenant, TenantContext.Global, or includeAllTenants = true.", nameof(tenant));
+        }
+
+        if (tenant != null && includeAllTenants)
+        {
+            throw new ArgumentException("Tenant scope cannot be combined with includeAllTenants = true.", nameof(includeAllTenants));
+        }
     }
 
     private static void ValidateMetadata(string? metadata)

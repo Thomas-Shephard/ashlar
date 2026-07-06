@@ -389,10 +389,11 @@ internal sealed class SecurityAuditEventTests
         var sink = new RecordingSecurityEventSink();
         var service = CreateSessionService(sink, out var repository, out var timeProvider);
         var userId = Guid.NewGuid();
-        repository.Setup(r => r.RevokeSessionsForUserAsync(userId, timeProvider.GetUtcNow(), "password-reset", null, It.IsAny<CancellationToken>()))
+        repository.Setup(r => r.RevokeSessionsForUserAsync(userId, timeProvider.GetUtcNow(), "password-reset", TenantContext.Global, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(0);
 
-        var revoked = await service.RevokeSessionsForUserAsync(userId, "password-reset");
+        var audit = new AuditContext(userId, "203.0.113.12", "audit-agent", "audit-correlation");
+        var revoked = await service.RevokeSessionsForUserAsync(userId, new RevokeAuthenticationSessionsForUserRequest(audit, TenantContext.Global, "password-reset"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -400,7 +401,29 @@ internal sealed class SecurityAuditEventTests
             Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.SessionsRevokedForUser));
             Assert.That(sink.Events.Single().UserId, Is.EqualTo(userId));
             Assert.That(sink.Events.Single().Outcome, Is.EqualTo("success"));
+            Assert.That(sink.Events.Single().ActorUserId, Is.EqualTo(userId));
+            Assert.That(sink.Events.Single().CorrelationId, Is.EqualTo("audit-correlation"));
             Assert.That(sink.Events.Single().Properties?["count"], Is.EqualTo("0"));
+            Assert.That(sink.Events.Single().Properties?["scope"], Is.EqualTo("global"));
+        }
+    }
+
+    [Test]
+    public async Task AllTenantSessionRevocationAuditEventIncludesExplicitScope()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = CreateSessionService(sink, out var repository, out var timeProvider);
+        var userId = Guid.NewGuid();
+        repository.Setup(r => r.RevokeSessionsForUserAsync(userId, timeProvider.GetUtcNow(), "operator", null, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(3);
+
+        await service.RevokeSessionsForUserAsync(userId, new RevokeAuthenticationSessionsForUserRequest(new AuditContext(userId), Tenant: null, Reason: "operator", IncludeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sink.Events.Single().TenantId, Is.Null);
+            Assert.That(sink.Events.Single().Properties?["scope"], Is.EqualTo("all_tenants"));
+            Assert.That(sink.Events.Single().Properties?["count"], Is.EqualTo("3"));
         }
     }
 
@@ -411,10 +434,10 @@ internal sealed class SecurityAuditEventTests
         var service = CreateSessionService(sink, out var repository, out _);
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
-        repository.Setup(r => r.RevokeSessionByIdAsync(sessionId, userId, It.IsAny<DateTimeOffset>(), It.IsAny<string>(), null, It.IsAny<CancellationToken>()))
+        repository.Setup(r => r.RevokeSessionByIdAsync(sessionId, userId, It.IsAny<DateTimeOffset>(), It.IsAny<string>(), null, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        var revoked = await service.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest { SessionId = sessionId });
+        var revoked = await service.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest { SessionId = sessionId, IncludeAllTenants = true, Audit = new AuditContext(userId) });
 
         using (Assert.EnterMultipleScope())
         {
@@ -423,6 +446,7 @@ internal sealed class SecurityAuditEventTests
             Assert.That(sink.Events.Single().UserId, Is.EqualTo(userId));
             Assert.That(sink.Events.Single().SessionId, Is.EqualTo(sessionId));
             Assert.That(sink.Events.Single().Outcome, Is.EqualTo("failure"));
+            Assert.That(sink.Events.Single().Properties?["scope"], Is.EqualTo("all_tenants"));
         }
     }
 

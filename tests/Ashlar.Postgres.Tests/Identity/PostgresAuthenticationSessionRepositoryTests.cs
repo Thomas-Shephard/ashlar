@@ -404,7 +404,7 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         await sessionRepository.CreateSessionAsync(second);
         await sessionRepository.CreateSessionAsync(other);
 
-        var count = await sessionRepository.RevokeSessionsForUserAsync(targetUser.Id, revokedAt, "all");
+        var count = await sessionRepository.RevokeSessionsForUserAsync(targetUser.Id, revokedAt, "all", tenant: null, includeAllTenants: true);
 
         var fetchedFirst = await sessionRepository.GetSessionByTokenHashAsync(first.TokenHash);
         var fetchedSecond = await sessionRepository.GetSessionByTokenHashAsync(second.TokenHash);
@@ -436,7 +436,7 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         await sessionRepository.CreateSessionAsync(active);
         await sessionRepository.RevokeSessionAsync(alreadyRevoked.Id, firstRevokedAt, "manual");
 
-        var count = await sessionRepository.RevokeSessionsForUserAsync(user.Id, secondRevokedAt, "bulk");
+        var count = await sessionRepository.RevokeSessionsForUserAsync(user.Id, secondRevokedAt, "bulk", tenant: null, includeAllTenants: true);
 
         var fetchedAlreadyRevoked = await sessionRepository.GetSessionByTokenHashAsync(alreadyRevoked.TokenHash);
         var fetchedActive = await sessionRepository.GetSessionByTokenHashAsync(active.TokenHash);
@@ -505,8 +505,8 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
 
         await sessionRepository.CreateSessionAsync(session);
 
-        var revokedByOther = await sessionRepository.RevokeSessionByIdAsync(session.Id, other.Id, DateTimeOffset.UtcNow, "theft");
-        var revokedByOwner = await sessionRepository.RevokeSessionByIdAsync(session.Id, owner.Id, DateTimeOffset.UtcNow, "done");
+        var revokedByOther = await sessionRepository.RevokeSessionByIdAsync(session.Id, other.Id, DateTimeOffset.UtcNow, "theft", tenant: null, includeAllTenants: true);
+        var revokedByOwner = await sessionRepository.RevokeSessionByIdAsync(session.Id, owner.Id, DateTimeOffset.UtcNow, "done", tenant: null, includeAllTenants: true);
 
         using (Assert.EnterMultipleScope())
         {
@@ -529,7 +529,7 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         await sessionRepository.CreateSessionAsync(other1);
         await sessionRepository.CreateSessionAsync(other2);
 
-        var count = await sessionRepository.RevokeOtherSessionsForUserAsync(user.Id, current.Id, DateTimeOffset.UtcNow, "security-sweep");
+        var count = await sessionRepository.RevokeOtherSessionsForUserAsync(user.Id, current.Id, DateTimeOffset.UtcNow, "security-sweep", tenant: null, includeAllTenants: true);
 
         var fetchedCurrent = await sessionRepository.GetSessionByTokenHashAsync(current.TokenHash);
         var fetchedOther1 = await sessionRepository.GetSessionByTokenHashAsync(other1.TokenHash);

@@ -1009,21 +1009,7 @@ internal sealed class AshlarSignInManagerTests
             return Task.FromResult<AuthenticationSession?>(_session);
         }
 
-        public Task<bool> RevokeSessionAsync(Guid sessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
-        {
-            if (_session?.Id != sessionId || _session.RevokedAt != null)
-            {
-                return Task.FromResult(false);
-            }
-
-            _session.RevokedAt = revokedAt;
-            _session.RevocationReason = reason;
-            RevokedSessionId = sessionId;
-            RevocationReason = reason;
-            return Task.FromResult(true);
-        }
-
-        public Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
+        public Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason, TenantContext? tenant, bool includeAllTenants, CancellationToken cancellationToken = default)
         {
             RevokedUserId = userId;
             RevocationReason = reason;
@@ -1037,7 +1023,7 @@ internal sealed class AshlarSignInManagerTests
             return Task.FromResult((IReadOnlyList<AuthenticationSession>)new List<AuthenticationSession>().AsReadOnly());
         }
 
-        public Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
+        public Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, bool includeAllTenants = false, CancellationToken cancellationToken = default)
         {
             RevokedSessionId = sessionId;
             RevokedUserId = userId;
@@ -1045,7 +1031,7 @@ internal sealed class AshlarSignInManagerTests
             return Task.FromResult(true);
         }
 
-        public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
+        public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, bool includeAllTenants = false, CancellationToken cancellationToken = default)
         {
             RevokedUserId = userId;
             ExcludedSessionId = excludedSessionId;

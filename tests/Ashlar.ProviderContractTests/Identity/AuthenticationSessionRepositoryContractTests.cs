@@ -156,7 +156,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         await repository.CreateSessionAsync(active);
         await repository.CreateSessionAsync(revoked);
         await repository.CreateSessionAsync(expired);
-        await repository.RevokeSessionAsync(revoked.Id, CreatedAt.AddMinutes(20), "manual");
+        await repository.RevokeSessionByIdAsync(revoked.Id, revoked.UserId, CreatedAt.AddMinutes(20), "manual", tenant: null, includeAllTenants: true);
 
         var first = await repository.UpdateSessionLastSeenAsync(active.Id, newer);
         var second = await repository.UpdateSessionLastSeenAsync(active.Id, older);
@@ -226,7 +226,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         await repository.CreateSessionAsync(active);
         await repository.CreateSessionAsync(revoked);
         await repository.CreateSessionAsync(expired);
-        await repository.RevokeSessionAsync(revoked.Id, CreatedAt.AddMinutes(20), "manual");
+        await repository.RevokeSessionByIdAsync(revoked.Id, revoked.UserId, CreatedAt.AddMinutes(20), "manual", tenant: null, includeAllTenants: true);
 
         var wrongUser = await repository.MarkStepUpVerifiedAsync(active.Id, other.Id, verifiedAt, AuthenticationProviderKey.Passkey, "passkey");
         var revokedUpdate = await repository.MarkStepUpVerifiedAsync(revoked.Id, owner.Id, verifiedAt, AuthenticationProviderKey.Passkey, "passkey");
@@ -261,12 +261,12 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         await repository.CreateSessionAsync(active);
         await repository.CreateSessionAsync(other);
 
-        var singleFirst = await repository.RevokeSessionAsync(single.Id, firstRevokedAt, "single");
-        var singleSecond = await repository.RevokeSessionAsync(single.Id, secondRevokedAt, "again");
-        await repository.RevokeSessionAsync(alreadyRevoked.Id, firstRevokedAt, "manual");
-        var bulkCount = await repository.RevokeSessionsForUserAsync(user.Id, secondRevokedAt, "bulk");
-        var wrongOwner = await repository.RevokeSessionByIdAsync(other.Id, user.Id, secondRevokedAt, "wrong");
-        var rightOwner = await repository.RevokeSessionByIdAsync(other.Id, otherUser.Id, secondRevokedAt, "right");
+        var singleFirst = await repository.RevokeSessionByIdAsync(single.Id, single.UserId, firstRevokedAt, "single", tenant: null, includeAllTenants: true);
+        var singleSecond = await repository.RevokeSessionByIdAsync(single.Id, single.UserId, secondRevokedAt, "again", tenant: null, includeAllTenants: true);
+        await repository.RevokeSessionByIdAsync(alreadyRevoked.Id, alreadyRevoked.UserId, firstRevokedAt, "manual", tenant: null, includeAllTenants: true);
+        var bulkCount = await repository.RevokeSessionsForUserAsync(user.Id, secondRevokedAt, "bulk", tenant: null, includeAllTenants: true);
+        var wrongOwner = await repository.RevokeSessionByIdAsync(other.Id, user.Id, secondRevokedAt, "wrong", tenant: null, includeAllTenants: true);
+        var rightOwner = await repository.RevokeSessionByIdAsync(other.Id, otherUser.Id, secondRevokedAt, "right", tenant: null, includeAllTenants: true);
         var fetchedSingle = await repository.GetSessionAsync(single.Id);
         var fetchedAlreadyRevoked = await repository.GetSessionAsync(alreadyRevoked.Id);
         var fetchedActive = await repository.GetSessionAsync(active.Id);
@@ -303,7 +303,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         await repository.CreateSessionAsync(active);
         await repository.CreateSessionAsync(revoked);
         await repository.CreateSessionAsync(expired);
-        await repository.RevokeSessionAsync(revoked.Id, CreatedAt.AddMinutes(10), "test");
+        await repository.RevokeSessionByIdAsync(revoked.Id, revoked.UserId, CreatedAt.AddMinutes(10), "test", tenant: null, includeAllTenants: true);
 
         var activeOnly = await repository.ListSessionsForUserAsync(user.Id, activeOnly: true, CreatedAt.AddHours(1));
         var all = await repository.ListSessionsForUserAsync(user.Id, activeOnly: false, CreatedAt.AddHours(1));
@@ -330,7 +330,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         await repository.CreateSessionAsync(other1);
         await repository.CreateSessionAsync(other2);
 
-        var count = await repository.RevokeOtherSessionsForUserAsync(user.Id, current.Id, revokedAt, "security-sweep");
+        var count = await repository.RevokeOtherSessionsForUserAsync(user.Id, current.Id, revokedAt, "security-sweep", tenant: null, includeAllTenants: true);
         var fetchedCurrent = await repository.GetSessionAsync(current.Id);
         var fetchedOther1 = await repository.GetSessionAsync(other1.Id);
         var fetchedOther2 = await repository.GetSessionAsync(other2.Id);
@@ -342,6 +342,24 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
             Assert.That(fetchedOther1!.RevokedAt, Is.EqualTo(revokedAt));
             Assert.That(fetchedOther2!.RevokedAt, Is.EqualTo(revokedAt));
         }
+    }
+
+    [Test]
+    public async Task BulkRevocationRequiresExplicitScope()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var repository = GetAuthenticationSessionRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(userRepository);
+
+        Assert.ThrowsAsync<ArgumentException>(() =>
+            repository.RevokeSessionsForUserAsync(user.Id, CreatedAt, "ambiguous", tenant: null, includeAllTenants: false));
+        Assert.ThrowsAsync<ArgumentException>(() =>
+            repository.RevokeSessionsForUserAsync(user.Id, CreatedAt, "conflicting", TenantContext.Global, includeAllTenants: true));
+        Assert.ThrowsAsync<ArgumentException>(() =>
+            repository.RevokeSessionByIdAsync(Guid.NewGuid(), user.Id, CreatedAt, "ambiguous", tenant: null, includeAllTenants: false));
+        Assert.ThrowsAsync<ArgumentException>(() =>
+            repository.RevokeOtherSessionsForUserAsync(user.Id, Guid.NewGuid(), CreatedAt, "ambiguous", tenant: null, includeAllTenants: false));
     }
 
     [Test]
@@ -374,11 +392,11 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         await repository.CreateSessionAsync(otherTenantA);
         await repository.CreateSessionAsync(globalOnly);
 
-        var tenantACount = await repository.RevokeSessionsForUserAsync(bulkUser.Id, firstRevokedAt, "tenant-a", new TenantContext(tenantA));
-        var wrongTenantSingle = await repository.RevokeSessionByIdAsync(singleTenantB.Id, singleUser.Id, secondRevokedAt, "wrong-tenant", new TenantContext(tenantA));
-        var tenantBSingle = await repository.RevokeSessionByIdAsync(singleTenantB.Id, singleUser.Id, secondRevokedAt, "tenant-b", new TenantContext(tenantB));
-        var otherTenantACount = await repository.RevokeOtherSessionsForUserAsync(otherSessionsUser.Id, currentTenantA.Id, thirdRevokedAt, "other-tenant-a", new TenantContext(tenantA));
-        var globalCount = await repository.RevokeSessionsForUserAsync(globalUser.Id, fourthRevokedAt, "global", TenantContext.Global);
+        var tenantACount = await repository.RevokeSessionsForUserAsync(bulkUser.Id, firstRevokedAt, "tenant-a", new TenantContext(tenantA), includeAllTenants: false);
+        var wrongTenantSingle = await repository.RevokeSessionByIdAsync(singleTenantB.Id, singleUser.Id, secondRevokedAt, "wrong-tenant", new TenantContext(tenantA), includeAllTenants: false);
+        var tenantBSingle = await repository.RevokeSessionByIdAsync(singleTenantB.Id, singleUser.Id, secondRevokedAt, "tenant-b", new TenantContext(tenantB), includeAllTenants: false);
+        var otherTenantACount = await repository.RevokeOtherSessionsForUserAsync(otherSessionsUser.Id, currentTenantA.Id, thirdRevokedAt, "other-tenant-a", new TenantContext(tenantA), includeAllTenants: false);
+        var globalCount = await repository.RevokeSessionsForUserAsync(globalUser.Id, fourthRevokedAt, "global", TenantContext.Global, includeAllTenants: false);
         var fetchedTenantA = await repository.GetSessionAsync(tenantASession.Id);
         var fetchedTenantB = await repository.GetSessionAsync(tenantBSession.Id);
         var fetchedSingleTenantB = await repository.GetSessionAsync(singleTenantB.Id);

@@ -100,10 +100,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService
                 var reason = request.Reason ?? AdminReason;
                 sessionsRevoked = await _sessionService.RevokeSessionsForUserAsync(
                     userId,
-                    reason,
-                    request.Tenant,
-                    request.Audit,
-                    auditTenantId: auditTenantId,
+                    new RevokeAuthenticationSessionsForUserRequest(request.Audit, request.Tenant, reason, request.IncludeAllTenants, auditTenantId),
                     cancellationToken);
                 rememberedMfaDevicesRevoked = await RevokeRememberedMfaDevicesAsync(userId, request, reason, cancellationToken);
             }
@@ -144,10 +141,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService
 
         var revoked = await _sessionService.RevokeSessionsForUserAsync(
             userId,
-            request.Reason ?? AdminReason,
-            request.Tenant,
-            request.Audit,
-            auditTenantId: GetAuditTenantId(request, user),
+            new RevokeAuthenticationSessionsForUserRequest(request.Audit, request.Tenant, request.Reason ?? AdminReason, request.IncludeAllTenants, GetAuditTenantId(request, user)),
             cancellationToken);
         return Result.Success(new AccountSecurityOperationResult(userId, SessionsRevoked: revoked));
     }

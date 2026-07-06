@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Ashlar.AspNetCore.Mfa;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
@@ -19,8 +20,8 @@ internal static class GoogleOidcEndpoints
         app.MapGet("/invitations/accept/google", StartGoogleInvitationRegistration);
         app.MapGet("/invitations/accept/google/callback", CompleteGoogleInvitationRegistrationAsync);
 
-        app.MapGet("/account/external/google/link", StartGoogleAccountLink).RequireAuthorization().RequireFreshMfaIfAvailable();
-        app.MapGet("/account/external/google/link/callback", CompleteGoogleAccountLinkAsync).RequireAuthorization().RequireFreshMfaIfAvailable();
+        app.MapGet("/account/external/google/link", StartGoogleAccountLink).RequireAuthorization().RequireFreshMfa();
+        app.MapGet("/account/external/google/link/callback", CompleteGoogleAccountLinkAsync).RequireAuthorization().RequireFreshMfa();
         app.MapPost("/api/account/external/google/unlink", UnlinkGoogleAccountAsync).RequireAuthorization().RequireFreshMfaIfAvailable().RequireSampleAntiforgery();
     }
 
@@ -210,12 +211,27 @@ internal static class GoogleOidcEndpoints
             return Results.NotFound();
         }
 
+        if (!httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out var tenant))
+        {
+            return Results.Forbid();
+        }
+
+        var proof = httpContext.CreateFreshMfaProof(
+            services.GetRequiredService<IStepUpAuthenticationService>(),
+            new StepUpRequirement(TimeSpan.FromMinutes(10), Purpose: "external-account-linking"));
+        if (!proof.Succeeded || proof.Value == null)
+        {
+            return Results.Forbid();
+        }
+
         var accountLink = services.GetRequiredService<AshlarExternalAccountLinkService>();
         var result = await accountLink.CompleteExternalLinkAsync(
             httpContext,
-            user.GetAshlarUserId(),
+            userId,
             SampleGoogleOidc.ProviderName,
-            httpContext.ToTenantContext(),
+            proof.Value,
+            sessionId,
+            tenant ?? TenantContext.Global,
             cancellationToken: cancellationToken);
 
         return result.Linked || result.AlreadyLinked

@@ -212,7 +212,7 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.Zero);
         }
 
-        sessionService.Verify(s => s.RevokeSessionsForUserAsync(_userId, It.IsAny<string>(), It.IsAny<TenantContext?>(), It.IsAny<AuditContext?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+        sessionService.Verify(s => s.RevokeSessionsForUserAsync(_userId, It.IsAny<RevokeAuthenticationSessionsForUserRequest>(), It.IsAny<CancellationToken>()), Times.Never);
         rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -413,7 +413,7 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.Zero);
         }
 
-        sessionService.Verify(s => s.RevokeSessionsForUserAsync(_userId, It.IsAny<string>(), It.IsAny<TenantContext?>(), It.IsAny<AuditContext?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+        sessionService.Verify(s => s.RevokeSessionsForUserAsync(_userId, It.IsAny<RevokeAuthenticationSessionsForUserRequest>(), It.IsAny<CancellationToken>()), Times.Never);
         rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -1889,12 +1889,7 @@ internal sealed class AccountSecurityServiceTests
             return Task.FromResult<AuthenticationSession?>(session);
         }
 
-        public Task<bool> RevokeSessionAsync(Guid sessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult(Revoke(s => s.Id == sessionId, revokedAt, reason) == 1);
-        }
-
-        public Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
+        public Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason, TenantContext? tenant, bool includeAllTenants, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(Revoke(s => s.UserId == userId, revokedAt, reason));
         }
@@ -1904,12 +1899,12 @@ internal sealed class AccountSecurityServiceTests
             return Task.FromResult<IReadOnlyList<AuthenticationSession>>(Sessions.Where(s => s.UserId == userId && (!activeOnly || s.IsActive(now))).ToList().AsReadOnly());
         }
 
-        public Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
+        public Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, bool includeAllTenants = false, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(Revoke(s => s.Id == sessionId && s.UserId == userId, revokedAt, reason) == 1);
         }
 
-        public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
+        public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, bool includeAllTenants = false, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(Revoke(s => s.UserId == userId && s.Id != excludedSessionId, revokedAt, reason));
         }

@@ -1,5 +1,3 @@
-using Ashlar.Auditing;
-
 namespace Ashlar.Identity.Abstractions.Services;
 
 /// <summary>
@@ -42,21 +40,20 @@ public interface IAuthenticationSessionService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Revokes all currently unrevoked sessions for a user.
+    /// Revokes all currently unrevoked sessions for a user within an explicit scope.
     /// </summary>
     /// <param name="userId">The user whose sessions will be revoked.</param>
-    /// <param name="reason">Optional provider-neutral, display-safe reason for audit and administrative display.</param>
-    /// <param name="tenant">Tenant scope to constrain the revocation. Use <see cref="TenantContext.Global" /> for global users; omit only when intentionally revoking across all tenant scopes.</param>
-    /// <param name="audit">Actor and request metadata to include in emitted security events.</param>
-    /// <param name="auditTenantId">Optional tenant attribution for emitted security events when it differs from the mutation scope.</param>
+    /// <param name="request">Explicit tenant, global, or all-tenant/operator scope plus required audit metadata.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns>The number of sessions revoked.</returns>
+    /// <remarks>
+    /// This is a destructive service-level operation. Omitted tenant scope is rejected unless
+    /// <see cref="RevokeAuthenticationSessionsForUserRequest.IncludeAllTenants" /> is explicitly enabled.
+    /// Host applications must authorize the actor before calling it.
+    /// </remarks>
     Task<int> RevokeSessionsForUserAsync(
         Guid userId,
-        string? reason = null,
-        TenantContext? tenant = null,
-        AuditContext? audit = null,
-        Guid? auditTenantId = null,
+        RevokeAuthenticationSessionsForUserRequest request,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -75,9 +72,10 @@ public interface IAuthenticationSessionService
     /// Revokes a single authentication session for a user.
     /// </summary>
     /// <param name="userId">The session owner. Callers must enforce that the actor may administer this user.</param>
-    /// <param name="request">The target session, tenant scope, display-safe revocation reason, and audit context.</param>
+    /// <param name="request">The target session, explicit tenant/global/all-tenant scope, display-safe revocation reason, and required audit context.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns><see langword="true" /> when the target session was revoked.</returns>
+    /// <remarks>Host applications must authorize the actor before calling this destructive operation.</remarks>
     Task<bool> RevokeSessionForUserAsync(
         Guid userId,
         RevokeAuthenticationSessionRequest request,
@@ -87,9 +85,10 @@ public interface IAuthenticationSessionService
     /// Revokes all authentication sessions for a user except one.
     /// </summary>
     /// <param name="userId">The session owner. Callers must enforce that the actor may administer this user.</param>
-    /// <param name="request">The session to keep, tenant scope, display-safe revocation reason, and audit context.</param>
+    /// <param name="request">The session to keep, explicit tenant/global/all-tenant scope, display-safe revocation reason, and required audit context.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns>The number of other sessions revoked.</returns>
+    /// <remarks>Host applications must authorize the actor before calling this destructive operation.</remarks>
     Task<int> RevokeOtherSessionsAsync(
         Guid userId,
         RevokeOtherAuthenticationSessionsRequest request,

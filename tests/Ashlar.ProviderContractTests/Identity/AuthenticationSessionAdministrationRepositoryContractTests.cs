@@ -88,7 +88,7 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         await sessionRepository.CreateSessionAsync(active);
         await sessionRepository.CreateSessionAsync(revoked);
         await sessionRepository.CreateSessionAsync(expired);
-        await sessionRepository.RevokeSessionAsync(revoked.Id, BaseTime.AddMinutes(30), "manual");
+        await sessionRepository.RevokeSessionByIdAsync(revoked.Id, revoked.UserId, BaseTime.AddMinutes(30), "manual", tenant: null, includeAllTenants: true);
 
         var repository = GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider);
         var activeResult = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true, Active = true, Limit = 10 }, Now);

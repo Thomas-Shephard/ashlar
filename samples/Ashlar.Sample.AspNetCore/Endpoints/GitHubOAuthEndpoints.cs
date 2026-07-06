@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Ashlar.AspNetCore.Mfa;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
@@ -15,8 +16,8 @@ internal static class GitHubOAuthEndpoints
         app.MapGet("/auth/github", StartGitHubSignIn);
         app.MapGet("/auth/github/callback", CompleteGitHubSignInAsync);
 
-        app.MapGet("/account/external/github/link", StartGitHubAccountLink).RequireAuthorization().RequireFreshMfaIfAvailable();
-        app.MapGet("/account/external/github/link/callback", CompleteGitHubAccountLinkAsync).RequireAuthorization().RequireFreshMfaIfAvailable();
+        app.MapGet("/account/external/github/link", StartGitHubAccountLink).RequireAuthorization().RequireFreshMfa();
+        app.MapGet("/account/external/github/link/callback", CompleteGitHubAccountLinkAsync).RequireAuthorization().RequireFreshMfa();
         app.MapPost("/api/account/external/github/unlink", UnlinkGitHubAccountAsync).RequireAuthorization().RequireFreshMfaIfAvailable().RequireSampleAntiforgery();
     }
 
@@ -127,12 +128,27 @@ internal static class GitHubOAuthEndpoints
             return Results.NotFound();
         }
 
+        if (!httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out var tenant))
+        {
+            return Results.Forbid();
+        }
+
+        var proof = httpContext.CreateFreshMfaProof(
+            services.GetRequiredService<IStepUpAuthenticationService>(),
+            new StepUpRequirement(TimeSpan.FromMinutes(10), Purpose: "external-account-linking"));
+        if (!proof.Succeeded || proof.Value == null)
+        {
+            return Results.Forbid();
+        }
+
         var accountLink = services.GetRequiredService<AshlarExternalAccountLinkService>();
         var result = await accountLink.CompleteExternalLinkAsync(
             httpContext,
-            user.GetAshlarUserId(),
+            userId,
             SampleGitHubOAuth.ProviderName,
-            httpContext.ToTenantContext(),
+            proof.Value,
+            sessionId,
+            tenant ?? TenantContext.Global,
             cancellationToken: cancellationToken);
 
         return result.Linked || result.AlreadyLinked

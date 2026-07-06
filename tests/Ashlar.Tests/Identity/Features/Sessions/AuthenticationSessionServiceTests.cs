@@ -1185,22 +1185,37 @@ internal sealed class AuthenticationSessionServiceTests
         var userId = Guid.NewGuid();
         var now = _timeProvider.GetUtcNow();
         _repositoryMock
-            .Setup(r => r.RevokeSessionsForUserAsync(userId, now, "password-reset", null, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RevokeSessionsForUserAsync(userId, now, "password-reset", TenantContext.Global, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(3);
 
-        var revoked = await _service.RevokeSessionsForUserAsync(userId, "password-reset");
+        var request = new RevokeAuthenticationSessionsForUserRequest(new AuditContext(userId), TenantContext.Global, "password-reset");
+        var revoked = await _service.RevokeSessionsForUserAsync(userId, request);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(revoked, Is.EqualTo(3));
-            _repositoryMock.Verify(r => r.RevokeSessionsForUserAsync(userId, now, "password-reset", null, It.IsAny<CancellationToken>()), Times.Once);
+            _repositoryMock.Verify(r => r.RevokeSessionsForUserAsync(userId, now, "password-reset", TenantContext.Global, false, It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 
     [Test]
     public void RevokeSessionsForUserAsyncShouldRejectEmptyUserId()
     {
-        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionsForUserAsync(Guid.Empty));
+        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionsForUserAsync(Guid.Empty, new RevokeAuthenticationSessionsForUserRequest(new AuditContext(Guid.NewGuid()), TenantContext.Global)));
+    }
+
+    [Test]
+    public void RevokeSessionsForUserAsyncShouldRejectMissingAuditBeforeMutation()
+    {
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeSessionsForUserAsync(Guid.NewGuid(), new RevokeAuthenticationSessionsForUserRequest(null!, TenantContext.Global)));
+        _repositoryMock.Verify(r => r.RevokeSessionsForUserAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public void RevokeSessionsForUserAsyncShouldRejectAmbiguousScopeBeforeMutation()
+    {
+        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionsForUserAsync(Guid.NewGuid(), new RevokeAuthenticationSessionsForUserRequest(new AuditContext(Guid.NewGuid()), null)));
+        _repositoryMock.Verify(r => r.RevokeSessionsForUserAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -1222,13 +1237,13 @@ internal sealed class AuthenticationSessionServiceTests
                 NotificationService: notificationService.Object));
 
         _repositoryMock
-            .Setup(r => r.RevokeSessionsForUserAsync(userId, now, "password-reset", It.Is<TenantContext?>(t => t != null), It.IsAny<CancellationToken>()))
+            .Setup(r => r.RevokeSessionsForUserAsync(userId, now, "password-reset", It.Is<TenantContext?>(t => t != null), false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(2);
         userRepository
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        await service.RevokeSessionsForUserAsync(userId, "password-reset", new TenantContext(Guid.NewGuid()));
+        await service.RevokeSessionsForUserAsync(userId, new RevokeAuthenticationSessionsForUserRequest(new AuditContext(userId), new TenantContext(Guid.NewGuid()), "password-reset"));
 
         notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
             notification.Type == SecurityNotificationType.AllSessionsRevoked &&
@@ -1312,15 +1327,15 @@ internal sealed class AuthenticationSessionServiceTests
         var sessionId = Guid.NewGuid();
         var now = _timeProvider.GetUtcNow();
         _repositoryMock
-            .Setup(r => r.RevokeSessionByIdAsync(sessionId, userId, now, "user-initiated", null, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RevokeSessionByIdAsync(sessionId, userId, now, "user-initiated", null, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
-        var revoked = await _service.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest { SessionId = sessionId, Reason = "user-initiated" });
+        var revoked = await _service.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest { SessionId = sessionId, Reason = "user-initiated", IncludeAllTenants = true, Audit = new AuditContext(userId) });
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(revoked, Is.True);
-            _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(sessionId, userId, now, "user-initiated", null, It.IsAny<CancellationToken>()), Times.Once);
+            _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(sessionId, userId, now, "user-initiated", null, true, It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 
@@ -1346,17 +1361,17 @@ internal sealed class AuthenticationSessionServiceTests
         var audit = new AuditContext(ActorUserId: userId, IpAddress: "203.0.113.60", UserAgent: "session-agent", CorrelationId: "session-correlation");
 
         _repositoryMock
-            .Setup(r => r.RevokeSessionByIdAsync(sessionId, userId, now, null, It.Is<TenantContext?>(t => t != null), It.IsAny<CancellationToken>()))
+            .Setup(r => r.RevokeSessionByIdAsync(sessionId, userId, now, null, It.Is<TenantContext?>(t => t != null), false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _repositoryMock
-            .Setup(r => r.RevokeSessionByIdAsync(secondSessionId, userId, now, null, null, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RevokeSessionByIdAsync(secondSessionId, userId, now, null, null, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         userRepository
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
         var revoked = await service.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest { SessionId = sessionId, Tenant = new TenantContext(Guid.NewGuid()), Audit = audit });
-        var secondRevoked = await service.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest { SessionId = secondSessionId, Audit = audit });
+        var secondRevoked = await service.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest { SessionId = secondSessionId, IncludeAllTenants = true, Audit = audit });
 
         Assert.That(revoked && secondRevoked, Is.True);
         notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
@@ -1366,37 +1381,22 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
-    public async Task RevokeSessionForUserAsyncShouldNotifyWithoutAuditContext()
+    public void RevokeSessionForUserAsyncShouldRejectMissingAuditBeforeMutation()
     {
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         var now = _timeProvider.GetUtcNow();
-        var userRepository = new Mock<IUserRepository>();
-        var notificationService = new Mock<ISecurityNotificationService>();
-        var service = new AuthenticationSessionService(
-            _repositoryMock.Object,
-            _tokenHasherMock.Object,
-            new FixedSessionTokenGenerator("raw-token"),
-            new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(
-                TimeProvider: _timeProvider,
-                UserRepository: userRepository.Object,
-                NotificationService: notificationService.Object));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest { SessionId = sessionId, Tenant = TenantContext.Global }));
+        _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 
-        _repositoryMock
-            .Setup(r => r.RevokeSessionByIdAsync(sessionId, userId, now, null, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-        userRepository
-            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com" });
-
-        var revoked = await service.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest { SessionId = sessionId });
-
-        Assert.That(revoked, Is.True);
-        notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
-            notification.Type == SecurityNotificationType.SessionRevoked &&
-            notification.IpAddress == null &&
-            notification.UserAgent == null), It.IsAny<CancellationToken>()), Times.Once);
+    [Test]
+    public void RevokeSessionForUserAsyncShouldRejectMissingScopeBeforeMutation()
+    {
+        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionForUserAsync(
+            Guid.NewGuid(),
+            new RevokeAuthenticationSessionRequest { SessionId = Guid.NewGuid(), Audit = new AuditContext(Guid.NewGuid()) }));
+        _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -1423,7 +1423,7 @@ internal sealed class AuthenticationSessionServiceTests
     {
         Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionForUserAsync(
             Guid.NewGuid(),
-            new RevokeAuthenticationSessionRequest { SessionId = Guid.NewGuid(), Reason = new string('x', 513) }));
+            new RevokeAuthenticationSessionRequest { SessionId = Guid.NewGuid(), Reason = new string('x', 513), Tenant = TenantContext.Global, Audit = new AuditContext(Guid.NewGuid()) }));
     }
 
     [Test]
@@ -1433,15 +1433,15 @@ internal sealed class AuthenticationSessionServiceTests
         var currentSessionId = Guid.NewGuid();
         var now = _timeProvider.GetUtcNow();
         _repositoryMock
-            .Setup(r => r.RevokeOtherSessionsForUserAsync(userId, currentSessionId, now, "security-cleanup", null, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RevokeOtherSessionsForUserAsync(userId, currentSessionId, now, "security-cleanup", null, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(5);
 
-        var revoked = await _service.RevokeOtherSessionsAsync(userId, new RevokeOtherAuthenticationSessionsRequest { CurrentSessionId = currentSessionId, Reason = "security-cleanup" });
+        var revoked = await _service.RevokeOtherSessionsAsync(userId, new RevokeOtherAuthenticationSessionsRequest { CurrentSessionId = currentSessionId, Reason = "security-cleanup", IncludeAllTenants = true, Audit = new AuditContext(userId) });
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(revoked, Is.EqualTo(5));
-            _repositoryMock.Verify(r => r.RevokeOtherSessionsForUserAsync(userId, currentSessionId, now, "security-cleanup", null, It.IsAny<CancellationToken>()), Times.Once);
+            _repositoryMock.Verify(r => r.RevokeOtherSessionsForUserAsync(userId, currentSessionId, now, "security-cleanup", null, true, It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 
@@ -1459,17 +1459,23 @@ internal sealed class AuthenticationSessionServiceTests
         var currentSessionId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
         _repositoryMock
-            .Setup(r => r.RevokeOtherSessionsForUserAsync(userId, currentSessionId, _timeProvider.GetUtcNow(), null, It.Is<TenantContext>(t => t.TenantId == tenantId), It.IsAny<CancellationToken>()))
+            .Setup(r => r.RevokeOtherSessionsForUserAsync(userId, currentSessionId, _timeProvider.GetUtcNow(), null, It.Is<TenantContext>(t => t.TenantId == tenantId), false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(0);
 
         await service.RevokeOtherSessionsAsync(userId, new RevokeOtherAuthenticationSessionsRequest
         {
             CurrentSessionId = currentSessionId,
-            Tenant = new TenantContext(tenantId)
+            Tenant = new TenantContext(tenantId),
+            Audit = new AuditContext(userId)
         });
 
         var securityEvent = sink.Events.Single(e => e.EventType == AshlarSecurityEventTypes.SessionsRevokedForUser);
-        Assert.That(securityEvent.TenantId, Is.EqualTo(tenantId));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(securityEvent.TenantId, Is.EqualTo(tenantId));
+            Assert.That(securityEvent.Properties?["scope"], Is.EqualTo("tenant"));
+            Assert.That(securityEvent.Properties?["tenant_id"], Is.EqualTo(tenantId.ToString()));
+        }
     }
 
     [Test]
@@ -1486,6 +1492,15 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public void RevokeOtherSessionsAsyncShouldRejectMissingScopeBeforeMutation()
+    {
+        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeOtherSessionsAsync(
+            Guid.NewGuid(),
+            new RevokeOtherAuthenticationSessionsRequest { CurrentSessionId = Guid.NewGuid(), Audit = new AuditContext(Guid.NewGuid()) }));
+        _repositoryMock.Verify(r => r.RevokeOtherSessionsForUserAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public void RevokeOtherSessionsAsyncShouldRejectEmptyCurrentSessionId()
     {
         Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeOtherSessionsAsync(Guid.NewGuid(), new RevokeOtherAuthenticationSessionsRequest { CurrentSessionId = Guid.Empty }));
@@ -1496,7 +1511,7 @@ internal sealed class AuthenticationSessionServiceTests
     {
         Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeOtherSessionsAsync(
             Guid.NewGuid(),
-            new RevokeOtherAuthenticationSessionsRequest { CurrentSessionId = Guid.NewGuid(), Reason = new string('x', 513) }));
+            new RevokeOtherAuthenticationSessionsRequest { CurrentSessionId = Guid.NewGuid(), Reason = new string('x', 513), Tenant = TenantContext.Global, Audit = new AuditContext(Guid.NewGuid()) }));
     }
 
     [Test]
