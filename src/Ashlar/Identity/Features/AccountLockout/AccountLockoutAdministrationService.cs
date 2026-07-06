@@ -12,6 +12,7 @@ internal sealed class AccountLockoutAdministrationService(
     private readonly IAccountLockoutRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly TimeProvider _timeProvider = dependencies?.TimeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider ?? TimeProvider.System);
+    private readonly IAshlarTransactionProvider? _transactionProvider = dependencies?.TransactionProvider;
 
     public async Task<Result<AccountLockoutSearchResult>> SearchLockoutsAsync(SearchAccountLockoutsRequest request, CancellationToken cancellationToken = default)
     {
@@ -91,8 +92,16 @@ internal sealed class AccountLockoutAdministrationService(
             return Result.Failure<ResetAccountLockoutResult>(reasonFailure);
         }
 
+        await using var transaction = _transactionProvider == null
+            ? null
+            : await _transactionProvider.BeginTransactionAsync(cancellationToken);
         var reset = await _repository.ResetAsync(userId, tenantId, provider, cancellationToken);
         await RecordResetAsync(userId, tenantId, provider, reset, request, cancellationToken);
+        if (transaction != null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
         var status = reset ? AccountLockoutResetStatus.Reset : AccountLockoutResetStatus.NotFound;
         return Result.Success(new ResetAccountLockoutResult(status, userId, tenantId, provider));
     }
@@ -228,4 +237,5 @@ internal sealed class AccountLockoutAdministrationService(
 
 internal sealed record AccountLockoutAdministrationServiceDependencies(
     TimeProvider? TimeProvider = null,
-    ISecurityEventSink? SecurityEventSink = null);
+    ISecurityEventSink? SecurityEventSink = null,
+    IAshlarTransactionProvider? TransactionProvider = null);

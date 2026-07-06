@@ -411,6 +411,61 @@ internal sealed class PasskeyServiceTests
         challenges.Verify(r => r.ConsumeAsync(challenge.Id, "v1", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Test]
+    public void CompleteRegistrationAsyncShouldPropagateRequiredAuditFailure()
+    {
+        var user = new TestUser(Guid.NewGuid(), "test@example.com");
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var challenge = CreateRegistrationChallenge(now, user.Id);
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var validator = new Mock<IPasskeyCeremonyValidator>();
+        var transactionProvider = new RecordingTransactionProvider();
+        repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
+        challenges.Setup(r => r.ConsumeAsync(challenge.Id, "v1", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        validator.Setup(v => v.VerifyRegistrationAsync(It.IsAny<PasskeyOptions>(), challenge, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PasskeyRegistrationVerificationResult("cred", "pk", 1, ["internal"]));
+        var service = new PasskeyService(
+            repo.Object,
+            credentials.Object,
+            challenges.Object,
+            validator.Object,
+            CreateDependencies(new FakeTimeProvider(now), new ThrowingSecurityEventSink(), transactionProvider: transactionProvider));
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteRegistrationAsync(CreateCompleteRegistrationRequest(challenge, JsonDocument.Parse("{}").RootElement, "Laptop")));
+        Assert.That(transactionProvider.Transaction.Committed, Is.False);
+    }
+
+    [Test]
+    public async Task RevokeAsyncShouldCommitCredentialMutationAndAuditTogether()
+    {
+        var userId = Guid.NewGuid();
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var credential = CreatePasskeyCredential(userId, "cred", now);
+        var credentials = new Mock<ICredentialRepository>();
+        var events = new RecordingSecurityEventSink();
+        var transactionProvider = new RecordingTransactionProvider();
+        credentials.Setup(r => r.ListCredentialsForUserAsync(userId, It.IsAny<bool>(), It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
+        credentials.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), credential.Version, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var service = new PasskeyService(
+            new Mock<IUserRepository>().Object,
+            credentials.Object,
+            new Mock<IPasskeyChallengeRepository>().Object,
+            new Mock<IPasskeyCeremonyValidator>().Object,
+            CreateDependencies(new FakeTimeProvider(now), events, transactionProvider: transactionProvider));
+
+        var result = await service.RevokeAsync(new RevokePasskeyRequest(userId, credential.Id, new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(transactionProvider.Transaction.Committed, Is.True);
+            Assert.That(events.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.PasskeyRevoked));
+        }
+    }
+
     [TestCase(UserAccountState.Disabled)]
     [TestCase(UserAccountState.Locked)]
     [TestCase(UserAccountState.Suspended)]
@@ -3008,7 +3063,8 @@ internal sealed class PasskeyServiceTests
         IAuthenticationHandshakeService? handshakeService = null,
         ISecureTokenHasher? tokenHasher = null,
         IAuthenticationRateLimiter? rateLimiter = null,
-        PasskeyOptions? options = null)
+        PasskeyOptions? options = null,
+        IAshlarTransactionProvider? transactionProvider = null)
     {
         return new PasskeyServiceDependencies(
             Options.Create(options ?? new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
@@ -3017,7 +3073,8 @@ internal sealed class PasskeyServiceTests
             tokenHasher ?? new TestTokenHasher(),
             rateLimiter ?? AllowRateLimiter.Instance,
             timeProvider,
-            securityEventSink);
+            securityEventSink,
+            transactionProvider);
     }
 }
 
@@ -3078,6 +3135,49 @@ internal sealed class RecordingSecurityEventSink : ISecurityEventSink
     {
         Events.Add(securityEvent);
         return Task.CompletedTask;
+    }
+}
+
+internal sealed class ThrowingSecurityEventSink : ISecurityEventSink
+{
+    public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+    {
+        throw new InvalidOperationException("required audit failed");
+    }
+}
+
+internal sealed class RecordingTransactionProvider : IAshlarTransactionProvider
+{
+    public RecordingTransaction Transaction { get; } = new();
+
+    public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<IAshlarTransaction>(Transaction);
+    }
+}
+
+internal sealed class RecordingTransaction : IAshlarTransaction
+{
+    public bool Committed { get; private set; }
+
+    public Task CommitAsync(CancellationToken cancellationToken = default)
+    {
+        Committed = true;
+        return Task.CompletedTask;
+    }
+
+    public Task RollbackAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
+
+    public void OnCommitted(Func<CancellationToken, Task> callback)
+    {
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        return ValueTask.CompletedTask;
     }
 }
 

@@ -15,6 +15,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly IUserRepository _userRepository;
+    private readonly IAshlarTransactionProvider? _transactionProvider;
 
     /// <summary>Initializes the grant service with storage, validation, and audit dependencies.</summary>
     /// <param name="repository">Grant storage used for authorization assignments.</param>
@@ -22,12 +23,14 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
     /// <param name="options">Validation limits for grant fields.</param>
     /// <param name="timeProvider">Clock used for timestamps and expiration checks.</param>
     /// <param name="securityEventSink">Optional sink that receives grant creation and revocation audit events.</param>
+    /// <param name="transactionProvider">Optional transaction provider used to commit grant mutations with required audit writes.</param>
     public AuthorizationGrantService(
         IAuthorizationGrantRepository repository,
         IUserRepository userRepository,
         AuthorizationGrantOptions? options = null,
         TimeProvider? timeProvider = null,
-        ISecurityEventSink? securityEventSink = null)
+        ISecurityEventSink? securityEventSink = null,
+        IAshlarTransactionProvider? transactionProvider = null)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
@@ -39,6 +42,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
 
         _timeProvider = timeProvider ?? TimeProvider.System;
         _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
+        _transactionProvider = transactionProvider;
     }
 
     /// <summary>
@@ -171,6 +175,9 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
             Metadata = metadata
         };
 
+        await using var transaction = _transactionProvider == null
+            ? null
+            : await _transactionProvider.BeginTransactionAsync(cancellationToken);
         await _repository.CreateGrantAsync(grant, cancellationToken);
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
@@ -181,6 +188,10 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
             Audit = request.Audit,
             Properties = CreateAuditProperties(grant)
         }, cancellationToken);
+        if (transaction != null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
 
         return Result<AuthorizationGrant>.Success(grant);
     }
@@ -247,6 +258,9 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
             return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.NotFound, request.GrantId, request.TenantId);
         }
 
+        await using var transaction = _transactionProvider == null
+            ? null
+            : await _transactionProvider.BeginTransactionAsync(cancellationToken);
         var revoked = await _repository.RevokeGrantAsync(request.GrantId, request.TenantId, _timeProvider.GetUtcNow(), cancellationToken);
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
@@ -258,6 +272,10 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
             FailureReason = revoked ? null : "grant_not_revoked",
             Properties = CreateAuditProperties(grant)
         }, cancellationToken);
+        if (transaction != null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
 
         var status = revoked ? AuthorizationGrantRevocationStatus.Revoked : AuthorizationGrantRevocationStatus.NotRevoked;
         return new RevokeAuthorizationGrantResult(status, request.GrantId, request.TenantId, grant.UserId);

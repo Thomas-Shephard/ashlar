@@ -12,7 +12,9 @@ namespace Ashlar.Redis.RateLimiting;
 /// Search uses Redis SCAN over the configured Ashlar rate-limit prefix and returns only opaque hash suffixes, never physical Redis key names.
 /// Exact paging can vary while Redis keys are changing concurrently.
 /// </remarks>
-public sealed class RedisAuthenticationRateLimitAdministrationRepository : IAuthenticationRateLimitAdministrationRepository
+public sealed class RedisAuthenticationRateLimitAdministrationRepository :
+    IAuthenticationRateLimitAdministrationRepository,
+    INonAtomicAuthenticationRateLimitAdministrationRepository
 {
     internal const int MaximumScanCount = 1000;
 
