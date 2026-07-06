@@ -113,8 +113,9 @@ internal sealed class ExternalAccountCredentialLinkerTests
         }
     }
 
-    [Test]
-    public async Task LinkExternalAccountCredentialAsyncShouldForwardBoundRequestToCredentialInfrastructure()
+    [TestCase("oidc")]
+    [TestCase("oauth")]
+    public async Task LinkExternalAccountCredentialAsyncShouldForwardBoundRequestToCredentialInfrastructure(string providerType)
     {
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
@@ -122,7 +123,7 @@ internal sealed class ExternalAccountCredentialLinkerTests
         var assertion = new Mock<IAuthenticationAssertion>().Object;
         var providerMock = new Mock<IAuthenticationProvider>();
         providerMock.SetupGet(p => p.Key)
-            .Returns(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
+            .Returns(new AuthenticationProviderKey(providerType, "Google"));
         var provider = providerMock.Object;
         var audit = new AuditContext(ActorUserId: userId, CorrelationId: "corr-1");
         var users = new Mock<IUserRepository>();

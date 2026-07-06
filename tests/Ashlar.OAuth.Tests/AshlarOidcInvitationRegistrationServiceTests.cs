@@ -779,6 +779,34 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     }
 
     [Test]
+    public async Task RegisterShouldAuditCredentialProviderKeyConflict()
+    {
+        var userId = Guid.NewGuid();
+        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var credentials = new Mock<ICredentialRepository>();
+        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new CredentialProviderKeyConflictException());
+        var securityEvents = new Mock<ISecurityEventSink>();
+        var service = CreateService(invitations.Object, credentials.Object, securityEvents: securityEvents.Object);
+
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.AlreadyLinkedToAnotherUser));
+            securityEvents.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+                e.EventType == AshlarSecurityEventTypes.CredentialLinked &&
+                e.Outcome == SecurityEventOutcomes.Failure &&
+                e.UserId == userId &&
+                e.TenantId == null &&
+                e.ActorUserId == null &&
+                e.Provider == new AuthenticationProviderKey(ProviderType.Oidc, "Google") &&
+                e.FailureReason == AshlarFailureCodes.AlreadyLinkedToOther.Value &&
+                e.Properties == null), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
     public async Task RegisterShouldCommitOnlyAfterInvitationAcceptanceAndCredentialLinkSucceed()
     {
         var userId = Guid.NewGuid();

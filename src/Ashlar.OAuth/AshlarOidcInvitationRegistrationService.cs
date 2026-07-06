@@ -400,12 +400,9 @@ public sealed class AshlarOidcInvitationRegistrationService
 
     private static AshlarOidcInvitationRegistrationStatus MapLinkFailure(Result result)
     {
-        return result.FailureCode?.Value switch
-        {
-            AshlarFailureCodes.AlreadyLinkedToSelfValue => AshlarOidcInvitationRegistrationStatus.AlreadyLinked,
-            AshlarFailureCodes.AlreadyLinkedToOtherValue => AshlarOidcInvitationRegistrationStatus.AlreadyLinkedToAnotherUser,
-            _ => AshlarOidcInvitationRegistrationStatus.LinkFailed
-        };
+        return result.FailureCode?.Value == AshlarFailureCodes.AlreadyLinkedToSelfValue
+            ? AshlarOidcInvitationRegistrationStatus.AlreadyLinked
+            : AshlarOidcInvitationRegistrationStatus.AlreadyLinkedToAnotherUser;
     }
 
     private static AshlarExternalProvider CreateExternalProvider(AshlarOidcProviderOptions provider)

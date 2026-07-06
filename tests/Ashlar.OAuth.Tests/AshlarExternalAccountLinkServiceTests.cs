@@ -860,6 +860,24 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
+    public async Task CompleteExternalLinkShouldMapCredentialLinkFailure()
+    {
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
+        credentialService
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure(AshlarFailureCodes.AlreadyLinkedToOther));
+        var authService = new TestAuthenticationService(AuthenticateResult.Success(new AuthenticationTicket(
+            CreatePrincipal("sub"),
+            CreateProperties("Google", "Google"),
+            "Ashlar.OAuth.External")));
+        var service = CreateService(credentialService.Object);
+
+        var result = await service.CompleteWithFreshProofAsync(CreateHttpContext(authService), Guid.NewGuid(), "Google", TenantContext.Global);
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.AlreadyLinkedToAnotherUser));
+    }
+
+    [Test]
     public async Task CompleteExternalLinkShouldReturnAuthenticationFailedWhenTicketMissing()
     {
         var service = CreateService();
