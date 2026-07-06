@@ -206,13 +206,12 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     }
 
     [Test]
-    public void RegisterShouldNotExposeRawClaimsPrincipalOverloadPublicly()
+    public void RegisterShouldNotExposeRawClaimsPrincipalOrAuthenticateResultOverloadPublicly()
     {
         var methods = typeof(AshlarOidcInvitationRegistrationService).GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
 
         Assert.That(methods, Has.None.Matches<System.Reflection.MethodInfo>(method =>
-            method.Name == nameof(AshlarOidcInvitationRegistrationService.RegisterOidcInvitationAsync)
-            && method.GetParameters().Any(parameter => parameter.ParameterType == typeof(ClaimsPrincipal))));
+            method.GetParameters().Any(parameter => parameter.ParameterType == typeof(ClaimsPrincipal) || parameter.ParameterType == typeof(AuthenticateResult))));
     }
 
     [TestCase(null)]
@@ -875,6 +874,39 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
+            Assert.That(auth.SignOutCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task CompleteFromPropertiesShouldUseTicketState()
+    {
+        var userId = Guid.NewGuid();
+        AcceptInvitationRequest? observedRequest = null;
+        var invitations = CreateInvitations(acceptance: Result.Success(userId), token: "ticket-token");
+        invitations.Setup(s => s.AcceptInvitationAsync(It.Is<AcceptInvitationRequest>(r => r.Token == "ticket-token"), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()))
+            .Callback<AcceptInvitationRequest, AuthenticationContext?, CancellationToken>((request, _, _) => observedRequest = request)
+            .ReturnsAsync(Result.Success(userId));
+        var credentials = new Mock<ICredentialService>();
+        credentials.Setup(s => s.LinkCredentialAsync(userId, It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        var ticket = CreateTicket("Google", "Google", "subject");
+        ticket.Properties!.Items["invitation_token"] = "ticket-token";
+        ticket.Properties.Items["display_name"] = "Ticket Name";
+        var auth = new TestAuthenticationService(ticket);
+        var service = CreateService(invitations.Object, credentials.Object);
+
+        var result = await service.CompleteOidcInvitationRegistrationFromPropertiesAsync(
+            CreateHttpContext(auth),
+            "Google",
+            "invitation_token",
+            "display_name");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
+            Assert.That(observedRequest?.Token, Is.EqualTo("ticket-token"));
+            Assert.That(observedRequest?.UserName, Is.EqualTo("Ticket Name"));
             Assert.That(auth.SignOutCount, Is.EqualTo(1));
         }
     }

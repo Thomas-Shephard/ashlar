@@ -1,4 +1,5 @@
 using Ashlar.Auditing;
+using Ashlar.Identity.Abstractions.Transactions;
 
 namespace Ashlar.Webhooks.SecurityEvents;
 
@@ -112,11 +113,14 @@ public sealed record AshlarSecurityEventWebhookOutboxOperationState(
 /// </summary>
 /// <param name="timeProvider">Clock used for operation audit timestamps.</param>
 /// <param name="securityEventSink">Optional audit sink for successful mutating operations.</param>
+/// <param name="transactionProvider">Optional transaction provider used to commit provider mutations with required audit writes.</param>
 public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
     TimeProvider timeProvider,
-    ISecurityEventSink? securityEventSink = null) : IAshlarSecurityEventWebhookOutboxOperations
+    ISecurityEventSink? securityEventSink = null,
+    IAshlarTransactionProvider? transactionProvider = null) : IAshlarSecurityEventWebhookOutboxOperations
 {
     private readonly ISecurityEventSink _securityEventSink = securityEventSink ?? new NullSecurityEventSink();
+    private readonly IAshlarTransactionProvider? _transactionProvider = transactionProvider;
 
     /// <summary>
     /// Gets the time provider.
@@ -188,6 +192,10 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
     {
         AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(request);
 
+        await using var transaction = _transactionProvider == null
+            ? null
+            : await _transactionProvider.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
         var row = await applyAsync(request.DeliveryId, cancellationToken).ConfigureAwait(false);
         if (row is null)
         {
@@ -202,6 +210,11 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
             request,
             result,
             cancellationToken).ConfigureAwait(false);
+        if (transaction != null)
+        {
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         return result;
     }
 

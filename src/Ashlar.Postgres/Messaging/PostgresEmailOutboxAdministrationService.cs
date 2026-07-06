@@ -6,7 +6,8 @@ namespace Ashlar.Postgres.Messaging;
 internal sealed class PostgresEmailOutboxAdministrationService(
     IPostgresConnectionProvider connectionProvider,
     TimeProvider timeProvider,
-    ISecurityEventSink? securityEventSink = null) : EmailOutboxAdministrationServiceBase(timeProvider, securityEventSink)
+    ISecurityEventSink? securityEventSink = null,
+    IAshlarTransactionProvider? transactionProvider = null) : EmailOutboxAdministrationServiceBase(timeProvider, securityEventSink, transactionProvider)
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 

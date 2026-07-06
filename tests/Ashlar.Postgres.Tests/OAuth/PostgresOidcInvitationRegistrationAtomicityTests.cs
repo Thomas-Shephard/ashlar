@@ -4,6 +4,7 @@ using Ashlar.OAuth;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Tokens;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Time.Testing;
@@ -50,12 +51,12 @@ internal sealed class PostgresOidcInvitationRegistrationAtomicityTests
         var users = services.GetRequiredService<IUserRepository>();
         var credentials = services.GetRequiredService<ICredentialRepository>();
         var service = services.GetRequiredService<AshlarOidcInvitationRegistrationService>();
-        var result = await service.RegisterOidcInvitationAsync(token, "Google", CreateTicket(subject, inviteeEmail), "Invitee");
+        var result = await service.CompleteOidcInvitationRegistrationAsync(CreateHttpContext(services, CreateTicket(subject, inviteeEmail)), token, "Google", "Invitee");
 
         var rolledBackInvitation = await invitations.GetInvitationByTokenHashAsync(services.GetRequiredService<ISecureTokenHasher>().HashToken(token));
         var rolledBackInvitee = await users.GetUserByEmailAsync(inviteeEmail);
 
-        var retryResult = await service.RegisterOidcInvitationAsync(token, "Google", CreateTicket(retrySubject, inviteeEmail), "Invitee");
+        var retryResult = await service.CompleteOidcInvitationRegistrationAsync(CreateHttpContext(services, CreateTicket(retrySubject, inviteeEmail)), token, "Google", "Invitee");
 
         var invitation = await invitations.GetInvitationByTokenHashAsync(services.GetRequiredService<ISecureTokenHasher>().HashToken(token));
         var invitee = await users.GetUserByEmailAsync(inviteeEmail);
@@ -146,6 +147,40 @@ internal sealed class PostgresOidcInvitationRegistrationAtomicityTests
             CreatePrincipal(subject, email),
             properties,
             "Ashlar.OAuth.External"));
+    }
+
+    private static DefaultHttpContext CreateHttpContext(IServiceProvider services, AuthenticateResult ticket)
+    {
+        return new DefaultHttpContext
+        {
+            RequestServices = new AuthenticationServiceProvider(services, new TestAuthenticationService(ticket))
+        };
+    }
+
+    private sealed class AuthenticationServiceProvider(IServiceProvider inner, IAuthenticationService authenticationService) : IServiceProvider
+    {
+        public object? GetService(Type serviceType)
+        {
+            return serviceType == typeof(IAuthenticationService)
+                ? authenticationService
+                : inner.GetService(serviceType);
+        }
+    }
+
+    private sealed class TestAuthenticationService(AuthenticateResult result) : IAuthenticationService
+    {
+        public Task<AuthenticateResult> AuthenticateAsync(HttpContext context, string? scheme)
+        {
+            return Task.FromResult(result);
+        }
+
+        public Task ChallengeAsync(HttpContext context, string? scheme, AuthenticationProperties? properties) => Task.CompletedTask;
+
+        public Task ForbidAsync(HttpContext context, string? scheme, AuthenticationProperties? properties) => Task.CompletedTask;
+
+        public Task SignInAsync(HttpContext context, string? scheme, ClaimsPrincipal principal, AuthenticationProperties? properties) => Task.CompletedTask;
+
+        public Task SignOutAsync(HttpContext context, string? scheme, AuthenticationProperties? properties) => Task.CompletedTask;
     }
 
     private sealed class TestSecretProtector : ISecretProtector

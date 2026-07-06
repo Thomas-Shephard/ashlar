@@ -45,8 +45,10 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var unsafeOverload = typeof(AshlarExternalAccountLinkService)
             .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .Any(method => method.Name == nameof(AshlarExternalAccountLinkService.LinkExternalAccountAsync)
-                && method.GetParameters().Any(parameter => parameter.ParameterType == typeof(AuthenticateResult)));
+            .Any(method => method.GetParameters().Any(parameter =>
+                parameter.ParameterType == typeof(AuthenticateResult) ||
+                parameter.ParameterType == typeof(ClaimsPrincipal) ||
+                parameter.ParameterType.GetProperties().Any(property => property.PropertyType == typeof(AuthenticateResult))));
 
         Assert.That(unsafeOverload, Is.False);
     }
@@ -388,17 +390,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
-    public void LinkExternalAccountShouldNotExposeRawClaimsPrincipalOverloadPublicly()
-    {
-        var methods = typeof(AshlarExternalAccountLinkService).GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
-
-        Assert.That(methods, Has.None.Matches<System.Reflection.MethodInfo>(method =>
-            method.Name == nameof(AshlarExternalAccountLinkService.LinkExternalAccountAsync)
-            && method.GetParameters().Any(parameter => parameter.ParameterType == typeof(ClaimsPrincipal))));
-    }
-
-    [Test]
-    public async Task LinkExternalAccountShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
+    public static async Task LinkExternalAccountShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
     {
         var service = CreateServiceWithProvider(new AshlarOidcProviderOptions(" ", "Google", _ => { }));
         var ticket = AuthenticateResult.Success(new AuthenticationTicket(

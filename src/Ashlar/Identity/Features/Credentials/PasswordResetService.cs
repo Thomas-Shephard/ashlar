@@ -416,6 +416,7 @@ internal sealed class PasswordResetService : IPasswordResetService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            await using var transaction = await _dependencies.IdentityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
             await _dependencies.IdentityContext.CredentialRepository.RevokeCredentialsAsync(user.Id, ProviderType.Internal, ProviderName, cancellationToken);
             await RecordAsync(
                 AshlarSecurityEventTypes.PasswordResetFailed,
@@ -424,6 +425,7 @@ internal sealed class PasswordResetService : IPasswordResetService
                 user.Id,
                 DeliveryFailedReason,
                 cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return false;
         }
     }

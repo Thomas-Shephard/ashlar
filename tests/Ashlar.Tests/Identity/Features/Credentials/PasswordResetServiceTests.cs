@@ -397,6 +397,27 @@ internal sealed class PasswordResetServiceTests
     }
 
     [Test]
+    public async Task RequestPasswordResetAsyncRollsBackPostCommitRevocationWhenFailureAuditThrows()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user, transactionAwareStore: true);
+        fixture.EmailSender.ThrowOnSend = true;
+        fixture.Audit.ThrowOnPasswordResetDeliveryFailure = true;
+
+        Assert.ThrowsAsync<AggregateException>(async () => await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Store.Credentials.Any(c =>
+                c.ProviderType == ProviderType.Internal &&
+                c.ProviderName == PasswordResetService.ProviderName &&
+                c.Status == CredentialStatus.Active), Is.True);
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.PasswordResetFailed && e.FailureReason == "delivery_failed"), Is.False);
+        }
+    }
+
+
+    [Test]
     public async Task RequestPasswordResetAsyncDoesNotRecordRequestedSuccessWhenTransactionalOutboxEnqueueFails()
     {
         var user = CreateUser();
@@ -731,7 +752,8 @@ internal sealed class PasswordResetServiceTests
         bool verifyAllowed = true,
         Action<PasswordResetOptions>? configure = null,
         bool transactionalEmailSender = false,
-        IRememberedMfaDeviceService? rememberedMfaDeviceService = null)
+        IRememberedMfaDeviceService? rememberedMfaDeviceService = null,
+        bool transactionAwareStore = false)
     {
         var time = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-25T12:00:00Z", CultureInfo.InvariantCulture));
         var store = new InMemoryUserCredentialStore(time);
@@ -750,7 +772,10 @@ internal sealed class PasswordResetServiceTests
         uriValidator.Setup(v => v.IsValid(It.IsAny<Uri?>())).Returns(true);
         var audit = new RecordingSecurityEventSink();
         var notifications = new RecordingSecurityNotificationService();
-        var identityContext = new IdentityContext(store, store, Mock.Of<IIdentityService>(), new NullTransactionProvider());
+        IAshlarTransactionProvider transactionProvider = transactionAwareStore
+            ? new SnapshotTransactionProvider(store)
+            : new NullTransactionProvider();
+        var identityContext = new IdentityContext(store, store, Mock.Of<IIdentityService>(), transactionProvider);
         var infrastructure = new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator.Object);
         var auditContext = new IdentityAuditContext(time, audit, notifications);
         var dependencies = new PasswordResetDependencies(
@@ -857,10 +882,94 @@ internal sealed class PasswordResetServiceTests
     private sealed class RecordingSecurityEventSink : ISecurityEventSink
     {
         public List<AshlarSecurityEvent> Events { get; } = [];
+        public bool ThrowOnPasswordResetDeliveryFailure { get; set; }
+
         public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
         {
+            if (ThrowOnPasswordResetDeliveryFailure &&
+                securityEvent.EventType == AshlarSecurityEventTypes.PasswordResetFailed &&
+                securityEvent.FailureReason == "delivery_failed")
+            {
+                throw new InvalidOperationException("audit failed");
+            }
+
             Events.Add(securityEvent);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class SnapshotTransactionProvider(InMemoryUserCredentialStore store) : IAshlarTransactionProvider
+    {
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<IAshlarTransaction>(new SnapshotTransaction(store));
+        }
+
+        private sealed class SnapshotTransaction(InMemoryUserCredentialStore store) : IAshlarTransaction
+        {
+            private readonly List<UserCredential> _credentials = store.Credentials.Select(static credential => credential.Clone()).ToList();
+            private readonly List<Func<CancellationToken, Task>> _hooks = [];
+            private bool _committed;
+            private bool _disposed;
+
+            public async Task CommitAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _committed = true;
+                _disposed = true;
+
+                List<Exception>? hookExceptions = null;
+                foreach (var hook in _hooks)
+                {
+                    try
+                    {
+                        await hook(CancellationToken.None);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        (hookExceptions ??= []).Add(ex);
+                    }
+                }
+
+                if (hookExceptions != null)
+                {
+                    throw new AggregateException("One or more post-commit hooks failed.", hookExceptions);
+                }
+            }
+
+            public Task RollbackAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                Restore();
+                _disposed = true;
+                return Task.CompletedTask;
+            }
+
+            public void OnCommitted(Func<CancellationToken, Task> action)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _hooks.Add(action ?? throw new ArgumentNullException(nameof(action)));
+            }
+
+            public ValueTask DisposeAsync()
+            {
+                if (!_disposed && !_committed)
+                {
+                    Restore();
+                }
+
+                _disposed = true;
+                return ValueTask.CompletedTask;
+            }
+
+            private void Restore()
+            {
+                store.Credentials.Clear();
+                store.Credentials.AddRange(_credentials.Select(static credential => credential.Clone()));
+            }
         }
     }
 

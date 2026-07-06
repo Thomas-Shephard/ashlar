@@ -57,15 +57,18 @@ public interface IEmailOutboxAdministrationService
 /// </summary>
 /// <param name="timeProvider">Clock used for operation timestamps and audit events.</param>
 /// <param name="securityEventSink">Optional audit sink for successful mutating operations.</param>
+/// <param name="transactionProvider">Optional transaction provider used to commit provider mutations with required audit writes.</param>
 /// <remarks>
 /// Providers supply read projections and conditional storage mutations; this base class centralizes audit requirements, stable no-op classification, and the rule that administration
 /// mutations never send emails directly.
 /// </remarks>
 public abstract class EmailOutboxAdministrationServiceBase(
     TimeProvider timeProvider,
-    ISecurityEventSink? securityEventSink = null) : IEmailOutboxAdministrationService
+    ISecurityEventSink? securityEventSink = null,
+    IAshlarTransactionProvider? transactionProvider = null) : IEmailOutboxAdministrationService
 {
     private readonly ISecurityEventSink _securityEventSink = securityEventSink ?? new NullSecurityEventSink();
+    private readonly IAshlarTransactionProvider? _transactionProvider = transactionProvider;
 
     /// <summary>
     /// Gets the clock used by provider queries and mutations.
@@ -147,6 +150,10 @@ public abstract class EmailOutboxAdministrationServiceBase(
     {
         EmailOutboxAdministrationProvider.ValidateOperationRequest(request);
 
+        await using var transaction = _transactionProvider == null
+            ? null
+            : await _transactionProvider.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
         var state = await applyAsync(request.Id, cancellationToken).ConfigureAwait(false);
         if (state is null)
         {
@@ -161,6 +168,11 @@ public abstract class EmailOutboxAdministrationServiceBase(
             request,
             result,
             cancellationToken).ConfigureAwait(false);
+        if (transaction != null)
+        {
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         return result;
     }
 
