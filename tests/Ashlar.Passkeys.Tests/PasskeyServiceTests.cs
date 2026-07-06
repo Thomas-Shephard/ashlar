@@ -3072,9 +3072,7 @@ internal sealed class PasskeyServiceTests
             handshakeService ?? new Mock<IAuthenticationHandshakeService>().Object,
             tokenHasher ?? new TestTokenHasher(),
             rateLimiter ?? AllowRateLimiter.Instance,
-            timeProvider,
-            securityEventSink,
-            transactionProvider);
+            new PasskeyServiceInfrastructure(timeProvider, securityEventSink, transactionProvider));
     }
 }
 

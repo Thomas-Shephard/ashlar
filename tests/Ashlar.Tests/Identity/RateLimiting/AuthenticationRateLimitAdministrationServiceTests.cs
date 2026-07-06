@@ -108,6 +108,103 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     }
 
     [Test]
+    public async Task ResetBucketAsyncShouldCommitWhenTransactionProviderIsConfigured()
+    {
+        var repository = new RecordingRepository { ResetResult = true };
+        var transactionProvider = new RecordingTransactionProvider();
+        var service = new AuthenticationRateLimitAdministrationService(
+            repository,
+            new AuthenticationRateLimitAdministrationServiceDependencies(
+                new FakeTimeProvider(Now),
+                new CapturingSecurityEventSink(),
+                transactionProvider));
+
+        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
+            Assert.That(transactionProvider.Transaction.BeginCount, Is.EqualTo(1));
+            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task ResetBucketAsyncShouldAllowNonAtomicRepositoryWhenPersistentAuditIsNotConfigured()
+    {
+        var repository = new NonAtomicRecordingRepository { ResetResult = true };
+        var service = new AuthenticationRateLimitAdministrationService(
+            repository,
+            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), new CapturingSecurityEventSink()));
+
+        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
+            Assert.That(repository.ResetCalls, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task ResetBucketAsyncShouldAllowNonAtomicRepositoryWhenDependenciesAreNotConfigured()
+    {
+        var repository = new NonAtomicRecordingRepository { ResetResult = true };
+        var service = new AuthenticationRateLimitAdministrationService(repository);
+
+        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
+            Assert.That(repository.ResetCalls, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task ResetBucketAsyncShouldAllowAtomicRepositoryWhenPersistentAuditIsConfigured()
+    {
+        var repository = new RecordingRepository { ResetResult = true };
+        var service = new AuthenticationRateLimitAdministrationService(
+            repository,
+            new AuthenticationRateLimitAdministrationServiceDependencies(
+                new FakeTimeProvider(Now),
+                new CapturingSecurityEventSink(),
+                PersistentAuditConfigured: true));
+
+        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
+            Assert.That(repository.ResetCalls, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task ResetBucketAsyncShouldFailClosedForNonAtomicRepositoryWhenPersistentAuditIsConfigured()
+    {
+        var repository = new NonAtomicRecordingRepository { ResetResult = true };
+        var sink = new CapturingSecurityEventSink();
+        var service = new AuthenticationRateLimitAdministrationService(
+            repository,
+            new AuthenticationRateLimitAdministrationServiceDependencies(
+                new FakeTimeProvider(Now),
+                sink,
+                PersistentAuditConfigured: true));
+
+        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
+            Assert.That(repository.ResetCalls, Is.Zero);
+            Assert.That(sink.Events, Has.Count.EqualTo(1));
+            Assert.That(sink.Events[0].Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+        }
+    }
+
+    [Test]
     public async Task ResetBucketAsyncAuditsMissingBucket()
     {
         var repository = new RecordingRepository { ResetResult = false };
@@ -259,13 +356,15 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         }
     }
 
-    private sealed class RecordingRepository : IAuthenticationRateLimitAdministrationRepository
+    private class RecordingRepository : IAuthenticationRateLimitAdministrationRepository
     {
         public SearchAuthenticationRateLimitBucketsRequest? LastSearchRequest { get; private set; }
 
         public bool ResetResult { get; set; }
 
         public bool ThrowOnReset { get; set; }
+
+        public int ResetCalls { get; private set; }
 
         public Task<IReadOnlyList<AuthenticationRateLimitBucketSummary>> SearchBucketsAsync(SearchAuthenticationRateLimitBucketsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
@@ -281,6 +380,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
 
         public Task<bool> ResetBucketAsync(ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)
         {
+            ResetCalls++;
             if (ThrowOnReset)
             {
                 throw new InvalidOperationException("reset failed");
@@ -289,6 +389,8 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
             return Task.FromResult(ResetResult);
         }
     }
+
+    private sealed class NonAtomicRecordingRepository : RecordingRepository, INonAtomicAuthenticationRateLimitAdministrationRepository;
 
     private sealed class CapturingSecurityEventSink : ISecurityEventSink
     {

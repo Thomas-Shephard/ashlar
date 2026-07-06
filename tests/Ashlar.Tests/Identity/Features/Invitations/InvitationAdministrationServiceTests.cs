@@ -243,6 +243,27 @@ internal sealed class InvitationAdministrationServiceTests
     }
 
     [Test]
+    public async Task RevokeInvitationAsyncShouldCommitWhenTransactionProviderIsConfigured()
+    {
+        var transactionProvider = new RecordingTransactionProvider();
+        var invitationId = Guid.NewGuid();
+        var repository = new RecordingInvitationRepository
+        {
+            RevokeResult = new RevokeInvitationAdministrationResult(invitationId, null, InvitationAdministrationRevocationStatus.Revoked, InvitationAdministrationStatus.Revoked, Now)
+        };
+
+        var result = await CreateService(repository, transactionProvider: transactionProvider)
+            .RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitationId, TenantContext.Global, Audit: CreateAudit()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(transactionProvider.Transaction.BeginCount, Is.EqualTo(1));
+            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void AdministrationModelsDoNotExposeInvitationSecrets()
     {
         using (Assert.EnterMultipleScope())
@@ -254,11 +275,14 @@ internal sealed class InvitationAdministrationServiceTests
         }
     }
 
-    private static InvitationAdministrationService CreateService(RecordingInvitationRepository? repository = null, ISecurityEventSink? events = null)
+    private static InvitationAdministrationService CreateService(
+        RecordingInvitationRepository? repository = null,
+        ISecurityEventSink? events = null,
+        IAshlarTransactionProvider? transactionProvider = null)
     {
         return new InvitationAdministrationService(
             repository ?? new RecordingInvitationRepository(),
-            new InvitationAdministrationServiceDependencies(new StaticTimeProvider(Now), events));
+            new InvitationAdministrationServiceDependencies(new StaticTimeProvider(Now), events, transactionProvider));
     }
 
     private static InvitationAdministrationSummary CreateSummary()

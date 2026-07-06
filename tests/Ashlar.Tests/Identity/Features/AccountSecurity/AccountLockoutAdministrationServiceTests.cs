@@ -138,6 +138,28 @@ internal sealed class AccountLockoutAdministrationServiceTests
     }
 
     [Test]
+    public async Task ResetLockoutAsyncShouldCommitWhenTransactionProviderIsConfigured()
+    {
+        var transactionProvider = new RecordingTransactionProvider();
+        _repository.Seed(CreateRecord(UserId, TenantId, AuthenticationProviderKey.Local, lockedUntil: Now.AddMinutes(5)));
+        var service = new AccountLockoutAdministrationService(
+            _repository,
+            new AccountLockoutAdministrationServiceDependencies(_timeProvider, _events, transactionProvider));
+
+        var result = await service.ResetLockoutAsync(
+            UserId,
+            AuthenticationProviderKey.Local,
+            new ResetAccountLockoutRequest(new TenantContext(TenantId), CreateAudit()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(transactionProvider.Transaction.BeginCount, Is.EqualTo(1));
+            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task ResetLockoutAsyncShouldEmitSafeAuditEventWhenStateIsCleared()
     {
         var actorId = Guid.Parse("33333333-3333-3333-3333-333333333333");

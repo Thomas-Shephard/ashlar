@@ -939,16 +939,19 @@ internal sealed class PasskeyServiceDependencies(
     IAuthenticationHandshakeService handshakeService,
     ISecureTokenHasher tokenHasher,
     IAuthenticationRateLimiter rateLimiter,
-    TimeProvider? timeProvider = null,
-    ISecurityEventSink? securityEventSink = null,
-    IAshlarTransactionProvider? transactionProvider = null)
+    PasskeyServiceInfrastructure? infrastructure = null)
 {
     public IOptions<PasskeyOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
     public IAuthenticationOrchestrator AuthenticationOrchestrator { get; } = authenticationOrchestrator ?? throw new ArgumentNullException(nameof(authenticationOrchestrator));
     public IAuthenticationHandshakeService HandshakeService { get; } = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
     public ISecureTokenHasher TokenHasher { get; } = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
     public IAuthenticationRateLimiter RateLimiter { get; } = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
-    public TimeProvider TimeProvider { get; } = timeProvider ?? TimeProvider.System;
-    public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
-    public IAshlarTransactionProvider? TransactionProvider { get; } = transactionProvider;
+    public TimeProvider TimeProvider { get; } = infrastructure?.TimeProvider ?? TimeProvider.System;
+    public ISecurityEventSink? SecurityEventSink { get; } = infrastructure?.SecurityEventSink;
+    public IAshlarTransactionProvider? TransactionProvider { get; } = infrastructure?.TransactionProvider;
 }
+
+internal sealed record PasskeyServiceInfrastructure(
+    TimeProvider? TimeProvider = null,
+    ISecurityEventSink? SecurityEventSink = null,
+    IAshlarTransactionProvider? TransactionProvider = null);

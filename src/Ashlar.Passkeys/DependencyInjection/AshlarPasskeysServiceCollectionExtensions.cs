@@ -51,9 +51,10 @@ public static class AshlarPasskeysServiceCollectionExtensions
             provider.GetRequiredService<IAuthenticationHandshakeService>(),
             provider.GetRequiredService<ISecureTokenHasher>(),
             provider.GetRequiredService<IAuthenticationRateLimiter>(),
-            provider.GetService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>(),
-            provider.GetService<IAshlarTransactionProvider>()));
+            new PasskeyServiceInfrastructure(
+                provider.GetService<TimeProvider>(),
+                provider.GetService<ISecurityEventSink>(),
+                provider.GetService<IAshlarTransactionProvider>())));
         services.TryAddScoped<IPasskeyService, PasskeyService>();
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<PasskeyOptions>>().Value);
         services.AddAshlarConfigurationValidation();
