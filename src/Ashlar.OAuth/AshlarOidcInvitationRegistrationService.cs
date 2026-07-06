@@ -128,9 +128,8 @@ public sealed class AshlarOidcInvitationRegistrationService
         }
 
         var externalProvider = CreateExternalProvider(provider);
-        var providerMatch = AshlarExternalProviderResolver.MatchProvider(result, externalProvider);
-        var properties = providerMatch.Properties;
-        if (!providerMatch.Matched || properties is null)
+        var (matched, properties) = AshlarExternalProviderResolver.MatchProvider(result, externalProvider);
+        if (!matched || properties is null)
         {
             return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.ProviderMismatch);
         }
