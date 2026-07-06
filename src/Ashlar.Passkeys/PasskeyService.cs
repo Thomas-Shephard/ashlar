@@ -516,17 +516,13 @@ internal sealed class PasskeyService : IPasskeyService
     public async Task<Result> RenameAsync(RenamePasskeyRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var boundaryFailure = await ValidateManagementBoundaryAsync(request.ActorUserId, request.Tenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit, cancellationToken);
-        if (boundaryFailure != null)
+        var lookup = await FindManagedPasskeyAsync(request.ActorUserId, request.Tenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit, request.CredentialId, cancellationToken);
+        if (lookup.Failure != null)
         {
-            return Result.Failure(boundaryFailure.Value);
+            return Result.Failure(lookup.Failure.Value);
         }
 
-        var credential = (await _credentialRepository.ListCredentialsForUserAsync(request.ActorUserId, cancellationToken: cancellationToken)).FirstOrDefault(c => c.Id == request.CredentialId && IsPasskey(c));
-        if (credential == null)
-        {
-            return Result.Failure(AshlarFailureCodes.PasskeyCredentialNotFound);
-        }
+        var credential = lookup.Credential!;
 
         if (!PasskeyCredentialMetadataOperations.TryRead(credential.Metadata, out var metadata))
         {
@@ -545,17 +541,13 @@ internal sealed class PasskeyService : IPasskeyService
     public async Task<Result> RevokeAsync(RevokePasskeyRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var boundaryFailure = await ValidateManagementBoundaryAsync(request.ActorUserId, request.Tenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit, cancellationToken);
-        if (boundaryFailure != null)
+        var lookup = await FindManagedPasskeyAsync(request.ActorUserId, request.Tenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit, request.CredentialId, cancellationToken);
+        if (lookup.Failure != null)
         {
-            return Result.Failure(boundaryFailure.Value);
+            return Result.Failure(lookup.Failure.Value);
         }
 
-        var credential = (await _credentialRepository.ListCredentialsForUserAsync(request.ActorUserId, cancellationToken: cancellationToken)).FirstOrDefault(c => c.Id == request.CredentialId && IsPasskey(c));
-        if (credential == null)
-        {
-            return Result.Failure(AshlarFailureCodes.PasskeyCredentialNotFound);
-        }
+        var credential = lookup.Credential!;
 
         credential.Status = CredentialStatus.Revoked;
         credential.RevokedAt = _timeProvider.GetUtcNow();
@@ -583,6 +575,33 @@ internal sealed class PasskeyService : IPasskeyService
         return await ActorMatchesTenantAsync(actorUserId, tenant, cancellationToken)
             ? null
             : AshlarFailureCodes.UserNotFoundOrUnavailable;
+    }
+
+    private async Task<(AshlarFailureCode? Failure, UserCredential? Credential)> FindManagedPasskeyAsync(
+        Guid actorUserId,
+        TenantContext tenant,
+        Guid? currentSessionId,
+        FreshMfaVerificationProof? proof,
+        AuditContext? audit,
+        Guid credentialId,
+        CancellationToken cancellationToken)
+    {
+        var boundaryFailure = await ValidateManagementBoundaryAsync(actorUserId, tenant, currentSessionId, proof, audit, cancellationToken);
+        if (boundaryFailure != null)
+        {
+            return (boundaryFailure, null);
+        }
+
+        var credential = await FindPasskeyAsync(actorUserId, credentialId, cancellationToken);
+        return credential == null
+            ? (AshlarFailureCodes.PasskeyCredentialNotFound, null)
+            : (null, credential);
+    }
+
+    private async Task<UserCredential?> FindPasskeyAsync(Guid userId, Guid credentialId, CancellationToken cancellationToken)
+    {
+        var credentials = await _credentialRepository.ListCredentialsForUserAsync(userId, cancellationToken: cancellationToken);
+        return credentials.FirstOrDefault(c => c.Id == credentialId && IsPasskey(c));
     }
 
     private async Task<PasskeyChallenge?> GetChallengeAsync(Guid id, string purpose, CancellationToken cancellationToken)

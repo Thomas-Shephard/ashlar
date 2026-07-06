@@ -1,5 +1,3 @@
-using System.Security.Claims;
-using Ashlar.AspNetCore.Mfa;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
@@ -138,7 +136,6 @@ internal static class GitHubOAuthEndpoints
     private static async Task<IResult> UnlinkGitHubAccountAsync(
         IConfiguration configuration,
         IServiceProvider services,
-        ClaimsPrincipal user,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -147,26 +144,12 @@ internal static class GitHubOAuthEndpoints
             return Results.NotFound();
         }
 
-        var accountLink = services.GetRequiredService<AshlarExternalAccountLinkService>();
-        if (!httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out _)) return Results.Forbid();
-        var proof = httpContext.CreateFreshMfaProof(
-            services.GetRequiredService<IStepUpAuthenticationService>(),
-            new StepUpRequirement(TimeSpan.FromMinutes(10), Purpose: "external-account-unlinking"));
-        if (!proof.Succeeded || proof.Value == null) return Results.Forbid();
-
-        var result = await accountLink.UnlinkExternalAccountAsync(
-            userId,
+        return await ExternalAccountLinkEndpointHelpers.UnlinkExternalAccountAsync(
+            services,
+            httpContext,
             SampleGitHubOAuth.ProviderName,
-            proof.Value,
-            sessionId,
-            new AccountSecurityOperationRequest(httpContext.ToAuditContext(), httpContext.ToTenantContext(), "sample-github-unlink"),
+            "sample-github-unlink",
+            "github_unlink_failed",
             cancellationToken);
-
-        return result.Status switch
-        {
-            AshlarExternalAccountUnlinkStatus.Unlinked => Results.Ok(new { status = "unlinked" }),
-            AshlarExternalAccountUnlinkStatus.WouldRemoveLastSignInMethod => Results.BadRequest(new { error = "add_another_sign_in_method_first" }),
-            _ => Results.BadRequest(new { error = "github_unlink_failed" })
-        };
     }
 }
