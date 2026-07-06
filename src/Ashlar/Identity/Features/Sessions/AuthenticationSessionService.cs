@@ -597,13 +597,16 @@ internal sealed class AuthenticationSessionService(
             return new Dictionary<string, string> { ["scope"] = "all_tenants" };
         }
 
-        return tenant?.TenantId == null
-            ? new Dictionary<string, string> { ["scope"] = "global" }
-            : new Dictionary<string, string>
+        if (tenant is { TenantId: Guid tenantId })
+        {
+            return new Dictionary<string, string>
             {
                 ["scope"] = "tenant",
-                ["tenant_id"] = tenant.TenantId.Value.ToString()
+                ["tenant_id"] = tenantId.ToString()
             };
+        }
+
+        return new Dictionary<string, string> { ["scope"] = "global" };
     }
 
     private async Task TryUpdateLastSeenAsync(AuthenticationSession session, DateTimeOffset now, CancellationToken cancellationToken)
