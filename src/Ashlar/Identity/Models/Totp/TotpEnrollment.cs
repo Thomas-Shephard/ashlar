@@ -12,10 +12,10 @@ public sealed record TotpEnrollment(
     string AuthenticatorUri);
 
 /// <summary>
-/// Result of a verified self-service TOTP enrollment.
+/// Result of a verified TOTP enrollment.
 /// </summary>
 /// <param name="UserId">The account owner whose TOTP credential was verified and enrolled.</param>
-/// <param name="StepUpAuthenticationResult">Ashlar-verified MFA result that may be used to mark the current session as step-up verified.</param>
+/// <param name="StepUpAuthenticationResult">Ashlar-verified MFA result for self-service enrollment, or <see langword="null" /> for account-recovery enrollment.</param>
 public sealed record TotpEnrollmentCompletionResult(
     Guid UserId,
     MfaAuthenticationResult? StepUpAuthenticationResult);
@@ -75,3 +75,59 @@ public sealed record DisableTotpRequest(Guid ActorUserId)
     /// <summary>Audit metadata recorded with the disable attempt. Do not include TOTP secrets or codes.</summary>
     public AuditContext? Audit { get; init; }
 }
+
+/// <summary>
+/// Request to begin account-recovery TOTP enrollment for a target user.
+/// </summary>
+/// <param name="UserId">User targeted by the recovery enrollment.</param>
+/// <param name="Issuer">Issuer label shown by authenticator applications.</param>
+/// <param name="AccountName">Account label shown by authenticator applications.</param>
+/// <param name="Audit">Audit metadata recorded with the recovery enrollment.</param>
+/// <param name="Tenant">Tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
+/// <param name="Reason">Optional display-safe recovery reason. Do not include secrets, tokens, or credentials.</param>
+/// <param name="IncludeAllTenants">Whether to remove scope filtering for the specified <paramref name="UserId" />. Cannot be combined with <paramref name="Tenant" />.</param>
+public sealed record AccountRecoveryStartTotpEnrollmentRequest(
+    Guid UserId,
+    string Issuer,
+    string AccountName,
+    AuditContext Audit,
+    TenantContext? Tenant = null,
+    string? Reason = null,
+    bool IncludeAllTenants = false)
+    : AccountRecoveryExecutionRequest(UserId, Audit, Tenant, Reason, IncludeAllTenants);
+
+/// <summary>
+/// Request to complete account-recovery TOTP enrollment for a target user.
+/// </summary>
+/// <param name="UserId">User targeted by the recovery enrollment.</param>
+/// <param name="SharedSecret">Raw shared secret from enrollment setup. Do not log this value.</param>
+/// <param name="Code">TOTP code supplied by the recovering user. Do not log this value.</param>
+/// <param name="Audit">Audit metadata recorded with the recovery enrollment.</param>
+/// <param name="Tenant">Tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
+/// <param name="Reason">Optional display-safe recovery reason. Do not include secrets, tokens, or credentials.</param>
+/// <param name="IncludeAllTenants">Whether to remove scope filtering for the specified <paramref name="UserId" />. Cannot be combined with <paramref name="Tenant" />.</param>
+public sealed record AccountRecoveryCompleteTotpEnrollmentRequest(
+    Guid UserId,
+    string SharedSecret,
+    string Code,
+    AuditContext Audit,
+    TenantContext? Tenant = null,
+    string? Reason = null,
+    bool IncludeAllTenants = false)
+    : AccountRecoveryExecutionRequest(UserId, Audit, Tenant, Reason, IncludeAllTenants);
+
+/// <summary>
+/// Request to disable TOTP for a target user during account recovery.
+/// </summary>
+/// <param name="UserId">User whose TOTP credential should be disabled.</param>
+/// <param name="Audit">Audit metadata recorded with the recovery disable operation.</param>
+/// <param name="Tenant">Tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
+/// <param name="Reason">Optional display-safe recovery reason. Do not include secrets, tokens, or credentials.</param>
+/// <param name="IncludeAllTenants">Whether to remove scope filtering for the specified <paramref name="UserId" />. Cannot be combined with <paramref name="Tenant" />.</param>
+public sealed record AccountRecoveryDisableTotpRequest(
+    Guid UserId,
+    AuditContext Audit,
+    TenantContext? Tenant = null,
+    string? Reason = null,
+    bool IncludeAllTenants = false)
+    : AccountRecoveryExecutionRequest(UserId, Audit, Tenant, Reason, IncludeAllTenants);
