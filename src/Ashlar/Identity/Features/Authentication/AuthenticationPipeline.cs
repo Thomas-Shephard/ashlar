@@ -492,7 +492,10 @@ internal sealed class AuthenticationPipeline(
         }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
-        return new AuthenticationResponse(true, lifecycle.User, lifecycle.Status, lifecycle.Result.Claims, credentialUpdatePersisted);
+        return new AuthenticationResponse(true, lifecycle.User, lifecycle.Status, lifecycle.Result.Claims, credentialUpdatePersisted)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+        };
     }
 
     private sealed record CredentialLifecycleContext(

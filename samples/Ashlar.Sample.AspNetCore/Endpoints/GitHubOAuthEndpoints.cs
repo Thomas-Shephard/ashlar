@@ -72,7 +72,7 @@ internal static class GitHubOAuthEndpoints
 
             await signInManager.SignInAsync(
                 httpContext,
-                mfaResult.User.Id,
+                mfaResult,
                 httpContext.ToSessionRequest(mfaResult.User, new AuthenticationProviderKey(ProviderType.OAuth, SampleGitHubOAuth.ProviderName)),
                 cancellationToken);
             return Results.Redirect("/?signedInWith=github");

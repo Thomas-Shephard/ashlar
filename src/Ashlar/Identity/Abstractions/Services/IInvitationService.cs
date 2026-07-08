@@ -32,8 +32,8 @@ public interface IInvitationService
     /// <param name="request">The invitation acceptance details.</param>
     /// <param name="context">Optional request context for auditing and notifications.</param>
     /// <param name="cancellationToken">A token that can cancel invitation acceptance.</param>
-    /// <returns>The created user ID when the invitation is accepted.</returns>
-    Task<Result<Guid>> AcceptInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
+    /// <returns>The accepted user and Ashlar-verified session issuance capability when the invitation is accepted.</returns>
+    Task<Result<InvitationAcceptanceResult>> AcceptInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Revokes pending invitations for an email address and optional tenant.

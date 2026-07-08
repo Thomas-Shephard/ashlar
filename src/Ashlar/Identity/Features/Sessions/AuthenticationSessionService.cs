@@ -45,6 +45,24 @@ internal sealed class AuthenticationSessionService(
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
 
     public async Task<CreateAuthenticationSessionResult> CreateSessionAsync(
+        MfaAuthenticationResult authenticationResult,
+        CreateAuthenticationSessionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(authenticationResult);
+        var user = authenticationResult.AuthenticationSessionIssuanceUser;
+        if (user == null)
+        {
+            throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Session issuance requires a successful Ashlar authentication result.");
+        }
+
+        ArgumentNullException.ThrowIfNull(request);
+
+        var (lifetime, ipAddress, userAgent, metadata) = ValidateCreateSessionRequest(request);
+        return await CreateSessionForAuthenticatedUserAsync(user, request, lifetime, ipAddress, userAgent, metadata, cancellationToken);
+    }
+
+    internal async Task<CreateAuthenticationSessionResult> CreateSessionForAuthenticatedUserAsync(
         Guid userId,
         CreateAuthenticationSessionRequest request,
         CancellationToken cancellationToken = default)
@@ -52,6 +70,14 @@ internal sealed class AuthenticationSessionService(
         if (userId == Guid.Empty) throw new ArgumentException(UserIdCannotBeEmptyMessage, nameof(userId));
         ArgumentNullException.ThrowIfNull(request);
 
+        var (lifetime, ipAddress, userAgent, metadata) = ValidateCreateSessionRequest(request);
+
+        var user = await GetUserForTenantValidationAsync(userId, request, ipAddress, userAgent, cancellationToken);
+        return await CreateSessionForAuthenticatedUserAsync(user, request, lifetime, ipAddress, userAgent, metadata, cancellationToken);
+    }
+
+    private (TimeSpan Lifetime, string? IpAddress, string? UserAgent, string? Metadata) ValidateCreateSessionRequest(CreateAuthenticationSessionRequest request)
+    {
         var lifetime = request.Lifetime ?? _options.DefaultLifetime;
         if (lifetime <= TimeSpan.Zero)
         {
@@ -70,7 +96,19 @@ internal sealed class AuthenticationSessionService(
             ? ValidateOptionalLength(request.Metadata, _options.MaxMetadataLength, $"{nameof(request)}.{nameof(request.Metadata)}")
             : null;
 
-        var user = await GetUserForTenantValidationAsync(userId, request, ipAddress, userAgent, cancellationToken);
+        return (lifetime, ipAddress, userAgent, metadata);
+    }
+
+    private async Task<CreateAuthenticationSessionResult> CreateSessionForAuthenticatedUserAsync(
+        IUser user,
+        CreateAuthenticationSessionRequest request,
+        TimeSpan lifetime,
+        string? ipAddress,
+        string? userAgent,
+        string? metadata,
+        CancellationToken cancellationToken)
+    {
+        var userId = user.Id;
         if (!UserTenantOwnership.Matches(user, request.TenantId))
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -288,16 +326,47 @@ internal sealed class AuthenticationSessionService(
         return new ValidateAuthenticationSessionResult(true, session, session.UserId, AuthenticationSessionValidationStatus.Succeeded);
     }
 
-    public async Task<Result<AuthenticationSession>> MarkStepUpVerifiedAsync(
+    public Task<Result<AuthenticationSession>> MarkStepUpVerifiedAsync(
+        MfaAuthenticationResult authenticationResult,
+        MarkSessionStepUpVerifiedRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(authenticationResult);
+        var user = authenticationResult.StepUpVerifiedUser;
+        if (user == null)
+        {
+            return Task.FromResult(Result.Failure<AuthenticationSession>(AshlarFailureCodes.StepUpRequired, "Step-up marking requires a successful Ashlar MFA verification result."));
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        ArgumentNullException.ThrowIfNull(request);
+        var verifiedFactor = ValidateStepUpRequest(request);
+
+        return MarkStepUpVerifiedForVerifiedUserAsync(user, request, verifiedFactor, _timeProvider.GetUtcNow(), cancellationToken);
+    }
+
+    internal async Task<Result<AuthenticationSession>> MarkStepUpVerifiedForVerifiedUserAsync(
         Guid userId,
         MarkSessionStepUpVerifiedRequest request,
         CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty) throw new ArgumentException(UserIdCannotBeEmptyMessage, nameof(userId));
         ArgumentNullException.ThrowIfNull(request);
-        if (request.SessionId == Guid.Empty) throw new ArgumentException("Session ID cannot be empty.", $"{nameof(request)}.{nameof(request.SessionId)}");
-        ValidateStepUpProvider(request.VerifiedProvider, $"{nameof(request)}.{nameof(request.VerifiedProvider)}");
-        var verifiedFactor = ValidateRequiredLength(request.VerifiedFactor, MaxStepUpFactorLength, $"{nameof(request)}.{nameof(request.VerifiedFactor)}");
+        var verifiedFactor = ValidateStepUpRequest(request);
 
         var now = _timeProvider.GetUtcNow();
         var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
@@ -318,6 +387,42 @@ internal sealed class AuthenticationSessionService(
             }, cancellationToken);
 
             return Result.Failure<AuthenticationSession>(failure);
+        }
+
+        return await MarkStepUpVerifiedForVerifiedUserAsync(user, request, verifiedFactor, now, cancellationToken);
+    }
+
+    private static string ValidateStepUpRequest(MarkSessionStepUpVerifiedRequest request)
+    {
+        if (request.SessionId == Guid.Empty) throw new ArgumentException("Session ID cannot be empty.", $"{nameof(request)}.{nameof(request.SessionId)}");
+        ValidateStepUpProvider(request.VerifiedProvider, $"{nameof(request)}.{nameof(request.VerifiedProvider)}");
+        return ValidateRequiredLength(request.VerifiedFactor, MaxStepUpFactorLength, $"{nameof(request)}.{nameof(request.VerifiedFactor)}");
+    }
+
+    private async Task<Result<AuthenticationSession>> MarkStepUpVerifiedForVerifiedUserAsync(
+        IUser user,
+        MarkSessionStepUpVerifiedRequest request,
+        string verifiedFactor,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var userId = user.Id;
+        if (!UserTenantOwnership.Matches(user, request.Tenant?.TenantId))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.SessionStepUpVerified,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                TenantId = request.Tenant?.TenantId,
+                SessionId = request.SessionId,
+                Provider = request.VerifiedProvider,
+                Audit = request.Audit,
+                FailureReason = AshlarFailureCodes.TenantMismatchValue,
+                Properties = new Dictionary<string, string> { ["factor"] = verifiedFactor }
+            }, cancellationToken);
+
+            return Result.Failure<AuthenticationSession>(AshlarFailureCodes.TenantMismatch, "Session user does not belong to the requested tenant.");
         }
 
         if (!user.CanSignIn())

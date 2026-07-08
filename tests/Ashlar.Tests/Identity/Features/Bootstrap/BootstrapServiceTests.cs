@@ -443,19 +443,19 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value, Is.Not.EqualTo(Guid.Empty));
+            Assert.That(result.Value!.UserId, Is.Not.EqualTo(Guid.Empty));
         }
 
         _userRepository.Verify(r => r.GetUserByEmailAsync("Admin@Example.com", tenantId, It.IsAny<CancellationToken>()), Times.Once);
         _userRepository.Verify(r => r.CreateUserAsync(It.Is<IUser>(u =>
-            u.Id == result.Value &&
+            u.Id == result.Value!.UserId &&
             u.DisplayEmail == "Admin@Example.com" &&
             u.Name == "Admin" &&
             u.CanSignIn() &&
             HasTenant(u, tenantId) &&
             u.EmailVerifiedAt == _timeProvider.GetUtcNow()), It.IsAny<CancellationToken>()), Times.Once);
         _grantService.Verify(s => s.CreateGrantAsync(It.Is<CreateAuthorizationGrantRequest>(r =>
-            r.UserId == result.Value &&
+            r.UserId == result.Value!.UserId &&
             r.TenantId == tenantId &&
             r.Role == "admin" &&
             r.Audit != null &&
@@ -465,7 +465,7 @@ internal sealed class BootstrapServiceTests
             r.Audit.CorrelationId == context.CorrelationId &&
             r.Audit.Items != null &&
             HasAuditItem(r.Audit.Items, "system", "bootstrap")), It.IsAny<CancellationToken>()), Times.Once);
-        _stateRepository.Verify(r => r.MarkAsInitializedAsync(result.Value, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
+        _stateRepository.Verify(r => r.MarkAsInitializedAsync(result.Value!.UserId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
         transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -600,7 +600,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value, Is.Not.EqualTo(Guid.Empty));
+            Assert.That(result.Value!.UserId, Is.Not.EqualTo(Guid.Empty));
         }
 
         _grantService.Verify(s => s.CreateGrantAsync(It.IsAny<CreateAuthorizationGrantRequest>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -655,7 +655,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value, Is.EqualTo(userId));
+            Assert.That(result.Value!.UserId, Is.EqualTo(userId));
         }
 
         _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -714,7 +714,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value, Is.EqualTo(userId));
+            Assert.That(result.Value!.UserId, Is.EqualTo(userId));
         }
 
         _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -892,7 +892,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value, Is.Not.EqualTo(Guid.Empty));
+            Assert.That(result.Value!.UserId, Is.Not.EqualTo(Guid.Empty));
         }
 
         notificationService.Verify(s => s.NotifyAsync(It.Is<SecurityNotification>(n =>

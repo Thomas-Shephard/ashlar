@@ -264,14 +264,14 @@ public sealed class AshlarOidcInvitationRegistrationService
             new AcceptInvitationRequest { Token = invitationToken, UserName = displayName },
             context,
             cancellationToken);
-        if (!acceptance.Succeeded || acceptance.Value == Guid.Empty)
+        if (!acceptance.Succeeded || acceptance.Value == null || acceptance.Value.UserId == Guid.Empty)
         {
             await transaction.RollbackAsync(cancellationToken);
             return new AshlarOidcInvitationRegistrationResult(MapInvitationFailure(acceptance), Assertion: assertion, InvitationAcceptance: acceptance);
         }
 
         var link = await LinkAcceptedInvitationCredentialAsync(
-            acceptance.Value,
+            acceptance.Value.UserId,
             assertion,
             new OidcAuthenticationProvider(principal.Provider.ProviderName),
             preview.Value.TenantId,
@@ -281,11 +281,11 @@ public sealed class AshlarOidcInvitationRegistrationService
         if (!link.Succeeded)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return new AshlarOidcInvitationRegistrationResult(MapLinkFailure(link), acceptance.Value, assertion, acceptance, link);
+            return new AshlarOidcInvitationRegistrationResult(MapLinkFailure(link), acceptance.Value.UserId, assertion, acceptance, link);
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.Registered, acceptance.Value, assertion, acceptance, link);
+        return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.Registered, acceptance.Value.UserId, assertion, acceptance, link);
     }
 
     private async Task<Result> LinkAcceptedInvitationCredentialAsync(
@@ -377,7 +377,7 @@ public sealed class AshlarOidcInvitationRegistrationService
         return _oauthOptions.CurrentValue.OidcProviders.TryGetValue(normalizedProviderName, out var provider) ? provider : null;
     }
 
-    private static AshlarOidcInvitationRegistrationStatus MapInvitationFailure(Result<Guid> result)
+    private static AshlarOidcInvitationRegistrationStatus MapInvitationFailure(Result<InvitationAcceptanceResult> result)
     {
         return result.FailureCode?.Value switch
         {

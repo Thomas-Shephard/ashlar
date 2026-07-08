@@ -112,7 +112,10 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             MfaAuthenticationStatus.Succeeded,
             response.User,
             Claims: response.Claims,
-            CredentialUpdatePersisted: response.CredentialUpdatePersisted);
+            CredentialUpdatePersisted: response.CredentialUpdatePersisted)
+        {
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance
+        };
     }
 
     public async Task<MfaAuthenticationResult> VerifyFactorAsync(
@@ -221,7 +224,9 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
                 FreshMfaSatisfied: true,
                 CredentialUpdatePersisted: credentialUpdatePersisted)
             {
-                RememberedDeviceCreationProof = FreshMfaProof.Instance
+                RememberedDeviceCreationProof = FreshMfaProof.Instance,
+                SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance,
+                StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
             };
         }
 
@@ -260,7 +265,10 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
                 MfaAuthenticationStatus.Succeeded,
                 user,
                 Claims: response.Claims,
-                CredentialUpdatePersisted: response.CredentialUpdatePersisted);
+                CredentialUpdatePersisted: response.CredentialUpdatePersisted)
+            {
+                SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance
+            };
         }
 
         var result = await _handshakeService.CreateHandshakeAsync(

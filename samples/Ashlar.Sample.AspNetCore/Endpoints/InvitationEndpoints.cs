@@ -31,21 +31,19 @@ internal static class InvitationEndpoints
         app.MapPost("/api/invitations/accept", async Task<IResult> (
             AcceptInvitationRequest request,
             IInvitationService invitations,
-            IUserRepository users,
             IAshlarSignInManager signInManager,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
             var result = await invitations.AcceptInvitationAsync(request, httpContext.ToAuthenticationContext(), cancellationToken);
-            if (!result.Succeeded)
+            if (!result.Succeeded || result.Value is not { } value)
             {
                 return Results.BadRequest(SampleResultErrors.From(result));
             }
 
-            var user = await users.GetUserByIdAsync(result.Value, cancellationToken);
-            await signInManager.SignInAsync(httpContext, result.Value, httpContext.ToSessionRequest(user), cancellationToken);
+            await signInManager.SignInAsync(httpContext, value.AuthenticationResult, httpContext.ToSessionRequest(value.AuthenticationResult.User), cancellationToken);
 
-            return Results.Ok(new { userId = result.Value });
+            return Results.Ok(new { userId = value.UserId });
         });
 
         app.MapGet("/invitations/accept", (string t, IConfiguration configuration) => AppViews.RenderInvitationAccept(t, SampleGoogleOidc.IsConfigured(configuration)));

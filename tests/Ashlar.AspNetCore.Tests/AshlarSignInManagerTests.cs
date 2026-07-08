@@ -21,7 +21,7 @@ internal sealed class AshlarSignInManagerTests
         var context = CreateContext(provider);
         var manager = provider.GetRequiredService<IAshlarSignInManager>();
 
-        await manager.SignInAsync(context, Guid.NewGuid());
+        await manager.SignInAsync(context, CreateAuthResult());
 
         var setCookie = context.Response.Headers.SetCookie.ToString();
         using (Assert.EnterMultipleScope())
@@ -41,7 +41,7 @@ internal sealed class AshlarSignInManagerTests
         var context = CreateContext(provider);
         var manager = provider.GetRequiredService<IAshlarSignInManager>();
 
-        var session = await manager.SignInAsync(context, Guid.NewGuid());
+        var session = await manager.SignInAsync(context, CreateAuthResult());
 
         using (Assert.EnterMultipleScope())
         {
@@ -60,7 +60,7 @@ internal sealed class AshlarSignInManagerTests
         var context = CreateContext(provider);
         var manager = provider.GetRequiredService<IAshlarSignInManager>();
 
-        await manager.SignInAsync(context, Guid.NewGuid(), new CreateAuthenticationSessionRequest(PrimaryProvider: AuthenticationProviderKey.Passkey));
+        await manager.SignInAsync(context, CreateAuthResult(), new CreateAuthenticationSessionRequest(PrimaryProvider: AuthenticationProviderKey.Passkey));
 
         using (Assert.EnterMultipleScope())
         {
@@ -82,7 +82,7 @@ internal sealed class AshlarSignInManagerTests
         context.Request.Headers.UserAgent = "unit-test";
         var manager = provider.GetRequiredService<IAshlarSignInManager>();
 
-        await manager.SignInAsync(context, Guid.NewGuid());
+        await manager.SignInAsync(context, CreateAuthResult());
 
         Assert.That(context.Response.Headers.SetCookie.ToString(), Does.Contain($"{AshlarSessionAuthenticationDefaults.CookieName}=raw-token"));
     }
@@ -94,12 +94,12 @@ internal sealed class AshlarSignInManagerTests
         var context = CreateContext(provider);
         var manager = provider.GetRequiredService<IAshlarSignInManager>();
 
-        var firstSession = await manager.SignInAsync(context, Guid.NewGuid());
+        var firstSession = await manager.SignInAsync(context, CreateAuthResult());
         context.Response.Headers.Clear();
 
         context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=raw-token";
 
-        var secondSession = await manager.SignInAsync(context, Guid.NewGuid());
+        var secondSession = await manager.SignInAsync(context, CreateAuthResult());
 
         using (Assert.EnterMultipleScope())
         {
@@ -118,7 +118,7 @@ internal sealed class AshlarSignInManagerTests
         var context = CreateContext(provider);
         var manager = provider.GetRequiredService<IAshlarSignInManager>();
 
-        var firstSession = await manager.SignInAsync(context, Guid.NewGuid());
+        var firstSession = await manager.SignInAsync(context, CreateAuthResult());
         context.Response.Headers.Clear();
 
         context.User = new ClaimsPrincipal(new ClaimsIdentity(
@@ -127,7 +127,7 @@ internal sealed class AshlarSignInManagerTests
             new Claim(AshlarClaimTypes.SessionId, firstSession.Id.ToString("D"))
         ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
 
-        var secondSession = await manager.SignInAsync(context, Guid.NewGuid());
+        var secondSession = await manager.SignInAsync(context, CreateAuthResult());
 
         using (Assert.EnterMultipleScope())
         {
@@ -153,7 +153,7 @@ internal sealed class AshlarSignInManagerTests
             .Setup(s => s.RevokeSessionForUserAsync(It.IsAny<Guid>(), It.IsAny<RevokeAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         sessionService
-            .Setup(s => s.CreateSessionAsync(It.IsAny<Guid>(), It.IsAny<CreateAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.CreateSessionAsync(It.IsAny<MfaAuthenticationResult>(), It.IsAny<CreateAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CreateAuthenticationSessionResult("new-token", CreateCreatedSession(CreateSession(Guid.NewGuid(), out _, out _))));
         var manager = new AshlarSignInManager(
             sessionService.Object,
@@ -168,7 +168,7 @@ internal sealed class AshlarSignInManagerTests
             new Claim(AshlarClaimTypes.TenantId, "not-a-tenant")
         ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
 
-        await manager.SignInAsync(context, Guid.NewGuid());
+        await manager.SignInAsync(context, CreateAuthResult());
 
         sessionService.Verify(s => s.RevokeSessionForUserAsync(userId, It.Is<RevokeAuthenticationSessionRequest>(r =>
             r.SessionId == existingSession.Id &&
@@ -182,7 +182,7 @@ internal sealed class AshlarSignInManagerTests
         await using var provider = CreateProvider(out var repository);
         var context = CreateContext(provider);
         var manager = provider.GetRequiredService<IAshlarSignInManager>();
-        var session = await manager.SignInAsync(context, Guid.NewGuid());
+        var session = await manager.SignInAsync(context, CreateAuthResult());
         context.Response.Headers.Clear();
         context.User = new ClaimsPrincipal(new ClaimsIdentity(
         [
@@ -208,7 +208,7 @@ internal sealed class AshlarSignInManagerTests
         await using var provider = CreateProvider(out var repository);
         var context = CreateContext(provider);
         var manager = provider.GetRequiredService<IAshlarSignInManager>();
-        var session = await manager.SignInAsync(context, Guid.NewGuid());
+        var session = await manager.SignInAsync(context, CreateAuthResult());
         context.Response.Headers.Clear();
         context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=raw-token";
 
@@ -391,7 +391,7 @@ internal sealed class AshlarSignInManagerTests
         var context = CreateContext(provider);
         var manager = provider.GetRequiredService<IAshlarSignInManager>();
 
-        var session = await manager.SignInAsync(context, Guid.NewGuid());
+        var session = await manager.SignInAsync(context, CreateAuthResult());
         var signInCookie = context.Response.Headers.SetCookie.ToString();
         context.Response.Headers.Clear();
         context.User = new ClaimsPrincipal(new ClaimsIdentity(
@@ -421,7 +421,7 @@ internal sealed class AshlarSignInManagerTests
         var context = CreateContext(provider);
         var manager = provider.GetRequiredService<IAshlarSignInManager>();
 
-        await manager.SignInAsync(context, Guid.NewGuid());
+        await manager.SignInAsync(context, CreateAuthResult());
 
         using (Assert.EnterMultipleScope())
         {
@@ -445,6 +445,7 @@ internal sealed class AshlarSignInManagerTests
         {
             sessionOptions.DefaultLifetime = TimeSpan.FromHours(1);
         });
+        services.AddSingleton<IAuthenticationSessionService>(new TestAuthenticationSessionService(repository));
         services.AddAshlarAspNetCoreSessions(options =>
         {
             options.SchemeName = "FirstAshlar";
@@ -459,7 +460,7 @@ internal sealed class AshlarSignInManagerTests
         var context = CreateContext(provider);
         var manager = provider.GetRequiredService<IAshlarSignInManager>();
 
-        await manager.SignInAsync(context, Guid.NewGuid());
+        await manager.SignInAsync(context, CreateAuthResult());
 
         using (Assert.EnterMultipleScope())
         {
@@ -850,6 +851,7 @@ internal sealed class AshlarSignInManagerTests
         {
             sessionOptions.DefaultLifetime = TimeSpan.FromHours(1);
         });
+        services.AddSingleton<IAuthenticationSessionService>(new TestAuthenticationSessionService(repository));
         services.AddAshlarAspNetCoreSessions(configure);
         return services.BuildServiceProvider();
     }
@@ -876,6 +878,14 @@ internal sealed class AshlarSignInManagerTests
             .Setup(m => m.Get(AshlarSessionAuthenticationDefaults.AuthenticationScheme))
             .Returns(options);
         return monitor.Object;
+    }
+
+    private static MfaAuthenticationResult CreateAuthResult()
+    {
+        var user = new Mock<IUser>();
+        user.SetupGet(u => u.Id).Returns(Guid.NewGuid());
+        user.SetupGet(u => u.DisplayEmail).Returns("user@example.com");
+        return new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user.Object);
     }
 
     private static AuthenticationSession CreateSession(Guid sessionId, out Guid userId, out Guid tenantId)
@@ -921,6 +931,84 @@ internal sealed class AshlarSignInManagerTests
         public string HashToken(string token)
         {
             return $"hashed:{token}";
+        }
+    }
+
+    private sealed class TestAuthenticationSessionService(InMemoryAuthenticationSessionRepository repository) : IAuthenticationSessionService
+    {
+        private const string RawToken = "raw-token";
+        private static readonly TimeSpan Lifetime = TimeSpan.FromHours(1);
+
+        public async Task<CreateAuthenticationSessionResult> CreateSessionAsync(MfaAuthenticationResult authenticationResult, CreateAuthenticationSessionRequest request, CancellationToken cancellationToken = default)
+        {
+            if (authenticationResult.User == null)
+            {
+                throw new InvalidOperationException("Test sign-in requires a user.");
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var session = new AuthenticationSession
+            {
+                Id = Guid.NewGuid(),
+                UserId = authenticationResult.User.Id,
+                TenantId = request.TenantId,
+                TokenHash = $"hashed:{RawToken}",
+                CreatedAt = now,
+                AuthenticatedAt = request.AuthenticatedAt,
+                PrimaryProvider = request.PrimaryProvider,
+                ExpiresAt = now.Add(request.Lifetime ?? Lifetime),
+                IpAddress = request.IpAddress,
+                UserAgent = request.UserAgent,
+                Metadata = request.Metadata
+            };
+            await repository.CreateSessionAsync(session, cancellationToken);
+            return new CreateAuthenticationSessionResult(RawToken, CreateCreatedSession(session));
+        }
+
+        public Task<ValidateAuthenticationSessionResult> ValidateSessionAsync(string? token, CancellationToken cancellationToken = default)
+        {
+            return token == RawToken && repository.CreatedSession is { } session
+                ? Task.FromResult(new ValidateAuthenticationSessionResult(true, session, session.UserId, AuthenticationSessionValidationStatus.Succeeded))
+                : Task.FromResult(ValidateAuthenticationSessionResult.Failed);
+        }
+
+        public Task<Result<AuthenticationSession>> MarkStepUpVerifiedAsync(MfaAuthenticationResult authenticationResult, MarkSessionStepUpVerifiedRequest request, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Result.Failure<AuthenticationSession>(AshlarFailureCodes.StepUpRequired));
+        }
+
+        public Task<int> RevokeSessionsForUserAsync(Guid userId, RevokeAuthenticationSessionsForUserRequest request, CancellationToken cancellationToken = default)
+        {
+            return repository.RevokeSessionsForUserAsync(userId, DateTimeOffset.UtcNow, request.Reason, request.Tenant, request.IncludeAllTenants, cancellationToken);
+        }
+
+        public async Task<IReadOnlyList<AuthenticationSessionSummary>> ListSessionsForUserAsync(Guid userId, ListAuthenticationSessionsRequest request, CancellationToken cancellationToken = default)
+        {
+            var sessions = await repository.ListSessionsForUserAsync(userId, request.ActiveOnly, DateTimeOffset.UtcNow, cancellationToken);
+            return sessions.Select(session => new AuthenticationSessionSummary
+            {
+                Id = session.Id,
+                CreatedAt = session.CreatedAt,
+                ExpiresAt = session.ExpiresAt,
+                LastSeenAt = session.LastSeenAt,
+                RevokedAt = session.RevokedAt,
+                RevocationReason = session.RevocationReason,
+                IpAddress = session.IpAddress,
+                UserAgent = session.UserAgent,
+                Metadata = session.Metadata,
+                IsCurrent = request.CurrentSessionId == session.Id,
+                IsActive = session.IsActive(DateTimeOffset.UtcNow)
+            }).ToArray();
+        }
+
+        public Task<bool> RevokeSessionForUserAsync(Guid userId, RevokeAuthenticationSessionRequest request, CancellationToken cancellationToken = default)
+        {
+            return repository.RevokeSessionByIdAsync(request.SessionId, userId, DateTimeOffset.UtcNow, request.Reason, request.Tenant, request.IncludeAllTenants, cancellationToken);
+        }
+
+        public Task<int> RevokeOtherSessionsAsync(Guid userId, RevokeOtherAuthenticationSessionsRequest request, CancellationToken cancellationToken = default)
+        {
+            return repository.RevokeOtherSessionsForUserAsync(userId, request.CurrentSessionId, DateTimeOffset.UtcNow, request.Reason, request.Tenant, request.IncludeAllTenants, cancellationToken);
         }
     }
 

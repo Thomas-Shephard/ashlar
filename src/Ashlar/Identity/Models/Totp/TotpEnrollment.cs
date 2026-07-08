@@ -12,6 +12,15 @@ public sealed record TotpEnrollment(
     string AuthenticatorUri);
 
 /// <summary>
+/// Result of a verified self-service TOTP enrollment.
+/// </summary>
+/// <param name="UserId">The account owner whose TOTP credential was verified and enrolled.</param>
+/// <param name="StepUpAuthenticationResult">Ashlar-verified MFA result that may be used to mark the current session as step-up verified.</param>
+public sealed record TotpEnrollmentCompletionResult(
+    Guid UserId,
+    MfaAuthenticationResult? StepUpAuthenticationResult);
+
+/// <summary>
 /// Request to begin self-service TOTP enrollment for the authenticated account owner.
 /// </summary>
 /// <param name="ActorUserId">Authenticated user performing the self-service operation. This user owns the pending TOTP enrollment.</param>

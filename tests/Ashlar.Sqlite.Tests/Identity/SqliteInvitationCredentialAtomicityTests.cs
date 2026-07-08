@@ -50,7 +50,7 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
 
             var link = await LinkCredentialForTestAsync(
                 credentialRepository,
-                acceptance.Value,
+                acceptance.Value!.UserId,
                 new ExternalIdentityAssertion(ProviderType.Oidc, "Google", subject, new Dictionary<string, string>()),
                 TestOidcProvider.Instance);
 
@@ -68,7 +68,7 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
         {
             var retryAcceptance = await invitations.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token, UserName = "Invitee" });
             Assert.That(retryAcceptance.Succeeded, Is.True);
-            retryUserId = retryAcceptance.Value;
+            retryUserId = retryAcceptance.Value!.UserId;
 
             var retryLink = await LinkCredentialForTestAsync(
                 credentialRepository,

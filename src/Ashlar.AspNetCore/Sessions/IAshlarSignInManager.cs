@@ -8,16 +8,17 @@ namespace Ashlar.AspNetCore.Sessions;
 public interface IAshlarSignInManager
 {
     /// <summary>
-    /// Creates an authentication session for the user and writes the session cookie.
+    /// Creates an authentication session after Ashlar authentication succeeds and writes the session cookie.
     /// </summary>
     /// <param name="httpContext">The current HTTP request context.</param>
-    /// <param name="userId">The user to sign in.</param>
+    /// <param name="authenticationResult">Successful Ashlar authentication result carrying the internal session-issuance proof.</param>
     /// <param name="request">Optional session metadata such as lifetime, IP address, user agent, and correlation ID.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>Public details for the created authentication session. The raw token is written only to the response cookie.</returns>
+    /// <remarks>Hosts must pass the result returned by Ashlar authentication orchestration; caller-supplied user IDs are not enough to issue a session.</remarks>
     Task<CreatedAuthenticationSession> SignInAsync(
         HttpContext httpContext,
-        Guid userId,
+        MfaAuthenticationResult authenticationResult,
         CreateAuthenticationSessionRequest? request = null,
         CancellationToken cancellationToken = default);
 

@@ -45,7 +45,7 @@ internal sealed class BootstrapService(
     /// <param name="context">Optional request context for auditing and notifications.</param>
     /// <param name="cancellationToken">A token that can cancel first-admin bootstrap.</param>
     /// <returns>The created administrator user ID when bootstrap succeeds; otherwise a failure describing why bootstrap was rejected.</returns>
-    public async Task<Result<Guid>> BootstrapFirstAdminAsync(BootstrapFirstAdminRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
+    public async Task<Result<BootstrapFirstAdminResult>> BootstrapFirstAdminAsync(BootstrapFirstAdminRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         var email = IdentityNormalization.SanitizeEmailForDelivery(request.Email);
@@ -61,12 +61,12 @@ internal sealed class BootstrapService(
                 FailureReason = AshlarFailureCodes.AlreadyInitialized.Value,
                 Properties = AddEmailIfEnabled([], email)
             }, cancellationToken);
-            return Result.Failure<Guid>(AshlarFailureCodes.AlreadyInitialized);
+            return Result.Failure<BootstrapFirstAdminResult>(AshlarFailureCodes.AlreadyInitialized);
         }
 
         if (!await CheckRateLimitAsync(request.TenantId, context, cancellationToken))
         {
-            return Result.Failure<Guid>(AshlarFailureCodes.RateLimited);
+            return Result.Failure<BootstrapFirstAdminResult>(AshlarFailureCodes.RateLimited);
         }
 
         if (!await AuthorizeSetupAsync(
@@ -76,13 +76,13 @@ internal sealed class BootstrapService(
             context,
             cancellationToken))
         {
-            return Result.Failure<Guid>(AshlarFailureCodes.InvalidSecret);
+            return Result.Failure<BootstrapFirstAdminResult>(AshlarFailureCodes.InvalidSecret);
         }
 
         return await CompleteFirstAdminBootstrapAsync(request, email, context, cancellationToken);
     }
 
-    private async Task<Result<Guid>> CompleteFirstAdminBootstrapAsync(BootstrapFirstAdminRequest request, string email, AuthenticationContext? context, CancellationToken cancellationToken)
+    private async Task<Result<BootstrapFirstAdminResult>> CompleteFirstAdminBootstrapAsync(BootstrapFirstAdminRequest request, string email, AuthenticationContext? context, CancellationToken cancellationToken)
     {
         if (await GetStatusAsync(cancellationToken) == BootstrapStatus.Initialized)
         {
@@ -95,7 +95,7 @@ internal sealed class BootstrapService(
                 FailureReason = AshlarFailureCodes.AlreadyInitialized.Value,
                 Context = context
             }, cancellationToken);
-            return Result.Failure<Guid>(AshlarFailureCodes.AlreadyInitialized);
+            return Result.Failure<BootstrapFirstAdminResult>(AshlarFailureCodes.AlreadyInitialized);
         }
 
         var now = _dependencies.TimeProvider.GetUtcNow();
@@ -113,7 +113,7 @@ internal sealed class BootstrapService(
                 FailureReason = AshlarFailureCodes.InvalidConfiguration.Value
             }, cancellationToken);
 
-            return Result.Failure<Guid>(AshlarFailureCodes.InvalidConfiguration);
+            return Result.Failure<BootstrapFirstAdminResult>(AshlarFailureCodes.InvalidConfiguration);
         }
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
@@ -147,7 +147,7 @@ internal sealed class BootstrapService(
                         Audit = request.Audit,
                         Context = context
                     }, cancellationToken);
-                    return Result.Failure<Guid>(grantResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.GrantCreationFailed));
+                    return Result.Failure<BootstrapFirstAdminResult>(grantResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.GrantCreationFailed));
                 }
             }
         }
@@ -166,7 +166,7 @@ internal sealed class BootstrapService(
                 FailureReason = AshlarFailureCodes.AlreadyInitialized.Value,
                 Context = context
             }, cancellationToken);
-            return Result.Failure<Guid>(AshlarFailureCodes.AlreadyInitialized);
+            return Result.Failure<BootstrapFirstAdminResult>(AshlarFailureCodes.AlreadyInitialized);
         }
 
         if (createdUser.IsNewUser)
@@ -203,7 +203,8 @@ internal sealed class BootstrapService(
 
         await transaction.CommitAsync(cancellationToken);
 
-        return Result.Success(userId);
+        var authenticatedUser = new BootstrapAuthenticatedUser(userId, email, request.TenantId);
+        return Result.Success(new BootstrapFirstAdminResult(userId, CreateSessionIssuanceResult(authenticatedUser)));
     }
 
     private async Task<bool> CheckRateLimitAsync(Guid? tenantId, AuthenticationContext? context, CancellationToken cancellationToken)
@@ -233,6 +234,14 @@ internal sealed class BootstrapService(
             FailureReason = AshlarFailureCodes.RateLimited.Value
         }, cancellationToken);
         return false;
+    }
+
+    private static MfaAuthenticationResult CreateSessionIssuanceResult(IUser user)
+    {
+        return new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user)
+        {
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance
+        };
     }
 
     private static IAuthorizationGrantService? ValidateGrantService(IAuthorizationGrantService? grantService, BootstrapOptions options)
@@ -367,4 +376,11 @@ internal sealed class BootstrapService(
     }
 
     private sealed record BootstrapUser(Guid UserId, bool IsNewUser);
+    private sealed record BootstrapAuthenticatedUser(
+        Guid Id,
+        string DisplayEmail,
+        Guid? TenantId,
+        string? Name = null,
+        UserAccountState AccountState = UserAccountState.Active,
+        DateTimeOffset? EmailVerifiedAt = null) : ITenantUser;
 }

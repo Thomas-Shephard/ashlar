@@ -173,11 +173,11 @@ internal sealed class StepUpAuthenticationServiceTests
         };
         var sessionService = new Mock<IAuthenticationSessionService>();
         sessionService
-            .Setup(s => s.MarkStepUpVerifiedAsync(userId, request, It.IsAny<CancellationToken>()))
+            .Setup(s => s.MarkStepUpVerifiedAsync(It.IsAny<MfaAuthenticationResult>(), request, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(session));
         var service = new StepUpAuthenticationService(sessionService.Object, new FakeTimeProvider(_now));
 
-        var result = await service.MarkVerifiedAsync(userId, request);
+        var result = await service.MarkVerifiedAsync(CreateStepUpResult(userId), request);
 
         using (Assert.EnterMultipleScope())
         {
@@ -191,12 +191,94 @@ internal sealed class StepUpAuthenticationServiceTests
     {
         var service = new StepUpAuthenticationService(new FakeTimeProvider(_now));
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => service.MarkVerifiedAsync(Guid.NewGuid(), new MarkSessionStepUpVerifiedRequest
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.MarkVerifiedAsync(CreateStepUpResult(Guid.NewGuid()), new MarkSessionStepUpVerifiedRequest
         {
             SessionId = Guid.NewGuid(),
             VerifiedProvider = TotpProvider(),
             VerifiedFactor = "totp"
         }));
+    }
+
+    [Test]
+    public void MarkVerifiedAsyncShouldRequireSessionServiceForAuthenticationResponse()
+    {
+        var service = new StepUpAuthenticationService(new FakeTimeProvider(_now));
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.MarkVerifiedAsync(CreateStepUpResponse(Guid.NewGuid()), new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = Guid.NewGuid(),
+            VerifiedProvider = TotpProvider(),
+            VerifiedFactor = "totp"
+        }));
+    }
+
+    [Test]
+    public async Task MarkVerifiedAsyncShouldRejectAuthenticationResponseWithoutAshlarStepUpProof()
+    {
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        var service = new StepUpAuthenticationService(sessionService.Object, new FakeTimeProvider(_now));
+        var request = new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = Guid.NewGuid(),
+            VerifiedProvider = TotpProvider(),
+            VerifiedFactor = "totp"
+        };
+        var missingProof = new AuthenticationResponse(true, new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" }, AuthenticationStatus.Success, null);
+        var missingUser = new AuthenticationResponse(true, null, AuthenticationStatus.Success, null)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+        };
+        var emptyUserId = new AuthenticationResponse(true, new User { Id = Guid.Empty, DisplayEmail = "user@example.com" }, AuthenticationStatus.Success, null)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+        };
+        var failed = new AuthenticationResponse(false, new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" }, AuthenticationStatus.Failed, null)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+        };
+
+        var missingProofResult = await service.MarkVerifiedAsync(missingProof, request);
+        var missingUserResult = await service.MarkVerifiedAsync(missingUser, request);
+        var emptyUserIdResult = await service.MarkVerifiedAsync(emptyUserId, request);
+        var failedResult = await service.MarkVerifiedAsync(failed, request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missingProofResult.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(missingUserResult.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(emptyUserIdResult.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(failedResult.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            sessionService.Verify(s => s.MarkStepUpVerifiedAsync(It.IsAny<MfaAuthenticationResult>(), It.IsAny<MarkSessionStepUpVerifiedRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task MarkVerifiedAsyncShouldConvertAuthenticationResponseToStepUpResult()
+    {
+        var userId = Guid.NewGuid();
+        var session = CreateSession();
+        MfaAuthenticationResult? capturedResult = null;
+        var request = new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = session.Id,
+            VerifiedProvider = TotpProvider(),
+            VerifiedFactor = "totp"
+        };
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        sessionService
+            .Setup(s => s.MarkStepUpVerifiedAsync(It.IsAny<MfaAuthenticationResult>(), request, It.IsAny<CancellationToken>()))
+            .Callback<MfaAuthenticationResult, MarkSessionStepUpVerifiedRequest, CancellationToken>((result, _, _) => capturedResult = result)
+            .ReturnsAsync(Result.Success(session));
+        var service = new StepUpAuthenticationService(sessionService.Object, new FakeTimeProvider(_now));
+
+        var mark = await service.MarkVerifiedAsync(CreateStepUpResponse(userId), request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mark.Succeeded, Is.True);
+            Assert.That(capturedResult?.User?.Id, Is.EqualTo(userId));
+            Assert.That(capturedResult?.FreshMfaSatisfied, Is.True);
+        }
     }
 
     [Test]
@@ -329,5 +411,21 @@ internal sealed class StepUpAuthenticationServiceTests
     private static AuthenticationProviderKey TotpProvider()
     {
         return new AuthenticationProviderKey(ProviderType.Mfa, "totp");
+    }
+
+    private static MfaAuthenticationResult CreateStepUpResult(Guid userId)
+    {
+        return new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, new User { Id = userId, DisplayEmail = "user@example.com" }, FreshMfaSatisfied: true)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+        };
+    }
+
+    private static AuthenticationResponse CreateStepUpResponse(Guid userId)
+    {
+        return new AuthenticationResponse(true, new User { Id = userId, DisplayEmail = "user@example.com" }, AuthenticationStatus.Success, null)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+        };
     }
 }

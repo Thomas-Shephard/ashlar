@@ -80,17 +80,22 @@ internal static class HttpContextExtensions
         this HttpContext httpContext,
         IAshlarSignInManager signInManager,
         IAuthenticationSessionService sessionService,
-        IUser user,
+        MfaAuthenticationResult authenticationResult,
         AuthenticationProviderKey verifiedProvider,
         string verifiedFactor,
         CancellationToken cancellationToken)
     {
-        var session = await signInManager.SignInAsync(httpContext, user.Id, httpContext.ToSessionRequest(user), cancellationToken);
+        if (authenticationResult.User == null)
+        {
+            throw new InvalidOperationException("Step-up sign-in requires an authenticated user.");
+        }
+
+        var session = await signInManager.SignInAsync(httpContext, authenticationResult, httpContext.ToSessionRequest(authenticationResult.User), cancellationToken);
 
         try
         {
             var result = await sessionService.MarkStepUpVerifiedAsync(
-                user.Id,
+                authenticationResult,
                 new MarkSessionStepUpVerifiedRequest
                 {
                     SessionId = session.Id,
@@ -103,14 +108,14 @@ internal static class HttpContextExtensions
 
             if (!result.Succeeded)
             {
-                await CleanupUnverifiedSessionAsync(httpContext, signInManager, sessionService, user.Id, session, cancellationToken);
+                await CleanupUnverifiedSessionAsync(httpContext, signInManager, sessionService, authenticationResult.User.Id, session, cancellationToken);
             }
 
             return result;
         }
         catch
         {
-            await CleanupUnverifiedSessionAsync(httpContext, signInManager, sessionService, user.Id, session, cancellationToken);
+            await CleanupUnverifiedSessionAsync(httpContext, signInManager, sessionService, authenticationResult.User.Id, session, cancellationToken);
             throw;
         }
     }

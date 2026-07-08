@@ -84,7 +84,7 @@ internal sealed class TotpTests
             cancellationToken);
     }
 
-    private static Task<Result> CompleteEnrollmentAsync(
+    private static Task<Result<TotpEnrollmentCompletionResult>> CompleteEnrollmentAsync(
         TotpService service,
         Guid userId,
         string sharedSecret,

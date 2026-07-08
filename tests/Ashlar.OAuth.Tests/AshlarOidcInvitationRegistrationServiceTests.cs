@@ -24,7 +24,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldAcceptInvitationAndLinkOidcCredential()
     {
         var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         ExternalIdentityAssertion? observedAssertion = null;
         string? observedCredentialValue = "not-null";
@@ -65,7 +65,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var tenantId = Guid.NewGuid();
         var invitations = CreateInvitations(
             preview: Result.Success(new InvitationAcceptancePreview("invitee@example.com", tenantId)),
-            acceptance: Result.Success(userId));
+            acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -102,10 +102,10 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var userId = Guid.NewGuid();
         AcceptInvitationRequest? observedRequest = null;
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         invitations.Setup(s => s.AcceptInvitationAsync(It.Is<AcceptInvitationRequest>(r => r.Token == "token"), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()))
             .Callback<AcceptInvitationRequest, AuthenticationContext?, CancellationToken>((request, _, _) => observedRequest = request)
-            .ReturnsAsync(Result.Success(userId));
+            .ReturnsAsync(AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -187,7 +187,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldUseIssuerQualifiedProviderKeyWhenProviderRequiresIssuer()
     {
         var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         ExternalIdentityAssertion? observedAssertion = null;
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
@@ -379,7 +379,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var tenantId = Guid.NewGuid();
         var invitations = CreateInvitations(
             preview: Result.Success(new InvitationAcceptancePreview("invitee@example.com", tenantId)),
-            acceptance: Result.Success(userId));
+            acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -398,7 +398,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldAcceptInvitationWhenContextHasNoTenant()
     {
         var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -440,7 +440,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldUseCustomEmailMatchPolicy()
     {
         var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -470,7 +470,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldUseStandardEmailPolicyForGenericProviders()
     {
         var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -494,7 +494,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldUseVerifiedEmailForMicrosoftPresetProviders()
     {
         var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -565,7 +565,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldAllowExplicitMicrosoftEmailLikeClaimMatches(string claimType)
     {
         var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -661,7 +661,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldUseFallbackEmailPolicyForNonMicrosoftProvidersWhenMicrosoftPolicyIsRegistered()
     {
         var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -740,7 +740,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     [TestCase(AshlarFailureCodes.RateLimitedValue, AshlarOidcInvitationRegistrationStatus.RateLimited)]
     public async Task RegisterShouldMapInvitationAcceptanceFailure(string failureCode, AshlarOidcInvitationRegistrationStatus expected)
     {
-        var invitations = CreateInvitations(acceptance: Result.Failure<Guid>(new AshlarFailureCode(failureCode)));
+        var invitations = CreateInvitations(acceptance: Result.Failure<InvitationAcceptanceResult>(new AshlarFailureCode(failureCode)));
         var service = CreateService(invitations.Object);
 
         var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
@@ -751,7 +751,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     [Test]
     public async Task RegisterShouldMapInvitationAcceptanceFailureWithoutCode()
     {
-        var invitations = CreateInvitations(acceptance: new Result<Guid>(false));
+        var invitations = CreateInvitations(acceptance: new Result<InvitationAcceptanceResult>(false));
         var service = CreateService(invitations.Object);
 
         var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
@@ -763,7 +763,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldMapCredentialProviderKeyConflict()
     {
         var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new CredentialProviderKeyConflictException());
@@ -782,7 +782,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldAuditCredentialProviderKeyConflict()
     {
         var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new CredentialProviderKeyConflictException());
@@ -810,7 +810,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldCommitOnlyAfterInvitationAcceptanceAndCredentialLinkSucceed()
     {
         var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -831,7 +831,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldRollBackInvitationAcceptanceWhenCredentialLinkFails()
     {
         var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new CredentialProviderKeyConflictException());
@@ -899,7 +899,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldReturnAlreadyLinkedWhenOidcCredentialAlreadyBelongsToAcceptedUser()
     {
         var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", "subject", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new UserCredential
@@ -953,7 +953,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task CompleteShouldClearExternalCookieAndRegister()
     {
         var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -974,10 +974,10 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var userId = Guid.NewGuid();
         AcceptInvitationRequest? observedRequest = null;
-        var invitations = CreateInvitations(acceptance: Result.Success(userId), token: "ticket-token");
+        var invitations = CreateInvitations(acceptance: AcceptResult(userId), token: "ticket-token");
         invitations.Setup(s => s.AcceptInvitationAsync(It.Is<AcceptInvitationRequest>(r => r.Token == "ticket-token"), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()))
             .Callback<AcceptInvitationRequest, AuthenticationContext?, CancellationToken>((request, _, _) => observedRequest = request)
-            .ReturnsAsync(Result.Success(userId));
+            .ReturnsAsync(AcceptResult(userId));
         var credentials = new Mock<ICredentialRepository>();
         credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -1112,15 +1112,24 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
 
     private static Mock<IInvitationService> CreateInvitations(
         Result<InvitationAcceptancePreview>? preview = null,
-        Result<Guid>? acceptance = null,
+        Result<InvitationAcceptanceResult>? acceptance = null,
         string? token = "token")
     {
         var invitations = new Mock<IInvitationService>();
         invitations.Setup(s => s.GetInvitationAcceptancePreviewAsync(token!, It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(preview ?? Result.Success(new InvitationAcceptancePreview("invitee@example.com", null)));
         invitations.Setup(s => s.AcceptInvitationAsync(It.Is<AcceptInvitationRequest>(r => r.Token == token), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(acceptance ?? Result.Failure<Guid>(AshlarFailureCodes.InvalidInvitation));
+            .ReturnsAsync(acceptance ?? Result.Failure<InvitationAcceptanceResult>(AshlarFailureCodes.InvalidInvitation));
         return invitations;
+    }
+
+    private static Result<InvitationAcceptanceResult> AcceptResult(Guid userId)
+    {
+        var user = new Mock<Ashlar.Identity.Abstractions.Tenancy.IUser>();
+        user.SetupGet(u => u.Id).Returns(userId);
+        user.SetupGet(u => u.DisplayEmail).Returns("invitee@example.com");
+        var authenticationResult = new Ashlar.Identity.Models.Mfa.MfaAuthenticationResult(Ashlar.Identity.Models.Mfa.MfaAuthenticationStatus.Succeeded, user.Object);
+        return Result.Success(new InvitationAcceptanceResult(userId, authenticationResult));
     }
 
     private static AshlarOAuthOptions CreateOptions(AshlarOidcProviderOptions? provider = null)

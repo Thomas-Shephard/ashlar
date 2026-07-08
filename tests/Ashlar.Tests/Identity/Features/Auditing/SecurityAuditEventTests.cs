@@ -314,7 +314,7 @@ internal sealed class SecurityAuditEventTests
         repository.Setup(r => r.CreateSessionAsync(It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        var result = await service.CreateSessionAsync(
+        var result = await service.CreateSessionForAuthenticatedUserAsync(
             Guid.NewGuid(),
             new CreateAuthenticationSessionRequest(IpAddress: "127.0.0.1", UserAgent: "agent"));
 

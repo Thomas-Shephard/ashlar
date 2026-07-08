@@ -6,14 +6,15 @@ namespace Ashlar.Identity.Abstractions.Services;
 public interface IAuthenticationSessionService
 {
     /// <summary>
-    /// Creates and persists a new authentication session for a user.
+    /// Creates and persists a new authentication session after Ashlar has completed authentication.
     /// </summary>
-    /// <param name="userId">The authenticated user that will own the session.</param>
+    /// <param name="authenticationResult">Successful Ashlar authentication result carrying the internal session-issuance proof.</param>
     /// <param name="request">Session lifetime, tenant, audit, and client metadata supplied by the host application.</param>
     /// <param name="cancellationToken">A token that can cancel session creation.</param>
     /// <returns>Public session details and the raw bearer token that must be returned to the client once. Token hashes are not returned.</returns>
+    /// <remarks>Host applications cannot mint sessions from caller-supplied user identifiers; session issuance requires an Ashlar-verified authentication completion result.</remarks>
     Task<CreateAuthenticationSessionResult> CreateSessionAsync(
-        Guid userId,
+        MfaAuthenticationResult authenticationResult,
         CreateAuthenticationSessionRequest request,
         CancellationToken cancellationToken = default);
 
@@ -28,14 +29,15 @@ public interface IAuthenticationSessionService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Marks an existing active session as recently verified by an additional factor.
+    /// Marks an existing active session as recently verified after Ashlar has completed step-up MFA.
     /// </summary>
-    /// <param name="userId">Session owner user identifier.</param>
+    /// <param name="authenticationResult">Successful Ashlar MFA result carrying the internal step-up marking proof.</param>
     /// <param name="request">Active session and factor metadata to mark as freshly verified.</param>
     /// <param name="cancellationToken">A token that can cancel the update.</param>
     /// <returns>Updated active session with step-up verification metadata, or a failure status.</returns>
+    /// <remarks>Host applications cannot mark step-up with caller-controlled user, session, provider, and factor data alone.</remarks>
     Task<Result<AuthenticationSession>> MarkStepUpVerifiedAsync(
-        Guid userId,
+        MfaAuthenticationResult authenticationResult,
         MarkSessionStepUpVerifiedRequest request,
         CancellationToken cancellationToken = default);
 
