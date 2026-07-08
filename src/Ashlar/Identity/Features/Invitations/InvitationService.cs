@@ -359,13 +359,30 @@ internal sealed class InvitationService(
             return Result.Failure(AshlarFailureCodes.ValidationError, exception.Message);
         }
 
-        var sanitizedEmail = IdentityNormalization.SanitizeEmailForDelivery(request.Email!);
+        var email = request.Email ?? throw new InvalidOperationException("Validated invitation revocation email is missing.");
+        var audit = request.Audit ?? throw new InvalidOperationException("Validated invitation revocation audit metadata is missing.");
+        var tenant = request.Tenant;
+
+        var sanitizedEmail = IdentityNormalization.SanitizeEmailForDelivery(email);
         var normalizedEmail = IdentityNormalization.NormalizeEmail(sanitizedEmail);
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
-        var revokedCount = request.IncludeAllTenants
-            ? await RevokeInvitationsAcrossAllTenantsAsync(sanitizedEmail, request.Audit!, cancellationToken)
-            : await _dependencies.InvitationRepository.RevokeInvitationsByEmailAsync(sanitizedEmail, request.Tenant!.TenantId, cancellationToken);
+        int revokedCount;
+        Guid? auditTenantId;
+        string tenantScope;
+        if (request.IncludeAllTenants)
+        {
+            revokedCount = await RevokeInvitationsAcrossAllTenantsAsync(sanitizedEmail, audit, cancellationToken);
+            auditTenantId = null;
+            tenantScope = "all";
+        }
+        else
+        {
+            var scopedTenant = tenant ?? throw new InvalidOperationException("Validated invitation revocation tenant scope is missing.");
+            revokedCount = await _dependencies.InvitationRepository.RevokeInvitationsByEmailAsync(sanitizedEmail, scopedTenant.TenantId, cancellationToken);
+            auditTenantId = scopedTenant.TenantId;
+            tenantScope = scopedTenant.TenantId.HasValue ? "tenant" : "global";
+        }
 
         if (revokedCount > 0)
         {
@@ -373,12 +390,12 @@ internal sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationRevoked,
                 Outcome = SecurityEventOutcomes.Success,
-                TenantId = request.IncludeAllTenants ? null : request.Tenant!.TenantId,
-                Audit = request.Audit,
+                TenantId = auditTenantId,
+                Audit = audit,
                 Properties = AddEmailIfEnabled(new Dictionary<string, string>
                 {
                     ["count"] = revokedCount.ToString(CultureInfo.InvariantCulture),
-                    ["tenant_scope"] = request.IncludeAllTenants ? "all" : request.Tenant!.TenantId.HasValue ? "tenant" : "global"
+                    ["tenant_scope"] = tenantScope
                 }, normalizedEmail)
             }, cancellationToken);
         }
