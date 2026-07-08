@@ -619,10 +619,7 @@ internal sealed class EmailCodeSignInTests
         var identity = identityService ?? new IdentityService(
             repository,
             registry,
-            credentialService,
-            pipeline,
-            new NullTransactionProvider(),
-            new IdentityServiceDependencies(audit, time));
+            pipeline);
         var orchestrator = authenticationOrchestrator ?? authenticationOrchestratorFactory?.Invoke(rateLimiter) ?? CreateOrchestrator(pipeline, user, requireMfa);
         var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
         var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, orchestrator, time, audit);

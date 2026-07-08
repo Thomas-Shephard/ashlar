@@ -69,12 +69,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider => new IdentityService(
                 provider.GetRequiredService<IUserRepository>(),
                 provider.GetRequiredService<IAuthenticationProviderRegistry>(),
-                provider.GetRequiredService<ICredentialService>(),
-                provider.GetRequiredService<IAuthenticationPipeline>(),
-                provider.GetRequiredService<IAshlarTransactionProvider>(),
-                new IdentityServiceDependencies(
-                    provider.GetService<ISecurityEventSink>(),
-                    provider.GetService<TimeProvider>())),
+                provider.GetRequiredService<IAuthenticationPipeline>()),
             ServiceLifetime.Scoped));
         services.TryAddScoped(provider => new AuthenticationPipelineDependencies(
             provider.GetService<ISecurityEventSink>(),

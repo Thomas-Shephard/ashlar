@@ -29,10 +29,7 @@ internal sealed class IdentityServiceAuditingTests
         var service = new IdentityService(
             repositoryMock.Object,
             providerRegistry,
-            credentialService,
-            pipeline,
-            transactionProvider,
-            new IdentityServiceDependencies(SecurityEventSink: sinkMock.Object));
+            pipeline);
 
         var tenantId = Guid.NewGuid();
         var actorUserId = Guid.NewGuid();
@@ -52,60 +49,5 @@ internal sealed class IdentityServiceAuditingTests
                 e.TenantId == tenantId &&
                 e.ActorUserId == actorUserId),
             It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Test]
-    public void CreateUserAsyncShouldNotCommitWhenRequiredAuditFails()
-    {
-        var repositoryMock = new Mock<IUserRepository>();
-        var transactionProvider = new RecordingTransactionProvider();
-        var service = new IdentityService(
-            repositoryMock.Object,
-            Mock.Of<IAuthenticationProviderRegistry>(),
-            new TestCredentialService(),
-            Mock.Of<IAuthenticationPipeline>(),
-            transactionProvider,
-            new IdentityServiceDependencies(SecurityEventSink: new ThrowingSecurityEventSink()));
-
-        Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateUserAsync(new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" }));
-
-        Assert.That(transactionProvider.Transaction.Committed, Is.False);
-    }
-
-    private sealed class ThrowingSecurityEventSink : ISecurityEventSink
-    {
-        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
-        {
-            throw new InvalidOperationException("audit failed");
-        }
-    }
-
-    private sealed class RecordingTransactionProvider : IAshlarTransactionProvider
-    {
-        public RecordingTransaction Transaction { get; } = new();
-
-        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult<IAshlarTransaction>(Transaction);
-        }
-    }
-
-    private sealed class RecordingTransaction : IAshlarTransaction
-    {
-        public bool Committed { get; private set; }
-
-        public Task CommitAsync(CancellationToken cancellationToken = default)
-        {
-            Committed = true;
-            return Task.CompletedTask;
-        }
-
-        public Task RollbackAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public void OnCommitted(Func<CancellationToken, Task> action)
-        {
-        }
-
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }
