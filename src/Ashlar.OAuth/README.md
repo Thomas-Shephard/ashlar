@@ -193,7 +193,11 @@ if (authentication.Status != MfaAuthenticationStatus.Succeeded || authentication
     return Results.Redirect("/signin?external=failed");
 }
 
-await signInManager.SignInAsync(httpContext, authentication.User.Id, cancellationToken);
+await signInManager.SignInAsync(
+    httpContext,
+    authentication,
+    httpContext.ToSessionRequest(authentication.User, new AuthenticationProviderKey(ProviderType.Oidc, "Google")),
+    cancellationToken);
 return Results.Redirect("/");
 ```
 

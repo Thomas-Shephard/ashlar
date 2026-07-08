@@ -23,11 +23,12 @@ public sealed class AshlarSignInManager(
 
     public async Task<CreatedAuthenticationSession> SignInAsync(
         HttpContext httpContext,
-        Guid userId,
+        MfaAuthenticationResult authenticationResult,
         CreateAuthenticationSessionRequest? request = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(httpContext);
+        ArgumentNullException.ThrowIfNull(authenticationResult);
 
         var authenticationOptions = GetOptions();
 
@@ -39,7 +40,7 @@ public sealed class AshlarSignInManager(
         }
 
         var sessionRequest = request ?? CreateRequestFromHttpContext(httpContext);
-        var result = await _sessionService.CreateSessionAsync(userId, sessionRequest, cancellationToken);
+        var result = await _sessionService.CreateSessionAsync(authenticationResult, sessionRequest, cancellationToken);
 
         var cookieOptions = authenticationOptions.Cookie.Build(httpContext);
         cookieOptions.Expires = result.Session.ExpiresAt;

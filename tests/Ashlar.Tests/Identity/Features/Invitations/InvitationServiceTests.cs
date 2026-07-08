@@ -154,7 +154,7 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value, Is.Not.EqualTo(Guid.Empty));
+            Assert.That(result.Value!.UserId, Is.Not.EqualTo(Guid.Empty));
             var user = fixture.UserRepository.Users.First(u => u.DisplayEmail == "NewUser@Example.Com");
             Assert.That(user.Name, Is.EqualTo("New User"));
             Assert.That(user.CanSignIn(), Is.True);
@@ -200,6 +200,20 @@ internal sealed class InvitationServiceTests
     }
 
     [Test]
+    public void AcceptInvitationFailsIfAcceptedUserCannotBeReloadedForSessionIssuance()
+    {
+        var fixture = CreateFixture();
+        fixture.UserRepository.ReturnNullById = true;
+
+        Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "NewUser@Example.Com" }, new Uri("https://myapp.com/join"));
+            var token = ExtractToken(fixture.EmailSender.Messages.First());
+            await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token });
+        });
+    }
+
+    [Test]
     public async Task AcceptInvitationActivatesDisabledUser()
     {
         var inactiveUser = new User { Id = Guid.NewGuid(), DisplayEmail = "INACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Disabled, Name = "Old Name" };
@@ -212,7 +226,7 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value, Is.EqualTo(inactiveUser.Id));
+            Assert.That(result.Value!.UserId, Is.EqualTo(inactiveUser.Id));
             var user = fixture.UserRepository.Users.First(u => u.Id == inactiveUser.Id);
             Assert.That(user.CanSignIn(), Is.True);
             Assert.That(user.Name, Is.EqualTo("Updated Name"));
@@ -1202,12 +1216,13 @@ internal sealed class InvitationServiceTests
     {
         public List<User> Users { get; } = users.OfType<User>().ToList();
         public int UpdateCount { get; private set; }
+        public bool ReturnNullById { get; set; }
         public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
         {
             var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
             return Task.FromResult<IUser?>(Users.FirstOrDefault(user => IdentityNormalization.NormalizeEmail(user.DisplayEmail) == normalizedEmail));
         }
-        public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(Users.FirstOrDefault(u => u.Id == userId));
+        public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(ReturnNullById ? null : Users.FirstOrDefault(u => u.Id == userId));
         public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
         {
             if (Users.Any(u => u.Id == user.Id)) return Task.CompletedTask;

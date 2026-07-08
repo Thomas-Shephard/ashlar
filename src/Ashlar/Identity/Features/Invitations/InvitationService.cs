@@ -134,13 +134,13 @@ internal sealed class InvitationService(
     /// <param name="context">Authentication context used for audit and rate limiting.</param>
     /// <param name="cancellationToken">A token that can cancel invitation acceptance.</param>
     /// <returns>The accepted or created user identifier, or a failure status.</returns>
-    public async Task<Result<Guid>> AcceptInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
+    public async Task<Result<InvitationAcceptanceResult>> AcceptInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         if (!await CheckInvitationRateLimitAsync("accept", _options.Value.AcceptanceRateLimit, context, cancellationToken))
         {
-            return Result.Failure<Guid>(AshlarFailureCodes.RateLimited);
+            return Result.Failure<InvitationAcceptanceResult>(AshlarFailureCodes.RateLimited);
         }
 
         var (availableInvitation, auditTenantId, now) = await ResolveAvailableInvitationAsync(request.Token, context, cancellationToken);
@@ -155,7 +155,7 @@ internal sealed class InvitationService(
                 TenantId = auditTenantId,
                 Context = context
             }, cancellationToken);
-            return Result.Failure<Guid>(AshlarFailureCodes.InvalidInvitation);
+            return Result.Failure<InvitationAcceptanceResult>(AshlarFailureCodes.InvalidInvitation);
         }
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
@@ -175,7 +175,7 @@ internal sealed class InvitationService(
                 Properties = new Dictionary<string, string> { [InvitationIdProperty] = availableInvitation.Id.ToString() },
                 Context = context
             }, cancellationToken);
-            return Result.Failure<Guid>(AshlarFailureCodes.ConcurrencyConflict);
+            return Result.Failure<InvitationAcceptanceResult>(AshlarFailureCodes.ConcurrencyConflict);
         }
 
         var acceptedUser = await AcceptInvitationUserAsync(availableInvitation, request.UserName, now, cancellationToken);
@@ -213,7 +213,9 @@ internal sealed class InvitationService(
 
         await transaction.CommitAsync(cancellationToken);
 
-        return Result.Success(acceptedUser.UserId);
+        var authenticatedUser = await _dependencies.UserRepository.GetUserByIdAsync(acceptedUser.UserId, cancellationToken)
+            ?? throw new InvalidOperationException("Accepted invitation user could not be loaded for session issuance.");
+        return Result.Success(new InvitationAcceptanceResult(acceptedUser.UserId, CreateSessionIssuanceResult(authenticatedUser)));
     }
 
     /// <inheritdoc />
@@ -335,6 +337,14 @@ internal sealed class InvitationService(
         }
 
         return new AcceptedInvitationUser(user.Id, IsNewUser: false);
+    }
+
+    private static MfaAuthenticationResult CreateSessionIssuanceResult(IUser user)
+    {
+        return new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user)
+        {
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance
+        };
     }
 
     /// <summary>

@@ -86,7 +86,7 @@ internal sealed class PostgresAspNetCoreAuthenticationIntegrationTests : Postgre
         var signInContext = new DefaultHttpContext { RequestServices = setupScope.ServiceProvider, Request = { Scheme = "https", Host = new HostString("example.test") }, Connection = { RemoteIpAddress = System.Net.IPAddress.Loopback } };
         signInContext.Request.Headers.UserAgent = "Ashlar integration test";
 
-        var session = await setupScope.ServiceProvider.GetRequiredService<IAshlarSignInManager>().SignInAsync(signInContext, user.Id);
+        var session = await setupScope.ServiceProvider.GetRequiredService<IAshlarSignInManager>().SignInAsync(signInContext, response);
         var setCookie = signInContext.Response.Headers.SetCookie.ToString();
         var rawSessionToken = ExtractCookieValue(setCookie, AshlarSessionAuthenticationDefaults.CookieName);
 

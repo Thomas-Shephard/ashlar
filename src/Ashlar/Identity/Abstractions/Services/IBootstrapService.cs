@@ -18,6 +18,6 @@ public interface IBootstrapService
     /// <param name="request">The first-admin bootstrap details.</param>
     /// <param name="context">Optional request context for auditing and notifications.</param>
     /// <param name="cancellationToken">A token that can cancel first-admin bootstrap.</param>
-    /// <returns>The created user ID when bootstrap succeeds.</returns>
-    Task<Result<Guid>> BootstrapFirstAdminAsync(BootstrapFirstAdminRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
+    /// <returns>The created user and Ashlar-verified session issuance capability when bootstrap succeeds.</returns>
+    Task<Result<BootstrapFirstAdminResult>> BootstrapFirstAdminAsync(BootstrapFirstAdminRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 }

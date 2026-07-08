@@ -340,7 +340,8 @@ internal sealed class PasskeyService : IPasskeyService
                 AuthenticationStatus: response.Status,
                 HandshakeToken: response.HandshakeToken,
                 RequiredFactors: response.RequiredFactors,
-                ErrorMessage: response.ErrorMessage);
+                ErrorMessage: response.ErrorMessage,
+                AuthenticationResult: response);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -472,7 +473,8 @@ internal sealed class PasskeyService : IPasskeyService
                     AuthenticationStatus: response.Status,
                     HandshakeToken: response.HandshakeToken,
                     RequiredFactors: response.RequiredFactors,
-                    ErrorMessage: response.ErrorMessage);
+                    ErrorMessage: response.ErrorMessage,
+                    AuthenticationResult: response);
             }
 
             var updatedCredential = await PersistSuccessfulAssertionAsync(succeededCeremony, response.CredentialUpdatePersisted, cancellationToken);
@@ -491,7 +493,8 @@ internal sealed class PasskeyService : IPasskeyService
                 AuthenticationStatus: response.Status,
                 HandshakeToken: response.HandshakeToken,
                 RequiredFactors: response.RequiredFactors,
-                ErrorMessage: response.ErrorMessage);
+                ErrorMessage: response.ErrorMessage,
+                AuthenticationResult: response);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

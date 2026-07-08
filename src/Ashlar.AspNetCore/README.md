@@ -38,8 +38,13 @@ Sign users in by creating an Ashlar authentication session and issuing the confi
 
 ```csharp
 var signInManager = httpContext.RequestServices.GetRequiredService<IAshlarSignInManager>();
-await signInManager.SignInAsync(httpContext, userId);
+await signInManager.SignInAsync(
+    httpContext,
+    authenticationResult,
+    httpContext.ToSessionRequest(authenticationResult.User, primaryProvider));
 ```
+
+`authenticationResult` must come from Ashlar's authentication or MFA orchestration flow. Session issuance is intentionally bound to that verified result instead of a caller-supplied user id.
 
 Authorization policies can be backed by Ashlar authorization grants:
 

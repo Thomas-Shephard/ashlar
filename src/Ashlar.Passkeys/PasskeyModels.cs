@@ -127,6 +127,7 @@ public sealed record PasskeyCeremonyOptions(Guid ChallengeId, string OptionsJson
 /// <param name="HandshakeToken">The MFA handshake token, when additional factors are required.</param>
 /// <param name="RequiredFactors">The remaining required factors.</param>
 /// <param name="ErrorMessage">The display-safe error message.</param>
+/// <param name="AuthenticationResult">The Ashlar authentication result required for session issuance or step-up marking when authentication succeeds.</param>
 public sealed record PasskeyAuthenticationResult(
     bool Succeeded,
     IUser? User,
@@ -135,7 +136,8 @@ public sealed record PasskeyAuthenticationResult(
     MfaAuthenticationStatus AuthenticationStatus = MfaAuthenticationStatus.Failed,
     string? HandshakeToken = null,
     IEnumerable<string>? RequiredFactors = null,
-    string? ErrorMessage = null);
+    string? ErrorMessage = null,
+    MfaAuthenticationResult? AuthenticationResult = null);
 
 /// <summary>
 /// Represents a registered passkey credential summary.

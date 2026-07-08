@@ -132,12 +132,12 @@ internal static class PasskeyEndpoints
             return Results.StatusCode(StatusCodes.Status429TooManyRequests);
         }
 
-        if (!result.Succeeded || result.User == null)
+        if (!result.Succeeded || result.User == null || result.AuthenticationResult == null)
         {
             return Results.BadRequest(new { error = result.FailureCode?.Value ?? "passkey_validation_failed" });
         }
 
-        await signIn.SignInAsync(httpContext, result.User.Id, httpContext.ToSessionRequest(result.User, AuthenticationProviderKey.Passkey), cancellationToken);
+        await signIn.SignInAsync(httpContext, result.AuthenticationResult, httpContext.ToSessionRequest(result.User, AuthenticationProviderKey.Passkey), cancellationToken);
         return Results.Ok(new { status = "signed_in" });
     }
 
@@ -175,7 +175,7 @@ internal static class PasskeyEndpoints
             return Results.StatusCode(StatusCodes.Status429TooManyRequests);
         }
 
-        if (!result.Succeeded || result.User == null)
+        if (!result.Succeeded || result.User == null || result.AuthenticationResult == null)
         {
             return Results.BadRequest(new { error = result.FailureCode?.Value ?? "passkey_validation_failed" });
         }
@@ -183,7 +183,7 @@ internal static class PasskeyEndpoints
         var markResult = await httpContext.SignInAndMarkStepUpVerifiedAsync(
             signIn,
             sessions,
-            result.User,
+            result.AuthenticationResult,
             AuthenticationProviderKey.Passkey,
             request.FactorType ?? AuthenticationFactorTypes.Passkey,
             cancellationToken);

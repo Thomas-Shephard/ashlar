@@ -75,6 +75,23 @@ public sealed record MfaAuthenticationResult(
     internal FreshMfaProof? RememberedDeviceCreationProof { get; init; }
 
     internal bool CanCreateRememberedMfaDevice => FreshMfaSatisfied && RememberedDeviceCreationProof != null;
+
+    internal AuthenticationSessionIssuanceProof? SessionIssuanceProof { get; init; }
+
+    internal bool CanIssueAuthenticationSession => Status == MfaAuthenticationStatus.Succeeded && HasUserId(User) && SessionIssuanceProof != null;
+
+    internal IUser? AuthenticationSessionIssuanceUser => CanIssueAuthenticationSession ? User : null;
+
+    internal StepUpSessionMarkingProof? StepUpSessionMarkingProof { get; init; }
+
+    internal bool CanMarkSessionStepUpVerified => Status == MfaAuthenticationStatus.Succeeded && HasUserId(User) && FreshMfaSatisfied && StepUpSessionMarkingProof != null;
+
+    internal IUser? StepUpVerifiedUser => CanMarkSessionStepUpVerified ? User : null;
+
+    private static bool HasUserId(IUser? user)
+    {
+        return user != null && user.Id != Guid.Empty;
+    }
 }
 
 internal sealed class FreshMfaProof
@@ -82,6 +99,24 @@ internal sealed class FreshMfaProof
     internal static FreshMfaProof Instance { get; } = new();
 
     private FreshMfaProof()
+    {
+    }
+}
+
+internal sealed class AuthenticationSessionIssuanceProof
+{
+    internal static AuthenticationSessionIssuanceProof Instance { get; } = new();
+
+    private AuthenticationSessionIssuanceProof()
+    {
+    }
+}
+
+internal sealed class StepUpSessionMarkingProof
+{
+    internal static StepUpSessionMarkingProof Instance { get; } = new();
+
+    private StepUpSessionMarkingProof()
     {
     }
 }

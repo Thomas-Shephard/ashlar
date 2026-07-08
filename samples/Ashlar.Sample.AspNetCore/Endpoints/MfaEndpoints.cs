@@ -141,14 +141,14 @@ internal static class MfaEndpoints
             return Results.BadRequest(new { error = "invalid_totp" });
         }
 
-        if (services.HttpContext.TryGetAshlarSessionContext(out var sessionUserId, out var sessionId, out var tenant))
+        if (result.Value?.StepUpAuthenticationResult is { } stepUpResult)
         {
-            await services.StepUp.MarkVerifiedAsync(sessionUserId, new MarkSessionStepUpVerifiedRequest
+            await services.StepUp.MarkVerifiedAsync(stepUpResult, new MarkSessionStepUpVerifiedRequest
             {
-                SessionId = sessionId,
-                VerifiedProvider = TotpOptions.DefaultProviderKey,
-                VerifiedFactor = AuthenticationFactorTypes.Totp,
-                Tenant = tenant,
+                SessionId = currentSessionId,
+                VerifiedProvider = new AuthenticationProviderKey(ProviderType.Mfa, "totp"),
+                VerifiedFactor = "totp",
+                Tenant = services.HttpContext.ToTenantContext(),
                 Audit = services.HttpContext.ToAuditContext()
             }, services.CancellationToken);
         }
@@ -272,7 +272,7 @@ internal static class MfaEndpoints
             return Results.BadRequest(new { error = isTotp ? "invalid_totp" : "invalid_mfa_code" });
         }
 
-        var result = await stepUp.MarkVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
+        var result = await stepUp.MarkVerifiedAsync(response, new MarkSessionStepUpVerifiedRequest
         {
             SessionId = sessionId,
             VerifiedProvider = provider,
@@ -344,7 +344,7 @@ internal static class MfaEndpoints
         return await SignInVerifiedMfaAsync(
             services,
             httpContext,
-            response.User,
+            response,
             TotpOptions.DefaultProviderKey,
             AuthenticationFactorTypes.Totp,
             cancellationToken);
@@ -383,7 +383,7 @@ internal static class MfaEndpoints
         return await SignInVerifiedMfaAsync(
             services,
             httpContext,
-            response.User,
+            response,
             new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode"),
             AuthenticationFactorTypes.RecoveryCode,
             cancellationToken);
@@ -392,7 +392,7 @@ internal static class MfaEndpoints
     private static async Task<IResult> SignInVerifiedMfaAsync(
         MfaVerifyServices services,
         HttpContext httpContext,
-        IUser user,
+        MfaAuthenticationResult authenticationResult,
         AuthenticationProviderKey verifiedProvider,
         string verifiedFactor,
         CancellationToken cancellationToken)
@@ -400,12 +400,12 @@ internal static class MfaEndpoints
         var result = await httpContext.SignInAndMarkStepUpVerifiedAsync(
             services.SignInManager,
             services.SessionService,
-            user,
+            authenticationResult,
             verifiedProvider,
             verifiedFactor,
             cancellationToken);
 
-        return result.Succeeded
+        return result.Succeeded && authenticationResult.User is { } user
             ? Results.Ok(new { userId = user.Id })
             : Results.BadRequest(SampleResultErrors.From(result));
     }

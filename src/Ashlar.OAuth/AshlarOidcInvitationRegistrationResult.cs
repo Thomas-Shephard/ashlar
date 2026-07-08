@@ -12,7 +12,7 @@ public sealed record AshlarOidcInvitationRegistrationResult(
     AshlarOidcInvitationRegistrationStatus Status,
     Guid? UserId = null,
     ExternalIdentityAssertion? Assertion = null,
-    Result<Guid>? InvitationAcceptance = null,
+    Result<Ashlar.Identity.Models.Invitations.InvitationAcceptanceResult>? InvitationAcceptance = null,
     Result? CredentialLink = null)
 {
     /// <summary>

@@ -102,7 +102,7 @@ internal sealed class TotpService : ITotpService
         return new TotpEnrollment(base32Secret, uri);
     }
 
-    public async Task<Result> CompleteEnrollmentAsync(VerifyTotpEnrollmentRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<TotpEnrollmentCompletionResult>> CompleteEnrollmentAsync(VerifyTotpEnrollmentRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.ActorUserId == Guid.Empty) throw new ArgumentException(EmptyActorUserIdMessage, $"{nameof(request)}.{nameof(request.ActorUserId)}");
@@ -110,26 +110,26 @@ internal sealed class TotpService : ITotpService
         var userResult = await ValidateUserTenantAsync(request.ActorUserId, tenant, request.Audit, AshlarSecurityEventTypes.TotpEnrollmentCompleted, throwOnFailure: false, cancellationToken);
         if (!userResult.Succeeded)
         {
-            return ToFailureResult(userResult);
+            return ToEnrollmentFailureResult(userResult);
         }
 
         var proofResult = await ValidateEnrollmentProofAsync(CreateEnrollmentProofValidationRequest(request, tenant, AshlarSecurityEventTypes.TotpEnrollmentCompleted), cancellationToken);
         if (!proofResult.Succeeded)
         {
-            return ToFailureResult(proofResult);
+            return ToEnrollmentFailureResult(proofResult);
         }
 
         return await CompleteEnrollmentCoreAsync(request, userResult.Value, cancellationToken);
     }
 
-    public Task<Result> CompleteEnrollmentPrivilegedAsync(VerifyTotpEnrollmentRequest request, CancellationToken cancellationToken = default)
+    public Task<Result<TotpEnrollmentCompletionResult>> CompleteEnrollmentPrivilegedAsync(VerifyTotpEnrollmentRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         RequirePrivilegedAudit(request.Audit);
         return CompleteEnrollmentCoreAsync(request, user: null, cancellationToken);
     }
 
-    private async Task<Result> CompleteEnrollmentCoreAsync(VerifyTotpEnrollmentRequest request, IUser? user, CancellationToken cancellationToken)
+    private async Task<Result<TotpEnrollmentCompletionResult>> CompleteEnrollmentCoreAsync(VerifyTotpEnrollmentRequest request, IUser? user, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         var userId = request.ActorUserId;
@@ -148,7 +148,7 @@ internal sealed class TotpService : ITotpService
                 Provider = _options.ProviderKey,
                 FailureReason = AshlarFailureCodes.EmptyCode.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.EmptyCode);
+            return Result.Failure<TotpEnrollmentCompletionResult>(AshlarFailureCodes.EmptyCode);
         }
 
         if (string.IsNullOrWhiteSpace(request.SharedSecret) || request.SharedSecret.Length > 256)
@@ -163,7 +163,7 @@ internal sealed class TotpService : ITotpService
                 Provider = _options.ProviderKey,
                 FailureReason = AshlarFailureCodes.InvalidSecret.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.InvalidSecret);
+            return Result.Failure<TotpEnrollmentCompletionResult>(AshlarFailureCodes.InvalidSecret);
         }
 
         if (!Base32.TryDecode(request.SharedSecret, out var secretBytes) || secretBytes.Length < 16)
@@ -178,7 +178,7 @@ internal sealed class TotpService : ITotpService
                 Provider = _options.ProviderKey,
                 FailureReason = AshlarFailureCodes.InvalidSecretFormat.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.InvalidSecretFormat);
+            return Result.Failure<TotpEnrollmentCompletionResult>(AshlarFailureCodes.InvalidSecretFormat);
         }
 
         IUser enrolledUser;
@@ -187,7 +187,7 @@ internal sealed class TotpService : ITotpService
             var userResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.TotpEnrollmentCompleted, throwOnFailure: false, cancellationToken);
             if (!userResult.TryGetValue(out var fetchedUser))
             {
-                return ToFailureResult(userResult);
+                return ToEnrollmentFailureResult(userResult);
             }
 
             enrolledUser = fetchedUser;
@@ -213,7 +213,7 @@ internal sealed class TotpService : ITotpService
                 Provider = _options.ProviderKey,
                 FailureReason = AshlarFailureCodes.InvalidCode.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.InvalidCode);
+            return Result.Failure<TotpEnrollmentCompletionResult>(AshlarFailureCodes.InvalidCode);
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
@@ -237,7 +237,7 @@ internal sealed class TotpService : ITotpService
                 Provider = _options.ProviderKey,
                 FailureReason = linkResult.FailureCode?.Value ?? AshlarFailureCodes.LinkFailed.Value
             }, cancellationToken);
-            return Result.Failure(linkResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.LinkFailed));
+            return Result.Failure<TotpEnrollmentCompletionResult>(linkResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.LinkFailed));
         }
 
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -256,7 +256,12 @@ internal sealed class TotpService : ITotpService
         });
 
         await transaction.CommitAsync(cancellationToken);
-        return Result.Success();
+        return Result.Success(new TotpEnrollmentCompletionResult(
+            userId,
+            new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, enrolledUser, FreshMfaSatisfied: true)
+            {
+                StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+            }));
     }
 
     public async Task<bool> DisableAsync(DisableTotpRequest request, CancellationToken cancellationToken = default)
@@ -434,14 +439,14 @@ internal sealed class TotpService : ITotpService
         return false;
     }
 
-    private static Result ToFailureResult<T>(Result<T> result)
+    private static Result<TotpEnrollmentCompletionResult> ToEnrollmentFailureResult<T>(Result<T> result)
     {
-        return Result.Failure(result.GetFailureOr(AshlarFailureCodes.ValidationError));
+        return Result.Failure<TotpEnrollmentCompletionResult>(result.GetFailureOr(AshlarFailureCodes.ValidationError));
     }
 
-    private static Result ToFailureResult(Result result)
+    private static Result<TotpEnrollmentCompletionResult> ToEnrollmentFailureResult(Result result)
     {
-        return Result.Failure(result.GetFailureOr(AshlarFailureCodes.ValidationError));
+        return Result.Failure<TotpEnrollmentCompletionResult>(result.GetFailureOr(AshlarFailureCodes.ValidationError));
     }
 
     private static void RequirePrivilegedAudit(AuditContext? audit)

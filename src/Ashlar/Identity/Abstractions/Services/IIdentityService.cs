@@ -107,4 +107,15 @@ public sealed record AuthenticationResponse(
         : this(succeeded, user, status, AuthenticationClaims.FromSingleValues(claims))
     {
     }
+
+    internal StepUpSessionMarkingProof? StepUpSessionMarkingProof { get; init; }
+
+    internal bool CanMarkSessionStepUpVerified => Succeeded && HasUserId(User) && StepUpSessionMarkingProof != null;
+
+    internal IUser? StepUpVerifiedUser => CanMarkSessionStepUpVerified ? User : null;
+
+    private static bool HasUserId(IUser? user)
+    {
+        return user != null && user.Id != Guid.Empty;
+    }
 }

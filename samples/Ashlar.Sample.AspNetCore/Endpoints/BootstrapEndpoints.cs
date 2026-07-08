@@ -10,7 +10,6 @@ internal static class BootstrapEndpoints
         app.MapPost("/api/bootstrap/first-admin", async Task<IResult> (
             HttpRequest httpRequest,
             IBootstrapService bootstrap,
-            IUserRepository users,
             IAshlarSignInManager signInManager,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
@@ -33,15 +32,14 @@ internal static class BootstrapEndpoints
                 SetupSecret = request.SetupSecret
             }, httpContext.ToAuthenticationContext(), cancellationToken);
 
-            if (!result.Succeeded)
+            if (!result.Succeeded || result.Value is not { } value)
             {
                 return Results.BadRequest(new { error = "bootstrap_request_failed" });
             }
 
-            var user = await users.GetUserByIdAsync(result.Value, cancellationToken);
-            await signInManager.SignInAsync(httpContext, result.Value, httpContext.ToSessionRequest(user), cancellationToken);
+            await signInManager.SignInAsync(httpContext, value.AuthenticationResult, httpContext.ToSessionRequest(value.AuthenticationResult.User), cancellationToken);
 
-            return Results.Ok(new { userId = result.Value });
+            return Results.Ok(new { userId = value.UserId });
         });
     }
 }

@@ -127,7 +127,7 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
 
     /// <inheritdoc />
     public Task<Result<AuthenticationSession>> MarkVerifiedAsync(
-        Guid userId,
+        MfaAuthenticationResult authenticationResult,
         MarkSessionStepUpVerifiedRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -136,7 +136,32 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
             throw new InvalidOperationException("A session service is required to mark step-up verification.");
         }
 
-        return _sessionService.MarkStepUpVerifiedAsync(userId, request, cancellationToken);
+        return _sessionService.MarkStepUpVerifiedAsync(authenticationResult, request, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<Result<AuthenticationSession>> MarkVerifiedAsync(
+        AuthenticationResponse authenticationResponse,
+        MarkSessionStepUpVerifiedRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (_sessionService == null)
+        {
+            throw new InvalidOperationException("A session service is required to mark step-up verification.");
+        }
+
+        ArgumentNullException.ThrowIfNull(authenticationResponse);
+        var user = authenticationResponse.StepUpVerifiedUser;
+        if (user == null)
+        {
+            return Task.FromResult(Result.Failure<AuthenticationSession>(AshlarFailureCodes.StepUpRequired, "Step-up marking requires a successful Ashlar factor verification response."));
+        }
+
+        var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user, FreshMfaSatisfied: true)
+        {
+            StepUpSessionMarkingProof = authenticationResponse.StepUpSessionMarkingProof
+        };
+        return _sessionService.MarkStepUpVerifiedAsync(result, request, cancellationToken);
     }
 
     private static StepUpEvaluationResult Failure(AshlarFailureCode code, string reason)

@@ -44,7 +44,7 @@ public interface ITotpService
     /// </summary>
     /// <param name="request">Target user identity, fresh verification proof, current session id, secret, code, tenant scope, and audit context for enrollment completion.</param>
     /// <param name="cancellationToken">A token that can cancel verification.</param>
-    /// <returns>A result indicating whether the credential was enrolled.</returns>
+    /// <returns>A result containing an Ashlar-verified step-up completion result when self-service enrollment succeeds.</returns>
     /// <remarks>
     /// This self-service method derives the target account from
     /// <see cref="VerifyTotpEnrollmentRequest.ActorUserId" /> and mutates only when the tenant check succeeds and proof
@@ -52,15 +52,15 @@ public interface ITotpService
     /// while the account has no usable additional-verification factor; adding or replacing TOTP after any usable MFA
     /// factor exists requires fresh MFA proof. Rejected attempts are audited without recording the shared secret or TOTP code.
     /// </remarks>
-    Task<Result> CompleteEnrollmentAsync(VerifyTotpEnrollmentRequest request, CancellationToken cancellationToken = default);
+    Task<Result<TotpEnrollmentCompletionResult>> CompleteEnrollmentAsync(VerifyTotpEnrollmentRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Verifies a TOTP code and finalizes enrollment through an explicitly privileged recovery or administration path.
     /// </summary>
     /// <param name="request">Target user identity, secret, code, tenant scope, and audit context for enrollment completion.</param>
     /// <param name="cancellationToken">A token that can cancel verification.</param>
-    /// <returns>A result indicating whether the credential was enrolled.</returns>
-    Task<Result> CompleteEnrollmentPrivilegedAsync(VerifyTotpEnrollmentRequest request, CancellationToken cancellationToken = default);
+    /// <returns>A result indicating whether the credential was enrolled. Privileged completion does not create a step-up capability.</returns>
+    Task<Result<TotpEnrollmentCompletionResult>> CompleteEnrollmentPrivilegedAsync(VerifyTotpEnrollmentRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Disables TOTP for a user.
