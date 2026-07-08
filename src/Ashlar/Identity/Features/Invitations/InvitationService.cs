@@ -350,35 +350,32 @@ internal sealed class InvitationService(
     /// <inheritdoc />
     public async Task<Result> RevokeInvitationsAsync(RevokeInvitationsRequest request, CancellationToken cancellationToken = default)
     {
+        ValidatedRevokeInvitationsRequest validated;
         try
         {
-            RevokeInvitationsRequest.ThrowIfInvalid(request);
+            validated = ValidateRevokeInvitationsRequest(request);
         }
         catch (ArgumentException exception)
         {
             return Result.Failure(AshlarFailureCodes.ValidationError, exception.Message);
         }
 
-        var email = request.Email ?? throw new InvalidOperationException("Validated invitation revocation email is missing.");
-        var audit = request.Audit ?? throw new InvalidOperationException("Validated invitation revocation audit metadata is missing.");
-        var tenant = request.Tenant;
-
-        var sanitizedEmail = IdentityNormalization.SanitizeEmailForDelivery(email);
+        var sanitizedEmail = IdentityNormalization.SanitizeEmailForDelivery(validated.Email);
         var normalizedEmail = IdentityNormalization.NormalizeEmail(sanitizedEmail);
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
         int revokedCount;
         Guid? auditTenantId;
         string tenantScope;
-        if (request.IncludeAllTenants)
+        if (validated.IncludeAllTenants)
         {
-            revokedCount = await RevokeInvitationsAcrossAllTenantsAsync(sanitizedEmail, audit, cancellationToken);
+            revokedCount = await RevokeInvitationsAcrossAllTenantsAsync(sanitizedEmail, validated.Audit, cancellationToken);
             auditTenantId = null;
             tenantScope = "all";
         }
         else
         {
-            var scopedTenant = tenant ?? throw new InvalidOperationException("Validated invitation revocation tenant scope is missing.");
+            var scopedTenant = validated.Tenant;
             revokedCount = await _dependencies.InvitationRepository.RevokeInvitationsByEmailAsync(sanitizedEmail, scopedTenant.TenantId, cancellationToken);
             auditTenantId = scopedTenant.TenantId;
             tenantScope = scopedTenant.TenantId.HasValue ? "tenant" : "global";
@@ -391,7 +388,7 @@ internal sealed class InvitationService(
                 EventType = AshlarSecurityEventTypes.InvitationRevoked,
                 Outcome = SecurityEventOutcomes.Success,
                 TenantId = auditTenantId,
-                Audit = audit,
+                Audit = validated.Audit,
                 Properties = AddEmailIfEnabled(new Dictionary<string, string>
                 {
                     ["count"] = revokedCount.ToString(CultureInfo.InvariantCulture),
@@ -402,6 +399,19 @@ internal sealed class InvitationService(
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success();
+    }
+
+    private static ValidatedRevokeInvitationsRequest ValidateRevokeInvitationsRequest(RevokeInvitationsRequest? request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.Email);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);
+        if (request.Audit == null)
+        {
+            throw new ArgumentException("Audit metadata is required for invitation revocation.", nameof(request));
+        }
+
+        return new ValidatedRevokeInvitationsRequest(request.Email, request.Tenant ?? TenantContext.Global, request.IncludeAllTenants, request.Audit);
     }
 
     private async Task<int> RevokeInvitationsAcrossAllTenantsAsync(string email, AuditContext audit, CancellationToken cancellationToken)
@@ -444,4 +454,10 @@ internal sealed class InvitationService(
     }
 
     private sealed record AcceptedInvitationUser(Guid UserId, bool IsNewUser);
+
+    private sealed record ValidatedRevokeInvitationsRequest(
+        string Email,
+        TenantContext Tenant,
+        bool IncludeAllTenants,
+        AuditContext Audit);
 }

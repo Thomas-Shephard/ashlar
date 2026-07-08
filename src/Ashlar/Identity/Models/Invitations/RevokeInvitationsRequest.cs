@@ -22,19 +22,4 @@ public sealed record RevokeInvitationsRequest
 
     /// <summary>Actor and request metadata required for revocation audit events.</summary>
     public AuditContext? Audit { get; init; }
-
-    /// <summary>
-    /// Throws when the revocation request is not safe to execute.
-    /// </summary>
-    /// <param name="request">Request to validate before mutating invitation state.</param>
-    public static void ThrowIfInvalid(RevokeInvitationsRequest? request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        ArgumentException.ThrowIfNullOrWhiteSpace(request.Email);
-        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);
-        if (request.Audit == null)
-        {
-            throw new ArgumentException("Audit metadata is required for invitation revocation.", nameof(request));
-        }
-    }
 }
