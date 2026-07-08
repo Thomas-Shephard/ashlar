@@ -1,5 +1,3 @@
-using Ashlar.Auditing;
-
 namespace Ashlar.Identity.Abstractions.Services;
 
 /// <summary>
@@ -36,12 +34,10 @@ public interface IInvitationService
     Task<Result<InvitationAcceptanceResult>> AcceptInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Revokes pending invitations for an email address and optional tenant.
+    /// Revokes pending invitations for an email address using explicit scope and audit metadata.
     /// </summary>
-    /// <param name="email">The invited email address.</param>
-    /// <param name="tenantId">Tenant scope to revoke within, or <see langword="null" /> for global invitations.</param>
-    /// <param name="audit">Optional audit metadata describing who requested revocation.</param>
+    /// <param name="request">Email, tenant scope, and required audit metadata for the destructive operation.</param>
     /// <param name="cancellationToken">A token that can cancel invitation revocation.</param>
     /// <returns>A result describing whether pending invitations were revoked.</returns>
-    Task<Result> RevokeInvitationsAsync(string email, Guid? tenantId = null, AuditContext? audit = null, CancellationToken cancellationToken = default);
+    Task<Result> RevokeInvitationsAsync(RevokeInvitationsRequest request, CancellationToken cancellationToken = default);
 }
