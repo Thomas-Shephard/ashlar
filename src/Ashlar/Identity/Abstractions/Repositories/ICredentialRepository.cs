@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Abstractions.Repositories;
 
 /// <summary>
-/// Stores credential records used by authentication providers.
+/// Provider contract for storing credential records used by authentication providers.
 /// </summary>
 public interface ICredentialRepository
 {

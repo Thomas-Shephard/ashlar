@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Abstractions.Repositories;
 
 /// <summary>
-/// Stores and retrieves Ashlar users.
+/// Provider contract for storing and retrieving Ashlar users.
 /// </summary>
 public interface IUserRepository
 {

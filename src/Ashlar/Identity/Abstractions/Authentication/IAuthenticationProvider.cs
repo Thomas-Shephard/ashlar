@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Abstractions.Authentication;
 
 /// <summary>
-/// Represents an authentication provider that can validate provider assertions.
+/// Provider contract for authentication implementations that validate provider assertions.
 /// </summary>
 public interface IAuthenticationProvider
 {
@@ -49,7 +49,7 @@ public interface IAuthenticationProvider
 }
 
 /// <summary>
-/// Resolves users from provider assertions before credential lookup.
+/// Optional provider contract for resolving users from assertions before credential lookup.
 /// </summary>
 /// <remarks>
 /// The authentication pipeline calls this capability only when the provider implements it. Implement it for primary sign-in flows whose assertion identifies an account without a trusted current user id, such as local email/password, magic links, passkeys, or external identity assertions. The credential service still enforces tenant consistency after a user is returned, so implementations should focus on provider-specific lookup and avoid leaking whether an account exists.
@@ -65,7 +65,7 @@ public interface IAuthenticationUserResolver
 }
 
 /// <summary>
-/// Resolves provider credentials when the default provider-key lookup is insufficient.
+/// Optional provider contract for resolving credentials when provider-key lookup is insufficient.
 /// </summary>
 /// <remarks>
 /// The credential service calls this capability only when the provider implements it; otherwise it derives a key with <see cref="IAuthenticationProvider.GetProviderKey" /> and uses repository lookup. Implementations own any provider-specific constant-time work needed to avoid credential or account oracles and must only return credentials owned by the supplied user id.

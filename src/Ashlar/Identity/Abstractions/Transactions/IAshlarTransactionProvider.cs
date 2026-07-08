@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Abstractions.Transactions;
 
 /// <summary>
-/// Provides a way to start a transaction in the Ashlar identity system.
+/// Low-level transaction contract implemented by durable Ashlar persistence providers.
 /// </summary>
 /// <remarks>
 /// Providers define transaction scope at the persistence-provider boundary, typically one active durable

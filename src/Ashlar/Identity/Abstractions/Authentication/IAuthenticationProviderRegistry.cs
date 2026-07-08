@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Ashlar.Identity.Abstractions.Authentication;
 
 /// <summary>
-/// Resolves authentication providers for assertions and provider keys.
+/// Low-level registry used by authentication infrastructure to resolve providers for assertions and provider keys.
 /// </summary>
 public interface IAuthenticationProviderRegistry
 {

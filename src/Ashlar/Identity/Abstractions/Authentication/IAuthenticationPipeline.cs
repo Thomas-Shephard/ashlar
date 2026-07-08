@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Abstractions.Authentication;
 
 /// <summary>
-/// Authenticates primary credentials through a configured provider.
+/// Low-level authentication pipeline used by orchestrators and advanced integrations to verify primary credentials through a configured provider.
 /// </summary>
 public interface IAuthenticationPipeline
 {
@@ -19,7 +19,7 @@ public interface IAuthenticationPipeline
 }
 
 /// <summary>
-/// Verifies secondary authentication factors through a configured provider.
+/// Low-level authentication pipeline used by orchestrators and advanced integrations to verify secondary factors through a configured provider.
 /// </summary>
 public interface IAuthenticationFactorPipeline
 {
