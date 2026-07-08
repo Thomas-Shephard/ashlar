@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Abstractions.Transactions;
 
 /// <summary>
-/// Represents an active transaction in the Ashlar identity system.
+/// Low-level transaction handle returned by an Ashlar persistence provider.
 /// </summary>
 /// <remarks>
 /// Callers MUST ensure <see cref="IAsyncDisposable.DisposeAsync"/> is called (e.g., via an <c>await using</c> block) 

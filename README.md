@@ -1410,7 +1410,7 @@ public class MySessionMaintenance(
 }
 ```
 
-Application-facing user creation should go through purpose-specific Ashlar flows such as bootstrap or invitation acceptance. `IUserRepository.CreateUserAsync` is a provider/infrastructure SPI for persistence implementations, data import, and test seeding.
+Application-facing user creation should go through purpose-specific Ashlar flows such as bootstrap or invitation acceptance. `IUserRepository.CreateUserAsync` is a provider/infrastructure contract for persistence implementations, data import, and test seeding.
 
 `AddAshlarIdentity()` does not register a transaction provider. Persistence packages like **Ashlar.Postgres** provide a functional implementation. Provider-less or test composition can explicitly call `AddAshlarNullTransactions()`, which registers `NullTransactionProvider`; it performs no-op transactions and provides no atomicity across multi-step identity operations.
 
