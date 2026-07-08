@@ -23,7 +23,7 @@ public sealed class AuthorizationEvaluator(
     /// </summary>
     /// <param name="request">User, tenant, role or permission, and optional scope to evaluate.</param>
     /// <param name="cancellationToken">A token that can cancel the evaluation.</param>
-    /// <returns>The evaluation result, including the matching grant when access is allowed.</returns>
+    /// <returns>The evaluation result, including a matching grant summary when access is allowed.</returns>
     public async Task<AuthorizationEvaluationResult> EvaluateAsync(AuthorizationEvaluationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -58,7 +58,16 @@ public sealed class AuthorizationEvaluator(
             && ((role != null && string.Equals(grant.Role, role, StringComparison.Ordinal))
                 || (permission != null && string.Equals(grant.Permission, permission, StringComparison.Ordinal))));
 
-        return match == null ? AuthorizationEvaluationResult.Failed : new AuthorizationEvaluationResult(true, match);
+        return match == null
+            ? AuthorizationEvaluationResult.Failed
+            : new AuthorizationEvaluationResult(true, new MatchedAuthorizationGrantSummary(
+                match.Id,
+                match.TenantId,
+                match.ScopeType,
+                match.ScopeId,
+                match.Role,
+                match.Permission,
+                match.ExpiresAt));
     }
 
     private static AuthorizationGrantOptions ValidateOptions(AuthorizationGrantOptions options)

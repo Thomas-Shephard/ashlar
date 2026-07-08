@@ -35,6 +35,27 @@ internal sealed class AuthorizationEvaluatorTests
     }
 
     [Test]
+    public async Task EvaluateAsyncShouldReturnMatchedGrantSummaryWithoutMetadata()
+    {
+        var userId = Guid.NewGuid();
+        var grant = CreateGrant(userId, permission: "posts.edit", metadata: """{"policy":"internal"}""");
+        _repository.Grants.Add(grant);
+
+        var result = await _evaluator.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Permission: "posts.edit"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.MatchingGrant, Is.Not.Null);
+            Assert.That(result.MatchingGrant!.Id, Is.EqualTo(grant.Id));
+            Assert.That(result.MatchingGrant.TenantId, Is.EqualTo(grant.TenantId));
+            Assert.That(result.MatchingGrant.ScopeType, Is.EqualTo(grant.ScopeType));
+            Assert.That(result.MatchingGrant.ScopeId, Is.EqualTo(grant.ScopeId));
+            Assert.That(result.MatchingGrant.Permission, Is.EqualTo(grant.Permission));
+            Assert.That(typeof(MatchedAuthorizationGrantSummary).GetProperty("Metadata"), Is.Null);
+        }
+    }
+
+    [Test]
     public async Task EvaluateAsyncShouldMatchRoleTenantAndScopeExactly()
     {
         var userId = Guid.NewGuid();
@@ -176,7 +197,8 @@ internal sealed class AuthorizationEvaluatorTests
         string? role = null,
         string? permission = null,
         DateTimeOffset? expiresAt = null,
-        DateTimeOffset? revokedAt = null)
+        DateTimeOffset? revokedAt = null,
+        string? metadata = null)
     {
         return new AuthorizationGrant
         {
@@ -189,7 +211,8 @@ internal sealed class AuthorizationEvaluatorTests
             Permission = permission,
             CreatedAt = _timeProvider.GetUtcNow(),
             ExpiresAt = expiresAt,
-            RevokedAt = revokedAt
+            RevokedAt = revokedAt,
+            Metadata = metadata
         };
     }
 

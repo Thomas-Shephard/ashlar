@@ -12,6 +12,6 @@ public interface IAuthorizationEvaluator
     /// </summary>
     /// <param name="request">The authorization request to evaluate.</param>
     /// <param name="cancellationToken">A token that can cancel authorization evaluation.</param>
-    /// <returns>The authorization decision and any matching grant.</returns>
+    /// <returns>The authorization decision and any matching grant summary.</returns>
     Task<AuthorizationEvaluationResult> EvaluateAsync(AuthorizationEvaluationRequest request, CancellationToken cancellationToken = default);
 }
