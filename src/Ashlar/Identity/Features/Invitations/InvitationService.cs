@@ -347,21 +347,39 @@ internal sealed class InvitationService(
         };
     }
 
-    /// <summary>
-    /// Revokes outstanding invitations for an email address.
-    /// </summary>
-    /// <param name="email">Recipient email address whose invitations should be revoked.</param>
-    /// <param name="tenantId">Tenant scope to revoke within, or <see langword="null" /> for global invitations.</param>
-    /// <param name="audit">Actor and request metadata to include in security events.</param>
-    /// <param name="cancellationToken">A token that can cancel revocation.</param>
-    /// <returns>A result indicating whether revocation completed.</returns>
-    public async Task<Result> RevokeInvitationsAsync(string email, Guid? tenantId = null, AuditContext? audit = null, CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public async Task<Result> RevokeInvitationsAsync(RevokeInvitationsRequest request, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+        ValidatedRevokeInvitationsRequest validated;
+        try
+        {
+            validated = ValidateRevokeInvitationsRequest(request);
+        }
+        catch (ArgumentException exception)
+        {
+            return Result.Failure(AshlarFailureCodes.ValidationError, exception.Message);
+        }
 
-        var sanitizedEmail = IdentityNormalization.SanitizeEmailForDelivery(email);
+        var sanitizedEmail = IdentityNormalization.SanitizeEmailForDelivery(validated.Email);
         var normalizedEmail = IdentityNormalization.NormalizeEmail(sanitizedEmail);
-        var revokedCount = await _dependencies.InvitationRepository.RevokeInvitationsByEmailAsync(sanitizedEmail, tenantId, cancellationToken);
+
+        await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
+        int revokedCount;
+        Guid? auditTenantId;
+        string tenantScope;
+        if (validated.IncludeAllTenants)
+        {
+            revokedCount = await RevokeInvitationsAcrossAllTenantsAsync(sanitizedEmail, validated.Audit, cancellationToken);
+            auditTenantId = null;
+            tenantScope = "all";
+        }
+        else
+        {
+            var scopedTenant = validated.Tenant;
+            revokedCount = await _dependencies.InvitationRepository.RevokeInvitationsByEmailAsync(sanitizedEmail, scopedTenant.TenantId, cancellationToken);
+            auditTenantId = scopedTenant.TenantId;
+            tenantScope = scopedTenant.TenantId.HasValue ? "tenant" : "global";
+        }
 
         if (revokedCount > 0)
         {
@@ -369,13 +387,60 @@ internal sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationRevoked,
                 Outcome = SecurityEventOutcomes.Success,
-                TenantId = tenantId,
-                Audit = audit,
-                Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["count"] = revokedCount.ToString(CultureInfo.InvariantCulture) }, normalizedEmail)
+                TenantId = auditTenantId,
+                Audit = validated.Audit,
+                Properties = AddEmailIfEnabled(new Dictionary<string, string>
+                {
+                    ["count"] = revokedCount.ToString(CultureInfo.InvariantCulture),
+                    ["tenant_scope"] = tenantScope
+                }, normalizedEmail)
             }, cancellationToken);
         }
 
+        await transaction.CommitAsync(cancellationToken);
         return Result.Success();
+    }
+
+    private static ValidatedRevokeInvitationsRequest ValidateRevokeInvitationsRequest(RevokeInvitationsRequest? request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.Email);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);
+        if (request.Audit == null)
+        {
+            throw new ArgumentException("Audit metadata is required for invitation revocation.", nameof(request));
+        }
+
+        return new ValidatedRevokeInvitationsRequest(request.Email, request.Tenant ?? TenantContext.Global, request.IncludeAllTenants, request.Audit);
+    }
+
+    private async Task<int> RevokeInvitationsAcrossAllTenantsAsync(string email, AuditContext audit, CancellationToken cancellationToken)
+    {
+        var count = 0;
+        while (true)
+        {
+            var pending = await _dependencies.InvitationRepository.SearchInvitationsAsync(new SearchInvitationsRequest
+            {
+                Email = email,
+                Status = InvitationAdministrationStatus.Pending,
+                IncludeAllTenants = true,
+                Limit = InvitationAdministrationService.MaximumLimit
+            }, _dependencies.TimeProvider.GetUtcNow(), cancellationToken);
+
+            if (pending.Count == 0)
+            {
+                return count;
+            }
+
+            foreach (var invitation in pending)
+            {
+                var result = await _dependencies.InvitationRepository.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitation.Id, IncludeAllTenants: true, Audit: audit), _dependencies.TimeProvider.GetUtcNow(), cancellationToken);
+                if (result?.RevocationStatus == InvitationAdministrationRevocationStatus.Revoked)
+                {
+                    count++;
+                }
+            }
+        }
     }
 
     private Dictionary<string, string> AddEmailIfEnabled(Dictionary<string, string> properties, string email)
@@ -389,4 +454,10 @@ internal sealed class InvitationService(
     }
 
     private sealed record AcceptedInvitationUser(Guid UserId, bool IsNewUser);
+
+    private sealed record ValidatedRevokeInvitationsRequest(
+        string Email,
+        TenantContext Tenant,
+        bool IncludeAllTenants,
+        AuditContext Audit);
 }

@@ -75,6 +75,22 @@ internal sealed class SecurityMutationAuditAtomicityTests
     }
 
     [Test]
+    public async Task InvitationServiceRevokeRollsBackWhenRequiredAuditFails()
+    {
+        _database = await CreateDatabaseAsync(services => services.AddAshlarInvitations());
+        var provider = _database.ServiceProvider;
+        var invitation = CreateInvitation();
+        await provider.GetRequiredService<IInvitationRepository>().CreateInvitationAsync(invitation);
+
+        Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await provider.GetRequiredService<IInvitationService>().RevokeInvitationsAsync(
+                new RevokeInvitationsRequest { Email = invitation.DisplayEmail, Tenant = TenantContext.Global, Audit = Audit() }));
+
+        var stored = await provider.GetRequiredService<IInvitationRepository>().GetInvitationByTokenHashAsync(invitation.TokenHash);
+        Assert.That(stored?.RevokedAt, Is.Null);
+    }
+
+    [Test]
     public async Task AccountLockoutResetRollsBackWhenRequiredAuditFails()
     {
         _database = await CreateDatabaseAsync(services => services.AddAshlarIdentity());

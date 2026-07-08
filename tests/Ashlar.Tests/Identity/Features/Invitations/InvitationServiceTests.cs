@@ -389,9 +389,10 @@ internal sealed class InvitationServiceTests
     public async Task AcceptInvitationFailsForRevokedToken()
     {
         var fixture = CreateFixture();
+        var audit = new AuditContext(Guid.NewGuid(), "203.0.113.40", "NUnit", "corr-revoke");
         await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com" }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
-        await fixture.Service.RevokeInvitationsAsync("test@example.com");
+        await fixture.Service.RevokeInvitationsAsync(new RevokeInvitationsRequest { Email = "test@example.com", Tenant = TenantContext.Global, Audit = audit });
 
         var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token });
 
@@ -517,7 +518,7 @@ internal sealed class InvitationServiceTests
         await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "Preview.User@Example.COM", TenantId = tenantId }, new Uri("https://myapp.com/join"));
 
         fixture.Audit.Events.Clear();
-        await fixture.Service.RevokeInvitationsAsync("preview.user@example.com", tenantId, audit);
+        await fixture.Service.RevokeInvitationsAsync(new RevokeInvitationsRequest { Email = "preview.user@example.com", Tenant = new TenantContext(tenantId), Audit = audit });
         var securityEvent = fixture.Audit.Events.First();
 
         using (Assert.EnterMultipleScope())
@@ -532,11 +533,146 @@ internal sealed class InvitationServiceTests
     }
 
     [Test]
-    public void RevokeInvitationsRejectsEmailWithLineBreaks()
+    public void RevokeInvitationsScalarPublicOverloadIsNotExposed()
+    {
+        var method = typeof(IInvitationService).GetMethods()
+            .Single(method => method.Name == nameof(IInvitationService.RevokeInvitationsAsync));
+
+        Assert.That(method.GetParameters().First().ParameterType, Is.EqualTo(typeof(RevokeInvitationsRequest)));
+    }
+
+    [Test]
+    public async Task RevokeInvitationsRejectsMissingAuditBeforeMutation()
     {
         var fixture = CreateFixture();
 
-        Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RevokeInvitationsAsync("test@example.com\nCc: attacker@example.com"));
+        var result = await fixture.Service.RevokeInvitationsAsync(new RevokeInvitationsRequest { Email = "test@example.com", Tenant = TenantContext.Global });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(fixture.InvitationRepository.RevokeByEmailCount, Is.Zero);
+            Assert.That(fixture.InvitationRepository.SearchCount, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task RevokeInvitationsRejectsMissingScopeBeforeMutation()
+    {
+        var fixture = CreateFixture();
+        var audit = new AuditContext(Guid.NewGuid(), "203.0.113.40", "NUnit", "corr-revoke");
+
+        var result = await fixture.Service.RevokeInvitationsAsync(new RevokeInvitationsRequest { Email = "test@example.com", Audit = audit });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(fixture.InvitationRepository.RevokeByEmailCount, Is.Zero);
+            Assert.That(fixture.InvitationRepository.SearchCount, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task RevokeInvitationsRejectsAmbiguousScopeBeforeMutation()
+    {
+        var fixture = CreateFixture();
+        var audit = new AuditContext(Guid.NewGuid(), "203.0.113.40", "NUnit", "corr-revoke");
+
+        var result = await fixture.Service.RevokeInvitationsAsync(new RevokeInvitationsRequest { Email = "test@example.com", Tenant = TenantContext.Global, IncludeAllTenants = true, Audit = audit });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(fixture.InvitationRepository.RevokeByEmailCount, Is.Zero);
+            Assert.That(fixture.InvitationRepository.SearchCount, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task RevokeInvitationsTenantScopeRevokesOnlyTenantInvitations()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var audit = new AuditContext(Guid.NewGuid(), "203.0.113.40", "NUnit", "corr-revoke");
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = tenantId }, new Uri("https://myapp.com/join"));
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = otherTenantId }, new Uri("https://myapp.com/join"));
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com" }, new Uri("https://myapp.com/join"));
+
+        await fixture.Service.RevokeInvitationsAsync(new RevokeInvitationsRequest { Email = "test@example.com", Tenant = new TenantContext(tenantId), Audit = audit });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.InvitationRepository.Invitations.Single(i => i.TenantId == tenantId).RevokedAt, Is.Not.Null);
+            Assert.That(fixture.InvitationRepository.Invitations.Single(i => i.TenantId == otherTenantId).RevokedAt, Is.Null);
+            Assert.That(fixture.InvitationRepository.Invitations.Single(i => i.TenantId == null).RevokedAt, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task RevokeInvitationsGlobalScopeRevokesOnlyGlobalInvitations()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        var audit = new AuditContext(Guid.NewGuid(), "203.0.113.40", "NUnit", "corr-revoke");
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = tenantId }, new Uri("https://myapp.com/join"));
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com" }, new Uri("https://myapp.com/join"));
+
+        await fixture.Service.RevokeInvitationsAsync(new RevokeInvitationsRequest { Email = "test@example.com", Tenant = TenantContext.Global, Audit = audit });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.InvitationRepository.Invitations.Single(i => i.TenantId == null).RevokedAt, Is.Not.Null);
+            Assert.That(fixture.InvitationRepository.Invitations.Single(i => i.TenantId == tenantId).RevokedAt, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task RevokeInvitationsIncludeAllTenantsRevokesMatchingPendingInvitations()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var audit = new AuditContext(Guid.NewGuid(), "203.0.113.40", "NUnit", "corr-revoke");
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = tenantId }, new Uri("https://myapp.com/join"));
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = otherTenantId }, new Uri("https://myapp.com/join"));
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com" }, new Uri("https://myapp.com/join"));
+
+        await fixture.Service.RevokeInvitationsAsync(new RevokeInvitationsRequest { Email = "test@example.com", IncludeAllTenants = true, Audit = audit });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.InvitationRepository.Invitations.Where(i => IdentityNormalization.NormalizeEmail(i.DisplayEmail) == "TEST@EXAMPLE.COM"), Has.All.Matches<UserInvitation>(i => i.RevokedAt != null));
+            Assert.That(fixture.InvitationRepository.AdminRevokeCount, Is.EqualTo(3));
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationRevoked).TenantId, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task RevokeInvitationsIncludeAllTenantsContinuesWhenPendingInvitationDisappears()
+    {
+        var fixture = CreateFixture();
+        var audit = new AuditContext(Guid.NewGuid(), "203.0.113.40", "NUnit", "corr-revoke");
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com" }, new Uri("https://myapp.com/join"));
+        fixture.InvitationRepository.RemoveBeforeAdminRevokeOnce = true;
+
+        var result = await fixture.Service.RevokeInvitationsAsync(new RevokeInvitationsRequest { Email = "test@example.com", IncludeAllTenants = true, Audit = audit });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixture.InvitationRepository.Invitations, Is.Empty);
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.InvitationRevoked), Is.False);
+        }
+    }
+
+    [Test]
+    public void RevokeInvitationsRejectsEmailWithLineBreaks()
+    {
+        var fixture = CreateFixture();
+        var audit = new AuditContext(Guid.NewGuid(), "203.0.113.40", "NUnit", "corr-revoke");
+
+        Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RevokeInvitationsAsync(new RevokeInvitationsRequest { Email = "test@example.com\nCc: attacker@example.com", Tenant = TenantContext.Global, Audit = audit }));
     }
 
     [Test]
@@ -1259,6 +1395,10 @@ internal sealed class InvitationServiceTests
         public bool SimulateConflict { get; set; }
         public int LookupCount { get; private set; }
         public int UpdateCount { get; private set; }
+        public int RevokeByEmailCount { get; private set; }
+        public int SearchCount { get; private set; }
+        public int AdminRevokeCount { get; private set; }
+        public bool RemoveBeforeAdminRevokeOnce { get; set; }
 
         public Task CreateInvitationAsync(UserInvitation invitation, CancellationToken cancellationToken = default)
         {
@@ -1290,6 +1430,7 @@ internal sealed class InvitationServiceTests
 
         public Task<int> RevokeInvitationsByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
         {
+            RevokeByEmailCount++;
             var normalizedSearchEmail = IdentityNormalization.NormalizeEmail(email);
             var toRevoke = Invitations.Where(i => IdentityNormalization.NormalizeEmail(i.DisplayEmail) == normalizedSearchEmail && i.TenantId == tenantId && i.AcceptedAt == null && i.RevokedAt == null).ToList();
             foreach (var i in toRevoke)
@@ -1301,7 +1442,19 @@ internal sealed class InvitationServiceTests
 
         public Task<IReadOnlyList<InvitationAdministrationSummary>> SearchInvitationsAsync(SearchInvitationsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
-            throw new NotSupportedException("Invitation administration is covered by dedicated tests.");
+            SearchCount++;
+            SearchInvitationsRequest.ThrowIfInvalid(request);
+            var normalizedEmail = request.Email == null ? null : IdentityNormalization.NormalizeEmail(request.Email);
+            var invitations = Invitations
+                .Where(i => request.IncludeAllTenants || i.TenantId == request.Tenant!.TenantId)
+                .Where(i => normalizedEmail == null || IdentityNormalization.NormalizeEmail(i.DisplayEmail) == normalizedEmail)
+                .Where(i => request.Status == null || GetStatus(i, now) == request.Status)
+                .Skip(request.Offset)
+                .Take(request.Limit)
+                .Select(i => ToSummary(i, now))
+                .ToList()
+                .AsReadOnly();
+            return Task.FromResult<IReadOnlyList<InvitationAdministrationSummary>>(invitations);
         }
 
         public Task<InvitationAdministrationSummary?> GetInvitationAsync(InvitationAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
@@ -1311,7 +1464,65 @@ internal sealed class InvitationServiceTests
 
         public Task<RevokeInvitationAdministrationResult?> RevokeInvitationAsync(RevokeInvitationAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
-            throw new NotSupportedException("Invitation administration is covered by dedicated tests.");
+            AdminRevokeCount++;
+            RevokeInvitationAdministrationRequest.ThrowIfInvalid(request);
+            var invitation = Invitations.FirstOrDefault(i => i.Id == request.InvitationId && (request.IncludeAllTenants || i.TenantId == request.Tenant!.TenantId));
+            if (invitation == null)
+            {
+                return Task.FromResult<RevokeInvitationAdministrationResult?>(null);
+            }
+
+            if (RemoveBeforeAdminRevokeOnce)
+            {
+                RemoveBeforeAdminRevokeOnce = false;
+                Invitations.Remove(invitation);
+                return Task.FromResult<RevokeInvitationAdministrationResult?>(null);
+            }
+
+            var status = GetStatus(invitation, now);
+            if (status == InvitationAdministrationStatus.Pending)
+            {
+                invitation.RevokedAt = now;
+                status = InvitationAdministrationStatus.Revoked;
+            }
+
+            return Task.FromResult<RevokeInvitationAdministrationResult?>(new RevokeInvitationAdministrationResult(
+                invitation.Id,
+                invitation.TenantId,
+                status == InvitationAdministrationStatus.Revoked ? InvitationAdministrationRevocationStatus.Revoked : InvitationAdministrationRevocationStatus.NotRevoked,
+                status,
+                invitation.RevokedAt));
+        }
+
+        private static InvitationAdministrationSummary ToSummary(UserInvitation invitation, DateTimeOffset now)
+        {
+            return new InvitationAdministrationSummary(
+                invitation.Id,
+                invitation.DisplayEmail,
+                invitation.TenantId,
+                GetStatus(invitation, now),
+                invitation.CreatedAt,
+                invitation.UpdatedAt,
+                invitation.ExpiresAt,
+                invitation.AcceptedAt,
+                invitation.RevokedAt);
+        }
+
+        private static InvitationAdministrationStatus GetStatus(UserInvitation invitation, DateTimeOffset now)
+        {
+            if (invitation.AcceptedAt.HasValue)
+            {
+                return InvitationAdministrationStatus.Accepted;
+            }
+
+            if (invitation.RevokedAt.HasValue)
+            {
+                return InvitationAdministrationStatus.Revoked;
+            }
+
+            return invitation.ExpiresAt <= now
+                ? InvitationAdministrationStatus.Expired
+                : InvitationAdministrationStatus.Pending;
         }
     }
 }
