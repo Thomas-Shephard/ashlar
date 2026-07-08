@@ -32,6 +32,7 @@ internal sealed class AuthenticationSessionService(
     private const int MaximumTokenByteLength = 192;
     private const int MaxRevocationReasonLength = 512;
     private const int MaxStepUpFactorLength = 128;
+    private const string StepUpFactorPropertyName = "factor";
     private const string UserIdCannotBeEmptyMessage = "User ID cannot be empty.";
     private readonly IAuthenticationSessionRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly ISecureTokenHasher _tokenHasher = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
@@ -383,7 +384,7 @@ internal sealed class AuthenticationSessionService(
                 Provider = request.VerifiedProvider,
                 Audit = request.Audit,
                 FailureReason = failure.Code.Value,
-                Properties = new Dictionary<string, string> { ["factor"] = verifiedFactor }
+                Properties = new Dictionary<string, string> { [StepUpFactorPropertyName] = verifiedFactor }
             }, cancellationToken);
 
             return Result.Failure<AuthenticationSession>(failure);
@@ -419,7 +420,7 @@ internal sealed class AuthenticationSessionService(
                 Provider = request.VerifiedProvider,
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.TenantMismatchValue,
-                Properties = new Dictionary<string, string> { ["factor"] = verifiedFactor }
+                Properties = new Dictionary<string, string> { [StepUpFactorPropertyName] = verifiedFactor }
             }, cancellationToken);
 
             return Result.Failure<AuthenticationSession>(AshlarFailureCodes.TenantMismatch, "Session user does not belong to the requested tenant.");
@@ -437,7 +438,7 @@ internal sealed class AuthenticationSessionService(
                 Provider = request.VerifiedProvider,
                 Audit = request.Audit,
                 FailureReason = user.AccountState.ToSecurityFailureReason(),
-                Properties = new Dictionary<string, string> { ["factor"] = verifiedFactor }
+                Properties = new Dictionary<string, string> { [StepUpFactorPropertyName] = verifiedFactor }
             }, cancellationToken);
 
             return Result.Failure<AuthenticationSession>(AshlarFailureCodes.UserNotFoundOrUnavailable, "Session user was not found or cannot currently sign in.");
@@ -463,7 +464,7 @@ internal sealed class AuthenticationSessionService(
             Provider = request.VerifiedProvider,
             Audit = request.Audit,
             FailureReason = updated == null ? AshlarFailureCodes.SessionNotFoundOrInactiveValue : null,
-            Properties = new Dictionary<string, string> { ["factor"] = verifiedFactor }
+            Properties = new Dictionary<string, string> { [StepUpFactorPropertyName] = verifiedFactor }
         }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
