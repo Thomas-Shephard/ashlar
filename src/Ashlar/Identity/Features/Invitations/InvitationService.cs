@@ -160,9 +160,21 @@ internal sealed class InvitationService(
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
-        availableInvitation.AcceptedAt = now;
-        availableInvitation.UpdatedAt = now;
-        var updated = await _dependencies.InvitationRepository.UpdateInvitationAsync(availableInvitation, availableInvitation.Version, cancellationToken);
+        var acceptedInvitation = new UserInvitation
+        {
+            Id = availableInvitation.Id,
+            DisplayEmail = availableInvitation.DisplayEmail,
+            TenantId = availableInvitation.TenantId,
+            TokenHash = availableInvitation.TokenHash,
+            CreatedAt = availableInvitation.CreatedAt,
+            UpdatedAt = now,
+            ExpiresAt = availableInvitation.ExpiresAt,
+            AcceptedAt = now,
+            RevokedAt = availableInvitation.RevokedAt,
+            Metadata = availableInvitation.Metadata,
+            Version = availableInvitation.Version
+        };
+        var updated = await _dependencies.InvitationRepository.UpdateInvitationAsync(acceptedInvitation, availableInvitation.Version, cancellationToken);
 
         if (!updated)
         {
@@ -175,10 +187,11 @@ internal sealed class InvitationService(
                 Properties = new Dictionary<string, string> { [InvitationIdProperty] = availableInvitation.Id.ToString() },
                 Context = context
             }, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return Result.Failure<InvitationAcceptanceResult>(AshlarFailureCodes.ConcurrencyConflict);
         }
 
-        var acceptedUser = await AcceptInvitationUserAsync(availableInvitation, request.UserName, now, cancellationToken);
+        var acceptedUser = await AcceptInvitationUserAsync(acceptedInvitation, request.UserName, now, cancellationToken);
 
         if (acceptedUser.IsNewUser)
         {
@@ -187,7 +200,7 @@ internal sealed class InvitationService(
                 EventType = AshlarSecurityEventTypes.UserCreated,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = acceptedUser.UserId,
-                TenantId = availableInvitation.TenantId,
+                TenantId = acceptedInvitation.TenantId,
                 Context = context
             }, cancellationToken);
         }
@@ -197,8 +210,8 @@ internal sealed class InvitationService(
             EventType = AshlarSecurityEventTypes.InvitationAccepted,
             Outcome = SecurityEventOutcomes.Success,
             UserId = acceptedUser.UserId,
-            TenantId = availableInvitation.TenantId,
-            Properties = new Dictionary<string, string> { [InvitationIdProperty] = availableInvitation.Id.ToString() },
+            TenantId = acceptedInvitation.TenantId,
+            Properties = new Dictionary<string, string> { [InvitationIdProperty] = acceptedInvitation.Id.ToString() },
             Context = context
         }, cancellationToken);
 
@@ -207,7 +220,7 @@ internal sealed class InvitationService(
             var notifiedUser = await _dependencies.UserRepository.GetUserByIdAsync(acceptedUser.UserId, ct);
             if (notifiedUser != null)
             {
-                await _notifications.NotifyAsync(SecurityNotificationType.InvitationAccepted, notifiedUser, now, context: context, metadata: new Dictionary<string, string> { [InvitationIdProperty] = availableInvitation.Id.ToString() }, cancellationToken: ct);
+                await _notifications.NotifyAsync(SecurityNotificationType.InvitationAccepted, notifiedUser, now, context: context, metadata: new Dictionary<string, string> { [InvitationIdProperty] = acceptedInvitation.Id.ToString() }, cancellationToken: ct);
             }
         });
 
