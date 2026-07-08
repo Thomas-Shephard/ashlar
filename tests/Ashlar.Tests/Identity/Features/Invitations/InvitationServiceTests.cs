@@ -742,12 +742,20 @@ internal sealed class InvitationServiceTests
         await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com" }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
 
-        // Simulating conflict by making UpdateInvitationAsync return false
         fixture.InvitationRepository.SimulateConflict = true;
 
         var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token });
 
-        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ConcurrencyConflict));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ConcurrencyConflict));
+            Assert.That(fixture.UserRepository.Users, Is.Empty);
+            Assert.That(fixture.InvitationRepository.Invitations.Single().AcceptedAt, Is.Null);
+            Assert.That(fixture.Audit.Events.Any(e =>
+                e.EventType == AshlarSecurityEventTypes.InvitationAccepted &&
+                e.Outcome == SecurityEventOutcomes.Failure &&
+                e.FailureReason == AshlarFailureCodes.ConcurrencyConflict.Value), Is.True);
+        }
     }
 
     [Test]

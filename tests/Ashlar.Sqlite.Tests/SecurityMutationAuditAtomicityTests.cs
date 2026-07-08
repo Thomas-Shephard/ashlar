@@ -4,6 +4,7 @@ using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.Models.AccountLockout;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
+using Ashlar.Security.Tokens;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -91,6 +92,76 @@ internal sealed class SecurityMutationAuditAtomicityTests
     }
 
     [Test]
+    public async Task InvitationAcceptRollsBackWhenRequiredAuditFails()
+    {
+        const string token = "known-invitation-token";
+        var email = $"{Guid.NewGuid():N}@example.test";
+
+        _database = await CreateDatabaseAsync(services => services.AddAshlarInvitations());
+        var provider = _database.ServiceProvider;
+        await provider.GetRequiredService<IUserRepository>().CreateUserAsync(new AshlarUser
+        {
+            Id = Guid.NewGuid(),
+            DisplayEmail = email,
+            AccountState = UserAccountState.Disabled
+        });
+        var invitation = CreateInvitation(email, provider.GetRequiredService<ISecureTokenHasher>().HashToken(token));
+        await provider.GetRequiredService<IInvitationRepository>().CreateInvitationAsync(invitation);
+
+        Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await provider.GetRequiredService<IInvitationService>().AcceptInvitationAsync(new AcceptInvitationRequest { Token = token }));
+
+        var stored = await provider.GetRequiredService<IInvitationRepository>().GetInvitationByTokenHashAsync(invitation.TokenHash);
+        var user = await provider.GetRequiredService<IUserRepository>().GetUserByEmailAsync(email);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stored?.AcceptedAt, Is.Null);
+            Assert.That(user?.AccountState, Is.EqualTo(UserAccountState.Disabled));
+        }
+    }
+
+    [Test]
+    public async Task InvitationAcceptConcurrencyConflictPersistsFailureAuditWithoutMutation()
+    {
+        const string token = "known-invitation-token";
+        var email = $"{Guid.NewGuid():N}@example.test";
+
+        _database = await SqliteContractDatabase.CreateAsync(services =>
+        {
+            services.AddAshlarInvitations();
+            services.AddAshlarSqliteAuditSink();
+            services.AddScoped<SqliteInvitationRepository>();
+            services.Replace(ServiceDescriptor.Scoped<IInvitationRepository>(provider =>
+                new ConflictOnUpdateInvitationRepository(provider.GetRequiredService<SqliteInvitationRepository>())));
+        });
+        var provider = _database.ServiceProvider;
+        var invitation = CreateInvitation(email, provider.GetRequiredService<ISecureTokenHasher>().HashToken(token));
+        await provider.GetRequiredService<SqliteInvitationRepository>().CreateInvitationAsync(invitation);
+
+        var result = await provider.GetRequiredService<IInvitationService>().AcceptInvitationAsync(new AcceptInvitationRequest { Token = token });
+
+        var stored = await provider.GetRequiredService<SqliteInvitationRepository>().GetInvitationByTokenHashAsync(invitation.TokenHash);
+        var user = await provider.GetRequiredService<IUserRepository>().GetUserByEmailAsync(email);
+        var auditEvent = (await provider.GetRequiredService<ISecurityEventAdministrationRepository>().SearchSecurityEventsAsync(new SearchSecurityEventsRequest
+        {
+            IncludeAllTenants = true,
+            EventTypes = new HashSet<string> { AshlarSecurityEventTypes.InvitationAccepted },
+            Outcome = SecurityEventOutcomes.Failure,
+            FailureReason = AshlarFailureCodes.ConcurrencyConflict.Value,
+            Limit = 10
+        })).Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ConcurrencyConflict));
+            Assert.That(stored?.AcceptedAt, Is.Null);
+            Assert.That(user, Is.Null);
+            Assert.That(auditEvent.Properties?["invitation_id"], Is.EqualTo(invitation.Id.ToString()));
+        }
+    }
+
+    [Test]
     public async Task AccountLockoutResetRollsBackWhenRequiredAuditFails()
     {
         _database = await CreateDatabaseAsync(services => services.AddAshlarIdentity());
@@ -153,14 +224,14 @@ internal sealed class SecurityMutationAuditAtomicityTests
         return user;
     }
 
-    private static UserInvitation CreateInvitation()
+    private static UserInvitation CreateInvitation(string email = "invitee@example.test", string? tokenHash = null)
     {
         var now = DateTimeOffset.UtcNow;
         return new UserInvitation
         {
             Id = Guid.NewGuid(),
-            DisplayEmail = "invitee@example.test",
-            TokenHash = Guid.NewGuid().ToString("N"),
+            DisplayEmail = email,
+            TokenHash = tokenHash ?? Guid.NewGuid().ToString("N"),
             CreatedAt = now,
             ExpiresAt = now.AddDays(1),
             Version = Guid.NewGuid().ToString("N")
@@ -177,6 +248,44 @@ internal sealed class SecurityMutationAuditAtomicityTests
         public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
         {
             throw new InvalidOperationException("required audit failed");
+        }
+    }
+
+    private sealed class ConflictOnUpdateInvitationRepository(IInvitationRepository inner) : IInvitationRepository
+    {
+        public Task CreateInvitationAsync(UserInvitation invitation, CancellationToken cancellationToken = default)
+        {
+            return inner.CreateInvitationAsync(invitation, cancellationToken);
+        }
+
+        public Task<UserInvitation?> GetInvitationByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default)
+        {
+            return inner.GetInvitationByTokenHashAsync(tokenHash, cancellationToken);
+        }
+
+        public Task<bool> UpdateInvitationAsync(UserInvitation invitation, string expectedVersion, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(false);
+        }
+
+        public Task<int> RevokeInvitationsByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
+        {
+            return inner.RevokeInvitationsByEmailAsync(email, tenantId, cancellationToken);
+        }
+
+        public Task<IReadOnlyList<InvitationAdministrationSummary>> SearchInvitationsAsync(SearchInvitationsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+        {
+            return inner.SearchInvitationsAsync(request, now, cancellationToken);
+        }
+
+        public Task<InvitationAdministrationSummary?> GetInvitationAsync(InvitationAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+        {
+            return inner.GetInvitationAsync(request, now, cancellationToken);
+        }
+
+        public Task<RevokeInvitationAdministrationResult?> RevokeInvitationAsync(RevokeInvitationAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+        {
+            return inner.RevokeInvitationAsync(request, now, cancellationToken);
         }
     }
 }
