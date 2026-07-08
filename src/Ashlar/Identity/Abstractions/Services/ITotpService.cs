@@ -8,7 +8,7 @@ namespace Ashlar.Identity.Abstractions.Services;
 public interface ITotpService
 {
     /// <summary>
-    /// Starts a new TOTP enrollment for a user.
+    /// Starts self-service TOTP enrollment for the authenticated account owner.
     /// </summary>
     /// <param name="request">Target user identity, fresh verification proof, current session id, tenant scope, audit context, and authenticator labels for the enrollment.</param>
     /// <param name="cancellationToken">A token that can cancel enrollment setup.</param>
@@ -26,21 +26,7 @@ public interface ITotpService
     Task<TotpEnrollment> StartEnrollmentAsync(StartTotpEnrollmentRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Starts TOTP enrollment through an explicitly privileged recovery or administration path.
-    /// </summary>
-    /// <param name="request">Target user identity, tenant scope, audit context, and authenticator labels for the enrollment.</param>
-    /// <param name="cancellationToken">A token that can cancel enrollment setup.</param>
-    /// <returns>The shared secret and otpauth URI to show once to the user.</returns>
-    /// <exception cref="ArgumentException">Thrown when audit context is missing.</exception>
-    /// <remarks>
-    /// This method does not require self-service fresh MFA proof. Call it only from already-authorized
-    /// recovery or administration workflows with audit context identifying the privileged actor; ordinary account endpoints should use
-    /// <see cref="StartEnrollmentAsync" />.
-    /// </remarks>
-    Task<TotpEnrollment> StartEnrollmentPrivilegedAsync(StartTotpEnrollmentRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Verifies a TOTP code and finalizes enrollment for a user.
+    /// Verifies a TOTP code and finalizes self-service enrollment for the authenticated account owner.
     /// </summary>
     /// <param name="request">Target user identity, fresh verification proof, current session id, secret, code, tenant scope, and audit context for enrollment completion.</param>
     /// <param name="cancellationToken">A token that can cancel verification.</param>
@@ -55,31 +41,42 @@ public interface ITotpService
     Task<Result<TotpEnrollmentCompletionResult>> CompleteEnrollmentAsync(VerifyTotpEnrollmentRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Verifies a TOTP code and finalizes enrollment through an explicitly privileged recovery or administration path.
-    /// </summary>
-    /// <param name="request">Target user identity, secret, code, tenant scope, and audit context for enrollment completion.</param>
-    /// <param name="cancellationToken">A token that can cancel verification.</param>
-    /// <returns>A result indicating whether the credential was enrolled. Privileged completion does not create a step-up capability.</returns>
-    Task<Result<TotpEnrollmentCompletionResult>> CompleteEnrollmentPrivilegedAsync(VerifyTotpEnrollmentRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Disables TOTP for a user.
+    /// Disables TOTP for the authenticated account owner.
     /// </summary>
     /// <param name="request">Target user identity, fresh MFA proof, current session id, tenant scope, and audit context for the disable attempt.</param>
     /// <param name="cancellationToken">A token that can cancel the update.</param>
     /// <returns><see langword="true" /> when an active TOTP credential was disabled.</returns>
     /// <remarks>
     /// This is a self-service API requiring Ashlar-issued fresh MFA proof, not an admin reset primitive. Hosts must use explicit recovery or
-    /// administration services for privileged MFA resets. Tenant failures are rejected before
+    /// administration services for recovery/admin MFA resets. Tenant failures are rejected before
     /// credentials are revoked and are recorded as security events.
     /// </remarks>
     Task<bool> DisableAsync(DisableTotpRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Disables TOTP through an explicitly privileged recovery or administration path.
+    /// Starts TOTP enrollment from an already-authorized account recovery workflow.
     /// </summary>
-    /// <param name="request">Target user identity, tenant scope, and audit context for the disable attempt.</param>
+    /// <param name="request">Target user, explicit scope, required audit metadata, operator reason, and authenticator labels.</param>
+    /// <param name="cancellationToken">A token that can cancel enrollment setup.</param>
+    /// <returns>The shared secret and otpauth URI to show once to the recovering user.</returns>
+    /// <remarks>Hosts must protect this method with administrator/recovery authorization. Self-service endpoints must use <see cref="StartEnrollmentAsync" />.</remarks>
+    Task<TotpEnrollment> StartEnrollmentForAccountRecoveryAsync(AccountRecoveryStartTotpEnrollmentRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Verifies a TOTP code and finalizes enrollment from an already-authorized account recovery workflow.
+    /// </summary>
+    /// <param name="request">Target user, explicit scope, required audit metadata, operator reason, shared secret, and code.</param>
+    /// <param name="cancellationToken">A token that can cancel verification.</param>
+    /// <returns>A result indicating whether the credential was enrolled. Recovery completion does not create a step-up capability.</returns>
+    /// <remarks>Hosts must protect this method with administrator/recovery authorization. Self-service endpoints must use <see cref="CompleteEnrollmentAsync" />.</remarks>
+    Task<Result<TotpEnrollmentCompletionResult>> CompleteEnrollmentForAccountRecoveryAsync(AccountRecoveryCompleteTotpEnrollmentRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Disables TOTP from an already-authorized account recovery workflow.
+    /// </summary>
+    /// <param name="request">Target user, explicit scope, required audit metadata, and operator reason.</param>
     /// <param name="cancellationToken">A token that can cancel the update.</param>
     /// <returns><see langword="true" /> when an active TOTP credential was disabled.</returns>
-    Task<bool> DisablePrivilegedAsync(DisableTotpRequest request, CancellationToken cancellationToken = default);
+    /// <remarks>Hosts must protect this method with administrator/recovery authorization. Self-service endpoints must use <see cref="DisableAsync" />.</remarks>
+    Task<bool> DisableForAccountRecoveryAsync(AccountRecoveryDisableTotpRequest request, CancellationToken cancellationToken = default);
 }

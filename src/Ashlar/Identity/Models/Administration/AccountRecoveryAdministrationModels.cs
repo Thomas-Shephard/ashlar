@@ -81,14 +81,14 @@ public sealed record AccountRecoveryWarning(
     AuthenticationProviderKey? Provider = null);
 
 /// <summary>
-/// Base request for destructive administrator account recovery execution.
+/// Base request for administrator account recovery execution that mutates account security state.
 /// </summary>
 public abstract record AccountRecoveryExecutionRequest
 {
     /// <summary>
-    /// Initializes destructive account recovery execution metadata and validates that its <paramref name="Tenant" /> scope is explicit.
+    /// Initializes account recovery execution metadata and validates that its <paramref name="Tenant" /> scope is explicit.
     /// </summary>
-    /// <param name="UserId">User targeted by the destructive recovery operation.</param>
+    /// <param name="UserId">User targeted by the recovery operation.</param>
     /// <param name="Audit">Audit metadata recorded with the account recovery execution.</param>
     /// <param name="Tenant">Tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
     /// <param name="Reason">Optional display-safe reason recorded with revocation and security events. Do not include secrets, tokens, or credentials.</param>
@@ -101,14 +101,14 @@ public abstract record AccountRecoveryExecutionRequest
         bool IncludeAllTenants = false)
     {
         this.UserId = UserId;
-        this.Audit = Audit ?? throw new ArgumentNullException(nameof(Audit), "Destructive account recovery execution requires audit metadata.");
+        this.Audit = Audit ?? throw new ArgumentNullException(nameof(Audit), "Account recovery execution requires audit metadata.");
         this.Tenant = Tenant;
         this.Reason = Reason;
         this.IncludeAllTenants = IncludeAllTenants;
         ValidateExecutionRequest(UserId, Tenant, IncludeAllTenants);
     }
 
-    /// <summary>User targeted by the destructive recovery operation.</summary>
+    /// <summary>User targeted by the recovery operation.</summary>
     public Guid UserId { get; }
 
     /// <summary>Audit metadata recorded with the account recovery execution.</summary>

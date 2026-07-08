@@ -63,40 +63,70 @@ internal sealed class TotpService : ITotpService
         throw new AshlarOperationException(failureCode, "Fresh verification is required for TOTP enrollment.");
     }
 
-    public Task<TotpEnrollment> StartEnrollmentPrivilegedAsync(StartTotpEnrollmentRequest request, CancellationToken cancellationToken = default)
+    public Task<TotpEnrollment> StartEnrollmentForAccountRecoveryAsync(AccountRecoveryStartTotpEnrollmentRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        RequirePrivilegedAudit(request.Audit);
-        return StartEnrollmentCoreAsync(request, validateUser: true, cancellationToken);
+        request.ThrowIfInvalid();
+        return StartEnrollmentCoreAsync(
+            request.UserId,
+            request.Issuer,
+            request.AccountName,
+            request.Tenant,
+            request.IncludeAllTenants,
+            request.Audit,
+            request.Reason,
+            validateUser: true,
+            cancellationToken);
     }
 
-    private async Task<TotpEnrollment> StartEnrollmentCoreAsync(StartTotpEnrollmentRequest request, bool validateUser, CancellationToken cancellationToken)
+    private Task<TotpEnrollment> StartEnrollmentCoreAsync(StartTotpEnrollmentRequest request, bool validateUser, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var userId = request.ActorUserId;
-        if (userId == Guid.Empty) throw new ArgumentException(EmptyActorUserIdMessage, $"{nameof(request)}.{nameof(request.ActorUserId)}");
-        ArgumentException.ThrowIfNullOrWhiteSpace(request.Issuer);
-        ArgumentException.ThrowIfNullOrWhiteSpace(request.AccountName);
-        var tenant = request.Tenant ?? TenantContext.Global;
+        return StartEnrollmentCoreAsync(
+            request.ActorUserId,
+            request.Issuer,
+            request.AccountName,
+            request.Tenant,
+            includeAllTenants: false,
+            request.Audit,
+            reason: null,
+            validateUser,
+            cancellationToken);
+    }
+
+    private async Task<TotpEnrollment> StartEnrollmentCoreAsync(
+        Guid userId,
+        string issuer,
+        string accountName,
+        TenantContext? requestTenant,
+        bool includeAllTenants,
+        AuditContext? audit,
+        string? reason,
+        bool validateUser,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(issuer);
+        ArgumentException.ThrowIfNullOrWhiteSpace(accountName);
 
         if (validateUser)
         {
-            await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.TotpEnrollmentStarted, throwOnFailure: true, cancellationToken);
+            await ValidateUserScopeAsync(userId, requestTenant, includeAllTenants, audit, AshlarSecurityEventTypes.TotpEnrollmentStarted, throwOnFailure: true, cancellationToken);
         }
 
         var secretBytes = RandomNumberGenerator.GetBytes(_options.SecretLengthBytes);
         var base32Secret = Base32.Encode(secretBytes);
 
-        var uri = TotpAuthenticator.CreateOtpAuthUri("totp", base32Secret, request.AccountName, request.Issuer, _options.CodeDigits, _options.StepSeconds);
+        var uri = TotpAuthenticator.CreateOtpAuthUri("totp", base32Secret, accountName, issuer, _options.CodeDigits, _options.StepSeconds);
 
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.TotpEnrollmentStarted,
             Outcome = SecurityEventOutcomes.Success,
             UserId = userId,
-            TenantId = tenant.TenantId,
-            Audit = request.Audit,
-            Provider = _options.ProviderKey
+            TenantId = requestTenant?.TenantId,
+            Audit = audit,
+            Provider = _options.ProviderKey,
+            Properties = CreateReasonProperties(reason)
         }, cancellationToken);
 
         return new TotpEnrollment(base32Secret, uri);
@@ -122,69 +152,55 @@ internal sealed class TotpService : ITotpService
         return await CompleteEnrollmentCoreAsync(request, userResult.Value, cancellationToken);
     }
 
-    public Task<Result<TotpEnrollmentCompletionResult>> CompleteEnrollmentPrivilegedAsync(VerifyTotpEnrollmentRequest request, CancellationToken cancellationToken = default)
+    public Task<Result<TotpEnrollmentCompletionResult>> CompleteEnrollmentForAccountRecoveryAsync(AccountRecoveryCompleteTotpEnrollmentRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        RequirePrivilegedAudit(request.Audit);
-        return CompleteEnrollmentCoreAsync(request, user: null, cancellationToken);
+        request.ThrowIfInvalid();
+        return CompleteEnrollmentCoreAsync(
+            request.UserId,
+            request.SharedSecret,
+            request.Code,
+            request.Tenant,
+            request.IncludeAllTenants,
+            request.Audit,
+            request.Reason,
+            user: null,
+            issueStepUpResult: false,
+            cancellationToken);
     }
 
-    private async Task<Result<TotpEnrollmentCompletionResult>> CompleteEnrollmentCoreAsync(VerifyTotpEnrollmentRequest request, IUser? user, CancellationToken cancellationToken)
+    private Task<Result<TotpEnrollmentCompletionResult>> CompleteEnrollmentCoreAsync(VerifyTotpEnrollmentRequest request, IUser? user, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var userId = request.ActorUserId;
-        if (userId == Guid.Empty) throw new ArgumentException(EmptyActorUserIdMessage, $"{nameof(request)}.{nameof(request.ActorUserId)}");
-        var tenant = request.Tenant ?? TenantContext.Global;
+        return CompleteEnrollmentCoreAsync(
+            request.ActorUserId,
+            request.SharedSecret,
+            request.Code,
+            request.Tenant,
+            includeAllTenants: false,
+            request.Audit,
+            reason: null,
+            user,
+            issueStepUpResult: true,
+            cancellationToken);
+    }
 
-        if (string.IsNullOrWhiteSpace(request.Code))
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                TenantId = tenant.TenantId,
-                Audit = request.Audit,
-                Provider = _options.ProviderKey,
-                FailureReason = AshlarFailureCodes.EmptyCode.Value
-            }, cancellationToken);
-            return Result.Failure<TotpEnrollmentCompletionResult>(AshlarFailureCodes.EmptyCode);
-        }
-
-        if (string.IsNullOrWhiteSpace(request.SharedSecret) || request.SharedSecret.Length > 256)
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                TenantId = tenant.TenantId,
-                Audit = request.Audit,
-                Provider = _options.ProviderKey,
-                FailureReason = AshlarFailureCodes.InvalidSecret.Value
-            }, cancellationToken);
-            return Result.Failure<TotpEnrollmentCompletionResult>(AshlarFailureCodes.InvalidSecret);
-        }
-
-        if (!Base32.TryDecode(request.SharedSecret, out var secretBytes) || secretBytes.Length < 16)
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                TenantId = tenant.TenantId,
-                Audit = request.Audit,
-                Provider = _options.ProviderKey,
-                FailureReason = AshlarFailureCodes.InvalidSecretFormat.Value
-            }, cancellationToken);
-            return Result.Failure<TotpEnrollmentCompletionResult>(AshlarFailureCodes.InvalidSecretFormat);
-        }
-
+    private async Task<Result<TotpEnrollmentCompletionResult>> CompleteEnrollmentCoreAsync(
+        Guid userId,
+        string sharedSecret,
+        string code,
+        TenantContext? requestTenant,
+        bool includeAllTenants,
+        AuditContext? audit,
+        string? reason,
+        IUser? user,
+        bool issueStepUpResult,
+        CancellationToken cancellationToken)
+    {
         IUser enrolledUser;
         if (user == null)
         {
-            var userResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.TotpEnrollmentCompleted, throwOnFailure: false, cancellationToken);
+            var userResult = await ValidateUserScopeAsync(userId, requestTenant, includeAllTenants, audit, AshlarSecurityEventTypes.TotpEnrollmentCompleted, throwOnFailure: false, cancellationToken);
             if (!userResult.TryGetValue(out var fetchedUser))
             {
                 return ToEnrollmentFailureResult(userResult);
@@ -197,9 +213,57 @@ internal sealed class TotpService : ITotpService
             enrolledUser = user;
         }
 
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                TenantId = requestTenant?.TenantId,
+                Audit = audit,
+                Provider = _options.ProviderKey,
+                FailureReason = AshlarFailureCodes.EmptyCode.Value,
+                Properties = CreateReasonProperties(reason)
+            }, cancellationToken);
+            return Result.Failure<TotpEnrollmentCompletionResult>(AshlarFailureCodes.EmptyCode);
+        }
+
+        if (string.IsNullOrWhiteSpace(sharedSecret) || sharedSecret.Length > 256)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                TenantId = requestTenant?.TenantId,
+                Audit = audit,
+                Provider = _options.ProviderKey,
+                FailureReason = AshlarFailureCodes.InvalidSecret.Value,
+                Properties = CreateReasonProperties(reason)
+            }, cancellationToken);
+            return Result.Failure<TotpEnrollmentCompletionResult>(AshlarFailureCodes.InvalidSecret);
+        }
+
+        if (!Base32.TryDecode(sharedSecret, out var secretBytes) || secretBytes.Length < 16)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                TenantId = requestTenant?.TenantId,
+                Audit = audit,
+                Provider = _options.ProviderKey,
+                FailureReason = AshlarFailureCodes.InvalidSecretFormat.Value,
+                Properties = CreateReasonProperties(reason)
+            }, cancellationToken);
+            return Result.Failure<TotpEnrollmentCompletionResult>(AshlarFailureCodes.InvalidSecretFormat);
+        }
+
         var now = _timeProvider.GetUtcNow();
 
-        var (verified, verifiedStep) = TotpAuthenticator.VerifyTotp(secretBytes, request.Code, now, _options.StepSeconds, _options.CodeDigits, _options.AllowedSkewSteps);
+        var (verified, verifiedStep) = TotpAuthenticator.VerifyTotp(secretBytes, code, now, _options.StepSeconds, _options.CodeDigits, _options.AllowedSkewSteps);
 
         if (!verified)
         {
@@ -208,10 +272,11 @@ internal sealed class TotpService : ITotpService
                 EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
-                TenantId = tenant.TenantId,
-                Audit = request.Audit,
+                TenantId = requestTenant?.TenantId,
+                Audit = audit,
                 Provider = _options.ProviderKey,
-                FailureReason = AshlarFailureCodes.InvalidCode.Value
+                FailureReason = AshlarFailureCodes.InvalidCode.Value,
+                Properties = CreateReasonProperties(reason)
             }, cancellationToken);
             return Result.Failure<TotpEnrollmentCompletionResult>(AshlarFailureCodes.InvalidCode);
         }
@@ -221,9 +286,9 @@ internal sealed class TotpService : ITotpService
         // Replace any existing TOTP credential for this user.
         await _credentialRepository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
 
-        var assertion = new TotpAssertion(request.Code);
+        var assertion = new TotpAssertion(code);
         var totpCredentialMetadata = System.Text.Json.JsonSerializer.Serialize(new { LastUsedStep = verifiedStep });
-        var linkResult = await _credentialService.LinkCredentialAsync(userId, assertion, _provider, request.SharedSecret, totpCredentialMetadata, cancellationToken);
+        var linkResult = await _credentialService.LinkCredentialAsync(userId, assertion, _provider, sharedSecret, totpCredentialMetadata, cancellationToken);
 
         if (!linkResult.Succeeded)
         {
@@ -232,10 +297,11 @@ internal sealed class TotpService : ITotpService
                 EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
-                TenantId = tenant.TenantId,
-                Audit = request.Audit,
+                TenantId = requestTenant?.TenantId,
+                Audit = audit,
                 Provider = _options.ProviderKey,
-                FailureReason = linkResult.FailureCode?.Value ?? AshlarFailureCodes.LinkFailed.Value
+                FailureReason = linkResult.FailureCode?.Value ?? AshlarFailureCodes.LinkFailed.Value,
+                Properties = CreateReasonProperties(reason)
             }, cancellationToken);
             return Result.Failure<TotpEnrollmentCompletionResult>(linkResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.LinkFailed));
         }
@@ -245,23 +311,27 @@ internal sealed class TotpService : ITotpService
             EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
             Outcome = SecurityEventOutcomes.Success,
             UserId = userId,
-            TenantId = tenant.TenantId,
-            Audit = request.Audit,
-            Provider = _options.ProviderKey
+            TenantId = requestTenant?.TenantId,
+            Audit = audit,
+            Provider = _options.ProviderKey,
+            Properties = CreateReasonProperties(reason)
         }, cancellationToken);
 
         transaction.OnCommitted(async ct =>
         {
-            await _notifications.NotifyAsync(SecurityNotificationType.TotpEnrolled, enrolledUser, now, context: ToNotificationContext(request.Audit), cancellationToken: ct);
+            await _notifications.NotifyAsync(SecurityNotificationType.TotpEnrolled, enrolledUser, now, context: ToNotificationContext(audit), cancellationToken: ct);
         });
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success(new TotpEnrollmentCompletionResult(
             userId,
-            new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, enrolledUser, FreshMfaSatisfied: true)
-            {
-                StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
-            }));
+            issueStepUpResult
+                ? new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, enrolledUser, FreshMfaSatisfied: true)
+                {
+                    StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+                }
+                : null
+        ));
     }
 
     public async Task<bool> DisableAsync(DisableTotpRequest request, CancellationToken cancellationToken = default)
@@ -278,21 +348,22 @@ internal sealed class TotpService : ITotpService
         return await DisableCoreAsync(request, cancellationToken);
     }
 
-    public Task<bool> DisablePrivilegedAsync(DisableTotpRequest request, CancellationToken cancellationToken = default)
+    public Task<bool> DisableForAccountRecoveryAsync(AccountRecoveryDisableTotpRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        RequirePrivilegedAudit(request.Audit);
-        return DisableCoreAsync(request, cancellationToken);
+        request.ThrowIfInvalid();
+        return DisableCoreAsync(request.UserId, request.Tenant, request.IncludeAllTenants, request.Audit, request.Reason, cancellationToken);
     }
 
-    private async Task<bool> DisableCoreAsync(DisableTotpRequest request, CancellationToken cancellationToken)
+    private Task<bool> DisableCoreAsync(DisableTotpRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var userId = request.ActorUserId;
-        if (userId == Guid.Empty) throw new ArgumentException(EmptyActorUserIdMessage, $"{nameof(request)}.{nameof(request.ActorUserId)}");
-        var tenant = request.Tenant ?? TenantContext.Global;
+        return DisableCoreAsync(request.ActorUserId, request.Tenant, includeAllTenants: false, request.Audit, reason: null, cancellationToken);
+    }
 
-        var userResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.TotpDisabled, throwOnFailure: false, cancellationToken);
+    private async Task<bool> DisableCoreAsync(Guid userId, TenantContext? requestTenant, bool includeAllTenants, AuditContext? audit, string? reason, CancellationToken cancellationToken)
+    {
+        var userResult = await ValidateUserScopeAsync(userId, requestTenant, includeAllTenants, audit, AshlarSecurityEventTypes.TotpDisabled, throwOnFailure: false, cancellationToken);
         if (!userResult.TryGetValue(out var user))
         {
             return false;
@@ -309,14 +380,15 @@ internal sealed class TotpService : ITotpService
             EventType = AshlarSecurityEventTypes.TotpDisabled,
             Outcome = SecurityEventOutcomes.Success,
             UserId = userId,
-            TenantId = tenant.TenantId,
-            Audit = request.Audit,
-            Provider = _options.ProviderKey
+            TenantId = requestTenant?.TenantId,
+            Audit = audit,
+            Provider = _options.ProviderKey,
+            Properties = CreateReasonProperties(reason)
         }, cancellationToken);
 
         transaction.OnCommitted(async ct =>
         {
-            await _notifications.NotifyAsync(SecurityNotificationType.TotpDisabled, user, now, context: ToNotificationContext(request.Audit), cancellationToken: ct);
+            await _notifications.NotifyAsync(SecurityNotificationType.TotpDisabled, user, now, context: ToNotificationContext(audit), cancellationToken: ct);
         });
 
         await transaction.CommitAsync(cancellationToken);
@@ -449,14 +521,6 @@ internal sealed class TotpService : ITotpService
         return Result.Failure<TotpEnrollmentCompletionResult>(result.GetFailureOr(AshlarFailureCodes.ValidationError));
     }
 
-    private static void RequirePrivilegedAudit(AuditContext? audit)
-    {
-        if (audit == null)
-        {
-            throw new ArgumentException("Privileged TOTP management requires audit context.", nameof(audit));
-        }
-    }
-
     private async Task<Result<IUser>> ValidateUserTenantAsync(
         Guid userId,
         TenantContext tenant,
@@ -491,6 +555,44 @@ internal sealed class TotpService : ITotpService
         return result;
     }
 
+    private async Task<Result<IUser>> ValidateUserScopeAsync(
+        Guid userId,
+        TenantContext? tenant,
+        bool includeAllTenants,
+        AuditContext? audit,
+        string eventType,
+        bool throwOnFailure,
+        CancellationToken cancellationToken)
+    {
+        if (!includeAllTenants)
+        {
+            return await ValidateUserTenantAsync(userId, tenant ?? TenantContext.Global, audit, eventType, throwOnFailure, cancellationToken);
+        }
+
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
+        if (user != null)
+        {
+            return Result.Success(user);
+        }
+
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = eventType,
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = userId,
+            Audit = audit,
+            Provider = _options.ProviderKey,
+            FailureReason = AshlarFailureCodes.UserNotFound.Value
+        }, cancellationToken);
+
+        if (throwOnFailure)
+        {
+            throw new AshlarOperationException(AshlarFailureCodes.UserNotFound, "TOTP user validation failed for the requested recovery scope.");
+        }
+
+        return Result.Failure<IUser>(AshlarFailureCodes.UserNotFound);
+    }
+
     private static AuthenticationContext? ToNotificationContext(AuditContext? audit)
     {
         if (audit == null) return new AuthenticationContext();
@@ -500,6 +602,11 @@ internal sealed class TotpService : ITotpService
             IpAddress: audit.IpAddress,
             UserAgent: audit.UserAgent,
             CorrelationId: audit.CorrelationId);
+    }
+
+    private static Dictionary<string, string>? CreateReasonProperties(string? reason)
+    {
+        return reason == null ? null : new Dictionary<string, string> { ["reason"] = reason };
     }
 }
 

@@ -609,7 +609,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         var pageBody = await page.Content.ReadAsStringAsync();
         if (page.StatusCode == HttpStatusCode.Forbidden)
         {
-            return await EnrollTotpPrivilegedForSmokeAsync(userId);
+            return await EnrollTotpForAccountRecoverySmokeAsync(userId);
         }
 
         Assert.That(page.StatusCode, Is.EqualTo(HttpStatusCode.OK), pageBody);
@@ -624,7 +624,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         return sharedSecret;
     }
 
-    private async Task<string> EnrollTotpPrivilegedForSmokeAsync(Guid userId)
+    private async Task<string> EnrollTotpForAccountRecoverySmokeAsync(Guid userId)
     {
         await using var scope = _factory!.Services.CreateAsyncScope();
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
@@ -634,17 +634,9 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         var tenant = user is ITenantUser { TenantId: { } tenantId } ? new TenantContext(tenantId) : TenantContext.Global;
         var audit = new AuditContext(ActorUserId: userId, Items: new Dictionary<string, string> { ["reason"] = "smoke-test-fresh-mfa-setup" });
 
-        var enrollment = await totp.StartEnrollmentPrivilegedAsync(new StartTotpEnrollmentRequest(userId, "Ashlar Sample", user!.DisplayEmail)
-        {
-            Tenant = tenant,
-            Audit = audit
-        });
+        var enrollment = await totp.StartEnrollmentForAccountRecoveryAsync(new AccountRecoveryStartTotpEnrollmentRequest(userId, "Ashlar Sample", user!.DisplayEmail, audit, tenant));
         var code = GenerateTotpCode(enrollment.SharedSecret);
-        var result = await totp.CompleteEnrollmentPrivilegedAsync(new VerifyTotpEnrollmentRequest(userId, enrollment.SharedSecret, code)
-        {
-            Tenant = tenant,
-            Audit = audit
-        });
+        var result = await totp.CompleteEnrollmentForAccountRecoveryAsync(new AccountRecoveryCompleteTotpEnrollmentRequest(userId, enrollment.SharedSecret, code, audit, tenant));
 
         Assert.That(result.Succeeded, Is.True);
         await MarkActiveSessionsFreshAsync(userId);
