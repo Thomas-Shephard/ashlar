@@ -1380,19 +1380,23 @@ foreach (var issue in result.Issues)
 Ashlar supports scoped database transactions through the `IAshlarTransactionProvider` abstraction. This allows multiple repository operations within a single service scope to participate in a shared unit of work.
 
 ```csharp
-public class MyIdentityService(
-    IIdentityService identityService,
+public class MySessionMaintenance(
+    IAuthenticationSessionService sessions,
     IAshlarTransactionProvider transactionProvider)
 {
-    public async Task RegisterAndInviteAsync(User user)
+    public async Task RevokeCompromisedSessionAsync(Guid userId, Guid sessionId, AuditContext audit)
     {
         // Start a transaction for the current scope
         await using var transaction = await transactionProvider.BeginTransactionAsync();
 
         try
         {
-            await identityService.CreateUserAsync(user);
-            await identityService.SetPasswordAsync(user.Id, "...");
+            await sessions.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest
+            {
+                SessionId = sessionId,
+                Tenant = TenantContext.Global,
+                Audit = audit
+            });
 
             // All operations in this scope now share the same transaction
             await transaction.CommitAsync();
@@ -1405,6 +1409,8 @@ public class MyIdentityService(
     }
 }
 ```
+
+Application-facing user creation should go through purpose-specific Ashlar flows such as bootstrap or invitation acceptance. `IUserRepository.CreateUserAsync` is a provider/infrastructure SPI for persistence implementations, data import, and test seeding.
 
 `AddAshlarIdentity()` does not register a transaction provider. Persistence packages like **Ashlar.Postgres** provide a functional implementation. Provider-less or test composition can explicitly call `AddAshlarNullTransactions()`, which registers `NullTransactionProvider`; it performs no-op transactions and provides no atomicity across multi-step identity operations.
 

@@ -788,10 +788,7 @@ internal sealed class MagicLinkSignInTests
         var identity = identityService ?? new IdentityService(
             repository,
             registry,
-            credentialService,
-            pipeline,
-            transactionProvider,
-            new IdentityServiceDependencies(audit, time));
+            pipeline);
         var orchestrator = authenticationOrchestrator ?? CreateOrchestrator(pipeline, user, requireMfa);
         var core = new IdentityContext(repository, repository, identity, transactionProvider);
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), tokenHasher);

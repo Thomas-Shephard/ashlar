@@ -60,97 +60,40 @@ internal sealed class IdentityServiceTests
     [Test]
     public void ConstructorShouldThrowOnNullRepository()
     {
-        var credService = new TestCredentialService();
         var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
         var authenticationPipeline = new Mock<IAuthenticationPipeline>();
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(null!, providerRegistry.Object, credService, authenticationPipeline.Object, new NullTransactionProvider()));
-    }
-
-    [Test]
-    public void ConstructorShouldThrowOnNullCredentialService()
-    {
-        var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
-        var authenticationPipeline = new Mock<IAuthenticationPipeline>();
-        // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, providerRegistry.Object, null!, authenticationPipeline.Object, new NullTransactionProvider()));
-    }
-
-    [Test]
-    public void ConstructorShouldThrowOnNullTransactionProvider()
-    {
-        var credService = new TestCredentialService();
-        var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
-        var authenticationPipeline = new Mock<IAuthenticationPipeline>();
-        // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, providerRegistry.Object, credService, authenticationPipeline.Object, null!));
-    }
-
-    [Test]
-    public void ConstructorWithCollaboratorsShouldThrowOnNullCredentialService()
-    {
-        var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
-        var authenticationPipeline = new Mock<IAuthenticationPipeline>();
-
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(
-            _repositoryMock.Object,
-            providerRegistry.Object,
-            // ReSharper disable once NullableWarningSuppressionIsUsed
-            null!,
-            authenticationPipeline.Object,
-            new NullTransactionProvider()));
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(null!, providerRegistry.Object, authenticationPipeline.Object));
     }
 
     [Test]
     public void ConstructorWithCollaboratorsShouldThrowOnNullProviderRegistry()
     {
-        var credentialService = new TestCredentialService();
         var authenticationPipeline = new Mock<IAuthenticationPipeline>();
 
         Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(
             _repositoryMock.Object,
             // ReSharper disable once NullableWarningSuppressionIsUsed
             null!,
-            credentialService,
-            authenticationPipeline.Object,
-            new NullTransactionProvider()));
+            authenticationPipeline.Object));
     }
 
     [Test]
     public void ConstructorWithCollaboratorsShouldThrowOnNullAuthenticationPipeline()
     {
         var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
-        var credentialService = new TestCredentialService();
 
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(
             _repositoryMock.Object,
             providerRegistry.Object,
-            credentialService,
-            (IAuthenticationPipeline)null!,
-            new NullTransactionProvider()));
-    }
-
-    [Test]
-    public void ConstructorWithCollaboratorsShouldThrowOnNullTransactionProvider()
-    {
-        var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
-        var credentialService = new TestCredentialService();
-        var authenticationPipeline = new Mock<IAuthenticationPipeline>();
-
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(
-            _repositoryMock.Object,
-            providerRegistry.Object,
-            credentialService,
-            authenticationPipeline.Object,
-            null!));
+            (IAuthenticationPipeline)null!));
     }
 
     [Test]
     public async Task LoginAsyncShouldDelegateToAuthenticationPipeline()
     {
         var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
-        var credentialService = new TestCredentialService();
         var authenticationPipeline = new Mock<IAuthenticationPipeline>();
         var context = new AuthenticationContext("test@example.com");
         var assertion = new LocalPasswordAssertion("pass");
@@ -163,9 +106,7 @@ internal sealed class IdentityServiceTests
         var service = new IdentityService(
             _repositoryMock.Object,
             providerRegistry.Object,
-            credentialService,
-            authenticationPipeline.Object,
-            new NullTransactionProvider());
+            authenticationPipeline.Object);
 
         var response = await service.LoginAsync(context, assertion, cancellationTokenSource.Token);
 
@@ -177,6 +118,12 @@ internal sealed class IdentityServiceTests
     public void PublicIdentityServiceShouldNotExposeCredentialLinking()
     {
         Assert.That(typeof(IIdentityService).GetMethod("LinkCredentialAsync"), Is.Null);
+    }
+
+    [Test]
+    public void PublicIdentityServiceShouldNotExposeGenericUserCreation()
+    {
+        Assert.That(typeof(IIdentityService).GetMethod("CreateUserAsync", [typeof(IUser), typeof(CancellationToken)]), Is.Null);
     }
 
     [Test]
@@ -750,96 +697,6 @@ internal sealed class IdentityServiceTests
             Assert.ThrowsAsync<ArgumentException>(() => _identityService.FindByProviderKeyAsync(provider, ""));
             Assert.ThrowsAsync<ArgumentException>(() => _identityService.FindByProviderKeyAsync(provider, " "));
         }
-    }
-
-    [Test]
-    public async Task CreateUserAsyncShouldCallRepository()
-    {
-        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
-        _repositoryMock.Setup(r => r.CreateUserAsync(user, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        var result = await _identityService.CreateUserAsync(user);
-
-        Assert.That(result, Is.EqualTo(user));
-        _repositoryMock.Verify(r => r.CreateUserAsync(user, It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Test]
-    public void CreateUserAsyncShouldRejectEmailWithLineBreaks()
-    {
-        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com\r\nBcc: attacker@example.com" };
-
-        Assert.ThrowsAsync<ArgumentException>(() => _identityService.CreateUserAsync(user));
-
-        _repositoryMock.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Test]
-    public async Task CreateUserAsyncShouldTrimEmailBeforePersistingAndPreserveDisplayCasing()
-    {
-        var createdAt = new DateTimeOffset(2026, 5, 10, 12, 0, 0, TimeSpan.Zero);
-        var updatedAt = createdAt.AddMinutes(1);
-        var user = new AuditedUser
-        {
-            Id = Guid.NewGuid(),
-            DisplayEmail = " Mixed.Display@Example.COM ",
-            Name = "Test User",
-            AccountState = UserAccountState.Active,
-            TenantId = Guid.NewGuid(),
-            EmailVerifiedAt = createdAt,
-            CreatedAt = createdAt,
-            UpdatedAt = updatedAt
-        };
-        IUser? persistedUser = null;
-        _repositoryMock
-            .Setup(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()))
-            .Callback<IUser, CancellationToken>((u, _) => persistedUser = u)
-            .Returns(Task.CompletedTask);
-
-        var result = await _identityService.CreateUserAsync(user);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.DisplayEmail, Is.EqualTo("Mixed.Display@Example.COM"));
-            Assert.That(persistedUser?.DisplayEmail, Is.EqualTo("Mixed.Display@Example.COM"));
-            Assert.That(persistedUser?.Name, Is.EqualTo(user.Name));
-            Assert.That(persistedUser?.CanSignIn(), Is.True);
-            Assert.That((persistedUser as ITenantUser)?.TenantId, Is.EqualTo(user.TenantId));
-            Assert.That(persistedUser?.EmailVerifiedAt, Is.EqualTo(user.EmailVerifiedAt));
-            Assert.That((persistedUser as IHasAuditMetadata)?.CreatedAt, Is.EqualTo(createdAt));
-            Assert.That((persistedUser as IHasAuditMetadata)?.UpdatedAt, Is.EqualTo(updatedAt));
-        }
-
-        ((IHasAuditMetadata)persistedUser!).UpdatedAt = updatedAt.AddMinutes(1);
-        Assert.That(user.UpdatedAt, Is.EqualTo(updatedAt.AddMinutes(1)));
-    }
-
-    [Test]
-    public async Task CreateUserAsyncShouldTrimEmailForNonTenantUserWithoutAuditMetadata()
-    {
-        var user = new BasicUser
-        {
-            Id = Guid.NewGuid(),
-            DisplayEmail = " basic@example.com ",
-            AccountState = UserAccountState.Active
-        };
-        IUser? persistedUser = null;
-        _repositoryMock
-            .Setup(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()))
-            .Callback<IUser, CancellationToken>((u, _) => persistedUser = u)
-            .Returns(Task.CompletedTask);
-
-        await _identityService.CreateUserAsync(user);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((persistedUser as ITenantUser)?.TenantId, Is.Null);
-            Assert.That((persistedUser as IHasAuditMetadata)?.CreatedAt, Is.EqualTo(default(DateTimeOffset)));
-            Assert.That((persistedUser as IHasAuditMetadata)?.UpdatedAt, Is.Null);
-        }
-
-        ((IHasAuditMetadata)persistedUser!).UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     [Test]
@@ -2360,10 +2217,7 @@ internal sealed class IdentityServiceTests
         return new IdentityService(
             _repositoryMock.Object,
             providerRegistry,
-            credentialService,
-            pipeline,
-            transactionProvider,
-            new IdentityServiceDependencies(securityEventSink, _timeProvider));
+            pipeline);
     }
 
     private Task<Result> LinkCredentialForTestAsync(
@@ -2395,26 +2249,5 @@ internal sealed class IdentityServiceTests
             new CredentialServiceDependencies(TimeProvider: _timeProvider));
 
         return credentialService.LinkCredentialAsync(userId, assertion, provider, credentialValue);
-    }
-
-    private sealed class AuditedUser : ITenantUser, IHasAuditMetadata
-    {
-        public required Guid Id { get; init; }
-        public required string DisplayEmail { get; set; }
-        public string? Name { get; set; }
-        public UserAccountState AccountState { get; set; }
-        public Guid? TenantId { get; set; }
-        public DateTimeOffset? EmailVerifiedAt { get; set; }
-        public DateTimeOffset CreatedAt { get; init; }
-        public DateTimeOffset? UpdatedAt { get; set; }
-    }
-
-    private sealed class BasicUser : IUser
-    {
-        public required Guid Id { get; init; }
-        public required string DisplayEmail { get; init; }
-        public string? Name { get; init; }
-        public UserAccountState AccountState { get; init; } = UserAccountState.Active;
-        public DateTimeOffset? EmailVerifiedAt { get; init; }
     }
 }

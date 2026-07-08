@@ -36,14 +36,6 @@ public interface IIdentityService
     /// <param name="cancellationToken">A token that can cancel provider authentication.</param>
     /// <returns>The authentication response. This does not by itself issue an application session.</returns>
     Task<AuthenticationResponse> LoginAsync(AuthenticationContext context, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Creates a user in the configured user repository.
-    /// </summary>
-    /// <param name="user">The user to create.</param>
-    /// <param name="cancellationToken">A token that can cancel user creation.</param>
-    /// <returns>The created user.</returns>
-    Task<IUser> CreateUserAsync(IUser user, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
