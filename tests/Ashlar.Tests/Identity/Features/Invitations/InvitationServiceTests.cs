@@ -492,7 +492,7 @@ internal sealed class InvitationServiceTests
     }
 
     [Test]
-    public async Task AcceptInvitationWithoutContextTenantUsesInvitationTenant()
+    public async Task AcceptInvitationFailsWhenTenantContextIsMissing()
     {
         var fixture = CreateFixture();
         var tenantId = Guid.NewGuid();
@@ -503,8 +503,10 @@ internal sealed class InvitationServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.True);
-            Assert.That(fixture.UserRepository.Users.Single().TenantId, Is.EqualTo(tenantId));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(fixture.InvitationRepository.Invitations.Single().AcceptedAt, Is.Null);
+            Assert.That(fixture.InvitationRepository.UpdateCount, Is.Zero);
+            Assert.That(fixture.UserRepository.Users, Is.Empty);
         }
     }
 
@@ -878,11 +880,10 @@ internal sealed class InvitationServiceTests
     }
 
     [Test]
-    public async Task GetInvitationAcceptancePreviewReturnsAvailableInvitationEmailAndTenant()
+    public async Task GetInvitationAcceptancePreviewReturnsAvailableGlobalInvitationEmailAndTenant()
     {
         var fixture = CreateFixture();
-        var tenantId = Guid.NewGuid();
-        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "Preview.User@Example.COM", TenantId = tenantId }, new Uri("https://myapp.com/join"));
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "Preview.User@Example.COM" }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
 
         var result = await fixture.Service.GetInvitationAcceptancePreviewAsync(token);
@@ -891,7 +892,7 @@ internal sealed class InvitationServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value?.DisplayEmail, Is.EqualTo("Preview.User@Example.COM"));
-            Assert.That(result.Value?.TenantId, Is.EqualTo(tenantId));
+            Assert.That(result.Value?.TenantId, Is.Null);
         }
     }
 
@@ -949,7 +950,7 @@ internal sealed class InvitationServiceTests
     }
 
     [Test]
-    public async Task GetInvitationAcceptancePreviewWithoutContextTenantUsesInvitationTenant()
+    public async Task GetInvitationAcceptancePreviewFailsWhenTenantContextIsMissing()
     {
         var fixture = CreateFixture();
         var tenantId = Guid.NewGuid();
@@ -958,11 +959,7 @@ internal sealed class InvitationServiceTests
 
         var result = await fixture.Service.GetInvitationAcceptancePreviewAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value?.TenantId, Is.EqualTo(tenantId));
-        }
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
     }
 
     [Test]
@@ -1062,7 +1059,7 @@ internal sealed class InvitationServiceTests
         var contextTenantId = Guid.NewGuid();
         await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = invitationTenantId }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
-        await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token });
+        await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token }, new AuthenticationContext(TenantId: invitationTenantId));
 
         var result = await fixture.Service.GetInvitationAcceptancePreviewAsync(token, new AuthenticationContext(TenantId: contextTenantId));
 
