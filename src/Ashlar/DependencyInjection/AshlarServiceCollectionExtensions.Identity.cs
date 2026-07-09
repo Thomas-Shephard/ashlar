@@ -247,7 +247,7 @@ public static partial class AshlarServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers a security event handler for Ashlar security event fan-out.
+    /// Registers a best-effort post-commit security event handler for Ashlar security event fan-out.
     /// </summary>
     /// <typeparam name="THandler">The handler type.</typeparam>
     /// <param name="services">The service collection to add registrations to.</param>
@@ -264,7 +264,7 @@ public static partial class AshlarServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers a security event handler factory for Ashlar security event fan-out.
+    /// Registers a best-effort post-commit security event handler factory for Ashlar security event fan-out.
     /// </summary>
     /// <typeparam name="THandler">The handler type.</typeparam>
     /// <param name="services">The service collection to add registrations to.</param>
@@ -280,6 +280,23 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<ISecurityEventHandler, THandler>(implementationFactory));
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers a required transaction-bound security event continuation.
+    /// </summary>
+    /// <typeparam name="THandler">The durable handler type.</typeparam>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarDurableSecurityEventFanOutHandler<THandler>(this IServiceCollection services)
+        where THandler : class, IDurableSecurityEventFanOutHandler
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IDurableSecurityEventFanOutHandler, THandler>());
 
         return services;
     }

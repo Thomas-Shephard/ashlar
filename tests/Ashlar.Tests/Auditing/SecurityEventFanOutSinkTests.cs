@@ -5,7 +5,8 @@ namespace Ashlar.Tests.Auditing;
 
 internal sealed class SecurityEventFanOutSinkTests
 {
-    private static readonly string[] PersistentThenHandler = ["persistent", "handler"];
+    private static readonly string[] PersistentThenDurableThenHandler = ["persistent", "durable", "handler"];
+    private static readonly string[] PersistentThenDurable = ["persistent", "durable"];
 
     [Test]
     public async Task RecordAsyncRecordsToPersistentSinkWhenConfigured()
@@ -42,11 +43,51 @@ internal sealed class SecurityEventFanOutSinkTests
         List<string> calls = [];
         var persistentSink = new RecordingPersistentSink(calls, "persistent");
         var handler = new RecordingHandler(calls, "handler");
-        var sink = new SecurityEventFanOutSink(persistentSink, [handler]);
+        var sink = new SecurityEventFanOutSink(persistentSink, [handler], durableHandlers: [new RecordingDurableHandler(calls, "durable")]);
 
         await sink.RecordAsync(CreateEvent());
 
-        Assert.That(calls, Is.EqualTo(PersistentThenHandler));
+        Assert.That(calls, Is.EqualTo(PersistentThenDurableThenHandler));
+    }
+
+    [Test]
+    public void RecordAsyncPropagatesDurableHandlerFailureAndSkipsBestEffortHandlers()
+    {
+        var handler = new RecordingHandler();
+        var expected = new InvalidOperationException("durable failed");
+        var sink = new SecurityEventFanOutSink(
+            new RecordingPersistentSink(),
+            [handler],
+            durableHandlers: [new ThrowingDurableHandler(expected)]);
+
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await sink.RecordAsync(CreateEvent()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception, Is.SameAs(expected));
+            Assert.That(handler.Events, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task RecordAsyncRunsDurableHandlersBeforeDeferredBestEffortHandlers()
+    {
+        await using var transactionProvider = new RecordingTransactionProvider();
+        List<string> calls = [];
+        var sink = new SecurityEventFanOutSink(
+            new RecordingPersistentSink(calls, "persistent"),
+            [new RecordingHandler(calls, "handler")],
+            transactionProvider: transactionProvider,
+            durableHandlers: [new RecordingDurableHandler(calls, "durable")]);
+
+        await using var transaction = await transactionProvider.BeginTransactionAsync();
+        await sink.RecordAsync(CreateEvent());
+
+        Assert.That(calls, Is.EqualTo(PersistentThenDurable));
+
+        await transaction.CommitAsync();
+
+        Assert.That(calls, Is.EqualTo(PersistentThenDurableThenHandler));
     }
 
     [Test]
@@ -103,7 +144,7 @@ internal sealed class SecurityEventFanOutSinkTests
         var sink = new SecurityEventFanOutSink(
             persistentSink,
             [handler],
-            logger,
+            logger: logger,
             transactionProvider: new ThrowingTransactionProvider(expected));
 
         await sink.RecordAsync(securityEvent);
@@ -173,7 +214,7 @@ internal sealed class SecurityEventFanOutSinkTests
         var sink = new SecurityEventFanOutSink(
             new ThrowingPersistentSink(expected),
             [handler],
-            logger);
+            logger: logger);
 
         var exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await sink.RecordAsync(securityEvent));
 
@@ -330,6 +371,28 @@ internal sealed class SecurityEventFanOutSinkTests
             }
 
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingDurableHandler(List<string>? calls = null, string? callName = null) : IDurableSecurityEventFanOutHandler
+    {
+        public Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (callName != null)
+            {
+                calls?.Add(callName);
+            }
+
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingDurableHandler(Exception exception) : IDurableSecurityEventFanOutHandler
+    {
+        public Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            return Task.FromException(exception);
         }
     }
 

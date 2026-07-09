@@ -17,7 +17,7 @@ public enum AshlarSecurityEventWebhookDestinationPolicy
 }
 
 /// <summary>
-/// Configures best-effort webhook delivery for Ashlar security events.
+/// Configures security event webhook endpoints and delivery settings.
 /// </summary>
 public sealed class AshlarSecurityEventWebhookOptions
 {

@@ -20,6 +20,10 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
 
     protected abstract Task<int> CountWebhookOutboxRowsAsync();
 
+    protected abstract Task<int> CountSecurityEventRowsAsync();
+
+    protected abstract Task DropWebhookOutboxTableInCurrentTransactionAsync(IServiceProvider serviceProvider);
+
     protected abstract Task AssertSentAndDiscardedTerminalStateIsRejectedAsync();
 
     [Test]
@@ -179,6 +183,84 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         Assert.That(await CountWebhookOutboxRowsAsync(), Is.EqualTo(1));
     }
 
+    [Test]
+    public async Task SecurityEventFanOutCommitsProtectedMutationAuditAndWebhookOutboxAtomically()
+    {
+        await using var scope = CreateAsyncScope();
+        var transactionProvider = GetTransactionProvider(scope.ServiceProvider)
+            ?? throw new InvalidOperationException("Transaction provider is not registered.");
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var sink = GetSecurityEventSink(scope.ServiceProvider);
+        var user = CreateTransactionalUser();
+        var securityEvent = CreateTransactionalSecurityEvent(user.Id);
+
+        await using (var transaction = await transactionProvider.BeginTransactionAsync())
+        {
+            await userRepository.CreateUserAsync(user);
+            await sink.RecordAsync(securityEvent);
+            await transaction.CommitAsync();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await userRepository.GetUserByIdAsync(user.Id), Is.Not.Null);
+            Assert.That(await CountSecurityEventRowsAsync(), Is.EqualTo(1));
+            Assert.That(await CountWebhookOutboxRowsAsync(), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task SecurityEventFanOutRollsBackProtectedMutationAndAuditWhenWebhookOutboxEnqueueFails()
+    {
+        await using var scope = CreateAsyncScope();
+        var transactionProvider = GetTransactionProvider(scope.ServiceProvider)
+            ?? throw new InvalidOperationException("Transaction provider is not registered.");
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var sink = GetSecurityEventSink(scope.ServiceProvider);
+        var user = CreateTransactionalUser();
+
+        await using (var transaction = await transactionProvider.BeginTransactionAsync())
+        {
+            await DropWebhookOutboxTableInCurrentTransactionAsync(scope.ServiceProvider);
+            await userRepository.CreateUserAsync(user);
+
+            Assert.That(async () => await sink.RecordAsync(CreateTransactionalSecurityEvent(user.Id)), Throws.Exception);
+            await transaction.RollbackAsync();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await userRepository.GetUserByIdAsync(user.Id), Is.Null);
+            Assert.That(await CountSecurityEventRowsAsync(), Is.Zero);
+            Assert.That(await CountWebhookOutboxRowsAsync(), Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task SecurityEventFanOutRollbackBeforeCommitDoesNotEnqueueWebhookOutboxRows()
+    {
+        await using var scope = CreateAsyncScope();
+        var transactionProvider = GetTransactionProvider(scope.ServiceProvider)
+            ?? throw new InvalidOperationException("Transaction provider is not registered.");
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var sink = GetSecurityEventSink(scope.ServiceProvider);
+        var user = CreateTransactionalUser();
+
+        await using (var transaction = await transactionProvider.BeginTransactionAsync())
+        {
+            await userRepository.CreateUserAsync(user);
+            await sink.RecordAsync(CreateTransactionalSecurityEvent(user.Id));
+            await transaction.RollbackAsync();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await userRepository.GetUserByIdAsync(user.Id), Is.Null);
+            Assert.That(await CountSecurityEventRowsAsync(), Is.Zero);
+            Assert.That(await CountWebhookOutboxRowsAsync(), Is.Zero);
+        }
+    }
+
     private async Task SeedWebhookOutboxRowsAsync()
     {
         await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Pending("pending", createdAt: Now.AddMinutes(-5), availableAt: Now.AddMinutes(-5)));
@@ -225,6 +307,29 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
             TimeSpan.FromSeconds(10),
             headers,
             payload);
+    }
+
+    private static AshlarUser CreateTransactionalUser()
+    {
+        return new AshlarUser
+        {
+            Id = Guid.NewGuid(),
+            DisplayEmail = $"{Guid.NewGuid():N}@example.test",
+            Name = "Transactional User",
+            AccountState = UserAccountState.Active
+        };
+    }
+
+    private static AshlarSecurityEvent CreateTransactionalSecurityEvent(Guid userId)
+    {
+        return new AshlarSecurityEvent
+        {
+            Id = Guid.NewGuid(),
+            EventType = "ashlar.transactional.test",
+            OccurredAt = Now,
+            UserId = userId,
+            Outcome = SecurityEventOutcomes.Success
+        };
     }
 
     protected sealed record SeedWebhookOutboxRow(

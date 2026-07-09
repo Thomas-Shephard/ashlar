@@ -147,7 +147,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
     }
 
     [Test]
-    public async Task AddAshlarSecurityEventWebhookOutboxRegistersDurableHandler()
+    public async Task AddAshlarSecurityEventWebhookOutboxRegistersDurableFanOutHandler()
     {
         var enqueuer = new TestWebhookEnqueuer();
         var services = new ServiceCollection();
@@ -163,7 +163,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         });
 
         using var provider = services.BuildServiceProvider();
-        var handler = provider.GetServices<ISecurityEventHandler>().Single();
+        var handler = provider.GetServices<IDurableSecurityEventFanOutHandler>().Single();
 
         await handler.HandleAsync(new AshlarSecurityEvent
         {
@@ -176,6 +176,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(handler, Is.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+            Assert.That(provider.GetServices<ISecurityEventHandler>(), Is.Empty);
             Assert.That(provider.GetRequiredService<AshlarSecurityEventWebhookDeliveryFactory>(), Is.Not.Null);
             Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>(), Is.TypeOf<NoOpAshlarSecurityEventWebhookDeliveryObserver>());
             Assert.That(enqueuer.Deliveries, Has.Count.EqualTo(1));
@@ -200,7 +201,11 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         services.AddAshlarSecurityEventWebhookOutbox();
 
         using var provider = services.BuildServiceProvider();
-        Assert.That(provider.GetServices<ISecurityEventHandler>().Single(), Is.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetServices<IDurableSecurityEventFanOutHandler>().Single(), Is.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+            Assert.That(provider.GetServices<ISecurityEventHandler>(), Is.Empty);
+        }
     }
 
     [Test]
@@ -303,7 +308,8 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.ServiceProvider.GetServices<ISecurityEventHandler>(), Has.Some.TypeOf<AshlarSecurityEventWebhookHandler>());
-            Assert.That(scope.ServiceProvider.GetServices<ISecurityEventHandler>(), Has.Some.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+            Assert.That(scope.ServiceProvider.GetServices<IDurableSecurityEventFanOutHandler>(), Has.Some.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+            Assert.That(scope.ServiceProvider.GetServices<ISecurityEventHandler>(), Has.None.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarOperationsSummaryService>(), Is.TypeOf<AshlarOperationsSummaryService>());
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
         }

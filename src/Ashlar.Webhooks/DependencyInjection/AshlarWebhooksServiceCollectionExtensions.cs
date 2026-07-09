@@ -52,7 +52,7 @@ public static class AshlarWebhooksServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers durable outbox enqueue behavior for Ashlar security event webhooks.
+    /// Registers transaction-bound outbox enqueue behavior for Ashlar security event webhooks.
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="configure">Optional webhook configuration.</param>
@@ -76,7 +76,7 @@ public static class AshlarWebhooksServiceCollectionExtensions
         services.TryAddSingleton<IAshlarSecurityEventWebhookDestinationResolver, DnsAshlarSecurityEventWebhookDestinationResolver>();
         services.TryAddSingleton<AshlarSecurityEventWebhookDestinationValidator>();
         services.TryAddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance);
-        services.AddAshlarSecurityEventHandler<AshlarSecurityEventWebhookOutboxHandler>();
+        services.AddAshlarDurableSecurityEventFanOutHandler<AshlarSecurityEventWebhookOutboxHandler>();
 
         return services;
     }

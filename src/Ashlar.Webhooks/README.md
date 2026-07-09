@@ -1,6 +1,6 @@
 # Ashlar.Webhooks
 
-Best-effort webhook delivery for Ashlar security events.
+Webhook delivery for Ashlar security events.
 
 ## Security Event Webhooks
 
@@ -27,6 +27,26 @@ Receivers should verify signatures with `AshlarSecurityEventWebhookSignature.Ver
 Endpoints can opt into allow-list filtering before delivery. Leave `EventTypes` empty to receive every security event type, or add specific event type strings to receive only those events. Leave `Outcomes` empty to receive both success and failure events, or add outcome strings such as `"success"` or `"failure"` to receive only matching outcomes. Event type and outcome matching are case-insensitive, and both filters must match when both allow-lists are configured.
 
 Webhook requests include `X-Ashlar-Event-Outcome` for the security event outcome. Events without a safe concrete outcome value are skipped by webhook delivery.
+
+## Durable Security Event Webhook Outbox
+
+Register durable security event webhook outbox enqueue with the shared endpoint options and a provider-backed outbox:
+
+```csharp
+services.AddAshlarSecurityEventWebhookOutbox(options =>
+{
+    options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions
+    {
+        Name = "audit",
+        Uri = new Uri("https://webhooks.example.com/ashlar/security-events"),
+        SharedSecret = builder.Configuration["Ashlar:Webhooks:AuditSecret"]
+    });
+});
+services.AddAshlarPostgresSecurityEventWebhookOutbox();
+// or: services.AddAshlarSqliteSecurityEventWebhookOutbox();
+```
+
+Outbox enqueue runs inside the protected Ashlar transaction when one is active. Enqueue failures fail the protected operation, and rollback abandons the protected mutation, audit record, and webhook outbox row together.
 
 ## Testing A Configured Endpoint
 
