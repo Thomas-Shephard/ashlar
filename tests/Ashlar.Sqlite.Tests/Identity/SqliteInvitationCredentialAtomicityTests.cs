@@ -24,6 +24,35 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
     }
 
     [Test]
+    public async Task TenantInvitationWithoutContextShouldBeRejectedWithoutMutation()
+    {
+        const string token = "known-tenant-invitation-token";
+        const string inviteeEmail = "tenant-invitee@example.com";
+        var tenantId = Guid.NewGuid();
+
+        _database = await SqliteContractDatabase.CreateAsync(ConfigureServices);
+        await using var scope = _database.ServiceProvider.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        await SeedInvitationAsync(services, token, inviteeEmail, tenantId);
+
+        var invitations = services.GetRequiredService<IInvitationService>();
+        var preview = await invitations.GetInvitationAcceptancePreviewAsync(token);
+        var acceptance = await invitations.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token });
+
+        var tokenHash = services.GetRequiredService<ISecureTokenHasher>().HashToken(token);
+        var storedInvitation = await services.GetRequiredService<IInvitationRepository>().GetInvitationByTokenHashAsync(tokenHash);
+        var storedUser = await services.GetRequiredService<IUserRepository>().GetUserByEmailAsync(inviteeEmail, tenantId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preview.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(acceptance.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(storedInvitation?.AcceptedAt, Is.Null);
+            Assert.That(storedUser, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task OuterTransactionShouldRollBackInvitationAcceptanceAndNewUserWhenOidcCredentialIsLinkedToAnotherUser()
     {
         const string token = "known-invitation-token";
@@ -106,12 +135,13 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
         services.Replace(ServiceDescriptor.Singleton<IEmailSender, NullEmailSender>());
     }
 
-    private static async Task SeedInvitationAsync(IServiceProvider services, string token, string email)
+    private static async Task SeedInvitationAsync(IServiceProvider services, string token, string email, Guid? tenantId = null)
     {
         await services.GetRequiredService<IInvitationRepository>().CreateInvitationAsync(new UserInvitation
         {
             Id = Guid.NewGuid(),
             DisplayEmail = email,
+            TenantId = tenantId,
             TokenHash = services.GetRequiredService<ISecureTokenHasher>().HashToken(token),
             CreatedAt = Now,
             UpdatedAt = Now,

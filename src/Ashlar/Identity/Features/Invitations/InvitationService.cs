@@ -131,7 +131,7 @@ internal sealed class InvitationService(
     /// Accepts an invitation by raw token and creates or attaches the user.
     /// </summary>
     /// <param name="request">Raw invitation token and acceptance details. Do not log or persist the token.</param>
-    /// <param name="context">Authentication context used for audit and rate limiting.</param>
+    /// <param name="context">Authentication context used for tenant scope, audit, and rate limiting. Tenant-owned invitations require a matching tenant context; a missing tenant is global-only.</param>
     /// <param name="cancellationToken">A token that can cancel invitation acceptance.</param>
     /// <returns>The accepted or created user identifier, or a failure status.</returns>
     public async Task<Result<InvitationAcceptanceResult>> AcceptInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
@@ -287,7 +287,7 @@ internal sealed class InvitationService(
 
     private static bool HasTenantContextMismatch(Guid? contextTenantId, UserInvitation invitation)
     {
-        return contextTenantId is Guid tenantId && invitation.TenantId != tenantId;
+        return invitation.TenantId != contextTenantId;
     }
 
     private async Task<bool> CheckInvitationRateLimitAsync(string operation, RateLimitRule rule, AuthenticationContext? context, CancellationToken cancellationToken)
