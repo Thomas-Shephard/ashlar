@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Ashlar.ProviderContractTests.Webhooks;
 
@@ -210,6 +211,22 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
     }
 
     [Test]
+    public async Task SecurityEventFanOutCommitsAuditAndWebhookOutboxAtomicallyWithoutAmbientTransaction()
+    {
+        await using var scope = CreateAsyncScope();
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
+        var sink = GetSecurityEventSink(scope.ServiceProvider);
+
+        await sink.RecordAsync(CreateTransactionalSecurityEvent(user.Id));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await CountSecurityEventRowsAsync(), Is.EqualTo(1));
+            Assert.That(await CountWebhookOutboxRowsAsync(), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task SecurityEventFanOutRollsBackProtectedMutationAndAuditWhenWebhookOutboxEnqueueFails()
     {
         await using var scope = CreateAsyncScope();
@@ -231,6 +248,31 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         using (Assert.EnterMultipleScope())
         {
             Assert.That(await userRepository.GetUserByIdAsync(user.Id), Is.Null);
+            Assert.That(await CountSecurityEventRowsAsync(), Is.Zero);
+            Assert.That(await CountWebhookOutboxRowsAsync(), Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task SecurityEventFanOutRollsBackAuditAndWebhookOutboxWhenDurableFanOutFailsWithoutAmbientTransaction()
+    {
+        await using var scope = CreateAsyncScope();
+        var transactionProvider = GetTransactionProvider(scope.ServiceProvider)
+            ?? throw new InvalidOperationException("Transaction provider is not registered.");
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
+        var sink = new SecurityEventFanOutSink(
+            GetPersistentSecurityEventSink(scope.ServiceProvider),
+            transactionProvider: transactionProvider,
+            durableHandlers: scope.ServiceProvider
+                .GetServices<IDurableSecurityEventFanOutHandler>()
+                .Append(new ThrowingDurableSecurityEventFanOutHandler()));
+
+        Assert.That(
+            async () => await sink.RecordAsync(CreateTransactionalSecurityEvent(user.Id)),
+            Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("durable fan-out failed"));
+
+        using (Assert.EnterMultipleScope())
+        {
             Assert.That(await CountSecurityEventRowsAsync(), Is.Zero);
             Assert.That(await CountWebhookOutboxRowsAsync(), Is.Zero);
         }
@@ -330,6 +372,14 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
             UserId = userId,
             Outcome = SecurityEventOutcomes.Success
         };
+    }
+
+    private sealed class ThrowingDurableSecurityEventFanOutHandler : IDurableSecurityEventFanOutHandler
+    {
+        public Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException("durable fan-out failed");
+        }
     }
 
     protected sealed record SeedWebhookOutboxRow(
