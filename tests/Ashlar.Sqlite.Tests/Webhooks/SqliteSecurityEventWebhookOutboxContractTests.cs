@@ -1,4 +1,5 @@
 using System.Globalization;
+using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 
@@ -13,6 +14,16 @@ internal sealed class SqliteSecurityEventWebhookOutboxContractTests : SecurityEv
         _database = await SqliteContractDatabase.CreateAsync(services =>
         {
             services.AddSingleton<TimeProvider>(new FakeTimeProvider(Now));
+            services.AddAshlarSqliteAuditSink();
+            services.AddAshlarSecurityEventWebhookOutbox(options =>
+            {
+                options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions
+                {
+                    Name = "audit",
+                    Uri = new Uri("https://example.test/security-events"),
+                    SharedSecret = "shared-secret"
+                });
+            });
             services.AddAshlarSqliteSecurityEventWebhookOutbox();
         });
         return _database.ServiceProvider;
@@ -87,6 +98,25 @@ internal sealed class SqliteSecurityEventWebhookOutboxContractTests : SecurityEv
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT count(*) FROM ashlar_security_event_webhook_outbox;";
         return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
+    }
+
+    protected override async Task<int> CountSecurityEventRowsAsync()
+    {
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection(_database!.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT count(*) FROM ashlar_security_events;";
+        return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
+    }
+
+    protected override async Task DropWebhookOutboxTableInCurrentTransactionAsync(IServiceProvider serviceProvider)
+    {
+        var connectionProvider = serviceProvider.GetRequiredService<ISqliteConnectionProvider>();
+        await using var connectionHandle = await connectionProvider.GetConnectionAsync(CancellationToken.None);
+        await using var command = connectionHandle.Connection.CreateCommand();
+        command.Transaction = connectionHandle.Transaction;
+        command.CommandText = "DROP TABLE ashlar_security_event_webhook_outbox;";
+        await command.ExecuteNonQueryAsync();
     }
 
     protected override async Task AssertSentAndDiscardedTerminalStateIsRejectedAsync()

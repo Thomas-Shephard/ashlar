@@ -13,6 +13,16 @@ internal sealed class PostgresSecurityEventWebhookOutboxContractTests : Security
         _database = await PostgresContractDatabase.CreateInitializedServiceProviderAsync(services =>
         {
             services.AddSingleton<TimeProvider>(new FakeTimeProvider(Now));
+            services.AddAshlarPostgresAuditSink();
+            services.AddAshlarSecurityEventWebhookOutbox(options =>
+            {
+                options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions
+                {
+                    Name = "audit",
+                    Uri = new Uri("https://example.test/security-events"),
+                    SharedSecret = "shared-secret"
+                });
+            });
             services.AddAshlarPostgresSecurityEventWebhookOutbox();
         });
         return _database.ServiceProvider;
@@ -84,6 +94,22 @@ internal sealed class PostgresSecurityEventWebhookOutboxContractTests : Security
         await using var connection = new Npgsql.NpgsqlConnection(_database!.ConnectionString);
         await connection.OpenAsync();
         return await connection.ExecuteScalarAsync<int>("SELECT count(*) FROM ashlar_security_event_webhook_outbox;");
+    }
+
+    protected override async Task<int> CountSecurityEventRowsAsync()
+    {
+        await using var connection = new Npgsql.NpgsqlConnection(_database!.ConnectionString);
+        await connection.OpenAsync();
+        return await connection.ExecuteScalarAsync<int>("SELECT count(*) FROM ashlar_security_events;");
+    }
+
+    protected override async Task DropWebhookOutboxTableInCurrentTransactionAsync(IServiceProvider serviceProvider)
+    {
+        var connectionProvider = serviceProvider.GetRequiredService<IPostgresConnectionProvider>();
+        await using var connectionHandle = await connectionProvider.GetConnectionAsync(CancellationToken.None);
+        await connectionHandle.Connection.ExecuteAsync(new CommandDefinition(
+            "DROP TABLE ashlar_security_event_webhook_outbox;",
+            transaction: connectionHandle.Transaction));
     }
 
     protected override async Task AssertSentAndDiscardedTerminalStateIsRejectedAsync()

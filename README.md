@@ -1430,7 +1430,7 @@ services.AddAshlarPostgresAuditSink();
 
 Audit event payloads include stable event types, timestamps, target user/session ids when known, tenant id, actor user id, provider identity, IP address, user agent, correlation id, outcome, failure reason, and string properties. Audit events must not contain raw session tokens, passwords, one-time codes, credential values, protected payloads, password hashes, recovery codes, or other secrets.
 
-Application handlers such as webhooks and metrics run through the fan-out sink after durable persistence and remain best-effort. Handler failures are logged and do not make persisted audit writes fail.
+Best-effort handlers such as direct webhooks and metrics run through the fan-out sink after durable persistence. Handler failures are logged and do not make persisted audit writes fail. Security event webhook outbox enqueue is transaction-bound: enqueue runs before commit and rolls back with the protected mutation and audit record.
 
 The **Ashlar.Postgres** and **Ashlar.Sqlite** packages include provider-backed persistent audit sinks.
 

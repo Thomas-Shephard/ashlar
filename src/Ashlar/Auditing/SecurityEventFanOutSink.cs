@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Ashlar.Auditing;
 
 /// <summary>
-/// Records security events to durable storage and notifies registered best-effort application handlers.
+/// Records security events to durable storage, runs required durable continuations, and notifies best-effort handlers.
 /// </summary>
 public sealed class SecurityEventFanOutSink : ISecurityEventSink
 {
@@ -21,6 +21,7 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
             "Security event fan-out scheduling failed. EventType={EventType} UserId={UserId} SessionId={SessionId} ProviderType={ProviderType} ProviderName={ProviderName}");
 
     private readonly IPersistentSecurityEventSink? _persistentSink;
+    private readonly IDurableSecurityEventFanOutHandler[] _durableHandlers;
     private readonly ISecurityEventHandler[] _handlers;
     private readonly IAshlarTransactionProvider? _transactionProvider;
     private readonly ILogger<SecurityEventFanOutSink> _logger;
@@ -32,13 +33,16 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
     /// <param name="handlers">The registered security event handlers.</param>
     /// <param name="logger">Logger used when persistence or handler delivery fails.</param>
     /// <param name="transactionProvider">Optional transaction provider used to run best-effort handlers after commit.</param>
+    /// <param name="durableHandlers">Required transaction-bound security event continuations.</param>
     public SecurityEventFanOutSink(
         IPersistentSecurityEventSink? persistentSink = null,
         IEnumerable<ISecurityEventHandler>? handlers = null,
         ILogger<SecurityEventFanOutSink>? logger = null,
-        IAshlarTransactionProvider? transactionProvider = null)
+        IAshlarTransactionProvider? transactionProvider = null,
+        IEnumerable<IDurableSecurityEventFanOutHandler>? durableHandlers = null)
     {
         _persistentSink = persistentSink;
+        _durableHandlers = durableHandlers?.ToArray() ?? [];
         _handlers = handlers?.ToArray() ?? [];
         _transactionProvider = transactionProvider;
         _logger = logger ?? NullLogger<SecurityEventFanOutSink>.Instance;
@@ -53,6 +57,12 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
         if (_persistentSink is not null)
         {
             await _persistentSink.RecordAsync(securityEvent, cancellationToken).ConfigureAwait(false);
+        }
+
+        foreach (var durableHandler in _durableHandlers)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await durableHandler.HandleAsync(securityEvent, cancellationToken).ConfigureAwait(false);
         }
 
         if (_handlers.Length == 0)

@@ -3,17 +3,17 @@ using System.Diagnostics.CodeAnalysis;
 namespace Ashlar.Auditing;
 
 /// <summary>
-/// Observes Ashlar security events for application reactions.
+/// Observes Ashlar security events after durable work has committed.
 /// </summary>
 /// <remarks>
-/// Handlers receive already-created security event instances. They must not mutate the event object and are not
-/// durable audit storage.
+/// Handlers are best-effort post-commit callbacks. Their failures are logged and do not roll back the protected
+/// operation, the audit record, or transaction-bound continuations such as webhook outbox enqueue.
 /// </remarks>
 [SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "This is an application security event handler abstraction, not a .NET event delegate.")]
 public interface ISecurityEventHandler
 {
     /// <summary>
-    /// Handles a security event.
+    /// Handles a committed security event.
     /// </summary>
     /// <param name="securityEvent">The provider-neutral security event to observe.</param>
     /// <param name="cancellationToken">A token that can cancel event handling.</param>

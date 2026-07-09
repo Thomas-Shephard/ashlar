@@ -3,15 +3,15 @@ using Ashlar.Auditing;
 namespace Ashlar.Webhooks.SecurityEvents;
 
 /// <summary>
-/// Enqueues prepared Ashlar security event webhook deliveries for durable dispatch.
+/// Enqueues prepared Ashlar security event webhook deliveries inside the protected transaction.
 /// </summary>
-public sealed class AshlarSecurityEventWebhookOutboxHandler : ISecurityEventHandler
+public sealed class AshlarSecurityEventWebhookOutboxHandler : IDurableSecurityEventFanOutHandler
 {
     private readonly AshlarSecurityEventWebhookDeliveryFactory _deliveryFactory;
     private readonly IAshlarSecurityEventWebhookEnqueuer _enqueuer;
 
     /// <summary>
-    /// Initializes a new instance of the durable webhook handler class.
+    /// Initializes a new instance of the transaction-bound webhook outbox handler class.
     /// </summary>
     /// <param name="deliveryFactory">The delivery factory.</param>
     /// <param name="enqueuer">The durable enqueuer.</param>
@@ -31,7 +31,7 @@ public sealed class AshlarSecurityEventWebhookOutboxHandler : ISecurityEventHand
     /// </summary>
     /// <param name="securityEvent">The security event value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>A task representing durable enqueue.</returns>
+    /// <returns>A task representing transaction-bound durable enqueue.</returns>
     public async Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(securityEvent);

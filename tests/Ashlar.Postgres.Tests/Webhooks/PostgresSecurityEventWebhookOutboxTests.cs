@@ -830,7 +830,8 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
-            Assert.That(scope.ServiceProvider.GetServices<ISecurityEventHandler>().Single(), Is.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+            Assert.That(scope.ServiceProvider.GetServices<IDurableSecurityEventFanOutHandler>().Single(), Is.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+            Assert.That(scope.ServiceProvider.GetServices<ISecurityEventHandler>(), Is.Empty);
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>(), Is.TypeOf<PostgresSecurityEventWebhookEnqueuer>());
         }
     }
