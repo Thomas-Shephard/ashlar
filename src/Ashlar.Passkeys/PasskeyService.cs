@@ -12,6 +12,29 @@ namespace Ashlar.Passkeys;
 
 internal sealed class PasskeyService : IPasskeyService
 {
+    private sealed record AuthenticationCapability(string CredentialId, long SignCount, bool UserVerified, AuthenticationProviderKey ProviderKey) : ICredentialKeyAuthenticationAssertion, IUserVerifiedAuthenticationAssertion
+    {
+        public AuthenticationProviderKey ProviderIdentity => ProviderKey;
+        public string CredentialKey => CredentialId;
+    }
+
+    internal static bool TryReadCapability(IAuthenticationAssertion assertion, AuthenticationProviderKey providerKey, out string credentialId, out long signCount)
+    {
+        if (assertion is AuthenticationCapability verified && verified.ProviderKey == providerKey)
+        {
+            credentialId = verified.CredentialId;
+            signCount = verified.SignCount;
+            return true;
+        }
+
+        credentialId = string.Empty;
+        signCount = 0;
+        return false;
+    }
+
+    private AuthenticationCapability CreateCapability(SucceededPasskeyAssertion ceremony) =>
+        new(ceremony.Verified.CredentialId, ceremony.Verified.SignCount, ceremony.Verified.UserVerified, _options.ProviderKey);
+
     private const string RegistrationPurpose = "passkey-registration";
     private const string ManagementPurpose = "passkey-management";
     private const string AuthenticationPurpose = "passkey-authentication";
@@ -307,7 +330,7 @@ internal sealed class PasskeyService : IPasskeyService
 
         try
         {
-            var response = await _authenticationOrchestrator.AuthenticateAsync(ToAuthenticationContext(request.Audit) with { TenantId = request.TenantId, UserId = succeededCeremony.User.Id }, succeededCeremony.ToAssertion(_options.ProviderKey), cancellationToken: cancellationToken);
+            var response = await _authenticationOrchestrator.AuthenticateAsync(ToAuthenticationContext(request.Audit) with { TenantId = request.TenantId, UserId = succeededCeremony.User.Id }, CreateCapability(succeededCeremony), cancellationToken: cancellationToken);
             var succeeded = response.Status == MfaAuthenticationStatus.Succeeded;
             var mfaRequired = response.Status == MfaAuthenticationStatus.MfaRequired;
             var failureCode = succeeded || mfaRequired ? (AshlarFailureCode?)null : AshlarFailureCodes.PasskeyValidationFailed;
@@ -457,7 +480,7 @@ internal sealed class PasskeyService : IPasskeyService
                 request.HandshakeToken,
                 factorType,
                 ToAuthenticationContext(request.Audit) with { TenantId = request.TenantId, UserId = succeededCeremony.User.Id },
-                succeededCeremony.ToAssertion(_options.ProviderKey),
+                CreateCapability(succeededCeremony),
                 cancellationToken);
 
             var succeeded = response.Status == MfaAuthenticationStatus.Succeeded;
@@ -986,13 +1009,7 @@ internal sealed record FailedPasskeyAssertion(PasskeyAuthenticationResult Failur
 internal sealed record SucceededPasskeyAssertion(
     IUser User,
     UserCredential Credential,
-    PasskeyAuthenticationVerificationResult Verified) : IPasskeyAssertionCompletion
-{
-    public PasskeyAssertion ToAssertion(AuthenticationProviderKey providerKey)
-    {
-        return new PasskeyAssertion(Verified.CredentialId, Verified.SignCount, Verified.UserVerified, providerKey);
-    }
-}
+    PasskeyAuthenticationVerificationResult Verified) : IPasskeyAssertionCompletion;
 
 internal sealed record RegistrationProofValidationRequest(
     Guid UserId,
