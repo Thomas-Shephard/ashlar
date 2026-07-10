@@ -158,10 +158,27 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         var start = Stopwatch.GetTimestamp();
         try
         {
+            var endpoint = context.WebhookOptions.Endpoints.FirstOrDefault(candidate =>
+                string.Equals(candidate.Name, entry.EndpointName, StringComparison.Ordinal));
+            if (endpoint is null)
+            {
+                throw new InvalidOperationException($"Ashlar security event webhook endpoint configuration for '{entry.EndpointName}' is unavailable.");
+            }
+
+            if (!endpoint.Enabled)
+            {
+                throw new TerminalEndpointConfigurationException();
+            }
+
+            var uri = new Uri(entry.Uri, UriKind.Absolute);
+            if (endpoint.Uri is null || !endpoint.Uri.Equals(uri))
+            {
+                throw new TerminalEndpointConfigurationException();
+            }
+
             var headers = DeserializeHeaders(entry.Headers);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromMilliseconds(entry.TimeoutMs));
-            var uri = new Uri(entry.Uri, UriKind.Absolute);
             var destinationValidation = await context.DestinationValidator.ValidateAsync(uri, timeout.Token).ConfigureAwait(false);
             if (!destinationValidation.IsValid)
             {
@@ -171,7 +188,7 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
                 return;
             }
 
-            headers = RegenerateSigningHeaders(entry, context, headers, uri);
+            headers = RegenerateSigningHeaders(entry, context, endpoint, headers, uri);
             using var request = MapToHttpRequest(entry, headers);
             var client = context.HttpClientFactory.CreateClient(context.HttpClientName);
             using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
@@ -231,16 +248,10 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
     private static Dictionary<string, string> RegenerateSigningHeaders(
         AshlarSecurityEventWebhookOutboxEntry entry,
         AshlarSecurityEventWebhookOutboxDispatchContext context,
+        AshlarSecurityEventWebhookEndpointOptions endpoint,
         Dictionary<string, string>? persistedHeaders,
         Uri uri)
     {
-        var endpoint = context.WebhookOptions.Endpoints.FirstOrDefault(candidate =>
-            string.Equals(candidate.Name, entry.EndpointName, StringComparison.Ordinal));
-        if (endpoint is null)
-        {
-            throw new InvalidOperationException($"Ashlar security event webhook endpoint configuration for '{entry.EndpointName}' is unavailable.");
-        }
-
         var headers = persistedHeaders is null
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : CreateCaseInsensitiveHeaders(persistedHeaders);
@@ -304,7 +315,7 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         Exception exception)
     {
         var attemptCount = entry.AttemptCount + 1;
-        context.LogDeliveryFailed(entry.Id, attemptCount, attemptCount >= context.MaxAttempts, exception);
+        context.LogDeliveryFailed(entry.Id, attemptCount, exception is TerminalEndpointConfigurationException || attemptCount >= context.MaxAttempts, exception);
         await context.MarkAsFailedAsync(entry, exception, CancellationToken.None).ConfigureAwait(false);
     }
 
@@ -373,7 +384,7 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         ArgumentNullException.ThrowIfNull(exception);
 
         var nextAttemptCount = attemptCount + 1;
-        var isFinalFailure = nextAttemptCount >= maxAttempts;
+        var isFinalFailure = exception is TerminalEndpointConfigurationException || nextAttemptCount >= maxAttempts;
         var backoffMultiplier = Math.Pow(2, nextAttemptCount - 1);
         var maxDelayTicks = TimeSpan.FromDays(7).Ticks;
         var delayTicks = Math.Min(initialRetryDelay.Ticks * backoffMultiplier, maxDelayTicks);
@@ -385,6 +396,9 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
             isFinalFailure ? now : now.AddTicks((long)delayTicks),
             lastError);
     }
+
+    private sealed class TerminalEndpointConfigurationException()
+        : InvalidOperationException("The queued webhook endpoint is disabled or its destination has changed.");
 }
 
 /// <summary>

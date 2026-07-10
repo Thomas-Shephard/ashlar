@@ -1819,6 +1819,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     {
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
         var failed = new List<Exception>();
+        var endpoint = CreateEndpoint();
+        endpoint.Uri = new Uri("https://127.0.0.1/security-events");
         var context = new AshlarSecurityEventWebhookOutboxDispatchContext(
             new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
             AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
@@ -1831,7 +1833,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             },
             (_, _, _, _) => { },
             CreateDestinationValidator(),
-            CreateOptions(CreateEndpoint()),
+            CreateOptions(endpoint),
             TimeProvider.System);
 
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
@@ -1991,6 +1993,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
         var sent = new List<Guid>();
         var endpoint = CreateEndpoint();
+        endpoint.Uri = new Uri("https://EXAMPLE.test:443/security-events");
         endpoint.SharedSecret = "current-secret";
         var context = new AshlarSecurityEventWebhookOutboxDispatchContext(
             new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
@@ -2041,6 +2044,52 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
                     TimestampTolerance = TimeSpan.FromMinutes(10),
                     ReplayStore = new RecordingReplayStore()
                 }).IsValid, Is.True);
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task SharedOutboxDispatchTerminallyDiscardsDisabledOrRetargetedEndpoint(bool disabled)
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var endpoint = CreateEndpoint();
+        endpoint.Enabled = !disabled;
+        if (!disabled)
+        {
+            endpoint.Uri = new Uri("https://example.test/retargeted");
+        }
+
+        AshlarSecurityEventWebhookOutboxFailureUpdate? failure = null;
+        bool? loggedAsFinal = null;
+        var now = DateTimeOffset.UtcNow;
+        var context = new AshlarSecurityEventWebhookOutboxDispatchContext(
+            new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
+            AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
+            3,
+            (_, _) => Task.FromResult(true),
+            (entry, exception, _) =>
+            {
+                failure = AshlarSecurityEventWebhookOutboxDispatch.CreateFailureUpdate(
+                    entry.AttemptCount, 3, TimeSpan.FromMinutes(1), now, exception);
+                return Task.CompletedTask;
+            },
+            (_, _, finalFailure, _) => loggedAsFinal = finalFailure,
+            CreateDestinationValidator(),
+            CreateOptions(endpoint),
+            TimeProvider.System);
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
+            CreateOutboxEntry(headers: disabled ? "{" : null, uri: disabled ? "not a uri" : null),
+            context,
+            CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Is.Empty);
+            Assert.That(loggedAsFinal, Is.True);
+            Assert.That(failure?.FailedAt, Is.EqualTo(now));
+            Assert.That(failure?.AvailableAt, Is.EqualTo(now));
+            Assert.That(failure?.AttemptCount, Is.EqualTo(1));
         }
     }
 
