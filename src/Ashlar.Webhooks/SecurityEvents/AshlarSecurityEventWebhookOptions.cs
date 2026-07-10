@@ -52,6 +52,7 @@ public sealed class AshlarSecurityEventWebhookOptions
         return options is not null
             && options.Timeout > TimeSpan.Zero
             && Enum.IsDefined(options.DestinationPolicy)
-            && options.Endpoints.All(endpoint => AshlarSecurityEventWebhookEndpointOptions.Validate(endpoint, options.DestinationPolicy));
+            && options.Endpoints.All(endpoint => AshlarSecurityEventWebhookEndpointOptions.Validate(endpoint, options.DestinationPolicy))
+            && options.Endpoints.Select(endpoint => endpoint.Name).Distinct(StringComparer.Ordinal).Count() == options.Endpoints.Count;
     }
 }
