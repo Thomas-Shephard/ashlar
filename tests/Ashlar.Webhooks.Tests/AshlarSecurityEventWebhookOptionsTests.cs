@@ -60,6 +60,24 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
     }
 
     [Test]
+    public void ValidateRejectsDuplicateEndpointNames()
+    {
+        var options = CreateOptions(CreateValidEndpoint("audit"));
+        options.Endpoints.Add(CreateValidEndpoint("audit"));
+
+        Assert.That(AshlarSecurityEventWebhookOptions.Validate(options), Is.False);
+    }
+
+    [Test]
+    public void ValidateComparesEndpointNamesOrdinally()
+    {
+        var options = CreateOptions(CreateValidEndpoint("audit"));
+        options.Endpoints.Add(CreateValidEndpoint("Audit"));
+
+        Assert.That(AshlarSecurityEventWebhookOptions.Validate(options), Is.True);
+    }
+
+    [Test]
     public void EndpointDefaultsAreSafe()
     {
         var endpoint = new AshlarSecurityEventWebhookEndpointOptions();
@@ -132,4 +150,11 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
         options.Endpoints.Add(endpoint!);
         return options;
     }
+
+    private static AshlarSecurityEventWebhookEndpointOptions CreateValidEndpoint(string name) => new()
+    {
+        Name = name,
+        Uri = new Uri("https://example.test/security-events"),
+        SharedSecret = "shared-secret"
+    };
 }
