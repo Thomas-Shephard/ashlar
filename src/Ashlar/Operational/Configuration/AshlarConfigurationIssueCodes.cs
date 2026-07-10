@@ -126,6 +126,11 @@ public static class AshlarConfigurationIssueCodes
     public const string PermissiveAccountSecurityGuard = "ASHLAR-CONFIG-PERMISSIVE-ACCOUNT-SECURITY-GUARD";
 
     /// <summary>
+    /// Account-security administration is registered without a required host authorizer.
+    /// </summary>
+    public const string AccountSecurityOperationAuthorizerMissing = "ASHLAR-CONFIG-ACCOUNT-SECURITY-AUTHORIZER-MISSING";
+
+    /// <summary>
     /// MFA orchestration is configured with Ashlar's explicit no-MFA policy.
     /// </summary>
     public const string PermissiveMfaPolicy = "ASHLAR-CONFIG-PERMISSIVE-MFA-POLICY";

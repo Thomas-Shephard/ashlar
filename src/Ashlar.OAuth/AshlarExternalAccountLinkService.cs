@@ -22,27 +22,23 @@ public sealed class AshlarExternalAccountLinkService
     private const string UnlinkPurpose = "external-account-unlinking";
 
     private readonly IExternalAccountCredentialLinker _credentialLinker;
-    private readonly IAccountSecurityService _accountSecurityService;
+    private readonly IAccountSecurityAdministrationService _accountSecurityAdministration;
     private readonly IUserRepository _repository;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _options;
+    private readonly TimeProvider _timeProvider;
 
-    /// <summary>
-    /// Initializes a new instance of the external account link service.
-    /// </summary>
-    /// <param name="credentialLinker">The Ashlar external account credential linker.</param>
-    /// <param name="accountSecurityService">The Ashlar account security service.</param>
-    /// <param name="repository">The repository used to load the current Ashlar user.</param>
-    /// <param name="options">The OAuth options monitor.</param>
     internal AshlarExternalAccountLinkService(
         IExternalAccountCredentialLinker credentialLinker,
-        IAccountSecurityService accountSecurityService,
+        IAccountSecurityAdministrationService accountSecurityAdministration,
         IUserRepository repository,
-        IOptionsMonitor<AshlarOAuthOptions> options)
+        IOptionsMonitor<AshlarOAuthOptions> options,
+        TimeProvider timeProvider)
     {
         _credentialLinker = credentialLinker ?? throw new ArgumentNullException(nameof(credentialLinker));
-        _accountSecurityService = accountSecurityService ?? throw new ArgumentNullException(nameof(accountSecurityService));
+        _accountSecurityAdministration = accountSecurityAdministration ?? throw new ArgumentNullException(nameof(accountSecurityAdministration));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     }
 
     /// <summary>
@@ -160,13 +156,13 @@ public sealed class AshlarExternalAccountLinkService
             cancellationToken);
     }
 
-    private static AshlarFailureCode? ValidateFreshLinkProof(
+    private AshlarFailureCode? ValidateFreshLinkProof(
         Guid currentUserId,
         FreshMfaVerificationProof? freshMfaProof,
         Guid? currentSessionId,
         TenantContext tenant)
     {
-        return FreshVerificationProofValidator.ValidateMfaProof(currentUserId, tenant, freshMfaProof, currentSessionId, TimeProvider.System.GetUtcNow(), LinkPurpose);
+        return FreshVerificationProofValidator.ValidateMfaProof(currentUserId, tenant, freshMfaProof, currentSessionId, _timeProvider.GetUtcNow(), LinkPurpose);
     }
 
     private async Task<AshlarExternalAccountLinkResult> LinkValidatedExternalAccountCoreAsync(
@@ -247,18 +243,22 @@ public sealed class AshlarExternalAccountLinkService
         string providerName,
         FreshMfaVerificationProof? freshMfaProof,
         Guid? currentSessionId,
-        AccountSecurityOperationRequest request,
+        AshlarExternalAccountUnlinkRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        request.ThrowIfInvalidScope();
 
-        if (currentUserId == Guid.Empty || request.IncludeAllTenants || request.Tenant == null)
+        if (currentUserId == Guid.Empty)
         {
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
         }
 
-        if (FreshVerificationProofValidator.ValidateMfaProof(currentUserId, request.Tenant, freshMfaProof, currentSessionId, TimeProvider.System.GetUtcNow(), UnlinkPurpose) != null)
+        if (!request.Audit.ActorUserId.Equals(currentUserId))
+        {
+            return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
+        }
+
+        if (FreshVerificationProofValidator.ValidateMfaProof(currentUserId, request.Tenant, freshMfaProof, currentSessionId, _timeProvider.GetUtcNow(), UnlinkPurpose) != null)
         {
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
         }
@@ -269,40 +269,10 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.UnsupportedProvider);
         }
 
-        var user = await _repository.GetUserByIdAsync(currentUserId, cancellationToken);
-        if (user == null)
-        {
-            return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.UserNotFound);
-        }
-
-        if (!IsInRequestedTenant(user, request.Tenant))
-        {
-            return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.TenantMismatch);
-        }
-
         var provider = new AuthenticationProviderKey(providerOptions.Type, providerOptions.ProviderName);
-        var postureResult = await _accountSecurityService.GetUserSecurityPostureAsync(
-            currentUserId,
-            new AccountSecurityPostureRequest(request.Tenant),
-            cancellationToken);
-        if (!postureResult.Succeeded || postureResult.Value == null)
-        {
-            return new AshlarExternalAccountUnlinkResult(MapPostureFailure(postureResult));
-        }
-
-        var linkedCredentialCount = postureResult.Value.CredentialInventory.Count(item =>
-            item.Provider == provider && item.IsAvailable);
-        if (linkedCredentialCount == 0)
-        {
-            return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.NotLinked);
-        }
-
-        if (!HasUsablePrimarySignInMethodAfterUnlink(postureResult.Value, provider))
-        {
-            return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.WouldRemoveLastSignInMethod);
-        }
-
-        var revokeResult = await _accountSecurityService.RevokeCredentialsAsync(currentUserId, provider, request, cancellationToken);
+        var actor = new AccountSecurityActorContext(currentUserId, request.Tenant, currentSessionId!.Value, freshMfaProof!, request.Audit);
+        var revokeResult = await _accountSecurityAdministration.RevokeCredentialsAsync(new RevokeAccountCredentialsRequest(
+            currentUserId, provider, actor, request.Tenant, reason: request.Reason, preservePrimarySignInMethod: true), cancellationToken);
         if (!revokeResult.Succeeded)
         {
             return new AshlarExternalAccountUnlinkResult(MapRevokeFailure(revokeResult), revokeResult);
@@ -330,26 +300,15 @@ public sealed class AshlarExternalAccountLinkService
         };
     }
 
-    private static bool HasUsablePrimarySignInMethodAfterUnlink(AccountSecurityPosture posture, AuthenticationProviderKey provider)
-    {
-        return posture.PrimaryCredentials.Any(item =>
-            item.IsAvailable
-            && item.IsPrimaryCredential
-            && item.Provider != provider);
-    }
-
-    private static AshlarExternalAccountUnlinkStatus MapPostureFailure(Result<AccountSecurityPosture> result)
-    {
-        return result.FailureCode?.Value == AshlarFailureCodes.UserNotFoundValue
-            ? AshlarExternalAccountUnlinkStatus.UserNotFound
-            : AshlarExternalAccountUnlinkStatus.Failed;
-    }
-
     private static AshlarExternalAccountUnlinkStatus MapRevokeFailure(Result<AccountSecurityOperationResult> result)
     {
-        return result.FailureCode?.Value == AshlarFailureCodes.UserNotFoundValue
-            ? AshlarExternalAccountUnlinkStatus.UserNotFound
-            : AshlarExternalAccountUnlinkStatus.Failed;
+        return result.FailureCode?.Value switch
+        {
+            AshlarFailureCodes.UserNotFoundValue => AshlarExternalAccountUnlinkStatus.UserNotFound,
+            AshlarFailureCodes.TenantMismatchValue => AshlarExternalAccountUnlinkStatus.TenantMismatch,
+            AshlarFailureCodes.LastPrimarySignInMethodValue => AshlarExternalAccountUnlinkStatus.WouldRemoveLastSignInMethod,
+            _ => AshlarExternalAccountUnlinkStatus.Failed
+        };
     }
 
     private sealed record ExternalAccountLinkCoreRequest(

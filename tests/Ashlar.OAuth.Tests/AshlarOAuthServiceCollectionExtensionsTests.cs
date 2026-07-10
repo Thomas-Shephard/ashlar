@@ -75,6 +75,7 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddAshlarNullTransactions();
         services.AddPermissiveAccountSecurityGuard();
+        services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services.AddPasswordHasher<PasswordHasherV1>();
         services.AddAshlarOAuth(options => options.AddGitHub(oauth =>
         {

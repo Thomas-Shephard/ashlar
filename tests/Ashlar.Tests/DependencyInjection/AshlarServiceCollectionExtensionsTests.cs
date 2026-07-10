@@ -45,10 +45,13 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<IExternalAccountCredentialLinker, ExternalAccountCredentialLinker>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialAdministrationService, CredentialAdministrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAccountRecoveryAdministrationService>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<IAccountRecoveryAdministrationExecutor, AccountRecoveryAdministrationExecutor>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IAccountSecurityAdministrationService>(services, ServiceLifetime.Scoped);
+            Assert.That(services.Any(d => d.ServiceType == typeof(IAccountSecurityOperationAuthorizer)), Is.False);
             AssertDescriptor<IAccountLockoutAdministrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<AccountLockoutAdministrationServiceDependencies>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<IAuthenticationSessionService, AuthenticationSessionService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<AuthenticationSessionService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IAuthenticationSessionService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IAuthenticationSessionMutationExecutor>(services, ServiceLifetime.Scoped);
             AssertDescriptor<PasswordHasherSelector>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ISecureTokenGenerator, SecureTokenGenerator>(services, ServiceLifetime.Singleton);
             AssertDescriptor<ISecureTokenHasher, Sha256TokenHasher>(services, ServiceLifetime.Singleton);
@@ -274,6 +277,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
             descriptor.ServiceType == typeof(IRecoveryCodeService)));
         Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
+            descriptor.ServiceType == typeof(IRecoveryCodeMutationExecutor)));
+        Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
             descriptor.ServiceType == typeof(IPasswordResetService)));
     }
 
@@ -365,6 +370,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
+        services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services
             .AddAshlarIdentity()
             .AddAuthenticationProvider<LocalPasswordProvider>()
@@ -736,6 +742,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
         services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
+        services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services.AddAshlarIdentity();
 
         using var provider = services.BuildServiceProvider();
@@ -1010,7 +1017,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
 
     private sealed class CustomAccountSecurityGuard : IAccountSecurityGuard
     {
-        public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
+        public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityGuardContext request, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(Result.Success());
         }

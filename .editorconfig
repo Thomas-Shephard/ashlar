@@ -24,10 +24,15 @@ indent_size = 2
 dotnet_diagnostic.IDE0055.severity = warning
 # unnecessary usings
 dotnet_diagnostic.IDE0005.severity = warning
+# unnecessary assignments
+dotnet_diagnostic.IDE0059.severity = warning
+# unused parameters
+dotnet_diagnostic.IDE0060.severity = warning
 # namespace matches folder
 dotnet_diagnostic.IDE0130.severity = warning
 # prefer Assert.EnterMultipleScope
 dotnet_diagnostic.NUnit2045.severity = warning
+dotnet_diagnostic.NUnit2056.severity = warning
 
 # Naming rules
 
@@ -134,7 +139,7 @@ csharp_style_expression_bodied_local_functions = false:silent
 dotnet_style_readonly_field = true:suggestion
 
 # Parameter preferences
-dotnet_code_quality_unused_parameters = all:suggestion
+dotnet_code_quality_unused_parameters = all
 
 # Suppression preferences
 dotnet_remove_unnecessary_suppression_exclusions = none

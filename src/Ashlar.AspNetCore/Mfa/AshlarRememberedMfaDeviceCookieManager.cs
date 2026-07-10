@@ -81,28 +81,9 @@ public sealed class AshlarRememberedMfaDeviceCookieManager(
         }
 
         var audit = CreateAuditContextFromHttpContext(httpContext, userId);
-        var validation = await _rememberedMfaDevices.ValidateAsync(
-            userId,
-            new ValidateRememberedMfaDeviceRequest(token)
-            {
-                Tenant = tenant,
-                Audit = audit
-            },
+        var revoked = await _rememberedMfaDevices.RevokeCurrentAsync(
+            new RevokeCurrentRememberedMfaDeviceRequest(userId, token, tenant ?? TenantContext.Global, audit, reason),
             cancellationToken);
-
-        var revoked = false;
-        if (validation.Succeeded && validation.Device != null)
-        {
-            revoked = await _rememberedMfaDevices.RevokeAsync(
-                userId,
-                new RevokeRememberedMfaDeviceRequest(validation.Device.Id)
-                {
-                    Tenant = tenant,
-                    Reason = reason,
-                    Audit = audit
-                },
-                cancellationToken);
-        }
 
         Clear(httpContext);
         return revoked;

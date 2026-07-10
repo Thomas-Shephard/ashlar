@@ -50,12 +50,14 @@ public interface IAshlarSignInManager
     /// </summary>
     /// <param name="httpContext">The current HTTP request context.</param>
     /// <param name="sessionId">The session to revoke.</param>
+    /// <param name="freshMfaProof">Ashlar-issued fresh proof bound to the actor and current session.</param>
     /// <param name="reason">Optional revocation reason stored with the session.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns><see langword="true" /> when a matching session was revoked; otherwise, <see langword="false" />.</returns>
     Task<bool> RevokeSessionForCurrentUserAsync(
         HttpContext httpContext,
         Guid sessionId,
+        FreshMfaVerificationProof freshMfaProof,
         string? reason = null,
         CancellationToken cancellationToken = default);
 
@@ -63,11 +65,13 @@ public interface IAshlarSignInManager
     /// Revokes the current user's other sessions while keeping the current session active.
     /// </summary>
     /// <param name="httpContext">The current HTTP request context.</param>
+    /// <param name="freshMfaProof">Ashlar-issued fresh proof bound to the actor and current session.</param>
     /// <param name="reason">Optional revocation reason stored with each revoked session.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>The number of sessions revoked.</returns>
     Task<int> RevokeOtherSessionsForCurrentUserAsync(
         HttpContext httpContext,
+        FreshMfaVerificationProof freshMfaProof,
         string? reason = null,
         CancellationToken cancellationToken = default);
 }

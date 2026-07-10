@@ -58,27 +58,26 @@ internal static class MfaEndpoints
         if (!posture.Succeeded) return Results.Forbid();
         if (posture.Value is not { } securityPosture) return Results.Forbid();
 
-        var enrollmentRequest = new StartTotpEnrollmentRequest(userId, services.Options.Value.AppName, ashlarUser.DisplayEmail)
-        {
-            CurrentSessionId = sessionId,
-            Tenant = services.HttpContext.ToTenantContext(),
-            Audit = services.HttpContext.ToAuditContext()
-        };
+        FreshMfaVerificationProof? freshMfaProof = null;
+        FreshPrimaryAuthenticationProof? freshPrimaryProof = null;
         if (securityPosture.AdditionalVerificationFactors.Any(factor => factor.IsUsable))
         {
             var proof = services.HttpContext.CreateFreshMfaProof(services.StepUp, SelfServiceMfaManagementRequirement);
             if (!proof.Succeeded) return Results.Forbid();
 
-            enrollmentRequest = enrollmentRequest with { FreshMfaProof = proof.Value };
+            freshMfaProof = proof.Value;
         }
         else
         {
             var proof = services.HttpContext.CreateFreshPrimaryAuthenticationProof(services.StepUp, SelfServiceMfaManagementRequirement.FreshnessWindow);
             if (!proof.Succeeded) return Results.Forbid();
 
-            enrollmentRequest = enrollmentRequest with { FreshPrimaryAuthenticationProof = proof.Value };
+            freshPrimaryProof = proof.Value;
         }
 
+        var verification = new TotpEnrollmentVerificationContext(userId, services.HttpContext.ToTenantContext(), sessionId,
+            services.HttpContext.ToAuditContext(), freshMfaProof, freshPrimaryProof);
+        var enrollmentRequest = new StartTotpEnrollmentRequest(verification, services.Options.Value.AppName, ashlarUser.DisplayEmail);
         var enrollment = await services.Totp.StartEnrollmentAsync(enrollmentRequest, services.CancellationToken);
         var isAdmin = (await services.Auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), services.CancellationToken)).Succeeded;
         return AppViews.RenderMfaSetup(enrollment.SharedSecret, enrollment.AuthenticatorUri, isAdmin);
@@ -112,27 +111,26 @@ internal static class MfaEndpoints
             return Results.Forbid();
         }
 
-        var verifyRequest = new VerifyTotpEnrollmentRequest(userId, request.SharedSecret, request.Code)
-        {
-            CurrentSessionId = currentSessionId,
-            Tenant = services.HttpContext.ToTenantContext(),
-            Audit = services.HttpContext.ToAuditContext()
-        };
+        FreshMfaVerificationProof? freshMfaProof = null;
+        FreshPrimaryAuthenticationProof? freshPrimaryProof = null;
         if (totpCredential == null && !securityPosture.AdditionalVerificationFactors.Any(factor => factor.IsUsable))
         {
             var proof = services.HttpContext.CreateFreshPrimaryAuthenticationProof(services.StepUp, SelfServiceMfaManagementRequirement.FreshnessWindow);
             if (!proof.Succeeded) return Results.Forbid();
 
-            verifyRequest = verifyRequest with { FreshPrimaryAuthenticationProof = proof.Value };
+            freshPrimaryProof = proof.Value;
         }
         else
         {
             var proof = services.HttpContext.CreateFreshMfaProof(services.StepUp, SelfServiceMfaManagementRequirement);
             if (!proof.Succeeded) return Results.Forbid();
 
-            verifyRequest = verifyRequest with { FreshMfaProof = proof.Value };
+            freshMfaProof = proof.Value;
         }
 
+        var verification = new TotpEnrollmentVerificationContext(userId, services.HttpContext.ToTenantContext(), currentSessionId,
+            services.HttpContext.ToAuditContext(), freshMfaProof, freshPrimaryProof);
+        var verifyRequest = new VerifyTotpEnrollmentRequest(verification, request.SharedSecret, request.Code);
         var result = await services.Totp.CompleteEnrollmentAsync(
             verifyRequest,
             services.CancellationToken);
@@ -181,13 +179,8 @@ internal static class MfaEndpoints
         }
 
         await services.Totp.DisableAsync(
-            new DisableTotpRequest(userId)
-            {
-                FreshMfaProof = freshProof,
-                CurrentSessionId = currentSessionId,
-                Tenant = services.HttpContext.ToTenantContext(),
-                Audit = services.HttpContext.ToAuditContext()
-            },
+            new DisableTotpRequest(userId, services.HttpContext.ToTenantContext(), currentSessionId, freshProof,
+                services.HttpContext.ToAuditContext()),
             services.CancellationToken);
         return Results.Ok();
     }
@@ -196,7 +189,6 @@ internal static class MfaEndpoints
         [FromServices] IRecoveryCodeService RecoveryCodes,
         [FromServices] IStepUpAuthenticationService StepUp,
         HttpContext HttpContext,
-        ClaimsPrincipal User,
         CancellationToken CancellationToken);
 
     private static async Task<IResult> GenerateRecoveryCodesAsync([AsParameters] RecoveryCodeGenerationServices services)
@@ -210,14 +202,18 @@ internal static class MfaEndpoints
         {
             return Results.Forbid();
         }
-        if (!services.HttpContext.TryGetAshlarSessionContext(out _, out var currentSessionId, out _))
+        if (!services.HttpContext.TryGetAshlarSessionContext(out var userId, out var currentSessionId, out var tenant))
         {
             return Results.Forbid();
         }
+        var scope = tenant ?? TenantContext.Global;
 
         var result = await services.RecoveryCodes.GenerateRecoveryCodesAsync(
-            services.User.GetAshlarUserId(),
-            new RecoveryCodeGenerationRequest { FreshMfaProof = freshProof, CurrentSessionId = currentSessionId, Tenant = services.HttpContext.ToTenantContext(), Audit = services.HttpContext.ToAuditContext() },
+            new RecoveryCodeGenerationRequest(
+                userId,
+                new AccountSecurityActorContext(userId, scope, currentSessionId, freshProof,
+                    services.HttpContext.ToAuditContext()),
+                scope),
             services.CancellationToken);
         return result.Succeeded ? Results.Ok(new { codes = result.Value }) : Results.BadRequest(SampleResultErrors.From(result));
     }

@@ -3,11 +3,6 @@ namespace Ashlar.Identity.Abstractions.Services;
 /// <summary>
 /// Provides read-only administrator account recovery option summaries.
 /// </summary>
-/// <remarks>
-/// This service is intended for administrative and operations tooling and does not authorize the caller.
-/// Host applications must protect usage of this service with appropriate admin authorization before presenting destructive account operations.
-/// Host applications must enforce fresh MFA or equivalent step-up policy before executing any destructive operation.
-/// </remarks>
 public interface IAccountRecoveryAdministrationService
 {
     /// <summary>

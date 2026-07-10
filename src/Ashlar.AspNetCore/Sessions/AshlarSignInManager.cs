@@ -36,7 +36,7 @@ public sealed class AshlarSignInManager(
         var existingSession = await GetExistingSessionContextAsync(httpContext, authenticationOptions, cancellationToken);
         if (existingSession != null)
         {
-            await RevokeCurrentSessionAsync(httpContext, existingSession, "session-replaced", cancellationToken);
+            await RevokeCurrentSessionAsync(httpContext, "session-replaced", cancellationToken);
         }
 
         var sessionRequest = request ?? CreateRequestFromHttpContext(httpContext);
@@ -61,7 +61,7 @@ public sealed class AshlarSignInManager(
 
         if (session != null)
         {
-            await RevokeCurrentSessionAsync(httpContext, session, reason ?? "signed-out", cancellationToken);
+            await RevokeCurrentSessionAsync(httpContext, reason ?? "signed-out", cancellationToken);
         }
 
         httpContext.Response.Cookies.Delete(authenticationOptions.CookieName, authenticationOptions.Cookie.Build(httpContext));
@@ -86,44 +86,37 @@ public sealed class AshlarSignInManager(
     public async Task<bool> RevokeSessionForCurrentUserAsync(
         HttpContext httpContext,
         Guid sessionId,
+        FreshMfaVerificationProof freshMfaProof,
         string? reason = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(httpContext);
+        ArgumentNullException.ThrowIfNull(freshMfaProof);
 
         var userId = TryGetUserId(httpContext.User) ?? throw new InvalidOperationException("User is not authenticated.");
+        var currentSessionId = TryGetSessionId(httpContext.User) ?? throw new InvalidOperationException("Current session ID not found in claims.");
 
-        return await _sessionService.RevokeSessionForUserAsync(
-            userId,
-            new RevokeAuthenticationSessionRequest
-            {
-                SessionId = sessionId,
-                Reason = reason,
-                Tenant = ResolveTenantContextOrThrow(httpContext.User),
-                Audit = CreateAuditContextFromHttpContext(httpContext)
-            },
+        return await _sessionService.RevokeSessionForCurrentUserAsync(
+            new RevokeOwnAuthenticationSessionRequest(userId, ResolveTenantContextOrThrow(httpContext.User), currentSessionId,
+                freshMfaProof, CreateAuditContextFromHttpContext(httpContext), sessionId, reason),
             cancellationToken);
     }
 
     public async Task<int> RevokeOtherSessionsForCurrentUserAsync(
         HttpContext httpContext,
+        FreshMfaVerificationProof freshMfaProof,
         string? reason = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(httpContext);
+        ArgumentNullException.ThrowIfNull(freshMfaProof);
 
         var userId = TryGetUserId(httpContext.User) ?? throw new InvalidOperationException("User is not authenticated.");
         var currentSessionId = TryGetSessionId(httpContext.User) ?? throw new InvalidOperationException("Current session ID not found in claims.");
 
-        return await _sessionService.RevokeOtherSessionsAsync(
-            userId,
-            new RevokeOtherAuthenticationSessionsRequest
-            {
-                CurrentSessionId = currentSessionId,
-                Reason = reason,
-                Tenant = ResolveTenantContextOrThrow(httpContext.User),
-                Audit = CreateAuditContextFromHttpContext(httpContext)
-            },
+        return await _sessionService.RevokeOtherSessionsForCurrentUserAsync(
+            new RevokeOwnOtherAuthenticationSessionsRequest(userId, ResolveTenantContextOrThrow(httpContext.User), currentSessionId,
+                freshMfaProof, CreateAuditContextFromHttpContext(httpContext), reason),
             cancellationToken);
     }
 
@@ -161,20 +154,14 @@ public sealed class AshlarSignInManager(
 
     private Task<bool> RevokeCurrentSessionAsync(
         HttpContext httpContext,
-        CurrentSessionContext session,
         string reason,
         CancellationToken cancellationToken)
     {
-        return _sessionService.RevokeSessionForUserAsync(
-            session.UserId,
-            new RevokeAuthenticationSessionRequest
-            {
-                SessionId = session.SessionId,
-                Reason = reason,
-                Tenant = session.Tenant,
-                Audit = CreateAuditContextFromHttpContext(httpContext)
-            },
-            cancellationToken);
+        var authenticationOptions = GetOptions();
+        var token = httpContext.Request.Cookies[authenticationOptions.CookieName];
+        return !string.IsNullOrWhiteSpace(token)
+            ? _sessionService.RevokeCurrentSessionAsync(new RevokeCurrentAuthenticationSessionRequest(token, CreateAuditContextFromHttpContext(httpContext), reason), cancellationToken)
+            : Task.FromResult(false);
     }
 
     private AshlarSessionAuthenticationOptions GetOptions()

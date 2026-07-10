@@ -1,10 +1,13 @@
 using Ashlar.AspNetCore.Sessions;
+using Ashlar.AspNetCore.Mfa;
 using Ashlar.Sample.AspNetCore.Extensions;
 
 namespace Ashlar.Sample.AspNetCore.Endpoints;
 
 internal static class SessionEndpoints
 {
+    private static readonly StepUpRequirement SessionManagementRequirement = new(TimeSpan.FromMinutes(10), Purpose: "session-management");
+
     public static void MapSessionEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/sessions", async (
@@ -27,19 +30,25 @@ internal static class SessionEndpoints
         app.MapDelete("/api/sessions/{sessionId:guid}", async (
             Guid sessionId,
             IAshlarSignInManager signInManager,
+            IStepUpAuthenticationService stepUp,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var revoked = await signInManager.RevokeSessionForCurrentUserAsync(httpContext, sessionId, reason: "user-revoked", cancellationToken);
+            var proof = httpContext.CreateFreshMfaProof(stepUp, SessionManagementRequirement);
+            if (!proof.Succeeded || proof.Value == null) return Results.Forbid();
+            var revoked = await signInManager.RevokeSessionForCurrentUserAsync(httpContext, sessionId, proof.Value, reason: "user-revoked", cancellationToken);
             return revoked ? Results.NoContent() : Results.NotFound();
         }).RequireAuthorization().RequireFreshMfaIfAvailable().RequireSampleAntiforgery();
 
         app.MapDelete("/api/sessions/others", async (
             IAshlarSignInManager signInManager,
+            IStepUpAuthenticationService stepUp,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            await signInManager.RevokeOtherSessionsForCurrentUserAsync(httpContext, reason: "user-revoked-others", cancellationToken);
+            var proof = httpContext.CreateFreshMfaProof(stepUp, SessionManagementRequirement);
+            if (!proof.Succeeded || proof.Value == null) return Results.Forbid();
+            await signInManager.RevokeOtherSessionsForCurrentUserAsync(httpContext, proof.Value, reason: "user-revoked-others", cancellationToken);
             return Results.NoContent();
         }).RequireAuthorization().RequireFreshMfaIfAvailable().RequireSampleAntiforgery();
     }

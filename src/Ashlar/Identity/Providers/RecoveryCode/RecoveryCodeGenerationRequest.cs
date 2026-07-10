@@ -2,73 +2,81 @@ using Ashlar.Auditing;
 
 namespace Ashlar.Identity.Providers.RecoveryCode;
 
-/// <summary>
-/// Represents a request to generate new recovery codes.
-/// </summary>
-public sealed record RecoveryCodeGenerationRequest
+/// <summary>Options for a recovery-code generation operation.</summary>
+/// <param name="ReplaceExisting">Whether existing recovery codes are revoked first.</param>
+/// <param name="CodeCount">Requested code count, or <see langword="null" /> for the configured default.</param>
+/// <param name="ExpiresAfter">Requested lifetime, or <see langword="null" /> for the configured default.</param>
+public sealed record RecoveryCodeGenerationSettings(
+    bool ReplaceExisting = true,
+    int? CodeCount = null,
+    TimeSpan? ExpiresAfter = null);
+
+/// <summary>Actor-bound request to generate recovery codes for a target user.</summary>
+public sealed record RecoveryCodeGenerationRequest : AccountSecurityAdministrationRequest
 {
-    /// <summary>
-    /// Fresh MFA proof for the current authenticated session. Obtain it from <c>IStepUpAuthenticationService.CreateFreshMfaProof</c>; do not bind it from request JSON.
-    /// </summary>
-    public FreshMfaVerificationProof? FreshMfaProof { get; init; }
-    /// <summary>
-    /// Current Ashlar session ID from the authenticated request. It must match <see cref="FreshMfaProof" />.
-    /// </summary>
-    public Guid? CurrentSessionId { get; init; }
+    /// <summary>Creates an authorized recovery-code generation request.</summary>
+    /// <param name="targetUserId">The user receiving the recovery codes.</param>
+    /// <param name="actor">Authenticated actor context.</param>
+    /// <param name="tenant">The explicit target tenant or global scope.</param>
+    /// <param name="includeAllTenants">Whether target lookup may cross every tenant scope.</param>
+    /// <param name="reason">An optional display-safe reason.</param>
+    /// <param name="settings">Generation-specific settings.</param>
+    public RecoveryCodeGenerationRequest(
+        Guid targetUserId,
+        AccountSecurityActorContext actor,
+        TenantContext? tenant = null,
+        bool includeAllTenants = false,
+        string? reason = null,
+        RecoveryCodeGenerationSettings? settings = null)
+        : base(targetUserId, actor, tenant, includeAllTenants, reason)
+    {
+        settings ??= new RecoveryCodeGenerationSettings();
+        ReplaceExisting = settings.ReplaceExisting;
+        CodeCount = settings.CodeCount;
+        ExpiresAfter = settings.ExpiresAfter;
+    }
 
-    /// <summary>
-    /// Whether existing recovery codes should be revoked before generating new ones.
-    /// Defaults to <c><see langword="true" /></c>.
-    /// </summary>
-    public bool ReplaceExisting { get; init; } = true;
+    /// <summary>Gets whether existing recovery codes are revoked before generation.</summary>
+    public bool ReplaceExisting { get; }
 
-    /// <summary>
-    /// Number of codes to generate. If <see langword="null" />, the configured default in <see cref="RecoveryCodeOptions"/> is used.
-    /// </summary>
-    public int? CodeCount { get; init; }
+    /// <summary>Gets the requested code count, or <see langword="null" /> for the configured default.</summary>
+    public int? CodeCount { get; }
 
-    /// <summary>
-    /// Duration after which the codes expire. If <see langword="null" />, the configured default in <see cref="RecoveryCodeOptions"/> is used.
-    /// </summary>
-    public TimeSpan? ExpiresAfter { get; init; }
-
-    /// <summary>
-    /// Tenant scope for recovery-code generation, or <see langword="null" /> to use <see cref="TenantContext.Global" />.
-    /// </summary>
-    public TenantContext? Tenant { get; init; }
-
-    /// <summary>
-    /// Audit metadata describing who requested recovery-code generation.
-    /// </summary>
-    public AuditContext? Audit { get; init; }
+    /// <summary>Gets the requested lifetime, or <see langword="null" /> for the configured default.</summary>
+    public TimeSpan? ExpiresAfter { get; }
 }
 
-/// <summary>
-/// Request to revoke recovery codes for the authenticated account owner.
-/// </summary>
-public sealed record RevokeRecoveryCodesRequest
+/// <summary>Actor-bound request to revoke all recovery codes for a target user.</summary>
+public sealed record RevokeRecoveryCodesRequest : AccountSecurityAdministrationRequest
 {
-    /// <summary>
-    /// Fresh MFA proof for the current authenticated session. Obtain it from <c>IStepUpAuthenticationService.CreateFreshMfaProof</c>; do not bind it from request JSON.
-    /// </summary>
-    public FreshMfaVerificationProof? FreshMfaProof { get; init; }
-    /// <summary>
-    /// Current Ashlar session ID from the authenticated request. It must match <see cref="FreshMfaProof" />.
-    /// </summary>
-    public Guid? CurrentSessionId { get; init; }
-
-    /// <summary>
-    /// Optional provider-neutral, display-safe audit reason for revocation.
-    /// </summary>
-    public string? Reason { get; init; }
-
-    /// <summary>
-    /// Tenant scope for recovery-code revocation, or <see langword="null" /> to use <see cref="TenantContext.Global" />.
-    /// </summary>
-    public TenantContext? Tenant { get; init; }
-
-    /// <summary>
-    /// Audit metadata describing who requested recovery-code revocation.
-    /// </summary>
-    public AuditContext? Audit { get; init; }
+    /// <summary>Creates an authorized recovery-code revocation request.</summary>
+    /// <param name="targetUserId">The user whose recovery codes are revoked.</param>
+    /// <param name="actor">Authenticated actor context.</param>
+    /// <param name="tenant">The explicit target tenant or global scope.</param>
+    /// <param name="includeAllTenants">Whether target lookup may cross every tenant scope.</param>
+    /// <param name="reason">An optional display-safe reason.</param>
+    public RevokeRecoveryCodesRequest(
+        Guid targetUserId,
+        AccountSecurityActorContext actor,
+        TenantContext? tenant = null,
+        bool includeAllTenants = false,
+        string? reason = null)
+        : base(targetUserId, actor, tenant, includeAllTenants, reason)
+    {
+    }
 }
+
+internal sealed record RecoveryCodeGenerationExecutionRequest(
+    AuditContext Audit,
+    TenantContext? Tenant,
+    bool IncludeAllTenants,
+    string? Reason,
+    bool ReplaceExisting,
+    int? CodeCount,
+    TimeSpan? ExpiresAfter);
+
+internal sealed record RevokeRecoveryCodesExecutionRequest(
+    AuditContext Audit,
+    TenantContext? Tenant,
+    bool IncludeAllTenants,
+    string? Reason);

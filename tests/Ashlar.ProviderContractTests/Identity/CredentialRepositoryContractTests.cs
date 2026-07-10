@@ -6,6 +6,44 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
     private const string PasswordResetPurpose = "password-reset";
 
     [Test]
+    public async Task UserMutationLockRequiresTransactionAndExistingUser()
+    {
+        await using var scope = CreateAsyncScope();
+        var users = GetUserRepository(scope.ServiceProvider);
+        var credentials = GetCredentialRepository(scope.ServiceProvider);
+        var transactions = GetTransactionProvider(scope.ServiceProvider)!;
+        var user = await CreateUserAsync(users);
+
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await credentials.AcquireUserMutationLockAsync(user.Id));
+
+        await using var transaction = await transactions.BeginTransactionAsync();
+        Assert.DoesNotThrowAsync(async () => await credentials.AcquireUserMutationLockAsync(user.Id));
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await credentials.AcquireUserMutationLockAsync(Guid.NewGuid()));
+    }
+
+    [Test]
+    public async Task UserMutationLockSerializesConcurrentCredentialDecisions()
+    {
+        await using var firstScope = CreateAsyncScope();
+        var users = GetUserRepository(firstScope.ServiceProvider);
+        var user = await CreateUserAsync(users);
+        await using var firstTransaction = await GetTransactionProvider(firstScope.ServiceProvider)!.BeginTransactionAsync();
+        await GetCredentialRepository(firstScope.ServiceProvider).AcquireUserMutationLockAsync(user.Id);
+
+        var secondLock = Task.Run(async () =>
+        {
+            await using var secondScope = CreateAsyncScope();
+            await using var secondTransaction = await GetTransactionProvider(secondScope.ServiceProvider)!.BeginTransactionAsync();
+            await GetCredentialRepository(secondScope.ServiceProvider).AcquireUserMutationLockAsync(user.Id);
+            await secondTransaction.CommitAsync();
+        });
+
+        Assert.ThrowsAsync<TimeoutException>(async () => await secondLock.WaitAsync(TimeSpan.FromMilliseconds(100)));
+        await firstTransaction.CommitAsync();
+        await secondLock.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Test]
     public async Task CredentialCreateReadAndProviderKeyOwnershipWork()
     {
         await using var scope = CreateAsyncScope();

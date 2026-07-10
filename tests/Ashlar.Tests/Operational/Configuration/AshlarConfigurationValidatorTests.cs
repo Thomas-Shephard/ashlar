@@ -108,6 +108,7 @@ internal sealed class AshlarConfigurationValidatorTests
             AssertIssue(result, AshlarConfigurationIssueCodes.SecurityEventAdministrationRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
             AssertIssue(result, AshlarConfigurationIssueCodes.AuthenticationSessionAdministrationRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
             AssertIssue(result, AshlarConfigurationIssueCodes.NullSecurityEventSink, AshlarConfigurationIssueSeverity.Warning);
+            AssertIssue(result, AshlarConfigurationIssueCodes.AccountSecurityOperationAuthorizerMissing, AshlarConfigurationIssueSeverity.Error);
             AssertIssue(result, AshlarConfigurationIssueCodes.InMemoryAuthenticationRateLimiter, AshlarConfigurationIssueSeverity.Warning);
             AssertIssue(result, AshlarConfigurationIssueCodes.TransactionProviderMissing, AshlarConfigurationIssueSeverity.Information);
             Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.PermissiveAccountSecurityGuard));
@@ -116,6 +117,19 @@ internal sealed class AshlarConfigurationValidatorTests
             Assert.That(result.HasErrors, Is.True);
             Assert.That(result.IsValid, Is.False);
         }
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotReportMissingAccountSecurityAuthorizerWhenRegistered()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarIdentity();
+        services.AddScoped<IAccountSecurityOperationAuthorizer, AllowAccountSecurityOperations>();
+
+        using var provider = services.BuildServiceProvider();
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.AccountSecurityOperationAuthorizerMissing));
     }
 
     [Test]
@@ -1002,6 +1016,7 @@ internal sealed class AshlarConfigurationValidatorTests
         services.AddSingleton<IAuthenticationRateLimiter, CustomAuthenticationRateLimiter>();
         services.AddSingleton<IAshlarTransactionProvider, CustomTransactionProvider>();
         services.AddScoped<IAccountSecurityGuard, CustomAccountSecurityGuard>();
+        services.AddScoped<IAccountSecurityOperationAuthorizer, AllowAccountSecurityOperations>();
         services.AddAshlarIdentity();
 
         using var provider = services.BuildServiceProvider();
@@ -1306,9 +1321,17 @@ internal sealed class AshlarConfigurationValidatorTests
 
     private sealed class CustomAccountSecurityGuard : IAccountSecurityGuard
     {
-        public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
+        public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityGuardContext request, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(Result.Success());
+        }
+    }
+
+    private sealed class AllowAccountSecurityOperations : IAccountSecurityOperationAuthorizer
+    {
+        public ValueTask<bool> AuthorizeAsync(AccountSecurityAuthorizationContext context, CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult(true);
         }
     }
 

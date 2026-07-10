@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Features.Mfa;
 
-internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
+internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, IRememberedMfaDeviceMutationExecutor
 {
     private static readonly Action<ILogger, Guid, Guid, Exception?> LastUsedUpdateNotPersisted =
         LoggerMessage.Define<Guid, Guid>(
@@ -230,14 +230,41 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
         return devices.Select(device => ToSummary(device, now)).ToList().AsReadOnly();
     }
 
+    public async Task<bool> RevokeCurrentAsync(RevokeCurrentRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.ActorUserId == Guid.Empty) throw new ArgumentException(UserIdEmptyMessage, $"{nameof(request)}.{nameof(request.ActorUserId)}");
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.Token);
+        ArgumentNullException.ThrowIfNull(request.Tenant);
+        ArgumentNullException.ThrowIfNull(request.Audit);
+        if (request.Audit.ActorUserId != request.ActorUserId)
+            throw new ArgumentException("Audit actor must match the authenticated actor.", $"{nameof(request)}.{nameof(request.Audit)}");
+
+        var validation = await ValidateAsync(request.ActorUserId, new ValidateRememberedMfaDeviceRequest(request.Token)
+        {
+            Tenant = request.Tenant,
+            Audit = request.Audit
+        }, cancellationToken);
+        if (validation.Device == null) return false;
+
+        return await RevokeAsync(request.ActorUserId, new RevokeRememberedMfaDeviceRequest(validation.Device.Id)
+        {
+            Tenant = request.Tenant,
+            Audit = request.Audit,
+            Reason = request.Reason
+        }, cancellationToken);
+    }
+
     public async Task<bool> RevokeAsync(Guid userId, RevokeRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty) throw new ArgumentException(UserIdEmptyMessage, nameof(userId));
         ArgumentNullException.ThrowIfNull(request);
         if (request.DeviceId == Guid.Empty) throw new ArgumentException("Device ID cannot be empty.", $"{nameof(request)}.{nameof(request.DeviceId)}");
+        if (request.Tenant != null && request.IncludeAllTenants)
+            throw new ArgumentException("Tenant scope cannot be combined with IncludeAllTenants = true.", nameof(request));
         var reason = ValidateOptionalLength(request.Reason, _options.MaxRevocationReasonLength, $"{nameof(request)}.{nameof(request.Reason)}");
 
-        var tenant = request.Tenant ?? TenantContext.Global;
+        var tenant = request.IncludeAllTenants ? null : request.Tenant ?? TenantContext.Global;
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         var revokedAt = _timeProvider.GetUtcNow();
         var revoked = await _repository.RevokeAsync(request.DeviceId, userId, revokedAt, reason, tenant, cancellationToken);
@@ -246,7 +273,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
             EventType = AshlarSecurityEventTypes.RememberedMfaDeviceRevoked,
             Outcome = revoked ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
             UserId = userId,
-            TenantId = tenant.TenantId,
+            TenantId = tenant?.TenantId,
             Audit = request.Audit,
             FailureReason = revoked ? null : AshlarFailureCodes.InvalidOrExpiredTokenValue,
             Properties = CreateRevocationProperties(request.DeviceId, reason)

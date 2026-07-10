@@ -30,6 +30,24 @@ internal sealed class SqliteCredentialRepository(ISqliteConnectionProvider conne
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
+    public async Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        if (handle.Transaction == null)
+        {
+            throw new InvalidOperationException("A transaction must be active before acquiring a credential mutation lock.");
+        }
+
+        await using var command = handle.Connection.CreateCommand();
+        command.Transaction = handle.Transaction;
+        command.CommandText = "SELECT 1 FROM ashlar_users WHERE id = $userId;";
+        command.AddGuidParameter(UserIdParameter, userId);
+        if (await command.ExecuteScalarAsync(cancellationToken) == null)
+        {
+            throw new InvalidOperationException("The credential mutation lock user does not exist.");
+        }
+    }
+
     public async Task<UserCredential?> GetCredentialForUserAsync(Guid userId, ProviderType type, string providerName, string? providerKey = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerName);

@@ -542,6 +542,7 @@ internal sealed class CredentialService(
         var providerName = providerKeyIdentity.Name;
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
+        await _credentialRepository.AcquireUserMutationLockAsync(userId, cancellationToken);
 
         var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
         if (user == null)

@@ -283,11 +283,21 @@ internal sealed class PasswordResetService : IPasswordResetService
         }
 
         await using var transaction = await _dependencies.IdentityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
+        await _dependencies.IdentityContext.CredentialRepository.AcquireUserMutationLockAsync(user.Id, cancellationToken);
+        var lockedUser = await _dependencies.IdentityContext.UserRepository.GetUserByIdAsync(user.Id, cancellationToken);
+        if (lockedUser == null || !lockedUser.CanSignIn() || !UserTenantOwnership.Matches(lockedUser, context.TenantId))
+        {
+            await RecordFailureAsync(context, user.Id, AshlarFailureCodes.InvalidOrExpiredToken.Value, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.InvalidOrExpiredToken, InvalidOrExpiredTokenMessage);
+        }
+        user = lockedUser;
 
         var consumed = await _dependencies.IdentityContext.CredentialRepository.ConsumeCredentialAsync(credential.Id, credential.Version, cancellationToken);
         if (!consumed)
         {
             await RecordFailureAsync(context, user.Id, AshlarFailureCodes.TokenConsumptionFailed.Value, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return Result.Failure<PasswordResetResult>(AshlarFailureCodes.TokenConsumptionFailed, InvalidOrExpiredTokenMessage);
         }
 
@@ -466,7 +476,7 @@ internal sealed class PasswordResetDependencies(
     IAuthenticationSessionRepository sessionRepository,
     PasswordHasherSelector passwordHasherSelector,
     IdentityAuditContext audit,
-    IRememberedMfaDeviceService? rememberedMfaDeviceService = null)
+    IRememberedMfaDeviceMutationExecutor? rememberedMfaDeviceService = null)
 {
     /// <summary>
     /// Gets core identity dependencies.
@@ -495,7 +505,7 @@ internal sealed class PasswordResetDependencies(
     /// <summary>
     /// Gets the remembered MFA device service.
     /// </summary>
-    public IRememberedMfaDeviceService? RememberedMfaDeviceService { get; } = rememberedMfaDeviceService;
+    public IRememberedMfaDeviceMutationExecutor? RememberedMfaDeviceService { get; } = rememberedMfaDeviceService;
     /// <summary>
     /// Gets the email sender.
     /// </summary>

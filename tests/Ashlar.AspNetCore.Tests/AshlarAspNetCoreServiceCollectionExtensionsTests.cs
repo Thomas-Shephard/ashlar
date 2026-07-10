@@ -286,6 +286,7 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
         services.AddSingleton(Mock.Of<IAuthorizationGrantRepository>());
+        services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services.AddSingleton<ISecretProtector>(secretProtector);
         services.AddAshlarIdentity();
         services.AddAshlarNullTransactions();

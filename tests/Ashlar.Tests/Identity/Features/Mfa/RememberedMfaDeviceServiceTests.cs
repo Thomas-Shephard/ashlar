@@ -55,6 +55,75 @@ internal sealed class RememberedMfaDeviceServiceTests
     }
 
     [Test]
+    public async Task RevokeCurrentAsyncDerivesDeviceFromOwnerBoundToken()
+    {
+        var fixture = CreateFixture(generator: new SequenceTokenGenerator("selector", "verifier"));
+        var user = fixture.Users.AddUser();
+        var created = await fixture.Service.CreateAfterSuccessfulMfaAsync(SuccessfulMfa(user), new CreateRememberedMfaDeviceRequest());
+        var audit = new AuditContext(user.Id);
+
+        var revoked = await fixture.Service.RevokeCurrentAsync(new RevokeCurrentRememberedMfaDeviceRequest(
+            user.Id, created.Value!.Token, TenantContext.Global, audit, "logout"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked, Is.True);
+            Assert.That(fixture.Repository.Devices.Single().RevocationReason, Is.EqualTo("logout"));
+            Assert.That(fixture.Events.Events.Select(e => e.EventType), Does.Contain(AshlarSecurityEventTypes.RememberedMfaDeviceRevoked));
+        }
+    }
+
+    [Test]
+    public void RevokeCurrentAsyncRejectsInvalidActorContextBeforeTokenValidation()
+    {
+        var fixture = CreateFixture();
+        var userId = Guid.NewGuid();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentNullException>(() => fixture.Service.RevokeCurrentAsync(null!));
+            Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RevokeCurrentAsync(
+                new RevokeCurrentRememberedMfaDeviceRequest(Guid.Empty, "token", TenantContext.Global, new AuditContext())));
+            Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RevokeCurrentAsync(
+                new RevokeCurrentRememberedMfaDeviceRequest(userId, "token", TenantContext.Global, new AuditContext(Guid.NewGuid()))));
+            Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RevokeCurrentAsync(
+                new RevokeCurrentRememberedMfaDeviceRequest(userId, "token", TenantContext.Global, new AuditContext())));
+        }
+    }
+
+    [Test]
+    public async Task RevokeCurrentAsyncReturnsFalseForInvalidToken()
+    {
+        var fixture = CreateFixture();
+        var user = fixture.Users.AddUser();
+
+        var revoked = await fixture.Service.RevokeCurrentAsync(new RevokeCurrentRememberedMfaDeviceRequest(
+            user.Id, "missing.invalid", TenantContext.Global, new AuditContext(user.Id)));
+
+        Assert.That(revoked, Is.False);
+    }
+
+    [Test]
+    public async Task RevokeAsyncHonorsExplicitAllTenantScope()
+    {
+        var fixture = CreateFixture(generator: new SequenceTokenGenerator("selector", "verifier"));
+        var tenant = new TenantContext(Guid.NewGuid());
+        var user = fixture.Users.AddUser(tenant.TenantId);
+        var created = await fixture.Service.CreateAfterSuccessfulMfaAsync(
+            SuccessfulMfa(user), new CreateRememberedMfaDeviceRequest { Tenant = tenant });
+
+        var revoked = await fixture.Service.RevokeAsync(user.Id,
+            new RevokeRememberedMfaDeviceRequest(created.Value!.Device.Id) { IncludeAllTenants = true });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked, Is.True);
+            Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RevokeAsync(user.Id,
+                new RevokeRememberedMfaDeviceRequest(created.Value.Device.Id) { Tenant = tenant, IncludeAllTenants = true }));
+        }
+    }
+
+    [Test]
     public async Task ValidateAsyncRejectsMalformedMissingExpiredRevokedWrongUserAndWrongTenant()
     {
         var fixture = CreateFixture(generator: new SequenceTokenGenerator("selector", "verifier", "expired", "expired-verifier", "revoked", "revoked-verifier", "tenant", "tenant-verifier"));

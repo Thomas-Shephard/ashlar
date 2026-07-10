@@ -29,6 +29,25 @@ internal sealed class PostgresCredentialRepository(IPostgresConnectionProvider c
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
+    public async Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        const string sql = "SELECT 1 FROM ashlar_users WHERE id = @UserId FOR UPDATE";
+        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using (connectionHandle)
+        {
+            if (connectionHandle.Transaction == null)
+            {
+                throw new InvalidOperationException("A transaction must be active before acquiring a credential mutation lock.");
+            }
+
+            var command = new CommandDefinition(sql, new { UserId = userId }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            if (await connectionHandle.Connection.QuerySingleOrDefaultAsync<int?>(command) == null)
+            {
+                throw new InvalidOperationException("The credential mutation lock user does not exist.");
+            }
+        }
+    }
+
     public async Task<UserCredential?> GetCredentialForUserAsync(Guid userId, ProviderType type, string providerName, string? providerKey = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerName);

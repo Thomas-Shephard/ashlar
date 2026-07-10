@@ -149,6 +149,7 @@ internal sealed class AshlarPostgresCompositionTests
         }));
         services.AddAshlarPostgresAuditSink();
         services.AddScoped<IAccountSecurityGuard, TestAccountSecurityGuard>();
+        services.AddScoped<IAccountSecurityOperationAuthorizer, TestAccountSecurityOperationAuthorizer>();
         services.AddAshlarPostgresRateLimiting();
         services.AddAshlarPostgresEmailOutboxHostedService<TestEmailTransport>();
         services.AddAshlarPostgresCleanupHostedService();
@@ -235,10 +236,16 @@ internal sealed class AshlarPostgresCompositionTests
 
     private sealed class TestAccountSecurityGuard : IAccountSecurityGuard
     {
-        public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
+        public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityGuardContext request, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
+    }
+
+    private sealed class TestAccountSecurityOperationAuthorizer : IAccountSecurityOperationAuthorizer
+    {
+        public ValueTask<bool> AuthorizeAsync(AccountSecurityAuthorizationContext context, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(true);
     }
 
     private sealed class TestSecretProtector : ISecretProtector

@@ -275,13 +275,9 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
     {
         var userId = Guid.NewGuid();
         var tenant = new TenantContext(Guid.NewGuid());
-        var device = CreateSummary(userId, tenant.TenantId);
         var service = new Mock<IRememberedMfaDeviceService>();
         service
-            .Setup(s => s.ValidateAsync(userId, It.IsAny<ValidateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidateRememberedMfaDeviceResult(true, device, RememberedMfaDeviceValidationStatus.Succeeded));
-        service
-            .Setup(s => s.RevokeAsync(userId, It.IsAny<RevokeRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.RevokeCurrentAsync(It.IsAny<RevokeCurrentRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         var manager = CreateManager(service.Object);
         var context = CreateContext();
@@ -296,16 +292,11 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
             Assert.That(context.Response.Headers.SetCookie.ToString(), Does.Not.Contain(AshlarSessionAuthenticationDefaults.CookieName));
         }
 
-        service.Verify(s => s.ValidateAsync(userId, It.Is<ValidateRememberedMfaDeviceRequest>(r =>
+        service.Verify(s => s.RevokeCurrentAsync(It.Is<RevokeCurrentRememberedMfaDeviceRequest>(r =>
+            r.ActorUserId == userId &&
             r.Token == "raw-remembered-token" &&
             r.Tenant == tenant &&
-            r.Audit != null &&
-            r.Audit.ActorUserId == userId), It.IsAny<CancellationToken>()), Times.Once);
-        service.Verify(s => s.RevokeAsync(userId, It.Is<RevokeRememberedMfaDeviceRequest>(r =>
-            r.DeviceId == device.Id &&
-            r.Tenant == tenant &&
             r.Reason == "logout" &&
-            r.Audit != null &&
             r.Audit.ActorUserId == userId), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -313,13 +304,9 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
     public async Task RevokeCurrentAsyncAllowsHttpContextWithoutRemoteIpAddress()
     {
         var userId = Guid.NewGuid();
-        var device = CreateSummary(userId, null);
         var service = new Mock<IRememberedMfaDeviceService>();
         service
-            .Setup(s => s.ValidateAsync(userId, It.IsAny<ValidateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidateRememberedMfaDeviceResult(true, device, RememberedMfaDeviceValidationStatus.Succeeded));
-        service
-            .Setup(s => s.RevokeAsync(userId, It.IsAny<RevokeRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.RevokeCurrentAsync(It.IsAny<RevokeCurrentRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         var manager = CreateManager(service.Object);
         var context = new DefaultHttpContext();
@@ -329,8 +316,7 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
         var revoked = await manager.RevokeCurrentAsync(context, userId);
 
         Assert.That(revoked, Is.True);
-        service.Verify(s => s.ValidateAsync(userId, It.Is<ValidateRememberedMfaDeviceRequest>(r =>
-            r.Audit != null &&
+        service.Verify(s => s.RevokeCurrentAsync(It.Is<RevokeCurrentRememberedMfaDeviceRequest>(r =>
             r.Audit.IpAddress == null &&
             r.Audit.UserAgent == "unit-test"), It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -341,8 +327,8 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
         var userId = Guid.NewGuid();
         var service = new Mock<IRememberedMfaDeviceService>();
         service
-            .Setup(s => s.ValidateAsync(userId, It.IsAny<ValidateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ValidateRememberedMfaDeviceResult.Failed);
+            .Setup(s => s.RevokeCurrentAsync(It.IsAny<RevokeCurrentRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
         var manager = CreateManager(service.Object);
         var context = CreateContext();
         context.Request.Headers.Cookie = $"{AshlarRememberedMfaDeviceCookieDefaults.CookieName}=bad-token";
@@ -355,7 +341,7 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
             Assert.That(context.Response.Headers.SetCookie.ToString(), Does.Contain($"{AshlarRememberedMfaDeviceCookieDefaults.CookieName}="));
         }
 
-        service.Verify(s => s.RevokeAsync(It.IsAny<Guid>(), It.IsAny<RevokeRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        service.Verify(s => s.RevokeCurrentAsync(It.IsAny<RevokeCurrentRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]

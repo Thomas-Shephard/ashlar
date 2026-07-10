@@ -178,6 +178,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
     {
         AddEmailSenderIssue(serviceProvider, issues);
         AddNullSecurityEventSinkIssue(serviceProvider, issues);
+        AddAccountSecurityOperationAuthorizerIssue(serviceProvider, issues);
         AddPermissiveAccountSecurityGuardIssue(serviceProvider, issues);
         AddMfaPolicyIssues(serviceProvider, issues);
         AddInMemoryRateLimiterIssue(serviceProvider, issues);
@@ -416,6 +417,20 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
                 "Account-state changes use PermissiveAccountSecurityGuard, so all guarded account-state changes are allowed.",
                 "Keep AddPermissiveAccountSecurityGuard only when this is deliberate. Register an application-specific IAccountSecurityGuard before relying on account-state changes for business approval, risk review, or separation-of-duties controls.",
                 "Account security guard"));
+        }
+    }
+
+    private static void AddAccountSecurityOperationAuthorizerIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
+    {
+        if (serviceProvider.IsServiceRegistered<IAccountSecurityAdministrationService>()
+            && !serviceProvider.IsServiceRegistered<IAccountSecurityOperationAuthorizer>())
+        {
+            issues.Add(new AshlarConfigurationIssue(
+                AshlarConfigurationIssueCodes.AccountSecurityOperationAuthorizerMissing,
+                AshlarConfigurationIssueSeverity.Error,
+                "Account-security administration requires a host operation authorizer, but none is registered.",
+                "Register an application-specific IAccountSecurityOperationAuthorizer that evaluates the actor, target, operation details, and exact tenant, global, or all-tenant scope.",
+                "Account security authorization"));
         }
     }
 

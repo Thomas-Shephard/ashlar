@@ -23,4 +23,7 @@ public sealed record CreatedAuthenticationSession(
     DateTimeOffset ExpiresAt,
     string? IpAddress,
     string? UserAgent,
-    string? Metadata);
+    string? Metadata)
+{
+    internal string? RollbackToken { get; init; }
+}
