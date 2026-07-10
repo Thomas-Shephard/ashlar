@@ -214,6 +214,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
     {
         await using var provider = new ServiceCollection()
             .AddSingleton<TimeProvider>(_timeProvider)
+            .AddSingleton<ISecurityEventSink, NullSecurityEventSink>()
             .AddAshlarSqlite(GetConnectionString())
             .AddAshlarSqliteSecurityEventWebhookOutbox()
             .BuildServiceProvider();

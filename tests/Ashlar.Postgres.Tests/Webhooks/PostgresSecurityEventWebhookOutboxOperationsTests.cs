@@ -225,6 +225,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
     {
         await using var provider = new ServiceCollection()
             .AddSingleton<TimeProvider>(_timeProvider)
+            .AddSingleton<ISecurityEventSink, NullSecurityEventSink>()
             .AddAshlarPostgres(GetConnectionString())
             .AddAshlarPostgresSecurityEventWebhookOutbox()
             .BuildServiceProvider();
