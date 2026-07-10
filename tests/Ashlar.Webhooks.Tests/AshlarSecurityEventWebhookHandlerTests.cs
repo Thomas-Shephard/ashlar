@@ -2082,6 +2082,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             CreateOutboxEntry(headers: disabled ? "{" : null, uri: disabled ? "not a uri" : null),
             context,
             CancellationToken.None);
+        var exhaustedRetry = AshlarSecurityEventWebhookOutboxDispatch.CreateFailureUpdate(
+            2, 3, TimeSpan.FromMinutes(1), now, new HttpRequestException());
 
         using (Assert.EnterMultipleScope())
         {
@@ -2090,6 +2092,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             Assert.That(failure?.FailedAt, Is.EqualTo(now));
             Assert.That(failure?.AvailableAt, Is.EqualTo(now));
             Assert.That(failure?.AttemptCount, Is.EqualTo(1));
+            Assert.That(exhaustedRetry.FailedAt, Is.EqualTo(now));
         }
     }
 
