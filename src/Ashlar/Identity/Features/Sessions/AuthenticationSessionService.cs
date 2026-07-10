@@ -476,8 +476,9 @@ internal sealed class AuthenticationSessionService(
         ArgumentNullException.ThrowIfNull(request);
         if (request.SessionId == Guid.Empty) throw new ArgumentException("Session ID cannot be empty.", $"{nameof(request)}.{nameof(request.SessionId)}");
         ValidateRevocationReason(request.Reason, nameof(request));
-        await ValidateSelfServiceRequestAsync(request.ActorUserId, request.ActorTenant, request.CurrentSessionId, request.FreshMfaProof,
-            request.Audit, AshlarSecurityEventTypes.SessionRevoked, request.SessionId, cancellationToken);
+        await ValidateSelfServiceRequestAsync(new SelfServiceRevocationValidationRequest(
+            request.ActorUserId, request.ActorTenant, request.CurrentSessionId, request.FreshMfaProof,
+            request.Audit, AshlarSecurityEventTypes.SessionRevoked, request.SessionId), cancellationToken);
 
         await AuthorizeSelfServiceAsync(new AccountSecurityAuthorizationContext(
             request.ActorUserId, request.ActorTenant, request.ActorUserId, request.ActorTenant, false,
@@ -499,8 +500,9 @@ internal sealed class AuthenticationSessionService(
     {
         ArgumentNullException.ThrowIfNull(request);
         ValidateRevocationReason(request.Reason, nameof(request));
-        await ValidateSelfServiceRequestAsync(request.ActorUserId, request.ActorTenant, request.CurrentSessionId, request.FreshMfaProof,
-            request.Audit, AshlarSecurityEventTypes.SessionsRevokedForUser, null, cancellationToken);
+        await ValidateSelfServiceRequestAsync(new SelfServiceRevocationValidationRequest(
+            request.ActorUserId, request.ActorTenant, request.CurrentSessionId, request.FreshMfaProof,
+            request.Audit, AshlarSecurityEventTypes.SessionsRevokedForUser, null), cancellationToken);
 
         await AuthorizeSelfServiceAsync(new AccountSecurityAuthorizationContext(
             request.ActorUserId, request.ActorTenant, request.ActorUserId, request.ActorTenant, false,
@@ -552,12 +554,14 @@ internal sealed class AuthenticationSessionService(
             request.Session.RollbackToken, request.Audit, request.Reason), cancellationToken);
     }
 
-    private async Task ValidateSelfServiceRequestAsync(Guid actorUserId, TenantContext actorTenant, Guid currentSessionId,
-        FreshMfaVerificationProof proof, AuditContext audit, string eventType, Guid? targetSessionId, CancellationToken cancellationToken)
+    private async Task ValidateSelfServiceRequestAsync(
+        SelfServiceRevocationValidationRequest request,
+        CancellationToken cancellationToken)
     {
-        if (actorUserId == Guid.Empty) throw new ArgumentException("Actor user ID cannot be empty.", nameof(actorUserId));
+        var (actorUserId, actorTenant, currentSessionId, proof, audit, eventType, targetSessionId) = request;
+        if (actorUserId == Guid.Empty) throw new ArgumentException("Actor user ID cannot be empty.", nameof(request));
         ArgumentNullException.ThrowIfNull(actorTenant);
-        if (currentSessionId == Guid.Empty) throw new ArgumentException("Current session ID cannot be empty.", nameof(currentSessionId));
+        if (currentSessionId == Guid.Empty) throw new ArgumentException("Current session ID cannot be empty.", nameof(request));
         ArgumentNullException.ThrowIfNull(proof);
         ArgumentNullException.ThrowIfNull(audit);
         if (audit.ActorUserId != actorUserId)
@@ -597,6 +601,15 @@ internal sealed class AuthenticationSessionService(
             Audit = audit,
             FailureReason = failure.Value
         }, cancellationToken);
+
+    private sealed record SelfServiceRevocationValidationRequest(
+        Guid ActorUserId,
+        TenantContext ActorTenant,
+        Guid CurrentSessionId,
+        FreshMfaVerificationProof Proof,
+        AuditContext Audit,
+        string EventType,
+        Guid? TargetSessionId);
 
     public async Task<int> RevokeSessionsForUserAsync(
         Guid userId,
