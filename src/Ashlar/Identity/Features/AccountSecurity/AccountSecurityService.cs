@@ -207,12 +207,11 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
 
         if (request.PreservePrimarySignInMethod)
         {
-            var postureResult = await GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(request.Tenant), cancellationToken);
-            if (!postureResult.TryGetValue(out var posture))
-                return Result.Failure<AccountSecurityOperationResult>(postureResult.GetFailureOr(AshlarFailureCodes.ValidationError));
+            var posture = (await GetUserSecurityPostureAsync(
+                userId, new AccountSecurityPostureRequest(request.Tenant), cancellationToken)).Value!;
 
             var storedPrimaryCredentials = posture.CredentialInventory.Where(item => item.IsAvailable &&
-                (item.IsPrimaryCredential || IsKnownPrimaryProviderType(item.Provider.Type)));
+                item.IsPrimaryCredential);
             var removesPrimary = storedPrimaryCredentials.Any(item => item.Provider == provider);
             var leavesPrimary = storedPrimaryCredentials.Any(item => item.Provider != provider);
             if (removesPrimary && !leavesPrimary)
@@ -419,15 +418,6 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
             credential.ExpiresAt,
             credential.Status);
     }
-
-    private static bool IsKnownPrimaryProviderType(ProviderType type) =>
-        type == ProviderType.Local
-        || type == ProviderType.EmailCode
-        || type == ProviderType.MagicLink
-        || type == ProviderType.Passkey
-        || type == ProviderType.OAuth
-        || type == ProviderType.Oidc
-        || type == ProviderType.Saml2;
 
     private static ReadOnlyCollection<AdditionalVerificationFactorPosture> CreateAdditionalVerificationFactors(IReadOnlyList<CredentialPostureItem> inventory)
     {

@@ -30,7 +30,9 @@ internal sealed class SampleAccountSecurityOperationAuthorizer(IAuthorizationEva
                 or AccountSecurityOperation.CompleteTotpEnrollment
                 or AccountSecurityOperation.DisableTotp
                 or AccountSecurityOperation.RevokeRememberedMfaDevice
-                or AccountSecurityOperation.RevokeRememberedMfaDevices)
+                or AccountSecurityOperation.RevokeRememberedMfaDevices
+                or AccountSecurityOperation.GenerateRecoveryCodes
+                or AccountSecurityOperation.RevokeRecoveryCodes)
         {
             return true;
         }

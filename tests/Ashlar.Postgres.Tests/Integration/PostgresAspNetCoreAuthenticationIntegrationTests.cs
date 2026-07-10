@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Identity.Models.Mfa;
+using Ashlar.Identity.Models.AccountSecurity;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Messaging;
 using Ashlar.Postgres.Models;
@@ -29,6 +30,7 @@ internal sealed class PostgresAspNetCoreAuthenticationIntegrationTests : Postgre
         services.AddLogging();
         services.AddDataProtection();
         services.AddSingleton<IEmailSender>(_emailSender);
+        services.AddSingleton<IAccountSecurityOperationAuthorizer, PermitAccountSecurityOperationAuthorizer>();
         services.AddAshlarPostgres(GetConnectionString());
         services.AddAshlarDataProtectionSecretProtector();
         services.AddAshlarMagicLinkSignIn();
@@ -38,6 +40,12 @@ internal sealed class PostgresAspNetCoreAuthenticationIntegrationTests : Postgre
 
         _serviceProvider = services.BuildServiceProvider();
         await ServiceProvider.InitializeAshlarPostgresSchemaAsync();
+    }
+
+    private sealed class PermitAccountSecurityOperationAuthorizer : IAccountSecurityOperationAuthorizer
+    {
+        public ValueTask<bool> AuthorizeAsync(AccountSecurityAuthorizationContext context, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(true);
     }
 
     public override async Task OneTimeTearDown()

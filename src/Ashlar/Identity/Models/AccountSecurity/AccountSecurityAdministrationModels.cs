@@ -26,7 +26,11 @@ public enum AccountSecurityOperation
     /// <summary>Revokes one session owned by the actor.</summary>
     RevokeOwnSession,
     /// <summary>Revokes the actor's other sessions.</summary>
-    RevokeOwnOtherSessions
+    RevokeOwnOtherSessions,
+    /// <summary>Generates a new recovery-code credential set for the target account.</summary>
+    GenerateRecoveryCodes,
+    /// <summary>Revokes every recovery-code credential belonging to the target account.</summary>
+    RevokeRecoveryCodes
 }
 
 /// <summary>Context supplied to the required host authorizer.</summary>

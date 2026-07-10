@@ -245,7 +245,12 @@ public sealed class AshlarExternalAccountLinkService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (currentUserId == Guid.Empty || request.Audit.ActorUserId != currentUserId)
+        if (currentUserId == Guid.Empty)
+        {
+            return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
+        }
+
+        if (!request.Audit.ActorUserId.Equals(currentUserId))
         {
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
         }

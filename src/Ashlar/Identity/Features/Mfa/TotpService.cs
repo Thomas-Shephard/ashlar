@@ -83,7 +83,7 @@ internal sealed class TotpService : ITotpService
             EventType = AshlarSecurityEventTypes.TotpEnrollmentStarted,
             Outcome = SecurityEventOutcomes.Success,
             UserId = request.ActorUserId,
-            TenantId = request.Tenant?.TenantId,
+            TenantId = request.Tenant.TenantId,
             Audit = request.Audit,
             Provider = _options.ProviderKey
         }, cancellationToken);
@@ -144,7 +144,7 @@ internal sealed class TotpService : ITotpService
                 return completionResult;
         }
 
-        await RecordEnrollmentCompletionFailureAsync(request, completionResult.FailureCode ?? AshlarFailureCodes.ValidationError, cancellationToken);
+        await RecordEnrollmentCompletionFailureAsync(request, completionResult.GetFailureOr(AshlarFailureCodes.ValidationError).Code, cancellationToken);
         return completionResult;
     }
 
@@ -171,14 +171,14 @@ internal sealed class TotpService : ITotpService
         var linkResult = await _credentialService.LinkCredentialAsync(context.UserId, assertion, _provider, context.SharedSecret, totpCredentialMetadata, cancellationToken);
 
         if (!linkResult.Succeeded)
-            return Result.Failure<TotpEnrollmentCompletionResult>(linkResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.LinkFailed));
+            return Result.Failure<TotpEnrollmentCompletionResult>(linkResult.GetFailureOr(AshlarFailureCodes.LinkFailed));
 
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
             Outcome = SecurityEventOutcomes.Success,
             UserId = context.UserId,
-            TenantId = context.Tenant?.TenantId,
+            TenantId = context.Tenant.TenantId,
             Audit = context.Audit,
             Provider = _options.ProviderKey
         }, cancellationToken);
@@ -246,7 +246,7 @@ internal sealed class TotpService : ITotpService
     {
         var userResult = await ValidateUserTenantAsync(
             request.ActorUserId,
-            request.Tenant ?? TenantContext.Global,
+            request.Tenant,
             request.Audit,
             AshlarSecurityEventTypes.TotpDisabled,
             throwOnFailure: false,
@@ -260,7 +260,7 @@ internal sealed class TotpService : ITotpService
         await _credentialRepository.AcquireUserMutationLockAsync(request.ActorUserId, cancellationToken);
         var lockedUserResult = await ValidateUserTenantAsync(
             request.ActorUserId,
-            request.Tenant ?? TenantContext.Global,
+            request.Tenant,
             request.Audit,
             AshlarSecurityEventTypes.TotpDisabled,
             throwOnFailure: false,
@@ -280,7 +280,7 @@ internal sealed class TotpService : ITotpService
             EventType = AshlarSecurityEventTypes.TotpDisabled,
             Outcome = SecurityEventOutcomes.Success,
             UserId = request.ActorUserId,
-            TenantId = request.Tenant?.TenantId,
+            TenantId = request.Tenant.TenantId,
             Audit = request.Audit,
             Provider = _options.ProviderKey
         }, cancellationToken);
@@ -333,7 +333,7 @@ internal sealed class TotpService : ITotpService
             return proofResult;
         }
 
-        if (!await AuthorizeAsync(request.UserId, request.Tenant, request.CurrentSessionId!.Value, operation, cancellationToken))
+        if (!await AuthorizeAsync(request.UserId, request.Tenant, request.CurrentSessionId, operation, cancellationToken))
         {
             return Result.Failure(AshlarFailureCodes.ValidationError);
         }
@@ -478,10 +478,8 @@ internal sealed class TotpService : ITotpService
         return result;
     }
 
-    private static AuthenticationContext? ToNotificationContext(AuditContext? audit)
+    private static AuthenticationContext ToNotificationContext(AuditContext audit)
     {
-        if (audit == null) return new AuthenticationContext();
-
         return new AuthenticationContext(
             UserId: audit.ActorUserId,
             IpAddress: audit.IpAddress,
@@ -495,8 +493,8 @@ internal sealed record EnrollmentProofValidationRequest(
     TenantContext Tenant,
     FreshMfaVerificationProof? MfaProof,
     FreshPrimaryAuthenticationProof? PrimaryProof,
-    Guid? CurrentSessionId,
-    AuditContext? Audit,
+    Guid CurrentSessionId,
+    AuditContext Audit,
     string EventType);
 
 internal sealed class TotpEnrollmentCompletionContext
@@ -504,8 +502,8 @@ internal sealed class TotpEnrollmentCompletionContext
     public required Guid UserId { get; init; }
     public required string SharedSecret { get; init; }
     public required string Code { get; init; }
-    public TenantContext? Tenant { get; init; }
-    public AuditContext? Audit { get; init; }
+    public required TenantContext Tenant { get; init; }
+    public required AuditContext Audit { get; init; }
     public required IUser User { get; init; }
 }
 

@@ -721,6 +721,24 @@ internal sealed class PasswordResetServiceTests
         }
     }
 
+    [Test]
+    public async Task ResetPasswordAsyncShouldRejectUserThatBecomesUnavailableAfterMutationLock()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
+        var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
+        fixture.Store.OnMutationLock = () => fixture.Store.Users.Clear();
+
+        var result = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidOrExpiredToken));
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.PasswordResetFailed), Is.True);
+        }
+    }
+
     private static async Task AssertResetFailureAsync(Action<Fixture> mutate, AshlarFailureCode expectedCode)
     {
         var user = CreateUser();
@@ -990,7 +1008,12 @@ internal sealed class PasswordResetServiceTests
 
     private sealed class InMemoryUserCredentialStore(TimeProvider timeProvider) : IUserRepository, ICredentialRepository
     {
-        public Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Action? OnMutationLock { get; set; }
+        public Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default)
+        {
+            OnMutationLock?.Invoke();
+            return Task.CompletedTask;
+        }
 
         public List<IUser> Users { get; } = [];
         public List<UserCredential> Credentials { get; } = [];

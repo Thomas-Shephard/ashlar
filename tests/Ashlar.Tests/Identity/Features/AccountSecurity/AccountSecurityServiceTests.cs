@@ -625,6 +625,49 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
+    public async Task RevokeCredentialsAsyncShouldFailWithoutMutationWhenUserLeavesScopeAfterLock()
+    {
+        var tenantId = Guid.NewGuid();
+        _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Active, TenantId = tenantId };
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        _userRepository.OnMutationLock = () => _userRepository.Users[_userId].TenantId = Guid.NewGuid();
+
+        var result = await _service.RevokeCredentialsAsync(_userId, AuthenticationProviderKey.Local, CreateRequest(tenantId: tenantId));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Null);
+        });
+    }
+
+    [Test]
+    public async Task RevokeCredentialsAsyncShouldRecognizeEveryBuiltInPrimaryProviderType()
+    {
+        var providers = new[]
+        {
+            AuthenticationProviderKey.Local,
+            AuthenticationProviderKey.EmailCode,
+            AuthenticationProviderKey.MagicLink,
+            AuthenticationProviderKey.Passkey,
+            new AuthenticationProviderKey(ProviderType.OAuth, "github"),
+            new AuthenticationProviderKey(ProviderType.Oidc, "OIDC"),
+            new AuthenticationProviderKey(ProviderType.Saml2, "enterprise-sso")
+        };
+        _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Active };
+        foreach (var provider in providers)
+            _userRepository.Credentials.Add(CreateCredential(_userId, provider));
+
+        foreach (var provider in providers[..^1])
+        {
+            var result = await _service.RevokeCredentialsAsync(_userId, provider, CreateRequest(preservePrimarySignInMethod: true));
+            Assert.That(result.Succeeded, Is.True, provider.ToString());
+        }
+        Assert.That((await _service.RevokeCredentialsAsync(_userId, providers[^1], CreateRequest(preservePrimarySignInMethod: true))).FailureCode,
+            Is.EqualTo(AshlarFailureCodes.LastPrimarySignInMethod));
+    }
+
+    [Test]
     public void RevokeCredentialsAsyncShouldRejectUninitializedProvider()
     {
         Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeCredentialsAsync(_userId, default, CreateRequest()));
@@ -745,6 +788,23 @@ internal sealed class AccountSecurityServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task ResetMfaAsyncShouldFailWithoutMutationWhenUserDisappearsAfterLock()
+    {
+        var tenantId = Guid.NewGuid();
+        _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Active, TenantId = tenantId };
+        _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
+        _userRepository.OnMutationLock = () => _userRepository.Users.Remove(_userId);
+
+        var result = await _service.ResetMfaAsync(_userId, CreateRequest(tenantId: tenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
             Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Null);
         }
     }
@@ -1626,7 +1686,8 @@ internal sealed class AccountSecurityServiceTests
     private AccountSecurityService CreateService(
         IMfaPolicyEvaluator? mfaPolicyEvaluator = null,
         IAuthenticationProviderRegistry? providerRegistry = null,
-        bool includeDefaultProviderRegistry = true)
+        bool includeDefaultProviderRegistry = true,
+        IRememberedMfaDeviceMutationExecutor? rememberedMfaDevices = null)
     {
         return new AccountSecurityService(
             _userRepository,
@@ -1639,7 +1700,8 @@ internal sealed class AccountSecurityServiceTests
                 _events,
                 _events,
                 MfaPolicyEvaluator: mfaPolicyEvaluator,
-                ProviderRegistry: providerRegistry ?? (includeDefaultProviderRegistry ? CreateDefaultProviderRegistry() : null)));
+                ProviderRegistry: providerRegistry ?? (includeDefaultProviderRegistry ? CreateDefaultProviderRegistry() : null),
+                RememberedMfaDeviceService: rememberedMfaDevices));
     }
 
     private static AuthenticationProviderRegistry CreateDefaultProviderRegistry(
@@ -1806,10 +1868,12 @@ internal sealed class AccountSecurityServiceTests
 
     private sealed class InMemoryUserCredentialStore : IUserRepository, ICredentialRepository
     {
+        public Action? OnMutationLock { get; set; }
         public int MutationLockCalls { get; private set; }
         public Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default)
         {
             MutationLockCalls++;
+            OnMutationLock?.Invoke();
             return Task.CompletedTask;
         }
 
@@ -1901,13 +1965,66 @@ internal sealed class AccountSecurityServiceTests
         public Task<int> RevokeOtherSessionsAsync(Guid userId, RevokeOtherAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
     }
 
+    [Test]
+    public async Task RevokeRememberedMfaDeviceAsyncShouldValidateScopeAndDelegate()
+    {
+        var tenantId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid();
+        var rememberedDevices = new TestRememberedMfaDeviceMutationExecutor { RevokeResult = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Active, TenantId = tenantId };
+        var service = CreateService(rememberedMfaDevices: rememberedDevices);
+
+        var defaultReasonResult = await service.RevokeRememberedMfaDeviceAsync(_userId, Guid.NewGuid(), CreateRequest(tenantId: tenantId));
+        var result = await service.RevokeRememberedMfaDeviceAsync(_userId, deviceId, CreateRequest("cleanup", tenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.EqualTo(1));
+            Assert.That(defaultReasonResult.Succeeded, Is.True);
+            Assert.That(rememberedDevices.LastDeviceId, Is.EqualTo(deviceId));
+            Assert.That(rememberedDevices.LastDeviceRequest?.Tenant?.TenantId, Is.EqualTo(tenantId));
+            Assert.ThrowsAsync<ArgumentException>(() => service.RevokeRememberedMfaDeviceAsync(_userId, Guid.Empty, CreateRequest()));
+        }
+    }
+
+    [Test]
+    public async Task RevokeRememberedMfaMutationsShouldHandleMissingUserAndMissingStore()
+    {
+        var rememberedDevices = new TestRememberedMfaDeviceMutationExecutor();
+        var service = CreateService(rememberedMfaDevices: rememberedDevices);
+        var missingOne = await service.RevokeRememberedMfaDeviceAsync(_userId, Guid.NewGuid(), CreateRequest());
+        var missingAll = await service.RevokeRememberedMfaDevicesAsync(_userId, CreateRequest());
+        _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Active };
+        var noStoreOne = await _service.RevokeRememberedMfaDeviceAsync(_userId, Guid.NewGuid(), CreateRequest());
+        var noStoreAll = await _service.RevokeRememberedMfaDevicesAsync(_userId, CreateRequest());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(missingOne.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(missingAll.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(noStoreOne.Value?.RememberedMfaDevicesRevoked, Is.Zero);
+            Assert.That(noStoreAll.Value?.RememberedMfaDevicesRevoked, Is.Zero);
+            Assert.That(rememberedDevices.RevokeCalls, Is.Zero);
+        });
+    }
+
     private sealed class TestRememberedMfaDeviceMutationExecutor : IRememberedMfaDeviceMutationExecutor
     {
+        public int RevokeCalls { get; private set; }
+        public bool RevokeResult { get; set; }
+        public Guid? LastDeviceId { get; private set; }
+        public RevokeRememberedMfaDeviceRequest? LastDeviceRequest { get; private set; }
         public int RevokeAllCalls { get; private set; }
         public int RevokeAllResult { get; set; }
         public RevokeAllRememberedMfaDevicesRequest? LastRequest { get; private set; }
 
-        public Task<bool> RevokeAsync(Guid userId, RevokeRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default) => Task.FromResult(false);
+        public Task<bool> RevokeAsync(Guid userId, RevokeRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
+        {
+            RevokeCalls++;
+            LastDeviceId = request.DeviceId;
+            LastDeviceRequest = request;
+            return Task.FromResult(RevokeResult);
+        }
         public Task<int> RevokeAllAsync(Guid userId, RevokeAllRememberedMfaDevicesRequest request, CancellationToken cancellationToken = default) { RevokeAllCalls++; LastRequest = request; return Task.FromResult(RevokeAllResult); }
     }
 

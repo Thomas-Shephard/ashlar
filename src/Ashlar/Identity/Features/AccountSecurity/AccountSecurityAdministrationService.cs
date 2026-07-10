@@ -3,9 +3,9 @@ namespace Ashlar.Identity.Features.AccountSecurity;
 internal sealed class AccountSecurityAdministrationService(
     IAccountSecurityMutationExecutor executor,
     IAccountSecurityOperationAuthorizer authorizer,
-    TimeProvider? timeProvider = null) : IAccountSecurityAdministrationService
+    TimeProvider timeProvider) : IAccountSecurityAdministrationService
 {
-    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly TimeProvider _timeProvider = timeProvider;
 
     public Task<Result<AccountSecurityOperationResult>> SetUserAccountStateAsync(SetUserAccountStateAdministrationRequest request, CancellationToken cancellationToken = default) =>
         ExecuteAsync(request, AccountSecurityOperation.SetAccountState, () => executor.SetUserAccountStateAsync(request.TargetUserId,

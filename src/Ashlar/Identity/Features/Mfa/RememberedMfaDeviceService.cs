@@ -245,7 +245,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
             Tenant = request.Tenant,
             Audit = request.Audit
         }, cancellationToken);
-        if (!validation.Succeeded || validation.Device == null) return false;
+        if (validation.Device == null) return false;
 
         return await RevokeAsync(request.ActorUserId, new RevokeRememberedMfaDeviceRequest(validation.Device.Id)
         {

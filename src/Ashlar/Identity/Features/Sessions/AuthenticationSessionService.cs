@@ -270,7 +270,7 @@ internal sealed class AuthenticationSessionService(
             return ValidateAuthenticationSessionResult.Failed;
         }
 
-        if (expectedActorUserId != null && expectedActorUserId != session.UserId)
+        if (expectedActorUserId is { } actorUserId && actorUserId != session.UserId)
             throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Audit actor must match the authenticated session owner.");
 
         var now = _timeProvider.GetUtcNow();

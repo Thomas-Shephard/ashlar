@@ -115,7 +115,7 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped<IAccountSecurityAdministrationService>(provider => new AccountSecurityAdministrationService(
             provider.GetRequiredService<IAccountSecurityMutationExecutor>(),
             provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
-            provider.GetService<TimeProvider>()));
+            provider.GetService<TimeProvider>() ?? TimeProvider.System));
         services.TryAddScoped(provider => new AccountLockoutServiceDependencies(
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>()));

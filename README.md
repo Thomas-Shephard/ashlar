@@ -607,7 +607,7 @@ using Ashlar.Identity.Providers.RecoveryCode;
 var recoveryCodes = httpContext.RequestServices.GetRequiredService<IRecoveryCodeService>();
 var stepUpService = httpContext.RequestServices.GetRequiredService<IStepUpAuthenticationService>();
 
-if (!httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out _))
+if (!httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out var tenant))
 {
     return Results.Forbid();
 }
@@ -621,20 +621,17 @@ if (!proof.Succeeded)
 }
 
 // Generates new codes. Any existing codes are revoked.
+var scope = tenant ?? TenantContext.Global;
 var rawCodes = await recoveryCodes.GenerateRecoveryCodesAsync(
-    userId,
-    new RecoveryCodeGenerationRequest
-    {
-        FreshMfaProof = proof.Value,
-        CurrentSessionId = sessionId,
-        Tenant = httpContext.ToTenantContext(),
-        Audit = httpContext.ToAuditContext()
-    });
+    new RecoveryCodeGenerationRequest(
+        userId,
+        userId,
+        scope,
+        sessionId,
+        proof.Value,
+        httpContext.ToAuditContext(),
+        scope));
 ```
-
-Use `GenerateRecoveryCodesPrivilegedAsync` and `RevokeRecoveryCodesPrivilegedAsync` only
-from explicitly authorized admin or account-recovery workflows with audit context. Ordinary
-self-service account endpoints should use the proof-bound methods above.
 
 To verify a recovery code during sign-in, continue the pending MFA handshake through the MFA orchestrator with a `RecoveryCodeAssertion`:
 

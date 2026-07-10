@@ -159,7 +159,8 @@ public sealed class AshlarSignInManager(
         CancellationToken cancellationToken)
     {
         var authenticationOptions = GetOptions();
-        return httpContext.Request.Cookies.TryGetValue(authenticationOptions.CookieName, out var token) && !string.IsNullOrWhiteSpace(token)
+        var token = httpContext.Request.Cookies[authenticationOptions.CookieName];
+        return !string.IsNullOrWhiteSpace(token)
             ? _sessionService.RevokeCurrentSessionAsync(new RevokeCurrentAuthenticationSessionRequest(token, CreateAuditContextFromHttpContext(httpContext), reason), cancellationToken)
             : Task.FromResult(false);
     }

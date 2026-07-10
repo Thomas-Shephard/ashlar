@@ -85,623 +85,405 @@ internal sealed class RecoveryCodeTests
         var optionsMock = new Mock<IOptions<RecoveryCodeOptions>>();
         optionsMock.SetupGet(o => o.Value).Returns((RecoveryCodeOptions)null!);
         Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeService(repo, credentialRepo, trans, hasher, CreateDependencies(optionsMock.Object)));
+        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeServiceDependencies(options, authorizer: null));
     }
 
     [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncReturnsExpectedCount()
+    public async Task ServicePublicGenerationRequiresValidActorProofAndAuthorization()
     {
-        var repository = new Mock<IUserRepository>();
-        var credentialRepository = new Mock<ICredentialRepository>();
-        var transactionProvider = new Mock<IAshlarTransactionProvider>();
-        var transaction = new Mock<IAshlarTransaction>();
-        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var options = Options.Create(new RecoveryCodeOptions { CodeCount = 5, ExpiresAfter = TimeSpan.FromDays(1) });
-        var userId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var proof = CreateProof(actorId);
+        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 });
 
-        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com", AccountState = UserAccountState.Active });
-
-        transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(transaction.Object);
-
-        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options));
-
-        var result = await service.GenerateRecoveryCodesPrivilegedAsync(userId, new RecoveryCodeGenerationRequest { Audit = new AuditContext(IpAddress: "203.0.113.51") });
+        var mismatch = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(actorId, proof,
+            audit: new AuditContext(ActorUserId: Guid.NewGuid())));
+        var staleProof = CreateProof(actorId, expiresAt: DateTimeOffset.UtcNow.AddSeconds(-1));
+        var stale = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(actorId, staleProof));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value, Has.Count.EqualTo(5));
+            Assert.That(mismatch.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(stale.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
         }
-        credentialRepository.Verify(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()), Times.Once);
-        credentialRepository.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c => c.Purpose == "recovery-code" && c.ExpiresAt != null), It.IsAny<CancellationToken>()), Times.Exactly(5));
-        transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncShouldRejectMissingOrMismatchedFreshMfaProof()
+    public async Task ServicePublicGenerationPassesCompleteContextToHostAuthorizer()
     {
-        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 });
+        var actorId = Guid.NewGuid();
+        var targetId = Guid.NewGuid();
+        var tenant = new TenantContext(Guid.NewGuid());
+        var proof = CreateProof(actorId, tenant);
+        AccountSecurityAuthorizationContext? observed = null;
+        var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
+        authorizer.Setup(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>()))
+            .Callback<AccountSecurityAuthorizationContext, CancellationToken>((context, _) => observed = context)
+            .ReturnsAsync(false);
+        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 },
+            authorizer: authorizer.Object);
+
+        var result = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(actorId, proof,
+            targetId, tenant));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(observed, Is.Not.Null);
+            Assert.That(observed!.ActorUserId, Is.EqualTo(actorId));
+            Assert.That(observed.TargetUserId, Is.EqualTo(targetId));
+            Assert.That(observed.TargetTenant, Is.EqualTo(tenant));
+            Assert.That(observed.Operation, Is.EqualTo(AccountSecurityOperation.GenerateRecoveryCodes));
+            Assert.That(observed.CurrentSessionId, Is.EqualTo(proof.SessionId));
+        }
+    }
+
+    [Test]
+    public async Task ServicePublicGenerationAndRevocationSucceedThroughAuthorizedRequests()
+    {
+        var userId = Guid.NewGuid();
+        var proof = CreateProof(userId);
+        var repository = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        var transactions = new Mock<IAshlarTransactionProvider>();
+        var transaction = new Mock<IAshlarTransaction>();
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com", AccountState = UserAccountState.Active });
+        credentials.Setup(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2);
+        transactions.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
+        var service = new RecoveryCodeService(repository.Object, credentials.Object, transactions.Object,
+            new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions { CodeCount = 1 })));
+
+        var generated = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(userId, proof));
+        var revoked = await service.RevokeRecoveryCodesAsync(CreateRevocationRequest(userId, proof, reason: "cleanup"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generated.Succeeded, Is.True);
+            Assert.That(generated.Value, Has.Count.EqualTo(1));
+            Assert.That(revoked.Succeeded, Is.True);
+            Assert.That(revoked.Value, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public async Task ServicePublicGenerationRejectsInvalidOptionsBeforeAuthorization()
+    {
+        var actorId = Guid.NewGuid();
+        var proof = CreateProof(actorId);
+        var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
+        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 5 }, authorizer: authorizer.Object);
+
+        var zero = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(actorId, proof, codeCount: 0));
+        var tooMany = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(actorId, proof, codeCount: 11));
+        var expiry = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(actorId, proof, expiresAfter: TimeSpan.Zero));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(zero.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidCodeCount));
+            Assert.That(tooMany.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidCodeCount));
+            Assert.That(expiry.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidExpiry));
+        }
+        authorizer.Verify(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public void ServiceExecutorRejectsEmptyUserId()
+    {
+        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions());
+        var audit = new AuditContext(ActorUserId: Guid.NewGuid());
+        var executor = (IRecoveryCodeMutationExecutor)service;
+
+        Assert.ThrowsAsync<ArgumentException>(() => executor.GenerateRecoveryCodesAsync(Guid.Empty,
+            new RecoveryCodeGenerationExecutionRequest(audit, TenantContext.Global, false, null, true, 1, null)));
+        Assert.ThrowsAsync<ArgumentException>(() => executor.RevokeRecoveryCodesAsync(Guid.Empty,
+            new RevokeRecoveryCodesExecutionRequest(audit, TenantContext.Global, false, null)));
+    }
+
+    [Test]
+    public async Task ServiceExecutorGenerationCoversValidationBranches()
+    {
+        var userId = Guid.NewGuid();
+        var audit = new AuditContext(ActorUserId: userId);
+        var invalidCount = (IRecoveryCodeMutationExecutor)CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 0 });
+        var invalidConfiguration = (IRecoveryCodeMutationExecutor)CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeLength = 0 });
+        var invalidGroup = (IRecoveryCodeMutationExecutor)CreateServiceForGenerationValidation(new RecoveryCodeOptions { GroupSize = 0 });
+        var invalidExpiry = (IRecoveryCodeMutationExecutor)CreateServiceForGenerationValidation(new RecoveryCodeOptions { ExpiresAfter = TimeSpan.Zero });
+
+        var count = await invalidCount.GenerateRecoveryCodesAsync(userId, GenerationExecution(audit));
+        var configuration = await invalidConfiguration.GenerateRecoveryCodesAsync(userId, GenerationExecution(audit));
+        var group = await invalidGroup.GenerateRecoveryCodesAsync(userId, GenerationExecution(audit));
+        var expiry = await invalidExpiry.GenerateRecoveryCodesAsync(userId, GenerationExecution(audit));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidCodeCount));
+            Assert.That(configuration.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidConfiguration));
+            Assert.That(group.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidConfiguration));
+            Assert.That(expiry.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidExpiry));
+        }
+    }
+
+    [Test]
+    public async Task ServiceExecutorGenerationSupportsNoReplacementAndNoExpiry()
+    {
+        var userId = Guid.NewGuid();
+        var repository = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        var transactions = new Mock<IAshlarTransactionProvider>();
+        var transaction = new Mock<IAshlarTransaction>();
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com", AccountState = UserAccountState.Active });
+        transactions.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
+        var service = new RecoveryCodeService(repository.Object, credentials.Object, transactions.Object,
+            new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions { CodeCount = 1, ExpiresAfter = null })));
+
+        var result = await ((IRecoveryCodeMutationExecutor)service).GenerateRecoveryCodesAsync(userId,
+            GenerationExecution(new AuditContext(ActorUserId: userId), replaceExisting: false));
+
+        Assert.That(result.Succeeded, Is.True);
+        credentials.Verify(r => r.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        credentials.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(credential => credential.ExpiresAt == null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ServiceExecutorRejectsMissingAndMismatchedScopedUsers()
+    {
         var userId = Guid.NewGuid();
         var tenant = new TenantContext(Guid.NewGuid());
+        var audit = new AuditContext(ActorUserId: userId);
+        var repository = new Mock<IUserRepository>();
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync((IUser?)null);
+        var service = CreateService(repository.Object, new RecoveryCodeOptions());
+        var executor = (IRecoveryCodeMutationExecutor)service;
 
-        var missing = await service.GenerateRecoveryCodesAsync(userId);
-        var mismatched = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest
-        {
-            FreshMfaProof = CreateProof(Guid.NewGuid(), tenant),
-            Tenant = tenant
-        });
+        var missing = await executor.GenerateRecoveryCodesAsync(userId, GenerationExecution(audit));
+        var allTenantsMissing = await executor.GenerateRecoveryCodesAsync(userId, GenerationExecution(audit, tenant: null, includeAllTenants: true));
+
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, TenantId = Guid.NewGuid(), DisplayEmail = "wrong@example.com" });
+        var mismatch = await executor.GenerateRecoveryCodesAsync(userId, GenerationExecution(audit, tenant: tenant));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(missing.Succeeded, Is.False);
-            Assert.That(missing.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
-            Assert.That(mismatched.Succeeded, Is.False);
-            Assert.That(mismatched.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            Assert.That(missing.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(allTenantsMissing.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(mismatch.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
         }
     }
 
     [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncShouldRejectGlobalProofForAnotherUser()
+    public async Task ServiceExecutorRevalidatesScopeAfterLockForGenerationAndRevocation()
     {
-        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 });
         var userId = Guid.NewGuid();
-
-        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest
-        {
-            FreshMfaProof = CreateProof(Guid.NewGuid())
-        });
-
-        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
-    }
-
-    [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncShouldRejectTenantProofForGlobalRequest()
-    {
-        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 });
-        var userId = Guid.NewGuid();
-
-        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest
-        {
-            FreshMfaProof = CreateProof(userId, new TenantContext(Guid.NewGuid()))
-        });
-
-        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
-    }
-
-    [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncShouldRejectExpiredFreshMfaProof()
-    {
-        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 });
-        var userId = Guid.NewGuid();
-        var proof = CreateProof(userId, expiresAt: DateTimeOffset.UtcNow.AddSeconds(-1));
-
-        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest
-        {
-            FreshMfaProof = proof,
-            CurrentSessionId = proof.SessionId
-        });
-
-        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
-    }
-
-    [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncShouldRejectProofForAnotherSession()
-    {
-        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 });
-        var userId = Guid.NewGuid();
-        var proof = CreateProof(userId);
-
-        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest
-        {
-            FreshMfaProof = proof,
-            CurrentSessionId = Guid.NewGuid()
-        });
-
-        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
-    }
-
-    [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncWithRequestOverridesOptions()
-    {
+        var user = new User { Id = userId, DisplayEmail = "test@example.com", AccountState = UserAccountState.Active };
         var repository = new Mock<IUserRepository>();
-        var credentialRepository = new Mock<ICredentialRepository>();
-        var transactionProvider = new Mock<IAshlarTransactionProvider>();
+        repository.SetupSequence(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user).ReturnsAsync((IUser?)null).ReturnsAsync(user).ReturnsAsync((IUser?)null);
         var transaction = new Mock<IAshlarTransaction>();
-        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var options = Options.Create(new RecoveryCodeOptions { CodeCount = 5 });
-        var userId = Guid.NewGuid();
+        var transactions = new Mock<IAshlarTransactionProvider>();
+        transactions.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
+        var service = CreateService(repository.Object, new RecoveryCodeOptions(), transactions: transactions.Object);
+        var executor = (IRecoveryCodeMutationExecutor)service;
+        var audit = new AuditContext(ActorUserId: userId);
 
-        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com", AccountState = UserAccountState.Active });
-
-        transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(transaction.Object);
-
-        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options));
-
-        var request = new RecoveryCodeGenerationRequest { CodeCount = 3, ReplaceExisting = false, ExpiresAfter = TimeSpan.FromHours(1) };
-        var result = await service.GenerateRecoveryCodesPrivilegedAsync(userId, request with { Audit = new AuditContext(ActorUserId: userId) });
+        var generation = await executor.GenerateRecoveryCodesAsync(userId, GenerationExecution(audit));
+        var revocation = await executor.RevokeRecoveryCodesAsync(userId, RevocationExecution(audit));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value, Has.Count.EqualTo(3));
+            Assert.That(generation.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(revocation.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
         }
-        credentialRepository.Verify(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()), Times.Never);
-        credentialRepository.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c => c.ExpiresAt != null), It.IsAny<CancellationToken>()), Times.Exactly(3));
-    }
-
-    [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncPropagatesAuditToEventAndNotification()
-    {
-        var repository = new Mock<IUserRepository>();
-        var credentialRepository = new Mock<ICredentialRepository>();
-        var transactionProvider = new Mock<IAshlarTransactionProvider>();
-        var transaction = new Mock<IAshlarTransaction>();
-        var onCommitted = new List<Func<CancellationToken, Task>>();
-        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var securityEvents = new Mock<ISecurityEventSink>();
-        var notificationService = new Mock<ISecurityNotificationService>();
-        var options = Options.Create(new RecoveryCodeOptions { CodeCount = 1 });
-        var userId = Guid.NewGuid();
-        var audit = new AuditContext(ActorUserId: userId, IpAddress: "203.0.113.50", UserAgent: "recovery-agent", CorrelationId: "recovery-correlation");
-
-        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com", AccountState = UserAccountState.Active });
-        transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(transaction.Object);
-        transaction.Setup(t => t.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()))
-            .Callback<Func<CancellationToken, Task>>(onCommitted.Add);
-        transaction.Setup(t => t.CommitAsync(It.IsAny<CancellationToken>()))
-            .Returns<CancellationToken>(async ct =>
-            {
-                foreach (var action in onCommitted)
-                {
-                    await action(ct);
-                }
-            });
-        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, securityEventSink: securityEvents.Object, notificationService: notificationService.Object));
-
-        var result = await service.GenerateRecoveryCodesPrivilegedAsync(userId, new RecoveryCodeGenerationRequest { Audit = audit });
-
-        Assert.That(result.Succeeded, Is.True);
-        securityEvents.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
-            e.EventType == AshlarSecurityEventTypes.RecoveryCodesGenerated &&
-            e.ActorUserId == userId &&
-            e.IpAddress == "203.0.113.50" &&
-            e.UserAgent == "recovery-agent" &&
-            e.CorrelationId == "recovery-correlation"), It.IsAny<CancellationToken>()), Times.Once);
-        notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
-            notification.Type == SecurityNotificationType.RecoveryCodesGenerated &&
-            notification.IpAddress == "203.0.113.50" &&
-            notification.UserAgent == "recovery-agent"), It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncNotifiesWithoutAuditContext()
-    {
-        var repository = new Mock<IUserRepository>();
-        var credentialRepository = new Mock<ICredentialRepository>();
-        var transactionProvider = new Mock<IAshlarTransactionProvider>();
-        var transaction = new Mock<IAshlarTransaction>();
-        var onCommitted = new List<Func<CancellationToken, Task>>();
-        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var notificationService = new Mock<ISecurityNotificationService>();
-        var options = Options.Create(new RecoveryCodeOptions { CodeCount = 1 });
-        var userId = Guid.NewGuid();
-
-        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com", AccountState = UserAccountState.Active });
-        transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(transaction.Object);
-        transaction.Setup(t => t.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()))
-            .Callback<Func<CancellationToken, Task>>(onCommitted.Add);
-        transaction.Setup(t => t.CommitAsync(It.IsAny<CancellationToken>()))
-            .Returns<CancellationToken>(async ct =>
-            {
-                foreach (var action in onCommitted)
-                {
-                    await action(ct);
-                }
-            });
-        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, notificationService: notificationService.Object));
-
-        var proof = CreateProof(userId);
-        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest { FreshMfaProof = proof, CurrentSessionId = proof.SessionId });
-
-        Assert.That(result.Succeeded, Is.True);
-        notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
-            notification.Type == SecurityNotificationType.RecoveryCodesGenerated &&
-            notification.IpAddress == null &&
-            notification.UserAgent == null), It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncWithNoExpiryCreatesNonExpiringCredentials()
-    {
-        var repository = new Mock<IUserRepository>();
-        var credentialRepository = new Mock<ICredentialRepository>();
-        var transactionProvider = new Mock<IAshlarTransactionProvider>();
-        var transaction = new Mock<IAshlarTransaction>();
-        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var options = Options.Create(new RecoveryCodeOptions { CodeCount = 1, ExpiresAfter = null });
-        var userId = Guid.NewGuid();
-
-        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com", AccountState = UserAccountState.Active });
-
-        transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(transaction.Object);
-
-        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options));
-
-        var result = await service.GenerateRecoveryCodesPrivilegedAsync(userId, new RecoveryCodeGenerationRequest { Audit = new AuditContext(IpAddress: "203.0.113.51") });
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value, Has.Count.EqualTo(1));
-        }
-        credentialRepository.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c => c.ExpiresAt == null), It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Test]
-    public void ServiceGenerateRecoveryCodesAsyncThrowsOnInvalidUserId()
-    {
-        var service = new RecoveryCodeService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IAshlarTransactionProvider>().Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions())));
-        Assert.That(async () => await service.GenerateRecoveryCodesPrivilegedAsync(Guid.Empty, new RecoveryCodeGenerationRequest { Audit = new AuditContext(ActorUserId: Guid.NewGuid()) }), Throws.ArgumentException);
-        Assert.That(async () => await service.GenerateRecoveryCodesAsync(Guid.Empty), Throws.ArgumentException);
-    }
-
-    [Test]
-    public void ServiceGenerateRecoveryCodesPrivilegedAsyncShouldRequireAudit()
-    {
-        var service = new RecoveryCodeService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IAshlarTransactionProvider>().Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions())));
-
-        Assert.ThrowsAsync<ArgumentException>(() => service.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid()));
-    }
-
-    [Test]
-    public void ServiceGenerateRecoveryCodesPrivilegedAsyncShouldRejectNullRequest()
-    {
-        var service = new RecoveryCodeService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IAshlarTransactionProvider>().Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions())));
-
-        Assert.ThrowsAsync<ArgumentException>(() => service.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), null!));
-    }
-
-    [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncFailsIfUserNotFound()
-    {
-        var repository = new Mock<IUserRepository>();
-        var credentialRepository = new Mock<ICredentialRepository>();
-        var transactionProvider = new Mock<IAshlarTransactionProvider>();
-        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var options = Options.Create(new RecoveryCodeOptions());
-        var userId = Guid.NewGuid();
-
-        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IUser?)null);
-
-        transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Mock<IAshlarTransaction>().Object);
-
-        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options));
-
-        var result = await service.GenerateRecoveryCodesPrivilegedAsync(userId, new RecoveryCodeGenerationRequest { Audit = new AuditContext(ActorUserId: userId) });
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
-        }
-    }
-
-    [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncShouldRejectTenantMismatchBeforeGeneratingCodes()
-    {
-        var repository = new Mock<IUserRepository>();
-        var credentialRepository = new Mock<ICredentialRepository>();
-        var transactionProvider = new Mock<IAshlarTransactionProvider>();
-        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var securityEvents = new Mock<ISecurityEventSink>();
-        var options = Options.Create(new RecoveryCodeOptions());
-        var userId = Guid.NewGuid();
-        var requestedTenantId = Guid.NewGuid();
-
-        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, DisplayEmail = "tenant@example.com", TenantId = Guid.NewGuid() });
-
-        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, securityEventSink: securityEvents.Object));
-
-        var result = await service.GenerateRecoveryCodesPrivilegedAsync(userId, new RecoveryCodeGenerationRequest { ReplaceExisting = true, Tenant = new TenantContext(requestedTenantId), Audit = new AuditContext(ActorUserId: userId) });
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
-            Assert.That(result.Value, Is.Null);
-            credentialRepository.Verify(r => r.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-            credentialRepository.Verify(r => r.CreateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
-            transactionProvider.Verify(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
-            securityEvents.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
-                e.EventType == AshlarSecurityEventTypes.RecoveryCodesGenerated &&
-                e.Outcome == SecurityEventOutcomes.Failure &&
-                e.UserId == userId &&
-                e.TenantId == requestedTenantId &&
-                e.FailureReason == AshlarFailureCodes.TenantMismatch.Value &&
-                e.Properties == null), It.IsAny<CancellationToken>()), Times.Once);
-        }
-    }
-
-    [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncShouldTreatMissingTenantAsGlobalOnly()
-    {
-        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 }, Guid.NewGuid());
-
-        var result = await service.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), new RecoveryCodeGenerationRequest { Audit = new AuditContext(ActorUserId: Guid.NewGuid()) });
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
-        }
-    }
-
-    [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncFailsOnInvalidGenerationRequest()
-    {
-        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 5 });
-        var audit = new AuditContext(IpAddress: "203.0.113.52");
-        var tooMany = new RecoveryCodeGenerationRequest { CodeCount = 11, Audit = audit };
-        var zero = new RecoveryCodeGenerationRequest { CodeCount = 0, Audit = audit };
-        var negativeExpiry = new RecoveryCodeGenerationRequest { CodeCount = 1, ExpiresAfter = TimeSpan.Zero, Audit = audit };
-
-        var tooManyResult = await service.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), tooMany);
-        var zeroResult = await service.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), zero);
-        var negativeExpiryResult = await service.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), negativeExpiry);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(tooManyResult.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidCodeCount));
-            Assert.That(zeroResult.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidCodeCount));
-            Assert.That(negativeExpiryResult.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidExpiry));
-        }
-    }
-
-    [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncFailsOnInvalidOptions()
-    {
-        var invalidCodeLength = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeLength = 0 });
-        var invalidGroupSize = CreateServiceForGenerationValidation(new RecoveryCodeOptions { GroupSize = 0 });
-
-        var request = new RecoveryCodeGenerationRequest { Audit = new AuditContext(IpAddress: "203.0.113.53") };
-        var invalidCodeLengthResult = await invalidCodeLength.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), request);
-        var invalidGroupSizeResult = await invalidGroupSize.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), request);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(invalidCodeLengthResult.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidConfiguration));
-            Assert.That(invalidGroupSizeResult.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidConfiguration));
-        }
-    }
-
-    [Test]
-    public async Task ServiceGenerateRecoveryCodesAsyncCoversDefaultInvalidGenerationPaths()
-    {
-        var missingUser = new RecoveryCodeService(
-            Mock.Of<IUserRepository>(),
-            Mock.Of<ICredentialRepository>(),
-            Mock.Of<IAshlarTransactionProvider>(provider => provider.BeginTransactionAsync(It.IsAny<CancellationToken>()) == Task.FromResult(Mock.Of<IAshlarTransaction>())),
-            new PasswordHasherSelector([new PasswordHasherV1()]),
-            CreateDependencies(Options.Create(new RecoveryCodeOptions())));
-        var invalidCount = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 0 });
-        var invalidConfiguration = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeLength = 0 });
-        var invalidExpiry = CreateServiceForGenerationValidation(new RecoveryCodeOptions { ExpiresAfter = TimeSpan.Zero });
-
-        var missingUserResult = await missingUser.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), new RecoveryCodeGenerationRequest { Audit = new AuditContext(ActorUserId: Guid.NewGuid()) });
-        var invalidCountResult = await invalidCount.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), new RecoveryCodeGenerationRequest { Audit = new AuditContext(ActorUserId: Guid.NewGuid()) });
-        var invalidConfigurationResult = await invalidConfiguration.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), new RecoveryCodeGenerationRequest { Audit = new AuditContext(ActorUserId: Guid.NewGuid()) });
-        var invalidExpiryResult = await invalidExpiry.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), new RecoveryCodeGenerationRequest { Audit = new AuditContext(ActorUserId: Guid.NewGuid()) });
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(missingUserResult.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
-            Assert.That(invalidCountResult.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidCodeCount));
-            Assert.That(invalidConfigurationResult.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidConfiguration));
-            Assert.That(invalidExpiryResult.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidExpiry));
-        }
-    }
-
-    [Test]
-    public async Task ServiceRevokeRecoveryCodesAsyncSucceeds()
-    {
-        var repository = new Mock<IUserRepository>();
-        var credentialRepository = new Mock<ICredentialRepository>();
-        var transactionProvider = new Mock<IAshlarTransactionProvider>();
-        var transaction = new Mock<IAshlarTransaction>();
-        var onCommitted = new List<Func<CancellationToken, Task>>();
-        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var securityEvents = new RecordingSecurityEventSink();
-        var options = Options.Create(new RecoveryCodeOptions());
-        var userId = Guid.NewGuid();
-
-        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com", AccountState = UserAccountState.Active });
-        credentialRepository.Setup(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(10);
-
-        transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(transaction.Object);
-        transaction.Setup(t => t.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()))
-            .Callback<Func<CancellationToken, Task>>(onCommitted.Add);
-        transaction.Setup(t => t.CommitAsync(It.IsAny<CancellationToken>()))
-            .Returns<CancellationToken>(async ct =>
-            {
-                foreach (var action in onCommitted)
-                {
-                    await action(ct);
-                }
-
-                onCommitted.Clear();
-            });
-
-        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, securityEventSink: securityEvents));
-
-        var result1 = await service.RevokeRecoveryCodesPrivilegedAsync(userId, new RevokeRecoveryCodesRequest { Reason = "test reason", Audit = new AuditContext(ActorUserId: userId) });
-        Assert.That(result1, Is.EqualTo(10));
-
-        var proof = CreateProof(userId);
-        var result2 = await service.RevokeRecoveryCodesAsync(userId, new RevokeRecoveryCodesRequest { FreshMfaProof = proof, CurrentSessionId = proof.SessionId });
-        Assert.That(result2, Is.EqualTo(10));
-
-        credentialRepository.Verify(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()), Times.Exactly(2));
         transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(securityEvents.Events, Has.Count.EqualTo(2));
-            Assert.That(securityEvents.Events[0].EventType, Is.EqualTo(AshlarSecurityEventTypes.RecoveryCodesRevoked));
-            Assert.That(securityEvents.Events[0].Outcome, Is.EqualTo(SecurityEventOutcomes.Success));
-            Assert.That(securityEvents.Events[0].FailureReason, Is.Null);
-            Assert.That(securityEvents.Events[0].Properties, Does.ContainKey("count").WithValue("10"));
-            Assert.That(securityEvents.Events[0].Properties, Does.ContainKey("revoked").WithValue("true"));
-            Assert.That(securityEvents.Events[0].Properties, Does.ContainKey("reason").WithValue("test reason"));
-            Assert.That(securityEvents.Events[1].Properties, Does.ContainKey("count").WithValue("10"));
-            Assert.That(securityEvents.Events[1].Properties, Does.ContainKey("revoked").WithValue("true"));
-            Assert.That(securityEvents.Events[1].Properties, Does.Not.ContainKey("reason"));
-            Assert.That(string.Join("|", securityEvents.Events.SelectMany(e => e.Properties?.Values ?? [])), Does.Not.Contain("RECOVERY-CODE").And.Not.Contain("hash"));
-        }
     }
 
     [Test]
-    public async Task ServiceRevokeRecoveryCodesAsyncShouldRejectMissingOrMismatchedFreshMfaProof()
+    public async Task ServiceExecutorRevocationCoversMissingUserAndReasonBranches()
     {
-        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 });
         var userId = Guid.NewGuid();
-        var tenant = new TenantContext(Guid.NewGuid());
-        var proof = CreateProof(userId);
+        var audit = new AuditContext(ActorUserId: userId);
+        var missing = (IRecoveryCodeMutationExecutor)CreateService(Mock.Of<IUserRepository>(), new RecoveryCodeOptions());
+        var missingResult = await missing.RevokeRecoveryCodesAsync(userId, RevocationExecution(audit));
 
-        var missing = await service.RevokeRecoveryCodesAsync(userId);
-        var mismatched = await service.RevokeRecoveryCodesAsync(userId, new RevokeRecoveryCodesRequest
-        {
-            FreshMfaProof = CreateProof(userId, new TenantContext(Guid.NewGuid())),
-            Tenant = tenant
-        });
-        var wrongSession = await service.RevokeRecoveryCodesAsync(userId, new RevokeRecoveryCodesRequest
-        {
-            FreshMfaProof = proof,
-            CurrentSessionId = Guid.NewGuid()
-        });
+        var events = new RecordingSecurityEventSink();
+        var repository = new Mock<IUserRepository>();
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
+        var credentials = new Mock<ICredentialRepository>();
+        credentials.Setup(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>())).ReturnsAsync(0);
+        var service = CreateService(repository.Object, new RecoveryCodeOptions(), credentials.Object, securityEvents: events);
+        var result = await ((IRecoveryCodeMutationExecutor)service).RevokeRecoveryCodesAsync(userId, RevocationExecution(audit, "cleanup"));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(missing, Is.Zero);
-            Assert.That(mismatched, Is.Zero);
-            Assert.That(wrongSession, Is.Zero);
+            Assert.That(missingResult.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(result.Value, Is.Zero);
+            Assert.That(events.Events.Single(e => e.Outcome == SecurityEventOutcomes.Success).Properties,
+                Does.ContainKey("revoked").WithValue("false").And.ContainKey("reason").WithValue("cleanup"));
         }
     }
 
     [Test]
-    public async Task ServiceRevokeRecoveryCodesAsyncAuditsNoOpCount()
+    public async Task ServiceExecutorAllTenantAuditUsesActualUserTenant()
     {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var events = new RecordingSecurityEventSink();
         var repository = new Mock<IUserRepository>();
-        var credentialRepository = new Mock<ICredentialRepository>();
-        var transactionProvider = new Mock<IAshlarTransactionProvider>();
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, TenantId = tenantId, DisplayEmail = "tenant@example.com" });
+        var service = CreateService(repository.Object, new RecoveryCodeOptions { CodeCount = 1 }, securityEvents: events);
+
+        var result = await ((IRecoveryCodeMutationExecutor)service).GenerateRecoveryCodesAsync(userId,
+            GenerationExecution(new AuditContext(ActorUserId: userId), tenant: null, includeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(events.Events.Single(e => e.Outcome == SecurityEventOutcomes.Success).TenantId, Is.EqualTo(tenantId));
+        }
+    }
+
+    [Test]
+    public async Task ServicePublicRevocationRejectsInvalidProofAndHostDenial()
+    {
+        var actorId = Guid.NewGuid();
+        var proof = CreateProof(actorId);
+        var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
+        authorizer.Setup(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var events = new RecordingSecurityEventSink();
+        var repository = new Mock<IUserRepository>();
+        repository.Setup(r => r.GetUserByIdAsync(actorId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = actorId, DisplayEmail = "test@example.com" });
+        var service = CreateService(repository.Object, new RecoveryCodeOptions(), securityEvents: events,
+            authorizer: authorizer.Object);
+        var wrongSession = new RevokeRecoveryCodesRequest(actorId, actorId, TenantContext.Global,
+            Guid.NewGuid(), proof, new AuditContext(ActorUserId: actorId), TenantContext.Global);
+
+        var proofFailure = await service.RevokeRecoveryCodesAsync(wrongSession);
+        var denied = await service.RevokeRecoveryCodesAsync(CreateRevocationRequest(actorId, proof));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proofFailure.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(denied.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(events.Events.Count(e => e.Outcome == SecurityEventOutcomes.Failure), Is.EqualTo(2));
+        }
+        authorizer.Verify(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ServicePublicGenerationRejectsActorProofMismatchAndAllTenantDenial()
+    {
+        var actorId = Guid.NewGuid();
+        var mismatchedProof = CreateProof(Guid.NewGuid());
+        var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
+        authorizer.Setup(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var events = new RecordingSecurityEventSink();
+        var service = CreateService(Mock.Of<IUserRepository>(), new RecoveryCodeOptions { CodeCount = 1 },
+            securityEvents: events, authorizer: authorizer.Object);
+        var mismatch = new RecoveryCodeGenerationRequest(actorId, actorId, TenantContext.Global,
+            mismatchedProof.SessionId, mismatchedProof, new AuditContext(ActorUserId: actorId), TenantContext.Global,
+            codeCount: 1);
+        var validProof = CreateProof(actorId);
+        var missingAuditActor = new RecoveryCodeGenerationRequest(actorId, actorId, TenantContext.Global,
+            validProof.SessionId, validProof, new AuditContext(), TenantContext.Global, codeCount: 1);
+
+        var proofFailure = await service.GenerateRecoveryCodesAsync(mismatch);
+        var auditFailure = await service.GenerateRecoveryCodesAsync(missingAuditActor);
+        var denied = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(actorId, validProof,
+            includeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proofFailure.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            Assert.That(auditFailure.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(denied.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(events.Events.Any(e => e.Outcome == SecurityEventOutcomes.Failure && e.TenantId == null), Is.True);
+        }
+        authorizer.Verify(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ServiceExecutorCoversAuditTenantAndNullReasonVariants()
+    {
+        var userId = Guid.NewGuid();
+        var audit = new AuditContext(ActorUserId: userId);
+        var events = new RecordingSecurityEventSink();
+        var nonTenantUser = new Mock<IUser>();
+        nonTenantUser.SetupGet(user => user.Id).Returns(userId);
+        nonTenantUser.SetupGet(user => user.DisplayEmail).Returns("global@example.com");
+        var repository = new Mock<IUserRepository>();
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(nonTenantUser.Object);
+        var credentials = new Mock<ICredentialRepository>();
+        credentials.Setup(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        var service = CreateService(repository.Object, new RecoveryCodeOptions { CodeCount = 1, ExpiresAfter = null },
+            credentials.Object, securityEvents: events);
+        var executor = (IRecoveryCodeMutationExecutor)service;
+
+        var generated = await executor.GenerateRecoveryCodesAsync(userId,
+            GenerationExecution(audit, tenant: null, includeAllTenants: true));
+        var revoked = await executor.RevokeRecoveryCodesAsync(userId, RevocationExecution(audit));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generated.Succeeded, Is.True);
+            Assert.That(revoked.Value, Is.EqualTo(1));
+            Assert.That(events.Events.Where(e => e.Outcome == SecurityEventOutcomes.Success), Has.All.Property("TenantId").Null);
+            Assert.That(events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.RecoveryCodesRevoked).Properties,
+                Does.Not.ContainKey("reason").And.ContainKey("revoked").WithValue("true"));
+        }
+    }
+
+    [Test]
+    public async Task ServiceExecutorGenerationUsesExplicitExpiryAndCommittedNotificationContext()
+    {
+        var userId = Guid.NewGuid();
+        var audit = new AuditContext(ActorUserId: userId, IpAddress: "203.0.113.50",
+            UserAgent: "recovery-agent", CorrelationId: "recovery-correlation");
+        var repository = new Mock<IUserRepository>();
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
+        var credentials = new Mock<ICredentialRepository>();
+        var transactions = new Mock<IAshlarTransactionProvider>();
         var transaction = new Mock<IAshlarTransaction>();
-        var onCommitted = new List<Func<CancellationToken, Task>>();
-        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var securityEvents = new RecordingSecurityEventSink();
-        var options = Options.Create(new RecoveryCodeOptions());
-        var userId = Guid.NewGuid();
-
-        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com", AccountState = UserAccountState.Active });
-        credentialRepository.Setup(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0);
-        transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(transaction.Object);
+        var committed = new List<Func<CancellationToken, Task>>();
         transaction.Setup(t => t.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()))
-            .Callback<Func<CancellationToken, Task>>(onCommitted.Add);
-        transaction.Setup(t => t.CommitAsync(It.IsAny<CancellationToken>()))
-            .Returns<CancellationToken>(async ct =>
-            {
-                foreach (var action in onCommitted)
-                {
-                    await action(ct);
-                }
-            });
-        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, securityEventSink: securityEvents));
-
-        var count = await service.RevokeRecoveryCodesPrivilegedAsync(userId, new RevokeRecoveryCodesRequest { Reason = "admin cleanup", Audit = new AuditContext(ActorUserId: userId) });
-
-        using (Assert.EnterMultipleScope())
+            .Callback<Func<CancellationToken, Task>>(committed.Add);
+        transaction.Setup(t => t.CommitAsync(It.IsAny<CancellationToken>())).Returns<CancellationToken>(async cancellationToken =>
         {
-            Assert.That(count, Is.Zero);
-            var securityEvent = securityEvents.Events.Single();
-            Assert.That(securityEvent.EventType, Is.EqualTo(AshlarSecurityEventTypes.RecoveryCodesRevoked));
-            Assert.That(securityEvent.Outcome, Is.EqualTo(SecurityEventOutcomes.Success));
-            Assert.That(securityEvent.FailureReason, Is.Null);
-            Assert.That(securityEvent.Properties, Does.ContainKey("count").WithValue("0"));
-            Assert.That(securityEvent.Properties, Does.ContainKey("revoked").WithValue("false"));
-            Assert.That(securityEvent.Properties, Does.ContainKey("reason").WithValue("admin cleanup"));
-        }
+            foreach (var callback in committed) await callback(cancellationToken);
+        });
+        transactions.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
+        var notifications = new Mock<ISecurityNotificationService>();
+        var service = new RecoveryCodeService(repository.Object, credentials.Object, transactions.Object,
+            new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(
+                Options.Create(new RecoveryCodeOptions { CodeCount = 1, ExpiresAfter = TimeSpan.FromDays(30) }),
+                notificationService: notifications.Object));
+        var request = new RecoveryCodeGenerationExecutionRequest(audit, TenantContext.Global, false, null,
+            true, 1, TimeSpan.FromHours(1));
+
+        var result = await ((IRecoveryCodeMutationExecutor)service).GenerateRecoveryCodesAsync(userId, request);
+
+        Assert.That(result.Succeeded, Is.True);
+        credentials.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(credential =>
+            credential.ExpiresAt > credential.CreatedAt && credential.ExpiresAt <= credential.CreatedAt.AddHours(1)),
+            It.IsAny<CancellationToken>()), Times.Once);
+        notifications.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
+            notification.IpAddress == audit.IpAddress && notification.UserAgent == audit.UserAgent),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task ServiceRevokeRecoveryCodesAsyncShouldRejectTenantMismatchBeforeRevokingCredentials()
+    public void ServicePublicSurfaceHasNoRawTargetMutationOverloads()
     {
-        var repository = new Mock<IUserRepository>();
-        var credentialRepository = new Mock<ICredentialRepository>();
-        var transactionProvider = new Mock<IAshlarTransactionProvider>();
-        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var securityEvents = new Mock<ISecurityEventSink>();
-        var options = Options.Create(new RecoveryCodeOptions());
-        var userId = Guid.NewGuid();
-        var requestedTenantId = Guid.NewGuid();
+        var mutationMethods = typeof(IRecoveryCodeService).GetMethods();
 
-        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, DisplayEmail = "tenant@example.com", TenantId = Guid.NewGuid() });
-
-        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, securityEventSink: securityEvents.Object));
-
-        var result = await service.RevokeRecoveryCodesPrivilegedAsync(userId, new RevokeRecoveryCodesRequest { Reason = "admin", Tenant = new TenantContext(requestedTenantId), Audit = new AuditContext(ActorUserId: userId) });
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.Zero);
-            credentialRepository.Verify(r => r.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-            transactionProvider.Verify(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
-            securityEvents.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
-                e.EventType == AshlarSecurityEventTypes.RecoveryCodesRevoked &&
-                e.Outcome == SecurityEventOutcomes.Failure &&
-                e.TenantId == requestedTenantId &&
-                e.FailureReason == AshlarFailureCodes.TenantMismatch.Value &&
-                e.Properties == null), It.IsAny<CancellationToken>()), Times.Once);
-        }
-    }
-
-    [Test]
-    public void ServiceRevokeRecoveryCodesAsyncThrowsOnInvalidUserId()
-    {
-        var service = new RecoveryCodeService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IAshlarTransactionProvider>().Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions())));
-        Assert.That(async () => await service.RevokeRecoveryCodesPrivilegedAsync(Guid.Empty, new RevokeRecoveryCodesRequest { Audit = new AuditContext(ActorUserId: Guid.NewGuid()) }), Throws.ArgumentException);
-        Assert.That(async () => await service.RevokeRecoveryCodesAsync(Guid.Empty), Throws.ArgumentException);
-    }
-
-    [Test]
-    public void ServiceRevokeRecoveryCodesPrivilegedAsyncShouldRequireAudit()
-    {
-        var service = new RecoveryCodeService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IAshlarTransactionProvider>().Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions())));
-
-        Assert.ThrowsAsync<ArgumentException>(() => service.RevokeRecoveryCodesPrivilegedAsync(Guid.NewGuid()));
-    }
-
-    [Test]
-    public void ServiceRevokeRecoveryCodesPrivilegedAsyncShouldRejectNullRequest()
-    {
-        var service = new RecoveryCodeService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IAshlarTransactionProvider>().Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions())));
-
-        Assert.ThrowsAsync<ArgumentException>(() => service.RevokeRecoveryCodesPrivilegedAsync(Guid.NewGuid(), null!));
+        Assert.That(mutationMethods, Has.All.Matches<System.Reflection.MethodInfo>(method =>
+            method.GetParameters().Length > 0 && method.GetParameters()[0].ParameterType != typeof(Guid)));
     }
 
     [Test]
@@ -963,6 +745,7 @@ internal sealed class RecoveryCodeTests
         services.AddSingleton(new Mock<IUserRepository>().Object);
         services.AddSingleton(new Mock<ICredentialRepository>().Object);
         services.AddSingleton(new Mock<IAshlarTransactionProvider>().Object);
+        services.AddSingleton<IAccountSecurityOperationAuthorizer, AllowAllAccountSecurityOperationAuthorizer>();
         services.AddAshlarRecoveryCodes(opts =>
         {
             opts.CodeCount = 12;
@@ -1229,7 +1012,10 @@ internal sealed class RecoveryCodeTests
         };
     }
 
-    private static RecoveryCodeService CreateServiceForGenerationValidation(RecoveryCodeOptions options, Guid? userTenantId = null)
+    private static RecoveryCodeService CreateServiceForGenerationValidation(
+        RecoveryCodeOptions options,
+        Guid? userTenantId = null,
+        IAccountSecurityOperationAuthorizer? authorizer = null)
     {
         var repository = new Mock<IUserRepository>();
         var credentialRepository = new Mock<ICredentialRepository>();
@@ -1241,16 +1027,69 @@ internal sealed class RecoveryCodeTests
         transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Mock<IAshlarTransaction>().Object);
 
-        return new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(options)));
+        return new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(options), authorizer: authorizer));
     }
 
     private static RecoveryCodeServiceDependencies CreateDependencies(
         IOptions<RecoveryCodeOptions> options,
         TimeProvider? timeProvider = null,
         ISecurityEventSink? securityEventSink = null,
-        ISecurityNotificationService? notificationService = null)
+        ISecurityNotificationService? notificationService = null,
+        IAccountSecurityOperationAuthorizer? authorizer = null)
     {
-        return new RecoveryCodeServiceDependencies(options, timeProvider, securityEventSink, notificationService);
+        return new RecoveryCodeServiceDependencies(options, timeProvider, securityEventSink, notificationService,
+            authorizer ?? new AllowAllAccountSecurityOperationAuthorizer());
+    }
+
+    private static RecoveryCodeGenerationRequest CreateGenerationRequest(
+        Guid actorId,
+        FreshMfaVerificationProof proof,
+        Guid? targetId = null,
+        TenantContext? tenant = null,
+        bool includeAllTenants = false,
+        AuditContext? audit = null,
+        int? codeCount = 1,
+        TimeSpan? expiresAfter = null) =>
+        new(targetId ?? actorId, actorId, tenant ?? TenantContext.Global, proof.SessionId, proof,
+            audit ?? new AuditContext(ActorUserId: actorId), includeAllTenants ? null : tenant ?? TenantContext.Global,
+            includeAllTenants, codeCount: codeCount, expiresAfter: expiresAfter);
+
+    private static RevokeRecoveryCodesRequest CreateRevocationRequest(
+        Guid actorId,
+        FreshMfaVerificationProof proof,
+        Guid? targetId = null,
+        TenantContext? tenant = null,
+        bool includeAllTenants = false,
+        AuditContext? audit = null,
+        string? reason = null) =>
+        new(targetId ?? actorId, actorId, tenant ?? TenantContext.Global, proof.SessionId, proof,
+            audit ?? new AuditContext(ActorUserId: actorId), includeAllTenants ? null : tenant ?? TenantContext.Global,
+            includeAllTenants, reason);
+
+    private static RecoveryCodeGenerationExecutionRequest GenerationExecution(
+        AuditContext audit,
+        bool replaceExisting = true,
+        TenantContext? tenant = null,
+        bool includeAllTenants = false) =>
+        new(audit, includeAllTenants ? null : tenant ?? TenantContext.Global, includeAllTenants, null,
+            replaceExisting, null, null);
+
+    private static RevokeRecoveryCodesExecutionRequest RevocationExecution(AuditContext audit, string? reason = null) =>
+        new(audit, TenantContext.Global, false, reason);
+
+    private static RecoveryCodeService CreateService(
+        IUserRepository repository,
+        RecoveryCodeOptions options,
+        ICredentialRepository? credentials = null,
+        IAshlarTransactionProvider? transactions = null,
+        ISecurityEventSink? securityEvents = null,
+        IAccountSecurityOperationAuthorizer? authorizer = null)
+    {
+        transactions ??= Mock.Of<IAshlarTransactionProvider>(provider =>
+            provider.BeginTransactionAsync(It.IsAny<CancellationToken>()) == Task.FromResult(Mock.Of<IAshlarTransaction>()));
+        return new RecoveryCodeService(repository, credentials ?? Mock.Of<ICredentialRepository>(), transactions,
+            new PasswordHasherSelector([new PasswordHasherV1()]),
+            CreateDependencies(Options.Create(options), securityEventSink: securityEvents, authorizer: authorizer));
     }
 
     private static FreshMfaVerificationProof CreateProof(Guid userId, TenantContext? tenant = null, DateTimeOffset? expiresAt = null)
@@ -1267,6 +1106,12 @@ internal sealed class RecoveryCodeTests
         public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId) => string.Empty;
         public string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue) => rawValue;
         public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default) => Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
+    }
+
+    private sealed class AllowAllAccountSecurityOperationAuthorizer : IAccountSecurityOperationAuthorizer
+    {
+        public ValueTask<bool> AuthorizeAsync(AccountSecurityAuthorizationContext context, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(true);
     }
 
     private sealed class RecordingSecurityEventSink : ISecurityEventSink

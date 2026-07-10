@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Providers.RecoveryCode;
 
-internal sealed class RecoveryCodeService : IRecoveryCodeService
+internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeMutationExecutor
 {
     private const string EmptyUserIdMessage = "User ID cannot be empty.";
 
@@ -16,6 +16,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly SecurityNotificationEmitter _notifications;
+    private readonly IAccountSecurityOperationAuthorizer _authorizer;
 
     public RecoveryCodeService(
         IUserRepository userRepository,
@@ -39,43 +40,38 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
         _timeProvider = dependencies.TimeProvider;
         _securityEvents = new SecurityEventEmitter(dependencies.SecurityEventSink, _timeProvider);
         _notifications = new SecurityNotificationEmitter(dependencies.NotificationService);
+        _authorizer = dependencies.Authorizer;
     }
 
-    public async Task<Result<IReadOnlyList<string>>> GenerateRecoveryCodesAsync(Guid userId, RecoveryCodeGenerationRequest? request = null, CancellationToken cancellationToken = default)
+    public async Task<Result<IReadOnlyList<string>>> GenerateRecoveryCodesAsync(RecoveryCodeGenerationRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.CodeCount is <= 0 || request.CodeCount > _options.CodeCount * 2)
+            return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidCodeCount);
+        if (request.ExpiresAfter is { } expiresAfter && expiresAfter <= TimeSpan.Zero)
+            return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidExpiry);
+        var failure = await ValidatePublicRequestAsync(request, AccountSecurityOperation.GenerateRecoveryCodes,
+            AshlarSecurityEventTypes.RecoveryCodesGenerated, cancellationToken);
+        if (failure != null) return Result.Failure<IReadOnlyList<string>>(failure.Value);
+
+        return await GenerateRecoveryCodesCoreAsync(request.TargetUserId, new RecoveryCodeGenerationExecutionRequest(
+            request.Audit, request.Tenant, request.IncludeAllTenants, request.Reason, request.ReplaceExisting,
+            request.CodeCount, request.ExpiresAfter), cancellationToken);
+    }
+
+    Task<Result<IReadOnlyList<string>>> IRecoveryCodeMutationExecutor.GenerateRecoveryCodesAsync(
+        Guid userId, RecoveryCodeGenerationExecutionRequest request, CancellationToken cancellationToken) =>
+        GenerateRecoveryCodesCoreAsync(userId, request, cancellationToken);
+
+    private async Task<Result<IReadOnlyList<string>>> GenerateRecoveryCodesCoreAsync(Guid userId, RecoveryCodeGenerationExecutionRequest request, CancellationToken cancellationToken)
     {
         if (userId == Guid.Empty)
         {
             throw new ArgumentException(EmptyUserIdMessage, nameof(userId));
         }
 
-        request ??= new RecoveryCodeGenerationRequest();
-        var tenant = request.Tenant ?? TenantContext.Global;
-        var proofResult = await ValidateFreshMfaProofAsync(userId, tenant, request.FreshMfaProof, request.CurrentSessionId, request.Audit, AshlarSecurityEventTypes.RecoveryCodesGenerated, cancellationToken);
-        if (!proofResult.Succeeded)
-        {
-            return Result.Failure<IReadOnlyList<string>>(proofResult.GetFailureOr(AshlarFailureCodes.StepUpRequired));
-        }
-
-        return await GenerateRecoveryCodesCoreAsync(userId, request, cancellationToken);
-    }
-
-    public Task<Result<IReadOnlyList<string>>> GenerateRecoveryCodesPrivilegedAsync(Guid userId, RecoveryCodeGenerationRequest? request = null, CancellationToken cancellationToken = default)
-    {
-        request ??= new RecoveryCodeGenerationRequest();
-        RequirePrivilegedAudit(request.Audit);
-        return GenerateRecoveryCodesCoreAsync(userId, request, cancellationToken);
-    }
-
-    private async Task<Result<IReadOnlyList<string>>> GenerateRecoveryCodesCoreAsync(Guid userId, RecoveryCodeGenerationRequest request, CancellationToken cancellationToken)
-    {
-        if (userId == Guid.Empty)
-        {
-            throw new ArgumentException(EmptyUserIdMessage, nameof(userId));
-        }
-
-        var tenant = request.Tenant ?? TenantContext.Global;
-
-        var userResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.RecoveryCodesGenerated, cancellationToken);
+        var userResult = await ValidateUserScopeAsync(userId, request.Tenant, request.IncludeAllTenants, request.Audit,
+            AshlarSecurityEventTypes.RecoveryCodesGenerated, cancellationToken);
         if (!userResult.TryGetValue(out var user))
         {
             return Result.Failure<IReadOnlyList<string>>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFoundOrUnavailable));
@@ -84,26 +80,27 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
         var codeCount = request.CodeCount ?? _options.CodeCount;
         if (codeCount <= 0 || codeCount > _options.CodeCount * 2)
         {
-            await RecordGenerationFailureAsync(userId, tenant, request.Audit, AshlarFailureCodes.InvalidCodeCount, cancellationToken);
+            await RecordGenerationFailureAsync(userId, GetAuditTenantId(request.Tenant, request.IncludeAllTenants, user), request.Audit, AshlarFailureCodes.InvalidCodeCount, cancellationToken);
             return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidCodeCount);
         }
 
         if (_options.CodeLength <= 0 || _options.GroupSize <= 0)
         {
-            await RecordGenerationFailureAsync(userId, tenant, request.Audit, AshlarFailureCodes.InvalidConfiguration, cancellationToken);
+            await RecordGenerationFailureAsync(userId, GetAuditTenantId(request.Tenant, request.IncludeAllTenants, user), request.Audit, AshlarFailureCodes.InvalidConfiguration, cancellationToken);
             return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidConfiguration);
         }
 
         var expiresAfter = request.ExpiresAfter ?? _options.ExpiresAfter;
         if (expiresAfter.HasValue && expiresAfter.Value <= TimeSpan.Zero)
         {
-            await RecordGenerationFailureAsync(userId, tenant, request.Audit, AshlarFailureCodes.InvalidExpiry, cancellationToken);
+            await RecordGenerationFailureAsync(userId, GetAuditTenantId(request.Tenant, request.IncludeAllTenants, user), request.Audit, AshlarFailureCodes.InvalidExpiry, cancellationToken);
             return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidExpiry);
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         await _credentialRepository.AcquireUserMutationLockAsync(userId, cancellationToken);
-        var lockedUserResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.RecoveryCodesGenerated, cancellationToken);
+        var lockedUserResult = await ValidateUserScopeAsync(userId, request.Tenant, request.IncludeAllTenants, request.Audit,
+            AshlarSecurityEventTypes.RecoveryCodesGenerated, cancellationToken);
         if (!lockedUserResult.TryGetValue(out user))
         {
             await transaction.CommitAsync(cancellationToken);
@@ -152,7 +149,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
             EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
             Outcome = SecurityEventOutcomes.Success,
             UserId = userId,
-            TenantId = tenant.TenantId,
+            TenantId = GetAuditTenantId(request.Tenant, request.IncludeAllTenants, user),
             Audit = request.Audit,
             Provider = _options.ProviderKey,
             Properties = new Dictionary<string, string>
@@ -174,52 +171,42 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
         return Result.Success<IReadOnlyList<string>>(rawCodes);
     }
 
-    public async Task<int> RevokeRecoveryCodesAsync(Guid userId, RevokeRecoveryCodesRequest? request = null, CancellationToken cancellationToken = default)
+    public async Task<Result<int>> RevokeRecoveryCodesAsync(RevokeRecoveryCodesRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var failure = await ValidatePublicRequestAsync(request, AccountSecurityOperation.RevokeRecoveryCodes,
+            AshlarSecurityEventTypes.RecoveryCodesRevoked, cancellationToken);
+        if (failure != null) return Result.Failure<int>(failure.Value);
+
+        return await RevokeRecoveryCodesCoreAsync(request.TargetUserId, new RevokeRecoveryCodesExecutionRequest(
+            request.Audit, request.Tenant, request.IncludeAllTenants, request.Reason), cancellationToken);
+    }
+
+    Task<Result<int>> IRecoveryCodeMutationExecutor.RevokeRecoveryCodesAsync(
+        Guid userId, RevokeRecoveryCodesExecutionRequest request, CancellationToken cancellationToken) =>
+        RevokeRecoveryCodesCoreAsync(userId, request, cancellationToken);
+
+    private async Task<Result<int>> RevokeRecoveryCodesCoreAsync(Guid userId, RevokeRecoveryCodesExecutionRequest request, CancellationToken cancellationToken)
     {
         if (userId == Guid.Empty)
         {
             throw new ArgumentException(EmptyUserIdMessage, nameof(userId));
         }
-
-        request ??= new RevokeRecoveryCodesRequest();
-        var tenant = request.Tenant ?? TenantContext.Global;
-        var proofResult = await ValidateFreshMfaProofAsync(userId, tenant, request.FreshMfaProof, request.CurrentSessionId, request.Audit, AshlarSecurityEventTypes.RecoveryCodesRevoked, cancellationToken);
-        if (!proofResult.Succeeded)
-        {
-            return 0;
-        }
-
-        return await RevokeRecoveryCodesCoreAsync(userId, request, cancellationToken);
-    }
-
-    public Task<int> RevokeRecoveryCodesPrivilegedAsync(Guid userId, RevokeRecoveryCodesRequest? request = null, CancellationToken cancellationToken = default)
-    {
-        request ??= new RevokeRecoveryCodesRequest();
-        RequirePrivilegedAudit(request.Audit);
-        return RevokeRecoveryCodesCoreAsync(userId, request, cancellationToken);
-    }
-
-    private async Task<int> RevokeRecoveryCodesCoreAsync(Guid userId, RevokeRecoveryCodesRequest request, CancellationToken cancellationToken)
-    {
-        if (userId == Guid.Empty)
-        {
-            throw new ArgumentException(EmptyUserIdMessage, nameof(userId));
-        }
-        var tenant = request.Tenant ?? TenantContext.Global;
-
-        var userResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.RecoveryCodesRevoked, cancellationToken);
+        var userResult = await ValidateUserScopeAsync(userId, request.Tenant, request.IncludeAllTenants, request.Audit,
+            AshlarSecurityEventTypes.RecoveryCodesRevoked, cancellationToken);
         if (!userResult.Succeeded)
         {
-            return 0;
+            return Result.Failure<int>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFoundOrUnavailable));
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         await _credentialRepository.AcquireUserMutationLockAsync(userId, cancellationToken);
-        var lockedUserResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.RecoveryCodesRevoked, cancellationToken);
-        if (!lockedUserResult.Succeeded)
+        var lockedUserResult = await ValidateUserScopeAsync(userId, request.Tenant, request.IncludeAllTenants, request.Audit,
+            AshlarSecurityEventTypes.RecoveryCodesRevoked, cancellationToken);
+        if (!lockedUserResult.TryGetValue(out var user))
         {
             await transaction.CommitAsync(cancellationToken);
-            return 0;
+            return Result.Failure<int>(lockedUserResult.GetFailureOr(AshlarFailureCodes.UserNotFoundOrUnavailable));
         }
 
         var count = await _credentialRepository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
@@ -229,7 +216,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
             EventType = AshlarSecurityEventTypes.RecoveryCodesRevoked,
             Outcome = SecurityEventOutcomes.Success,
             UserId = userId,
-            TenantId = tenant.TenantId,
+            TenantId = GetAuditTenantId(request.Tenant, request.IncludeAllTenants, user),
             Audit = request.Audit,
             Provider = _options.ProviderKey,
             Properties = CreateRevocationProperties(count, request.Reason)
@@ -237,42 +224,48 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
 
         await transaction.CommitAsync(cancellationToken);
 
-        return count;
+        return Result.Success(count);
     }
 
-    private async Task<Result> ValidateFreshMfaProofAsync(
-        Guid userId,
-        TenantContext tenant,
-        FreshMfaVerificationProof? proof,
-        Guid? currentSessionId,
-        AuditContext? audit,
+    private async Task<AshlarFailureCode?> ValidatePublicRequestAsync(
+        AccountSecurityAdministrationRequest request,
+        AccountSecurityOperation operation,
         string eventType,
         CancellationToken cancellationToken)
     {
-        var failure = FreshVerificationProofValidator.ValidateMfaProof(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow());
-        if (failure == null)
+        AshlarFailureCode? failure = request.Audit.ActorUserId == request.ActorUserId
+            ? FreshVerificationProofValidator.ValidateMfaProof(request.ActorUserId, request.ActorTenant,
+                request.FreshMfaProof, request.CurrentSessionId, _timeProvider.GetUtcNow())
+            : AshlarFailureCodes.ValidationError;
+
+        if (failure == null && !await _authorizer.AuthorizeAsync(new AccountSecurityAuthorizationContext(
+                request.ActorUserId, request.ActorTenant, request.TargetUserId, request.Tenant,
+                request.IncludeAllTenants, operation, CurrentSessionId: request.CurrentSessionId), cancellationToken))
         {
-            return Result.Success();
+            failure = AshlarFailureCodes.ValidationError;
         }
 
-        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        if (failure != null)
         {
-            EventType = eventType,
-            Outcome = SecurityEventOutcomes.Failure,
-            UserId = userId,
-            TenantId = tenant.TenantId,
-            Audit = audit,
-            Provider = _options.ProviderKey,
-            FailureReason = failure.Value.Value
-        }, cancellationToken);
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = eventType,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = request.TargetUserId,
+                TenantId = request.Tenant?.TenantId,
+                Audit = request.Audit,
+                Provider = _options.ProviderKey,
+                FailureReason = failure.Value.Value
+            }, cancellationToken);
+        }
 
-        return Result.Failure(failure.Value);
+        return failure;
     }
 
     private Task RecordGenerationFailureAsync(
         Guid userId,
-        TenantContext tenant,
-        AuditContext? audit,
+        Guid? tenantId,
+        AuditContext audit,
         AshlarFailureCode failure,
         CancellationToken cancellationToken)
     {
@@ -281,19 +274,11 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
             EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
             Outcome = SecurityEventOutcomes.Failure,
             UserId = userId,
-            TenantId = tenant.TenantId,
+            TenantId = tenantId,
             Audit = audit,
             Provider = _options.ProviderKey,
             FailureReason = failure.Value
         }, cancellationToken);
-    }
-
-    private static void RequirePrivilegedAudit(AuditContext? audit)
-    {
-        if (audit == null)
-        {
-            throw new ArgumentException("Privileged recovery-code management requires audit context.", nameof(audit));
-        }
     }
 
     private static Dictionary<string, string> CreateRevocationProperties(int count, string? reason)
@@ -312,14 +297,24 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
         return properties;
     }
 
-    private async Task<Result<IUser>> ValidateUserTenantAsync(
+    private async Task<Result<IUser>> ValidateUserScopeAsync(
         Guid userId,
-        TenantContext tenant,
-        AuditContext? audit,
+        TenantContext? tenant,
+        bool includeAllTenants,
+        AuditContext audit,
         string eventType,
         CancellationToken cancellationToken)
     {
-        var result = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, tenant, cancellationToken);
+        Result<IUser> result;
+        if (includeAllTenants)
+        {
+            var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
+            result = user == null ? Result.Failure<IUser>(AshlarFailureCodes.UserNotFound) : Result.Success<IUser>(user);
+        }
+        else
+        {
+            result = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, tenant!, cancellationToken);
+        }
         if (result.Succeeded)
         {
             return result;
@@ -331,7 +326,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
             EventType = eventType,
             Outcome = SecurityEventOutcomes.Failure,
             UserId = userId,
-            TenantId = tenant.TenantId,
+            TenantId = tenant?.TenantId,
             Audit = audit,
             Provider = _options.ProviderKey,
             FailureReason = failureCode.Value
@@ -340,26 +335,27 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
         return result;
     }
 
-    private static AuthenticationContext? ToNotificationContext(AuditContext? audit)
-    {
-        if (audit == null) return new AuthenticationContext();
+    private static Guid? GetAuditTenantId(TenantContext? tenant, bool includeAllTenants, IUser user) =>
+        includeAllTenants && user is ITenantUser tenantUser ? tenantUser.TenantId : tenant?.TenantId;
 
-        return new AuthenticationContext(
+    private static AuthenticationContext ToNotificationContext(AuditContext audit) =>
+        new(
             UserId: audit.ActorUserId,
             IpAddress: audit.IpAddress,
             UserAgent: audit.UserAgent,
             CorrelationId: audit.CorrelationId);
-    }
 }
 
 internal sealed class RecoveryCodeServiceDependencies(
     IOptions<RecoveryCodeOptions> options,
     TimeProvider? timeProvider = null,
     ISecurityEventSink? securityEventSink = null,
-    ISecurityNotificationService? notificationService = null)
+    ISecurityNotificationService? notificationService = null,
+    IAccountSecurityOperationAuthorizer? authorizer = null)
 {
     public IOptions<RecoveryCodeOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
     public TimeProvider TimeProvider { get; } = timeProvider ?? TimeProvider.System;
     public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
     public ISecurityNotificationService? NotificationService { get; } = notificationService;
+    public IAccountSecurityOperationAuthorizer Authorizer { get; } = authorizer ?? throw new ArgumentNullException(nameof(authorizer));
 }

@@ -117,6 +117,77 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public async Task RevokeIssuedSessionAsyncShouldRevokeAshlarIssuedSession()
+    {
+        var actor = Guid.NewGuid();
+        var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1), userId: actor);
+        var issued = new CreatedAuthenticationSession(session.Id, actor, null, session.CreatedAt, session.AuthenticatedAt,
+            session.PrimaryProvider, session.ExpiresAt, session.IpAddress, session.UserAgent, session.Metadata)
+        {
+            RollbackToken = "raw-token"
+        };
+        _repositoryMock.Setup(r => r.GetSessionByTokenHashAsync("hashed:raw-token", It.IsAny<CancellationToken>())).ReturnsAsync(session);
+        _repositoryMock.Setup(r => r.RevokeSessionByIdAsync(session.Id, actor, _timeProvider.GetUtcNow(), "rollback", TenantContext.Global, false, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var revoked = await _service.RevokeIssuedSessionAsync(new RevokeIssuedAuthenticationSessionRequest(issued, new AuditContext(actor), "rollback"));
+
+        Assert.That(revoked, Is.True);
+    }
+
+    [Test]
+    public async Task RevokeSessionForCurrentUserAsyncShouldValidateAuthorizeAndRevoke()
+    {
+        var actor = Guid.NewGuid();
+        var currentSession = Guid.NewGuid();
+        var targetSession = Guid.NewGuid();
+        var tenant = TenantContext.Global;
+        var audit = new AuditContext(actor);
+        var proof = new FreshMfaVerificationProof(actor, null, currentSession, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5));
+        var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
+        authorizer.Setup(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, TimeProvider: _timeProvider, OperationAuthorizer: authorizer.Object));
+        _repositoryMock.Setup(r => r.RevokeSessionByIdAsync(targetSession, actor, _timeProvider.GetUtcNow(), "cleanup", tenant, false, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var revoked = await service.RevokeSessionForCurrentUserAsync(
+            new RevokeOwnAuthenticationSessionRequest(actor, tenant, currentSession, proof, audit, targetSession, "cleanup"));
+
+        Assert.That(revoked, Is.True);
+        authorizer.Verify(a => a.AuthorizeAsync(It.Is<AccountSecurityAuthorizationContext>(c =>
+            c.ActorUserId == actor && c.TargetUserId == actor && c.TargetSessionId == targetSession &&
+            c.Operation == AccountSecurityOperation.RevokeOwnSession), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public void RevokeSessionForCurrentUserAsyncShouldRejectInvalidBoundaryInputs()
+    {
+        var actor = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var audit = new AuditContext(actor);
+        var proof = new FreshMfaVerificationProof(actor, null, session, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeSessionForCurrentUserAsync(null!));
+            Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, TenantContext.Global, session, proof, audit, Guid.Empty)));
+            Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, TenantContext.Global, session, proof, audit, Guid.NewGuid(), new string('x', 513))));
+            Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionForCurrentUserAsync(new(Guid.Empty, TenantContext.Global, session, proof, audit, Guid.NewGuid())));
+            Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, null!, session, proof, audit, Guid.NewGuid())));
+            Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, TenantContext.Global, Guid.Empty, proof, audit, Guid.NewGuid())));
+            Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, TenantContext.Global, session, null!, audit, Guid.NewGuid())));
+            Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, TenantContext.Global, session, proof, null!, Guid.NewGuid())));
+            Assert.ThrowsAsync<AshlarOperationException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, TenantContext.Global, session, proof, new AuditContext(Guid.NewGuid()), Guid.NewGuid())));
+            Assert.ThrowsAsync<AshlarOperationException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, TenantContext.Global, session, proof, new AuditContext(), Guid.NewGuid())));
+            Assert.ThrowsAsync<AshlarOperationException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, TenantContext.Global, session,
+                new FreshMfaVerificationProof(actor, null, session, _timeProvider.GetUtcNow().AddMinutes(-10), _timeProvider.GetUtcNow().AddMinutes(-5)), audit, Guid.NewGuid())));
+            Assert.ThrowsAsync<AshlarOperationException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, TenantContext.Global, session, proof, audit, Guid.NewGuid())));
+        }
+        _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
+            It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public void CreateSessionAsyncShouldValidateAshlarAuthenticationResultRequestBeforeMutation()
     {
         var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" })
@@ -801,13 +872,33 @@ internal sealed class AuthenticationSessionServiceTests
 
         Assert.ThrowsAsync<AshlarOperationException>(() => _service.RevokeCurrentSessionAsync(
             new RevokeCurrentAuthenticationSessionRequest("raw-token", new AuditContext(Guid.NewGuid()))));
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             _repositoryMock.Verify(r => r.GetSessionByTokenHashAsync("hashed:raw-token", It.IsAny<CancellationToken>()), Times.Once);
             _repositoryMock.Verify(r => r.UpdateSessionLastSeenAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
             _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
                 It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
-        });
+        }
+    }
+
+    [Test]
+    public async Task RevokeCurrentSessionAsyncShouldReturnFalseForUnknownTokenAndRevokeTenantSession()
+    {
+        var actor = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+
+        Assert.That(await _service.RevokeCurrentSessionAsync(
+            new RevokeCurrentAuthenticationSessionRequest("unknown", new AuditContext(actor))), Is.False);
+
+        var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1), userId: actor, tenantId: tenantId);
+        _repositoryMock.Setup(r => r.GetSessionByTokenHashAsync("hashed:raw-token", It.IsAny<CancellationToken>())).ReturnsAsync(session);
+        _userRepositoryMock.Setup(r => r.GetUserByIdAsync(actor, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = actor, DisplayEmail = "tenant@example.com", TenantId = tenantId });
+        _repositoryMock.Setup(r => r.RevokeSessionByIdAsync(session.Id, actor, _timeProvider.GetUtcNow(), null,
+            It.Is<TenantContext>(t => t.TenantId == tenantId), false, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        Assert.That(await _service.RevokeCurrentSessionAsync(
+            new RevokeCurrentAuthenticationSessionRequest("raw-token", new AuditContext(actor))), Is.True);
     }
 
     [Test]

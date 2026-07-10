@@ -35,6 +35,21 @@ internal sealed class AccountSecurityAdministrationServiceTests
         Assert.That(_executor.CallCount, Is.Zero);
     }
 
+    [Test]
+    public async Task MissingAuditActorFailsBeforeAuthorizationOrMutation()
+    {
+        var baseRequest = CreateRequest();
+        var request = new AccountSecurityAdministrationRequest(
+            baseRequest.TargetUserId, baseRequest.ActorUserId, baseRequest.ActorTenant, baseRequest.CurrentSessionId,
+            baseRequest.FreshMfaProof, new AuditContext(), baseRequest.Tenant);
+
+        var result = await _service.RevokeSessionsAsync(request);
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+        _authorizer.VerifyNoOtherCalls();
+        Assert.That(_executor.CallCount, Is.Zero);
+    }
+
     [TestCase(ProofProblem.MissingSession)]
     [TestCase(ProofProblem.WrongActor)]
     [TestCase(ProofProblem.WrongTenant)]
@@ -228,6 +243,8 @@ internal sealed class AccountSecurityAdministrationServiceTests
                 _targetId, default, _actorId, _tenant, _sessionId, proof, audit, _tenant));
             Assert.Throws<ArgumentException>(() => new RevokeAccountCredentialsRequest(
                 _targetId, new AuthenticationProviderKey(ProviderType.Internal, "internal"), _actorId, _tenant, _sessionId, proof, audit, _tenant));
+            Assert.Throws<ArgumentException>(() => new RevokeRememberedMfaDeviceAdministrationRequest(
+                Guid.Empty, _targetId, _actorId, _tenant, _sessionId, proof, audit, _tenant));
         });
     }
 

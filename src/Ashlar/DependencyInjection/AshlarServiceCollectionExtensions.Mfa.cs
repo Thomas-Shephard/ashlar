@@ -42,8 +42,11 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<IOptions<RecoveryCodeOptions>>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),
-            provider.GetService<ISecurityNotificationService>()));
-        services.TryAddScoped<IRecoveryCodeService, RecoveryCodeService>();
+            provider.GetService<ISecurityNotificationService>(),
+            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>()));
+        services.TryAddScoped<RecoveryCodeService>();
+        services.TryAddScoped<IRecoveryCodeService>(provider => provider.GetRequiredService<RecoveryCodeService>());
+        services.TryAddScoped<IRecoveryCodeMutationExecutor>(provider => provider.GetRequiredService<RecoveryCodeService>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IPasswordHasher, PasswordHasherV1>());
 
         return services;

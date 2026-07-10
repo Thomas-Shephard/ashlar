@@ -994,6 +994,16 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
+    public async Task UnlinkExternalAccountShouldRejectAuditActorMismatch()
+    {
+        var service = CreateService();
+
+        var result = await service.UnlinkWithFreshProofAsync(Guid.NewGuid(), "Google", CreateRequest());
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
+    }
+
+    [Test]
     public async Task UnlinkExternalAccountShouldReturnTenantMismatch()
     {
         var userId = Guid.NewGuid();

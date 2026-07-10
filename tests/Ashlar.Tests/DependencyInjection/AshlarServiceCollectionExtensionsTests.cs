@@ -277,6 +277,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
             descriptor.ServiceType == typeof(IRecoveryCodeService)));
         Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
+            descriptor.ServiceType == typeof(IRecoveryCodeMutationExecutor)));
+        Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
             descriptor.ServiceType == typeof(IPasswordResetService)));
     }
 

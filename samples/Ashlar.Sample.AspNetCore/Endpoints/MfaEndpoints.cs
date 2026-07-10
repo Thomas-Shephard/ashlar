@@ -187,7 +187,6 @@ internal static class MfaEndpoints
         [FromServices] IRecoveryCodeService RecoveryCodes,
         [FromServices] IStepUpAuthenticationService StepUp,
         HttpContext HttpContext,
-        ClaimsPrincipal User,
         CancellationToken CancellationToken);
 
     private static async Task<IResult> GenerateRecoveryCodesAsync([AsParameters] RecoveryCodeGenerationServices services)
@@ -201,14 +200,21 @@ internal static class MfaEndpoints
         {
             return Results.Forbid();
         }
-        if (!services.HttpContext.TryGetAshlarSessionContext(out _, out var currentSessionId, out _))
+        if (!services.HttpContext.TryGetAshlarSessionContext(out var userId, out var currentSessionId, out var tenant))
         {
             return Results.Forbid();
         }
+        var scope = tenant ?? TenantContext.Global;
 
         var result = await services.RecoveryCodes.GenerateRecoveryCodesAsync(
-            services.User.GetAshlarUserId(),
-            new RecoveryCodeGenerationRequest { FreshMfaProof = freshProof, CurrentSessionId = currentSessionId, Tenant = services.HttpContext.ToTenantContext(), Audit = services.HttpContext.ToAuditContext() },
+            new RecoveryCodeGenerationRequest(
+                userId,
+                userId,
+                scope,
+                currentSessionId,
+                freshProof,
+                services.HttpContext.ToAuditContext(),
+                scope),
             services.CancellationToken);
         return result.Succeeded ? Results.Ok(new { codes = result.Value }) : Results.BadRequest(SampleResultErrors.From(result));
     }
