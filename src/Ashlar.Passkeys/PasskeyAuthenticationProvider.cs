@@ -42,7 +42,7 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
     /// <returns>The credential lookup key.</returns>
     public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId)
     {
-        return assertion is PasskeyAssertion passkey ? passkey.CredentialId : string.Empty;
+        return PasskeyService.TryReadCapability(assertion, Key, out var credentialId, out _) ? credentialId : string.Empty;
     }
 
     /// <summary>
@@ -66,7 +66,7 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(repository);
 
-        if (assertion is not PasskeyAssertion passkey)
+        if (!PasskeyService.TryReadCapability(assertion, Key, out var credentialId, out _))
         {
             return null;
         }
@@ -76,7 +76,7 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
             return null;
         }
 
-        return await repository.GetUserByProviderKeyAsync(Key.Type, Key.Name, passkey.CredentialId, cancellationToken);
+        return await repository.GetUserByProviderKeyAsync(Key.Type, Key.Name, credentialId, cancellationToken);
     }
 
     /// <summary>
@@ -88,7 +88,7 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
     /// <returns>The authentication result.</returns>
     public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)
     {
-        if (assertion is not PasskeyAssertion passkey)
+        if (!PasskeyService.TryReadCapability(assertion, Key, out _, out var signCount))
         {
             throw new ArgumentException($"Unsupported assertion type: {assertion.GetType().Name}", nameof(assertion));
         }
@@ -98,7 +98,7 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
             return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
         }
 
-        if (!PasskeyCredentialMetadataOperations.TryUpdateAssertionMetadata(credential.Metadata, passkey.SignCount, out var metadata))
+        if (!PasskeyCredentialMetadataOperations.TryUpdateAssertionMetadata(credential.Metadata, signCount, out var metadata))
         {
             return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
         }
