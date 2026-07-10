@@ -46,11 +46,21 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
     public async Task<Result<IReadOnlyList<string>>> GenerateRecoveryCodesAsync(RecoveryCodeGenerationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var failure = await ValidatePublicActorAsync(request, AshlarSecurityEventTypes.RecoveryCodesGenerated, cancellationToken);
+        if (failure != null) return Result.Failure<IReadOnlyList<string>>(failure.Value);
         if (request.CodeCount is <= 0 || request.CodeCount > _options.CodeCount * 2)
+        {
+            await RecordPublicFailureAsync(request, AshlarSecurityEventTypes.RecoveryCodesGenerated,
+                AshlarFailureCodes.InvalidCodeCount, request.Audit, cancellationToken);
             return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidCodeCount);
+        }
         if (request.ExpiresAfter is { } expiresAfter && expiresAfter <= TimeSpan.Zero)
+        {
+            await RecordPublicFailureAsync(request, AshlarSecurityEventTypes.RecoveryCodesGenerated,
+                AshlarFailureCodes.InvalidExpiry, request.Audit, cancellationToken);
             return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidExpiry);
-        var failure = await ValidatePublicRequestAsync(request, AccountSecurityOperation.GenerateRecoveryCodes,
+        }
+        failure = await AuthorizePublicRequestAsync(request, AccountSecurityOperation.GenerateRecoveryCodes,
             AshlarSecurityEventTypes.RecoveryCodesGenerated, cancellationToken);
         if (failure != null) return Result.Failure<IReadOnlyList<string>>(failure.Value);
 
@@ -233,34 +243,59 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
         string eventType,
         CancellationToken cancellationToken)
     {
-        AshlarFailureCode? failure = request.Audit.ActorUserId == request.ActorUserId
-            ? FreshVerificationProofValidator.ValidateMfaProof(request.ActorUserId, request.ActorTenant,
-                request.FreshMfaProof, request.CurrentSessionId, _timeProvider.GetUtcNow())
-            : AshlarFailureCodes.ValidationError;
+        var failure = await ValidatePublicActorAsync(request, eventType, cancellationToken);
+        return failure ?? await AuthorizePublicRequestAsync(request, operation, eventType, cancellationToken);
+    }
 
-        if (failure == null && !await _authorizer.AuthorizeAsync(new AccountSecurityAuthorizationContext(
-                request.ActorUserId, request.ActorTenant, request.TargetUserId, request.Tenant,
-                request.IncludeAllTenants, operation, CurrentSessionId: request.CurrentSessionId), cancellationToken))
+    private async Task<AshlarFailureCode?> ValidatePublicActorAsync(
+        AccountSecurityAdministrationRequest request,
+        string eventType,
+        CancellationToken cancellationToken)
+    {
+        if (request.Audit.ActorUserId != request.ActorUserId)
         {
-            failure = AshlarFailureCodes.ValidationError;
+            await RecordPublicFailureAsync(request, eventType, AshlarFailureCodes.ValidationError,
+                new AuditContext(request.ActorUserId), cancellationToken);
+            return AshlarFailureCodes.ValidationError;
         }
 
+        var failure = FreshVerificationProofValidator.ValidateMfaProof(request.ActorUserId, request.ActorTenant,
+            request.FreshMfaProof, request.CurrentSessionId, _timeProvider.GetUtcNow());
         if (failure != null)
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = eventType,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = request.TargetUserId,
-                TenantId = request.Tenant?.TenantId,
-                Audit = request.Audit,
-                Provider = _options.ProviderKey,
-                FailureReason = failure.Value.Value
-            }, cancellationToken);
-        }
-
+            await RecordPublicFailureAsync(request, eventType, failure.Value, request.Audit, cancellationToken);
         return failure;
     }
+
+    private async Task<AshlarFailureCode?> AuthorizePublicRequestAsync(
+        AccountSecurityAdministrationRequest request,
+        AccountSecurityOperation operation,
+        string eventType,
+        CancellationToken cancellationToken)
+    {
+        if (await _authorizer.AuthorizeAsync(new AccountSecurityAuthorizationContext(
+                request.ActorUserId, request.ActorTenant, request.TargetUserId, request.Tenant,
+                request.IncludeAllTenants, operation, CurrentSessionId: request.CurrentSessionId), cancellationToken))
+            return null;
+
+        await RecordPublicFailureAsync(request, eventType, AshlarFailureCodes.ValidationError, request.Audit, cancellationToken);
+        return AshlarFailureCodes.ValidationError;
+    }
+
+    private Task RecordPublicFailureAsync(AccountSecurityAdministrationRequest request, string eventType,
+        AshlarFailureCode failure, AuditContext audit, CancellationToken cancellationToken) =>
+        _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = eventType,
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = request.TargetUserId,
+            TenantId = request.Tenant?.TenantId,
+            Audit = audit,
+            Provider = _options.ProviderKey,
+            FailureReason = failure.Value,
+            Properties = request.IncludeAllTenants
+                ? new Dictionary<string, string> { ["scope"] = "all_tenants" }
+                : null
+        }, cancellationToken);
 
     private Task RecordGenerationFailureAsync(
         Guid userId,

@@ -1072,7 +1072,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
                 CreateCredentialItem(ProviderType.Passkey, "Passkey", isAdditionalVerification: true),
                 CreateCredentialItem(ProviderType.Mfa, "totp", isPrimary: false, isAdditionalVerification: true)),
             revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
-        var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
+        var events = new Mock<ISecurityEventSink>();
+        var service = CreateService(accountSecurityService: accountSecurity.Object,
+            repository: new StubRepository(new BasicUser(userId)), securityEventSink: events.Object);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(actorUserId: userId));
 
@@ -1108,7 +1110,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var accountSecurity = CreateAccountSecurityService(
             CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
             revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
-        var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
+        var events = new Mock<ISecurityEventSink>();
+        var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)), securityEventSink: events.Object);
 
         var result = await service.UnlinkExternalAccountAsync(userId, "Google", null, null, CreateRequest(actorUserId: userId));
 
@@ -1116,6 +1119,10 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
             accountSecurity.Verify(s => s.RevokeCredentialsAsync(It.IsAny<RevokeAccountCredentialsRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+            events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+                e.EventType == AshlarSecurityEventTypes.UserCredentialsRevoked && e.Outcome == SecurityEventOutcomes.Failure &&
+                e.UserId == userId && e.ActorUserId == userId && e.FailureReason == AshlarFailureCodes.StepUpRequiredValue &&
+                e.Provider == new AuthenticationProviderKey(ProviderType.Oidc, "Google")), It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 
@@ -1138,7 +1145,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var accountSecurity = CreateAccountSecurityService(
             CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
             revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
-        var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
+        var events = new Mock<ISecurityEventSink>();
+        var service = CreateService(accountSecurityService: accountSecurity.Object,
+            repository: new StubRepository(new BasicUser(userId)), securityEventSink: events.Object);
 
         var result = await service.UnlinkExternalAccountAsync(userId, "Google", proof, sessionId, CreateRequest(tenant, userId));
 
@@ -1146,6 +1155,11 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
             accountSecurity.Verify(s => s.RevokeCredentialsAsync(It.IsAny<RevokeAccountCredentialsRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+            events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+                e.EventType == AshlarSecurityEventTypes.UserCredentialsRevoked && e.Outcome == SecurityEventOutcomes.Failure &&
+                e.UserId == userId && e.ActorUserId == userId && e.TenantId == null &&
+                e.Provider == new AuthenticationProviderKey(ProviderType.Oidc, "Google") && e.FailureReason != null),
+                It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 
@@ -1322,7 +1336,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         IUserRepository? repository = null,
         bool includeGitHub = false,
         Action<AshlarOAuthOptions>? configureOptions = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ISecurityEventSink? securityEventSink = null)
     {
         var options = new AshlarOAuthOptions();
         options.AddGoogle();
@@ -1343,7 +1358,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             accountSecurityService as IAccountSecurityAdministrationService ?? CreateAccountSecurityService().Object,
             repository ?? new StubRepository(returnAnyGlobalUser: true),
             new TestOptionsMonitor(options),
-            timeProvider ?? TimeProvider.System);
+            timeProvider ?? TimeProvider.System,
+            securityEventSink);
     }
 
     private static AshlarExternalAccountLinkService CreateServiceWithProvider(AshlarOidcProviderOptions provider)
