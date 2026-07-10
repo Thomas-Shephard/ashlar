@@ -251,7 +251,7 @@ internal sealed class TotpService : ITotpService
             AshlarSecurityEventTypes.TotpDisabled,
             throwOnFailure: false,
             cancellationToken);
-        if (!userResult.TryGetValue(out var user))
+        if (!userResult.TryGetValue(out _))
         {
             return false;
         }
@@ -265,7 +265,7 @@ internal sealed class TotpService : ITotpService
             AshlarSecurityEventTypes.TotpDisabled,
             throwOnFailure: false,
             cancellationToken);
-        if (!lockedUserResult.TryGetValue(out user))
+        if (!lockedUserResult.TryGetValue(out var user))
         {
             await transaction.CommitAsync(cancellationToken);
             return false;

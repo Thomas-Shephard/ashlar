@@ -139,7 +139,7 @@ csharp_style_expression_bodied_local_functions = false:silent
 dotnet_style_readonly_field = true:suggestion
 
 # Parameter preferences
-dotnet_code_quality_unused_parameters = all:suggestion
+dotnet_code_quality_unused_parameters = all
 
 # Suppression preferences
 dotnet_remove_unnecessary_suppression_exclusions = none
