@@ -41,6 +41,8 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
     [TestCase("https://[ff02::1]/security-events")]
     [TestCase("https://[::]/security-events")]
     [TestCase("https://[fd00::1]/security-events")]
+    [TestCase("https://[fec0::1]/security-events")]
+    [TestCase("https://[64:ff9b:1::1]/security-events")]
     [TestCase("https://[::ffff:10.0.0.1]/security-events")]
     [TestCase("https://user@example.test/security-events")]
     [TestCase("https://example.test/security-events#fragment")]
@@ -65,10 +67,12 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
         }
     }
 
-    [Test]
-    public async Task ValidateAsyncRejectsDnsResolvedPrivateAddress()
+    [TestCase("10.0.0.5")]
+    [TestCase("fec0::1")]
+    [TestCase("64:ff9b:1::1")]
+    public async Task ValidateAsyncRejectsDnsResolvedUnsafeAddress(string address)
     {
-        var validator = new AshlarSecurityEventWebhookDestinationValidator(new StaticResolver(IPAddress.Parse("10.0.0.5")));
+        var validator = new AshlarSecurityEventWebhookDestinationValidator(new StaticResolver(IPAddress.Parse(address)));
 
         var result = await validator.ValidateAsync(new Uri("https://example.test/security-events"));
 
@@ -95,6 +99,8 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
     [TestCase("https://192.168.0.1/security-events")]
     [TestCase("https://[::ffff:192.168.0.1]/security-events")]
     [TestCase("https://[fd00::1]/security-events")]
+    [TestCase("https://[fec0::1]/security-events")]
+    [TestCase("https://[64:ff9b:1::1]/security-events")]
     public void AllowPrivateNetworksAcceptsPrivateIpLiterals(string uri)
     {
         var result = AshlarSecurityEventWebhookDestinationValidator.ValidateUri(
@@ -297,8 +303,10 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
         Assert.That(stream, Is.SameAs(expectedStream));
     }
 
-    [Test]
-    public async Task HandlerConnectCallbackDisposesStreamWhenConnectedAddressIsUnsafe()
+    [TestCase("10.0.0.5")]
+    [TestCase("fec0::1")]
+    [TestCase("64:ff9b:1::1")]
+    public async Task HandlerConnectCallbackDisposesStreamWhenConnectedAddressIsUnsafe(string address)
     {
         using var stream = new TrackingStream();
         var validator = new AshlarSecurityEventWebhookDestinationValidator(new StaticResolver(IPAddress.Parse("93.184.216.34")));
@@ -306,7 +314,7 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
         var exception = Assert.ThrowsAsync<AshlarSecurityEventWebhookUnsafeDestinationException>(
             () => InvokeConnectAsync(
                 validator,
-                (_, _, _) => ValueTask.FromResult(new AshlarSecurityEventWebhookConnection(stream, IPAddress.Parse("10.0.0.5"))),
+                (_, _, _) => ValueTask.FromResult(new AshlarSecurityEventWebhookConnection(stream, IPAddress.Parse(address))),
                 "example.test").AsTask());
 
         await stream.DisposeTask.ConfigureAwait(false);
@@ -393,7 +401,15 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
     [TestCase("2001:4860:4860::8888", false)]
     [TestCase("fe00::1", false)]
     [TestCase("fe80::1", true)]
+    [TestCase("fec0::", true)]
+    [TestCase("fec0::1", true)]
+    [TestCase("feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", true)]
     [TestCase("fd00::1", true)]
+    [TestCase("64:ff9b:0:ffff:ffff:ffff:ffff:ffff", false)]
+    [TestCase("64:ff9b:1::", true)]
+    [TestCase("64:ff9b:1::1", true)]
+    [TestCase("64:ff9b:1:ffff:ffff:ffff:ffff:ffff", true)]
+    [TestCase("64:ff9b:2::", false)]
     [TestCase("::ffff:192.168.0.1", true)]
     public void IsBlockedAddressClassifiesBoundaryAddresses(string address, bool expected)
     {

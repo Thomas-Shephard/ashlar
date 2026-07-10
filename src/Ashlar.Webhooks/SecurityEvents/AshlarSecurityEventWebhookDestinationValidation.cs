@@ -241,7 +241,11 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
         var bytes = address.GetAddressBytes();
         return bytes[0] == 0xff
             || bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80
-            || destinationPolicy != AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks && (bytes[0] & 0xfe) == 0xfc;
+            || destinationPolicy != AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks
+                && ((bytes[0] & 0xfe) == 0xfc
+                    || bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0
+                    || bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xff && bytes[3] == 0x9b
+                        && bytes[4] == 0x00 && bytes[5] == 0x01);
     }
 }
 
