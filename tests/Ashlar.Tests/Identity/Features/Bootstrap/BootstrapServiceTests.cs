@@ -120,7 +120,7 @@ internal sealed class BootstrapServiceTests
 
         var exception = Assert.Throws<InvalidOperationException>(() => _ = CreateService(includeGrantService: false));
 
-        Assert.That(exception?.Message, Does.Contain(nameof(IAuthorizationGrantService)));
+        Assert.That(exception?.Message, Does.Contain("built-in authorization"));
     }
 
     [Test]
@@ -914,7 +914,13 @@ internal sealed class BootstrapServiceTests
             _tokenContext,
             CreateInfrastructureContext(rateLimiter),
             new IdentityAuditContext(_timeProvider, _securityEventSink.Object, notificationService),
-            includeGrantService ? _grantService.Object : null);
+            includeGrantService ? new BootstrapGrantService(_grantService.Object) : null);
+    }
+
+    private sealed class BootstrapGrantService(IAuthorizationGrantService inner) : IAuthorizationGrantBootstrapService
+    {
+        public Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default) =>
+            inner.CreateGrantAsync(request, cancellationToken);
     }
 
     private BootstrapStoreContext CreateStoreContext()

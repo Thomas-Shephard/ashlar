@@ -23,7 +23,7 @@ internal sealed class BootstrapService(
 {
     private readonly BootstrapDependencies _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
     private readonly IOptions<BootstrapOptions> _options = options ?? Options.Create(new BootstrapOptions());
-    private readonly IAuthorizationGrantService? _grantService = ValidateGrantService(dependencies.GrantService, options?.Value ?? new BootstrapOptions());
+    private readonly IAuthorizationGrantBootstrapService? _grantService = ValidateGrantService(dependencies.GrantService, options?.Value ?? new BootstrapOptions());
     private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider);
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
     private readonly AuthenticationRateLimitChecker _rateLimitChecker = new(dependencies.RateLimiter);
@@ -244,11 +244,11 @@ internal sealed class BootstrapService(
         };
     }
 
-    private static IAuthorizationGrantService? ValidateGrantService(IAuthorizationGrantService? grantService, BootstrapOptions options)
+    private static IAuthorizationGrantBootstrapService? ValidateGrantService(IAuthorizationGrantBootstrapService? grantService, BootstrapOptions options)
     {
         if (options.Grants.Count > 0 && grantService is null)
         {
-            throw new InvalidOperationException("Bootstrap grants require IAuthorizationGrantService. Register Ashlar authorization services or remove BootstrapOptions.Grants.");
+            throw new InvalidOperationException("Bootstrap grants require Ashlar's built-in authorization services. Register AddAshlarAuthorization or remove BootstrapOptions.Grants.");
         }
 
         return grantService;

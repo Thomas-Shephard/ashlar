@@ -1,4 +1,5 @@
 using Ashlar.Authorization.Abstractions;
+using Ashlar.Authorization.Models;
 using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Providers.Email;
@@ -439,6 +440,25 @@ internal sealed class AshlarConfigurationValidatorTests
             AssertIssue(result, AshlarConfigurationIssueCodes.BootstrapStateRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
             AssertIssue(result, AshlarConfigurationIssueCodes.AuthenticationHandshakeRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
             AssertIssue(result, AshlarConfigurationIssueCodes.AuthorizationGrantRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            AssertIssue(result, AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            AssertIssue(result, AshlarConfigurationIssueCodes.AccountSecurityOperationAuthorizerMissing, AshlarConfigurationIssueSeverity.Error);
+        }
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotImposeBuiltInGrantMutationDependenciesOnCustomService()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IAuthorizationGrantService, FakeAuthorizationGrantService>();
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing));
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.AccountSecurityOperationAuthorizerMissing));
         }
     }
 
@@ -1333,6 +1353,30 @@ internal sealed class AshlarConfigurationValidatorTests
         {
             return ValueTask.FromResult(true);
         }
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotTreatCustomPublicGrantServiceAsBootstrapMutationService()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IAuthorizationGrantService, FakeAuthorizationGrantService>();
+        services.AddAshlarBootstrap(options =>
+        {
+            options.SetupSecret = "bootstrap-setup-secret-with-sufficient-entropy";
+            options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        AssertIssue(result, AshlarConfigurationIssueCodes.BootstrapGrantServiceMissing, AshlarConfigurationIssueSeverity.Error);
+    }
+
+    private sealed class FakeAuthorizationGrantService : IAuthorizationGrantService
+    {
+        public Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class CustomMfaPolicyEvaluator : IMfaPolicyEvaluator

@@ -841,13 +841,14 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     private static async Task GrantAdminRoleAsync(IServiceProvider services, Guid userId, Guid? tenantId)
     {
         await using var scope = services.CreateAsyncScope();
-        var grants = scope.ServiceProvider.GetRequiredService<IAuthorizationGrantService>();
-        var result = await grants.CreateGrantAsync(new CreateAuthorizationGrantRequest(
-            userId,
-            new AuditContext(CorrelationId: "sample-smoke-grant-admin-role", Items: new Dictionary<string, string> { ["system"] = "sample-smoke-test" }),
-            tenantId,
-            Role: "admin"));
-        Assert.That(result.Succeeded, Is.True, result.FailureMessage);
+        await scope.ServiceProvider.GetRequiredService<IAuthorizationGrantRepository>().CreateGrantAsync(new AuthorizationGrant
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            TenantId = tenantId,
+            Role = "admin",
+            CreatedAt = DateTimeOffset.UtcNow
+        });
     }
 
     private async Task<string> GetAccountStateAsync(Guid userId)

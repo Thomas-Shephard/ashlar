@@ -5,25 +5,21 @@ namespace Ashlar.Authorization.Abstractions;
 /// <summary>
 /// Creates, revokes, and lists authorization grants.
 /// </summary>
-/// <remarks>
-/// These operations do not authorize callers. Host applications must protect usage with appropriate admin
-/// authorization, audit policy, and fresh MFA or equivalent step-up policy before creating or revoking grants.
-/// Creating and revoking grants are privilege changes and require audit context on the mutation request.
-/// </remarks>
+/// <remarks>Creation and revocation require an Ashlar-issued purpose-bound fresh MFA proof, its current session, matching audit actor identity, explicit scope, and approval from the configured host authorizer.</remarks>
 public interface IAuthorizationGrantService
 {
     /// <summary>
-    /// Creates a role or permission grant for a user. Grant creation is a privilege change and requires audit context.
+    /// Creates a role or permission grant after actor proof, session, audit identity, host authorization, scope, and tenant ownership validation.
     /// </summary>
-    /// <param name="request">Grant details supplied by an already-authorized caller.</param>
+    /// <param name="request">Actor-bound grant details with explicit tenant or global scope and required audit metadata.</param>
     /// <param name="cancellationToken">A token that can cancel grant creation.</param>
     /// <returns>Created grant when validation and tenant checks succeed.</returns>
     Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Revokes a grant and returns a stable outcome for the requested grant and tenant boundary. Grant revocation is a privilege change and requires audit context.
+    /// Revokes a grant after actor proof, session, audit identity, host authorization, and explicit scope validation.
     /// </summary>
-    /// <param name="request">Grant identifier, tenant scope, and audit context for revocation.</param>
+    /// <param name="request">Actor-bound grant identifier with explicit tenant or global scope and required audit metadata.</param>
     /// <param name="cancellationToken">A token that can cancel grant revocation.</param>
     /// <returns>Revocation result with the grant id, requested tenant boundary, and outcome.</returns>
     Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default);
@@ -35,4 +31,9 @@ public interface IAuthorizationGrantService
     /// <param name="cancellationToken">A token that can cancel grant listing.</param>
     /// <returns>Matching grants visible for the supplied filters.</returns>
     Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default);
+}
+
+internal interface IAuthorizationGrantBootstrapService
+{
+    Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default);
 }

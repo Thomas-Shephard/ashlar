@@ -1,5 +1,8 @@
+using Ashlar.Authorization;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
+using Ashlar.Identity.Features.Mfa;
+using Ashlar.Identity.Models.Mfa;
 using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.Models.AccountLockout;
 using Ashlar.Identity.RateLimiting.Abstractions;
@@ -24,13 +27,19 @@ internal sealed class SecurityMutationAuditAtomicityTests
     [Test]
     public async Task AuthorizationGrantCreateRollsBackWhenRequiredAuditFails()
     {
-        _database = await CreateDatabaseAsync(services => services.AddAshlarAuthorization());
+        _database = await CreateDatabaseAsync(services =>
+        {
+            services.AddAshlarIdentity();
+            services.AddAshlarAuthorization();
+            services.AddScoped<IAccountSecurityOperationAuthorizer, AllowOperations>();
+        });
         var provider = _database.ServiceProvider;
         var user = await CreateUserAsync(provider);
+        var actor = await CreateActorAsync(provider);
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IAuthorizationGrantService>().CreateGrantAsync(
-                new CreateAuthorizationGrantRequest(user.Id, Audit(), Permission: "posts.read")));
+                new CreateAuthorizationGrantRequest(user.Id, actor, actor.Audit, TenantContext.Global, permission: "posts.read")));
 
         var grants = await provider.GetRequiredService<IAuthorizationGrantRepository>().ListGrantsAsync(new ListAuthorizationGrantsRequest(user.Id));
         Assert.That(grants, Is.Empty);
@@ -39,9 +48,15 @@ internal sealed class SecurityMutationAuditAtomicityTests
     [Test]
     public async Task AuthorizationGrantRevokeRollsBackWhenRequiredAuditFails()
     {
-        _database = await CreateDatabaseAsync(services => services.AddAshlarAuthorization());
+        _database = await CreateDatabaseAsync(services =>
+        {
+            services.AddAshlarIdentity();
+            services.AddAshlarAuthorization();
+            services.AddScoped<IAccountSecurityOperationAuthorizer, AllowOperations>();
+        });
         var provider = _database.ServiceProvider;
         var user = await CreateUserAsync(provider);
+        var actor = await CreateActorAsync(provider);
         var grant = new AuthorizationGrant
         {
             Id = Guid.NewGuid(),
@@ -53,7 +68,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IAuthorizationGrantService>().RevokeGrantAsync(
-                new RevokeAuthorizationGrantRequest(grant.Id, Audit())));
+                new RevokeAuthorizationGrantRequest(grant.Id, actor, actor.Audit, TenantContext.Global)));
 
         var stored = await provider.GetRequiredService<IAuthorizationGrantRepository>().GetGrantAsync(grant.Id, null);
         Assert.That(stored?.RevokedAt, Is.Null);
@@ -243,12 +258,41 @@ internal sealed class SecurityMutationAuditAtomicityTests
         return new AuditContext(ActorUserId: Guid.NewGuid(), IpAddress: "203.0.113.10", UserAgent: "atomicity-test");
     }
 
+    private static async Task<AccountSecurityActorContext> CreateActorAsync(IServiceProvider provider)
+    {
+        const string token = "grant-atomicity-session-token";
+        var actor = await CreateUserAsync(provider);
+        var now = DateTimeOffset.UtcNow;
+        var session = new AuthenticationSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = actor.Id,
+            TokenHash = provider.GetRequiredService<ISecureTokenHasher>().HashToken(token),
+            CreatedAt = now,
+            ExpiresAt = now.AddHours(1),
+            AdditionalVerificationAt = now
+        };
+        await provider.GetRequiredService<IAuthenticationSessionRepository>().CreateSessionAsync(session);
+        var validated = await provider.GetRequiredService<IAuthenticationSessionService>().ValidateSessionAsync(token);
+        var proof = provider.GetRequiredService<StepUpAuthenticationService>().CreateFreshMfaProof(
+            validated.ValidatedSession!, new StepUpRequirement(TimeSpan.FromMinutes(5), Purpose: AuthorizationGrantService.AdministrationProofPurpose)).Value!;
+        var audit = new AuditContext(actor.Id, UserAgent: "atomicity-test");
+        return new AccountSecurityActorContext(actor.Id, TenantContext.Global, session.Id, proof, audit);
+    }
+
     private sealed class ThrowingSecurityEventSink : ISecurityEventSink
     {
         public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
         {
-            throw new InvalidOperationException("required audit failed");
+            return securityEvent.EventType is AshlarSecurityEventTypes.AuthorizationGrantCreated or AshlarSecurityEventTypes.AuthorizationGrantRevoked
+                ? Task.FromException(new InvalidOperationException("required audit failed"))
+                : Task.CompletedTask;
         }
+    }
+
+    private sealed class AllowOperations : IAccountSecurityOperationAuthorizer
+    {
+        public ValueTask<bool> AuthorizeAsync(AccountSecurityAuthorizationContext context, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
     }
 
     private sealed class ConflictOnUpdateInvitationRepository(IInvitationRepository inner) : IInvitationRepository

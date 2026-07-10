@@ -30,7 +30,11 @@ public enum AccountSecurityOperation
     /// <summary>Generates a new recovery-code credential set for the target account.</summary>
     GenerateRecoveryCodes,
     /// <summary>Revokes every recovery-code credential belonging to the target account.</summary>
-    RevokeRecoveryCodes
+    RevokeRecoveryCodes,
+    /// <summary>Authorizes assignment of a role or permission grant to a target user and exact scope.</summary>
+    CreateAuthorizationGrant,
+    /// <summary>Authorizes removal of an authorization grant from a target user and requested scope.</summary>
+    RevokeAuthorizationGrant
 }
 
 /// <summary>Context supplied to the required host authorizer.</summary>
