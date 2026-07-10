@@ -135,19 +135,11 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
     }
 
     [Test]
-    public async Task ServiceBaseAllowsOperationWithoutTransactionProvider()
+    public void ServiceBaseRequiresAuditAndTransactionDependencies()
     {
         var sink = new RecordingSecurityEventSink();
-        var deliveryId = Guid.NewGuid();
-        var operations = new TestWebhookOutboxOperations(sink);
-
-        var result = await operations.RetryAsync(new AshlarSecurityEventWebhookOutboxOperationRequest(deliveryId, new AuditContext(Guid.NewGuid())));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.Retried));
-            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryRetried));
-        }
+        Assert.Throws<ArgumentNullException>(() => new TestWebhookOutboxOperations(null!, new RecordingTransactionProvider()));
+        Assert.Throws<ArgumentNullException>(() => new TestWebhookOutboxOperations(sink, null!));
     }
 
     [Test]
@@ -196,7 +188,7 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
 
     private sealed class TestWebhookOutboxOperations(
         ISecurityEventSink sink,
-        IAshlarTransactionProvider? transactionProvider = null)
+        IAshlarTransactionProvider transactionProvider)
         : AshlarSecurityEventWebhookOutboxOperationsBase(TimeProvider.System, sink, transactionProvider)
     {
         protected override Task<AshlarSecurityEventWebhookOutboxOperationState?> RetryFailedAsync(Guid deliveryId, CancellationToken cancellationToken)

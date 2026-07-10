@@ -15,6 +15,7 @@ internal sealed class SqliteEmailOutboxAdministrationContractTests : EmailOutbox
         _database = await SqliteContractDatabase.CreateAsync(services =>
         {
             services.AddSingleton<TimeProvider>(new FakeTimeProvider(AdminNow));
+            services.AddSingleton<ISecurityEventSink, NullSecurityEventSink>();
             services.AddAshlarSqliteEmailOutboxSender();
         });
         return _database.ServiceProvider;
@@ -92,10 +93,16 @@ internal sealed class SqliteEmailOutboxAdministrationContractTests : EmailOutbox
     public void ConstructorRejectsMissingDependencies()
     {
         var provider = _database!.ServiceProvider;
+        var connectionProvider = provider.GetRequiredService<ISqliteConnectionProvider>();
+        var audit = provider.GetRequiredService<ISecurityEventSink>();
+        var transactionProvider = provider.GetRequiredService<IAshlarTransactionProvider>();
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => new SqliteEmailOutboxAdministrationService(null!, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => new SqliteEmailOutboxAdministrationService(provider.GetRequiredService<ISqliteConnectionProvider>(), null!));
+            Assert.Throws<ArgumentNullException>(() => new SqliteEmailOutboxAdministrationService(null!, TimeProvider.System, audit, transactionProvider));
+            Assert.Throws<ArgumentNullException>(() => new SqliteEmailOutboxAdministrationService(connectionProvider, null!, audit, transactionProvider));
+            Assert.Throws<ArgumentNullException>(() => new SqliteEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, null!, transactionProvider));
+            Assert.Throws<ArgumentNullException>(() => new SqliteEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, audit, null!));
+            Assert.DoesNotThrow(() => new SqliteEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, audit, transactionProvider));
         }
     }
 

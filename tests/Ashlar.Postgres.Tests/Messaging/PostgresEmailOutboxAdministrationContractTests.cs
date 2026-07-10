@@ -77,11 +77,16 @@ internal sealed class PostgresEmailOutboxAdministrationContractTests : EmailOutb
     public void ConstructorRejectsMissingDependencies()
     {
         var provider = _database!.ServiceProvider;
+        var connectionProvider = provider.GetRequiredService<IPostgresConnectionProvider>();
+        var audit = provider.GetRequiredService<ISecurityEventSink>();
+        var transactionProvider = provider.GetRequiredService<IAshlarTransactionProvider>();
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(null!, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(provider.GetRequiredService<IPostgresConnectionProvider>(), null!));
-            Assert.DoesNotThrow(() => new PostgresEmailOutboxAdministrationService(provider.GetRequiredService<IPostgresConnectionProvider>(), TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(null!, TimeProvider.System, audit, transactionProvider));
+            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(connectionProvider, null!, audit, transactionProvider));
+            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, null!, transactionProvider));
+            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, audit, null!));
+            Assert.DoesNotThrow(() => new PostgresEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, audit, transactionProvider));
         }
     }
 
