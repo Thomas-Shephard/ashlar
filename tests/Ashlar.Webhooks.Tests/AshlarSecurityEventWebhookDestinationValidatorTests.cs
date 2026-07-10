@@ -231,6 +231,7 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(handler.AllowAutoRedirect, Is.False);
+            Assert.That(handler.UseProxy, Is.False);
             Assert.That(handler.ConnectCallback, Is.Not.Null);
         }
     }

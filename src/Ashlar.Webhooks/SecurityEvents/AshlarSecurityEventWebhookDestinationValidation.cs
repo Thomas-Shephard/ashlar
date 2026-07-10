@@ -277,6 +277,7 @@ public static class AshlarSecurityEventWebhookHttpMessageHandlerFactory
         return new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
+            UseProxy = false,
             ConnectCallback = (context, cancellationToken) => ConnectAsync(
                 context.DnsEndPoint,
                 destinationValidator,
