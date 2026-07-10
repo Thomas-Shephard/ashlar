@@ -16,7 +16,8 @@ namespace Ashlar.Sample.AspNetCore.Endpoints;
 
 internal static class MfaEndpoints
 {
-    private static readonly StepUpRequirement SelfServiceMfaManagementRequirement = new(TimeSpan.FromMinutes(10));
+    private static readonly StepUpRequirement TotpManagementRequirement = new(TimeSpan.FromMinutes(10), Purpose: "totp-management");
+    private static readonly StepUpRequirement RecoveryCodeManagementRequirement = new(TimeSpan.FromMinutes(10), Purpose: "recovery-code-management");
 
     public static void MapMfaEndpoints(this IEndpointRouteBuilder app)
     {
@@ -63,14 +64,14 @@ internal static class MfaEndpoints
         FreshPrimaryAuthenticationProof? freshPrimaryProof = null;
         if (securityPosture.AdditionalVerificationFactors.Any(factor => factor.IsUsable))
         {
-            var proof = services.HttpContext.CreateFreshMfaProof(services.StepUp, SelfServiceMfaManagementRequirement);
+            var proof = services.HttpContext.CreateFreshMfaProof(services.StepUp, TotpManagementRequirement);
             if (!proof.Succeeded) return Results.Forbid();
 
             freshMfaProof = proof.Value;
         }
         else
         {
-            var proof = services.HttpContext.CreateFreshPrimaryAuthenticationProof(services.StepUp, SelfServiceMfaManagementRequirement.FreshnessWindow);
+            var proof = services.HttpContext.CreateFreshPrimaryAuthenticationProof(services.StepUp, TotpManagementRequirement.FreshnessWindow, TotpManagementRequirement.Purpose);
             if (!proof.Succeeded) return Results.Forbid();
 
             freshPrimaryProof = proof.Value;
@@ -116,14 +117,14 @@ internal static class MfaEndpoints
         FreshPrimaryAuthenticationProof? freshPrimaryProof = null;
         if (totpCredential == null && !securityPosture.AdditionalVerificationFactors.Any(factor => factor.IsUsable))
         {
-            var proof = services.HttpContext.CreateFreshPrimaryAuthenticationProof(services.StepUp, SelfServiceMfaManagementRequirement.FreshnessWindow);
+            var proof = services.HttpContext.CreateFreshPrimaryAuthenticationProof(services.StepUp, TotpManagementRequirement.FreshnessWindow, TotpManagementRequirement.Purpose);
             if (!proof.Succeeded) return Results.Forbid();
 
             freshPrimaryProof = proof.Value;
         }
         else
         {
-            var proof = services.HttpContext.CreateFreshMfaProof(services.StepUp, SelfServiceMfaManagementRequirement);
+            var proof = services.HttpContext.CreateFreshMfaProof(services.StepUp, TotpManagementRequirement);
             if (!proof.Succeeded) return Results.Forbid();
 
             freshMfaProof = proof.Value;
@@ -165,7 +166,7 @@ internal static class MfaEndpoints
     private static async Task<IResult> ResetTotpAsync([AsParameters] TotpResetServices services)
     {
         var userId = services.User.GetAshlarUserId();
-        var proof = services.HttpContext.CreateFreshMfaProof(services.StepUp, SelfServiceMfaManagementRequirement);
+        var proof = services.HttpContext.CreateFreshMfaProof(services.StepUp, TotpManagementRequirement);
         if (!proof.Succeeded)
         {
             return Results.Forbid();
@@ -194,7 +195,7 @@ internal static class MfaEndpoints
 
     private static async Task<IResult> GenerateRecoveryCodesAsync([AsParameters] RecoveryCodeGenerationServices services)
     {
-        var proof = services.HttpContext.CreateFreshMfaProof(services.StepUp, SelfServiceMfaManagementRequirement);
+        var proof = services.HttpContext.CreateFreshMfaProof(services.StepUp, RecoveryCodeManagementRequirement);
         if (!proof.Succeeded)
         {
             return Results.Forbid();

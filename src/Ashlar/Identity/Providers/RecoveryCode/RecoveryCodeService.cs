@@ -6,6 +6,7 @@ namespace Ashlar.Identity.Providers.RecoveryCode;
 
 internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeMutationExecutor
 {
+    internal const string ProofPurpose = "recovery-code-management";
     private const string EmptyUserIdMessage = "User ID cannot be empty.";
 
     private readonly IUserRepository _userRepository;
@@ -260,7 +261,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
         }
 
         var failure = FreshVerificationProofValidator.ValidateMfaProof(request.ActorUserId, request.ActorTenant,
-            request.FreshMfaProof, request.CurrentSessionId, _timeProvider.GetUtcNow());
+            request.FreshMfaProof, request.CurrentSessionId, _timeProvider.GetUtcNow(), ProofPurpose);
         if (failure != null)
             await RecordPublicFailureAsync(request, eventType, failure.Value, request.Audit, cancellationToken);
         return failure;

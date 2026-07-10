@@ -8,6 +8,7 @@ internal sealed class AccountSecurityAdministrationService(
     TimeProvider timeProvider,
     ISecurityEventSink? securityEventSink) : IAccountSecurityAdministrationService
 {
+    internal const string ProofPurpose = "account-security-administration";
     private readonly TimeProvider _timeProvider = timeProvider;
     private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider);
 
@@ -42,7 +43,7 @@ internal sealed class AccountSecurityAdministrationService(
                 "Audit actor must match the authenticated actor.", cancellationToken);
 
         var proofFailure = FreshVerificationProofValidator.ValidateMfaProof(request.ActorUserId, request.ActorTenant, request.FreshMfaProof,
-            request.CurrentSessionId, _timeProvider.GetUtcNow());
+            request.CurrentSessionId, _timeProvider.GetUtcNow(), ProofPurpose);
         if (proofFailure is { } failure)
             return await RejectAsync(request, eventType, failure, cancellationToken: cancellationToken);
 

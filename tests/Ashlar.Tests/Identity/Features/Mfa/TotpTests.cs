@@ -106,12 +106,12 @@ internal sealed class TotpTests
         var verifiedAt = DateTimeOffset.UtcNow;
         if (expiresAt.HasValue)
         {
-            return new FreshMfaVerificationProof(userId, tenant?.TenantId, Guid.NewGuid(), verifiedAt, expiresAt.Value);
+            return new FreshMfaVerificationProof(userId, tenant?.TenantId, Guid.NewGuid(), verifiedAt, expiresAt.Value, TotpService.ProofPurpose);
         }
 
         var session = CreateFreshSession(userId, tenant, verifiedAt);
         return new StepUpAuthenticationService(new FakeTimeProvider(verifiedAt))
-            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(10))).Value!;
+            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(10), Purpose: TotpService.ProofPurpose)).Value!;
     }
 
     private static FreshPrimaryAuthenticationProof CreatePrimaryProof(Guid userId, TenantContext? tenant = null, DateTimeOffset? expiresAt = null)
@@ -119,12 +119,12 @@ internal sealed class TotpTests
         var authenticatedAt = DateTimeOffset.UtcNow;
         if (expiresAt.HasValue)
         {
-            return new FreshPrimaryAuthenticationProof(userId, tenant?.TenantId, Guid.NewGuid(), authenticatedAt, expiresAt.Value);
+            return new FreshPrimaryAuthenticationProof(userId, tenant?.TenantId, Guid.NewGuid(), authenticatedAt, expiresAt.Value, TotpService.ProofPurpose);
         }
 
         var session = CreateFreshSession(userId, tenant, authenticatedAt);
         return new StepUpAuthenticationService(new FakeTimeProvider(authenticatedAt))
-            .CreateFreshPrimaryAuthenticationProof(new ValidatedAuthenticationSession(session), TimeSpan.FromMinutes(10)).Value!;
+            .CreateFreshPrimaryAuthenticationProof(new ValidatedAuthenticationSession(session), TimeSpan.FromMinutes(10), TotpService.ProofPurpose).Value!;
     }
 
     private static AuthenticationSession CreateFreshSession(Guid userId, TenantContext? tenant, DateTimeOffset now) => new()
@@ -542,11 +542,18 @@ internal sealed class TotpTests
                 FreshMfaProof = CreateProof(userId, new TenantContext(Guid.NewGuid())),
                 Tenant = tenant
             }));
+        var wrongPurpose = Assert.ThrowsAsync<AshlarOperationException>(() =>
+            service.StartEnrollmentAsync(new StartTotpEnrollmentRequest(userId, "Ashlar", "user@example.com")
+            {
+                FreshMfaProof = new FreshMfaVerificationProof(userId, tenant.TenantId, Guid.NewGuid(), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), "recovery-code-management"),
+                Tenant = tenant
+            }));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(wrongUser?.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
             Assert.That(wrongTenant?.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            Assert.That(wrongPurpose?.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
         }
     }
 
