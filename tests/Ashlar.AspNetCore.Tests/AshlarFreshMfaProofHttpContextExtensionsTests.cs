@@ -39,13 +39,32 @@ internal sealed class AshlarFreshMfaProofHttpContextExtensionsTests
             AdditionalVerificationFactor = AuthenticationFactorTypes.Totp
         };
         var context = new DefaultHttpContext();
-        context.Items[AshlarHttpContextItems.AuthenticationSession] = session;
+        context.Items[AshlarHttpContextItems.ValidatedAuthenticationSession] = CreateValidatedSession(session);
 
         var result = context.CreateFreshMfaProof(
             new StepUpAuthenticationService(new FakeTimeProvider(Now)),
             new StepUpRequirement(TimeSpan.FromMinutes(10)));
 
         Assert.That(result.Value?.SessionId, Is.EqualTo(session.Id));
+    }
+
+    [Test]
+    public void CreateFreshMfaProofShouldRejectManualSessionItem()
+    {
+        var context = new DefaultHttpContext();
+        context.Items[AshlarHttpContextItems.AuthenticationSession] = new AuthenticationSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            TokenHash = "manual",
+            CreatedAt = Now,
+            ExpiresAt = Now.AddHours(1)
+        };
+
+        var result = context.CreateFreshMfaProof(new StepUpAuthenticationService(new FakeTimeProvider(Now)),
+            new StepUpRequirement(TimeSpan.FromMinutes(10)));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
     }
 
     [Test]
@@ -72,7 +91,7 @@ internal sealed class AshlarFreshMfaProofHttpContextExtensionsTests
             ExpiresAt = Now.AddMinutes(10)
         };
         var context = new DefaultHttpContext();
-        context.Items[AshlarHttpContextItems.AuthenticationSession] = session;
+        context.Items[AshlarHttpContextItems.ValidatedAuthenticationSession] = CreateValidatedSession(session);
 
         var result = context.CreateFreshPrimaryAuthenticationProof(
             new StepUpAuthenticationService(new FakeTimeProvider(Now)),
@@ -90,4 +109,8 @@ internal sealed class AshlarFreshMfaProofHttpContextExtensionsTests
     {
         public override DateTimeOffset GetUtcNow() => now;
     }
+
+    private static ValidatedAuthenticationSession CreateValidatedSession(AuthenticationSession session) =>
+        (ValidatedAuthenticationSession)Activator.CreateInstance(typeof(ValidatedAuthenticationSession),
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [session], null)!;
 }

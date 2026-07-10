@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.AspNetCore.Mfa;
+using Ashlar.Identity.Features.Mfa;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
 using Dapper;
@@ -51,7 +52,7 @@ internal static partial class AdminEndpoints
             Guid userId,
             AdminUserSecurityRequest? request,
             IAccountSecurityAdministrationService accountSecurity,
-            IStepUpAuthenticationService stepUp,
+            StepUpAuthenticationService stepUp,
             IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
@@ -67,7 +68,7 @@ internal static partial class AdminEndpoints
             Guid userId,
             AdminSetUserAccountStateRequest request,
             IAccountSecurityAdministrationService accountSecurity,
-            IStepUpAuthenticationService stepUp,
+            StepUpAuthenticationService stepUp,
             IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
@@ -87,7 +88,7 @@ internal static partial class AdminEndpoints
             Guid userId,
             AdminUserSecurityRequest? request,
             IAccountSecurityAdministrationService accountSecurity,
-            IStepUpAuthenticationService stepUp,
+            StepUpAuthenticationService stepUp,
             IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
@@ -103,7 +104,7 @@ internal static partial class AdminEndpoints
             Guid userId,
             AdminUserSecurityRequest? request,
             IAccountSecurityAdministrationService accountSecurity,
-            IStepUpAuthenticationService stepUp,
+            StepUpAuthenticationService stepUp,
             IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
@@ -118,7 +119,7 @@ internal static partial class AdminEndpoints
             Guid userId,
             AdminUserSecurityRequest? request,
             IAccountSecurityAdministrationService accountSecurity,
-            IStepUpAuthenticationService stepUp,
+            StepUpAuthenticationService stepUp,
             IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
@@ -260,7 +261,7 @@ internal static partial class AdminEndpoints
         Guid targetUserId,
         AdminUserSecurityRequest? request,
         HttpContext httpContext,
-        IStepUpAuthenticationService stepUp,
+        StepUpAuthenticationService stepUp,
         IAuthorizationEvaluator auth,
         CancellationToken cancellationToken)
     {
@@ -282,7 +283,7 @@ internal static partial class AdminEndpoints
         Guid targetUserId,
         AdminSetUserAccountStateRequest request,
         HttpContext httpContext,
-        IStepUpAuthenticationService stepUp,
+        StepUpAuthenticationService stepUp,
         IAuthorizationEvaluator auth,
         CancellationToken cancellationToken)
     {

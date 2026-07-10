@@ -3060,7 +3060,7 @@ internal sealed class PasskeyServiceTests
             AuthenticatedAt = now,
             ExpiresAt = now.AddHours(1)
         };
-        var result = stepUp.CreateFreshPrimaryAuthenticationProof(new PrimaryAuthenticationEvaluationRequest(session, RegistrationFreshnessWindow, purpose));
+        var result = stepUp.CreateFreshPrimaryAuthenticationProof(CreateValidatedSession(session), RegistrationFreshnessWindow, purpose);
         return result.Value!;
     }
 
@@ -3080,9 +3080,13 @@ internal sealed class PasskeyServiceTests
             AdditionalVerificationFactor = AuthenticationFactorTypes.Passkey,
             ExpiresAt = now.AddHours(1)
         };
-        var result = stepUp.CreateFreshMfaProof(new StepUpEvaluationRequest(session, new StepUpRequirement(RegistrationFreshnessWindow, Purpose: purpose)));
+        var result = stepUp.CreateFreshMfaProof(CreateValidatedSession(session), new StepUpRequirement(RegistrationFreshnessWindow, Purpose: purpose));
         return result.Value!;
     }
+
+    private static ValidatedAuthenticationSession CreateValidatedSession(AuthenticationSession session) =>
+        (ValidatedAuthenticationSession)Activator.CreateInstance(typeof(ValidatedAuthenticationSession),
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [session], null)!;
 
     private static RenamePasskeyRequest CreateRenameRequest(
         Guid userId,

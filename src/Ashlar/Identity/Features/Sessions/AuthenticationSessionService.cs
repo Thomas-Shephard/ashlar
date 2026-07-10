@@ -334,7 +334,10 @@ internal sealed class AuthenticationSessionService(
         }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
-        return new ValidateAuthenticationSessionResult(true, session, session.UserId, AuthenticationSessionValidationStatus.Succeeded);
+        return new ValidateAuthenticationSessionResult(true, session, session.UserId, AuthenticationSessionValidationStatus.Succeeded)
+        {
+            ValidatedSession = new ValidatedAuthenticationSession(session)
+        };
     }
 
     public Task<Result<AuthenticationSession>> MarkStepUpVerifiedAsync(

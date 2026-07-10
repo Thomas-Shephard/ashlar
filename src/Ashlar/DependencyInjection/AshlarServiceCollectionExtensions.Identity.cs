@@ -156,7 +156,8 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped<AuthenticationSessionService>();
         services.TryAddScoped<IAuthenticationSessionService>(provider => provider.GetRequiredService<AuthenticationSessionService>());
         services.TryAddScoped<IAuthenticationSessionMutationExecutor>(provider => provider.GetRequiredService<AuthenticationSessionService>());
-        services.TryAddScoped<IStepUpAuthenticationService, StepUpAuthenticationService>();
+        services.TryAddScoped<StepUpAuthenticationService>();
+        services.TryAddScoped<IStepUpAuthenticationService>(provider => provider.GetRequiredService<StepUpAuthenticationService>());
         services.TryAddScoped<IdentityContext>();
         services.TryAddScoped(provider => new IdentityInfrastructureContext(
             provider.GetRequiredService<IEmailSender>(),

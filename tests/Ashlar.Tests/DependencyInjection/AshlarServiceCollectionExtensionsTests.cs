@@ -200,6 +200,25 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarIdentitySeparatesCustomStepUpEvaluationFromAshlarProofIssuance()
+    {
+        var custom = Mock.Of<IStepUpAuthenticationService>();
+        var services = new ServiceCollection();
+        services.AddScoped(_ => custom);
+        services.AddScoped(_ => Mock.Of<IAuthenticationSessionService>());
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.ServiceProvider.GetRequiredService<IStepUpAuthenticationService>(), Is.SameAs(custom));
+            Assert.That(scope.ServiceProvider.GetRequiredService<StepUpAuthenticationService>(), Is.Not.SameAs(custom));
+        }
+    }
+
+    [Test]
     public void AddAshlarIdentityConfiguresPrimaryAuthenticationRateLimitOptions()
     {
         var services = new ServiceCollection();

@@ -142,7 +142,7 @@ internal sealed class AuthenticationSessionServiceTests
         var targetSession = Guid.NewGuid();
         var tenant = TenantContext.Global;
         var audit = new AuditContext(actor);
-        var proof = new FreshMfaVerificationProof(actor, null, currentSession, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5));
+        var proof = CreateProof(actor, currentSession);
         var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
         authorizer.Setup(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var service = new AuthenticationSessionService(
@@ -157,6 +157,22 @@ internal sealed class AuthenticationSessionServiceTests
         authorizer.Verify(a => a.AuthorizeAsync(It.Is<AccountSecurityAuthorizationContext>(c =>
             c.ActorUserId == actor && c.TargetUserId == actor && c.TargetSessionId == targetSession &&
             c.Operation == AccountSecurityOperation.RevokeOwnSession), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private FreshMfaVerificationProof CreateProof(Guid userId, Guid sessionId)
+    {
+        var now = _timeProvider.GetUtcNow();
+        var session = new AuthenticationSession
+        {
+            Id = sessionId,
+            UserId = userId,
+            TokenHash = "hash",
+            CreatedAt = now.AddMinutes(-1),
+            AdditionalVerificationAt = now,
+            ExpiresAt = now.AddHours(1)
+        };
+        return new StepUpAuthenticationService(_timeProvider)
+            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(5))).Value!;
     }
 
     [Test]
@@ -947,6 +963,7 @@ internal sealed class AuthenticationSessionServiceTests
     public async Task ValidateSessionAsyncShouldSucceedForActiveSession()
     {
         var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1));
+        session.AdditionalVerificationAt = _timeProvider.GetUtcNow();
         _repositoryMock
             .Setup(r => r.GetSessionByTokenHashAsync("hashed:raw-token", It.IsAny<CancellationToken>()))
             .ReturnsAsync(session);
@@ -955,13 +972,17 @@ internal sealed class AuthenticationSessionServiceTests
             .ReturnsAsync(true);
 
         var result = await _service.ValidateSessionAsync("raw-token");
+        var proof = new StepUpAuthenticationService(_timeProvider).CreateFreshMfaProof(
+            result.ValidatedSession!, new StepUpRequirement(TimeSpan.FromMinutes(5)));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Succeeded));
+            Assert.That(result.ValidatedSession, Is.Not.Null);
             Assert.That(result.Session, Is.EqualTo(session));
             Assert.That(result.UserId, Is.EqualTo(session.UserId));
+            Assert.That(proof.Value?.SessionId, Is.EqualTo(session.Id));
         }
     }
 

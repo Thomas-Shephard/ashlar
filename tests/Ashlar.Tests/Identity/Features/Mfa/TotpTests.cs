@@ -104,14 +104,40 @@ internal sealed class TotpTests
     private static FreshMfaVerificationProof CreateProof(Guid userId, TenantContext? tenant = null, DateTimeOffset? expiresAt = null)
     {
         var verifiedAt = DateTimeOffset.UtcNow;
-        return new FreshMfaVerificationProof(userId, tenant?.TenantId, Guid.NewGuid(), verifiedAt, expiresAt ?? verifiedAt.AddMinutes(10));
+        if (expiresAt.HasValue)
+        {
+            return new FreshMfaVerificationProof(userId, tenant?.TenantId, Guid.NewGuid(), verifiedAt, expiresAt.Value);
+        }
+
+        var session = CreateFreshSession(userId, tenant, verifiedAt);
+        return new StepUpAuthenticationService(new FakeTimeProvider(verifiedAt))
+            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(10))).Value!;
     }
 
     private static FreshPrimaryAuthenticationProof CreatePrimaryProof(Guid userId, TenantContext? tenant = null, DateTimeOffset? expiresAt = null)
     {
         var authenticatedAt = DateTimeOffset.UtcNow;
-        return new FreshPrimaryAuthenticationProof(userId, tenant?.TenantId, Guid.NewGuid(), authenticatedAt, expiresAt ?? authenticatedAt.AddMinutes(10));
+        if (expiresAt.HasValue)
+        {
+            return new FreshPrimaryAuthenticationProof(userId, tenant?.TenantId, Guid.NewGuid(), authenticatedAt, expiresAt.Value);
+        }
+
+        var session = CreateFreshSession(userId, tenant, authenticatedAt);
+        return new StepUpAuthenticationService(new FakeTimeProvider(authenticatedAt))
+            .CreateFreshPrimaryAuthenticationProof(new ValidatedAuthenticationSession(session), TimeSpan.FromMinutes(10)).Value!;
     }
+
+    private static AuthenticationSession CreateFreshSession(Guid userId, TenantContext? tenant, DateTimeOffset now) => new()
+    {
+        Id = Guid.NewGuid(),
+        UserId = userId,
+        TenantId = tenant?.TenantId,
+        TokenHash = "hash",
+        CreatedAt = now,
+        AuthenticatedAt = now,
+        AdditionalVerificationAt = now,
+        ExpiresAt = now.AddHours(1)
+    };
 
     private void SetupExistingTotp(Guid userId)
     {

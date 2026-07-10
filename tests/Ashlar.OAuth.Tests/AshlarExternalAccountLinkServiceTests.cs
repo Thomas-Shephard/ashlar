@@ -3,9 +3,11 @@ using System.Reflection;
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.Abstractions.Tenancy;
+using Ashlar.Identity.Features.Mfa;
 using Ashlar.Identity.Models.AccountSecurity;
 using Ashlar.Identity.Models.Credentials;
 using Ashlar.Identity.Models.Mfa;
+using Ashlar.Identity.Models.Sessions;
 using Ashlar.Identity.Models.Tenants;
 using Ashlar.Identity.Providers.External;
 using Ashlar.OAuth.Providers.GitHub;
@@ -1608,12 +1610,24 @@ internal static class ExternalAccountLinkServiceTestExtensions
     {
         var resolvedVerifiedAt = verifiedAt ?? DateTimeOffset.UtcNow;
         var resolvedFreshnessWindow = freshnessWindow ?? TimeSpan.FromMinutes(10);
-        return (FreshMfaVerificationProof)Activator.CreateInstance(
-            typeof(FreshMfaVerificationProof),
+        var session = new AuthenticationSession
+        {
+            Id = sessionId,
+            UserId = userId,
+            TenantId = (tenant ?? TenantContext.Global).TenantId,
+            TokenHash = "hash",
+            CreatedAt = resolvedVerifiedAt,
+            AdditionalVerificationAt = resolvedVerifiedAt,
+            ExpiresAt = resolvedVerifiedAt.AddHours(1)
+        };
+        var validatedSession = (ValidatedAuthenticationSession)Activator.CreateInstance(
+            typeof(ValidatedAuthenticationSession),
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
             binder: null,
-            args: [userId, (tenant ?? TenantContext.Global).TenantId, sessionId, resolvedVerifiedAt, resolvedVerifiedAt.Add(resolvedFreshnessWindow), purpose],
+            args: [session],
             culture: null)!;
+        return new StepUpAuthenticationService(new FixedTimeProvider(resolvedVerifiedAt))
+            .CreateFreshMfaProof(validatedSession, new StepUpRequirement(resolvedFreshnessWindow, Purpose: purpose)).Value!;
     }
 
 }

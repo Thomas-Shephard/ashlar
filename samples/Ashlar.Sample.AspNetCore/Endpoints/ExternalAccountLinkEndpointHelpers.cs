@@ -1,4 +1,5 @@
 using Ashlar.AspNetCore.Mfa;
+using Ashlar.Identity.Features.Mfa;
 using Ashlar.Sample.AspNetCore.Extensions;
 
 namespace Ashlar.Sample.AspNetCore.Endpoints;
@@ -18,7 +19,7 @@ internal static class ExternalAccountLinkEndpointHelpers
         }
 
         var proof = httpContext.CreateFreshMfaProof(
-            services.GetRequiredService<IStepUpAuthenticationService>(),
+            services.GetRequiredService<StepUpAuthenticationService>(),
             new StepUpRequirement(TimeSpan.FromMinutes(10), Purpose: "external-account-linking"));
         if (!proof.Succeeded || proof.Value == null)
         {
@@ -53,7 +54,7 @@ internal static class ExternalAccountLinkEndpointHelpers
         }
 
         var proof = httpContext.CreateFreshMfaProof(
-            services.GetRequiredService<IStepUpAuthenticationService>(),
+            services.GetRequiredService<StepUpAuthenticationService>(),
             new StepUpRequirement(TimeSpan.FromMinutes(10), Purpose: "external-account-unlinking"));
         if (!proof.Succeeded || proof.Value == null)
         {
