@@ -501,7 +501,9 @@ internal sealed class AshlarSignInManagerTests
             AdditionalVerificationFactor = "totp",
             ExpiresAt = now.AddHours(1)
         };
-        var result = new StepUpAuthenticationService().CreateFreshMfaProof(new StepUpEvaluationRequest(session, new StepUpRequirement(TimeSpan.FromMinutes(5))));
+        var validatedSession = (ValidatedAuthenticationSession)Activator.CreateInstance(typeof(ValidatedAuthenticationSession),
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [session], null)!;
+        var result = new StepUpAuthenticationService().CreateFreshMfaProof(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(5)));
         return result.Value!;
     }
 

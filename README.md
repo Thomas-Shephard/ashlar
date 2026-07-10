@@ -602,10 +602,11 @@ session. Do not bind proof objects, user ids, tenant scope, or session ids from 
 
 ```csharp
 using Ashlar.AspNetCore.Mfa;
+using Ashlar.Identity.Features.Mfa;
 using Ashlar.Identity.Providers.RecoveryCode;
 
 var recoveryCodes = httpContext.RequestServices.GetRequiredService<IRecoveryCodeService>();
-var stepUpService = httpContext.RequestServices.GetRequiredService<IStepUpAuthenticationService>();
+var stepUpService = httpContext.RequestServices.GetRequiredService<StepUpAuthenticationService>();
 
 if (!httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out var tenant))
 {

@@ -21,14 +21,6 @@ public sealed record StepUpRequirement(
 public sealed record StepUpEvaluationRequest(AuthenticationSession? Session, StepUpRequirement Requirement);
 
 /// <summary>
-/// Describes the recent primary-authentication freshness required for first-factor setup.
-/// </summary>
-/// <param name="Session">Application session whose primary-authentication metadata is evaluated.</param>
-/// <param name="FreshnessWindow">Maximum age of the primary sign-in ceremony that may satisfy the requirement.</param>
-/// <param name="Purpose">Optional operation purpose this proof is minted for, such as <c>passkey-registration</c>.</param>
-public sealed record PrimaryAuthenticationEvaluationRequest(AuthenticationSession? Session, TimeSpan FreshnessWindow, string? Purpose = null);
-
-/// <summary>
 /// Describes the result of a step-up freshness evaluation.
 /// </summary>
 /// <param name="Succeeded">Whether the requirement was satisfied.</param>
@@ -46,8 +38,8 @@ public sealed record StepUpEvaluationResult(bool Succeeded, AshlarFailureCode? F
 /// Capability proving that Ashlar validated recent additional verification for a specific active session.
 /// </summary>
 /// <remarks>
-/// Hosts obtain this proof from <see cref="Ashlar.Identity.Abstractions.Services.IStepUpAuthenticationService.CreateFreshMfaProof" />
-/// after Ashlar has validated the current session. The type has no public constructor so normal request JSON cannot mint proof.
+/// Hosts obtain this proof from <see cref="Ashlar.Identity.Features.Mfa.StepUpAuthenticationService.CreateFreshMfaProof" />
+/// using session state produced by Ashlar's successful bearer-token validation path.
 /// It proves recent MFA by the user that owns the tenant-bound session. Services must separately authorize
 /// whether that actor may mutate their own account or a different target account.
 /// </remarks>
@@ -75,7 +67,7 @@ public sealed class FreshMfaVerificationProof
     /// <summary>UTC time when additional verification was recorded on the session.</summary>
     public DateTimeOffset VerifiedAt { get; }
 
-    /// <summary>UTC time after which this proof no longer satisfies the step-up requirement used to create it.</summary>
+    /// <summary>UTC time after which this proof or its source session is no longer valid, whichever occurs first.</summary>
     public DateTimeOffset ExpiresAt { get; }
 
     /// <summary>Operation purpose this proof was minted for, or <see langword="null" /> for a general session freshness proof.</summary>
@@ -86,8 +78,8 @@ public sealed class FreshMfaVerificationProof
 /// Capability proving that Ashlar validated recent primary authentication for a specific active session.
 /// </summary>
 /// <remarks>
-/// Hosts obtain this proof from <see cref="Ashlar.Identity.Abstractions.Services.IStepUpAuthenticationService.CreateFreshPrimaryAuthenticationProof" />
-/// after Ashlar has validated the current session. It is intended for bootstrapping the first additional-verification
+/// Hosts obtain this proof from <see cref="Ashlar.Identity.Features.Mfa.StepUpAuthenticationService.CreateFreshPrimaryAuthenticationProof" />
+/// using session state produced by Ashlar's successful bearer-token validation path. It is intended for bootstrapping the first additional-verification
 /// factor, such as initial TOTP enrollment when no usable MFA factor exists yet. It is not accepted for replacing or
 /// disabling existing MFA factors or managing recovery codes.
 /// </remarks>
@@ -115,7 +107,7 @@ public sealed class FreshPrimaryAuthenticationProof
     /// <summary>UTC time when primary authentication was recorded on the session.</summary>
     public DateTimeOffset AuthenticatedAt { get; }
 
-    /// <summary>UTC time after which this proof no longer satisfies the primary-authentication freshness requirement used to create it.</summary>
+    /// <summary>UTC time after which this proof or its source session is no longer valid, whichever occurs first.</summary>
     public DateTimeOffset ExpiresAt { get; }
 
     /// <summary>Operation purpose this proof was minted for, or <see langword="null" /> for a general primary-authentication freshness proof.</summary>

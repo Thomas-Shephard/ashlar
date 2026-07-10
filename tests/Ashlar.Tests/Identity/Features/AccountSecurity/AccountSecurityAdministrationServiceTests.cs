@@ -278,7 +278,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
         bool includeAllTenants = false,
         TenantContext? targetTenant = null)
     {
-        var proof = new FreshMfaVerificationProof(
+        var proof = problem == ProofProblem.None ? CreateProof() : new FreshMfaVerificationProof(
             problem == ProofProblem.WrongActor ? Guid.NewGuid() : _actorId,
             problem == ProofProblem.WrongTenant ? Guid.NewGuid() : _tenant.TenantId,
             _sessionId,
@@ -291,6 +291,23 @@ internal sealed class AccountSecurityAdministrationServiceTests
                 proof, new AuditContext(auditActorId ?? _actorId)),
             targetTenant ?? (includeAllTenants ? null : _tenant),
             includeAllTenants);
+    }
+
+    private FreshMfaVerificationProof CreateProof()
+    {
+        var now = _time.GetUtcNow();
+        var session = new AuthenticationSession
+        {
+            Id = _sessionId,
+            UserId = _actorId,
+            TenantId = _tenant.TenantId,
+            TokenHash = "hash",
+            CreatedAt = now.AddMinutes(-1),
+            AdditionalVerificationAt = now.AddMinutes(-1),
+            ExpiresAt = now.AddHours(1)
+        };
+        return new StepUpAuthenticationService(_time)
+            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(5))).Value!;
     }
 
     private static AccountSecurityActorContext ToActor(AccountSecurityAdministrationRequest request) =>

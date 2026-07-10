@@ -1,5 +1,6 @@
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.AspNetCore.Mfa;
+using Ashlar.Identity.Features.Mfa;
 using Ashlar.Sample.AspNetCore.Extensions;
 
 namespace Ashlar.Sample.AspNetCore.Endpoints;
@@ -30,7 +31,7 @@ internal static class SessionEndpoints
         app.MapDelete("/api/sessions/{sessionId:guid}", async (
             Guid sessionId,
             IAshlarSignInManager signInManager,
-            IStepUpAuthenticationService stepUp,
+            StepUpAuthenticationService stepUp,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
@@ -42,7 +43,7 @@ internal static class SessionEndpoints
 
         app.MapDelete("/api/sessions/others", async (
             IAshlarSignInManager signInManager,
-            IStepUpAuthenticationService stepUp,
+            StepUpAuthenticationService stepUp,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {

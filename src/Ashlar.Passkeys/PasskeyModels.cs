@@ -10,9 +10,9 @@ namespace Ashlar.Passkeys;
 /// <param name="DisplayName">The passkey display name.</param>
 public sealed record StartPasskeyRegistrationRequest(Guid ActorUserId, string DisplayName)
 {
-    /// <summary>Fresh MFA proof for the current authenticated session. Obtain it from <c>IStepUpAuthenticationService.CreateFreshMfaProof</c>; do not bind it from request JSON.</summary>
+    /// <summary>Fresh MFA proof for the current authenticated session. Obtain it from <c>StepUpAuthenticationService.CreateFreshMfaProof</c>; do not bind it from request JSON.</summary>
     public FreshMfaVerificationProof? FreshMfaProof { get; init; }
-    /// <summary>Fresh primary-authentication proof for passkey registration only when the account has no usable MFA factor. Obtain it from <c>IStepUpAuthenticationService.CreateFreshPrimaryAuthenticationProof</c>; do not bind it from request JSON.</summary>
+    /// <summary>Fresh primary-authentication proof for passkey registration only when the account has no usable MFA factor. Obtain it from <c>StepUpAuthenticationService.CreateFreshPrimaryAuthenticationProof</c>; do not bind it from request JSON.</summary>
     public FreshPrimaryAuthenticationProof? FreshPrimaryAuthenticationProof { get; init; }
     /// <summary>Current Ashlar session ID from the authenticated request. It must match the supplied fresh-verification proof.</summary>
     public Guid? CurrentSessionId { get; init; }
@@ -31,9 +31,9 @@ public sealed record StartPasskeyRegistrationRequest(Guid ActorUserId, string Di
 /// <param name="ActorUserId">Authenticated user completing the self-service operation. This user must match the challenge and proof.</param>
 public sealed record CompletePasskeyRegistrationRequest(Guid ChallengeId, JsonElement CredentialResponse, string? DisplayName, Guid ActorUserId)
 {
-    /// <summary>Fresh MFA proof for the current authenticated session. Obtain it from <c>IStepUpAuthenticationService.CreateFreshMfaProof</c>; do not bind it from request JSON.</summary>
+    /// <summary>Fresh MFA proof for the current authenticated session. Obtain it from <c>StepUpAuthenticationService.CreateFreshMfaProof</c>; do not bind it from request JSON.</summary>
     public FreshMfaVerificationProof? FreshMfaProof { get; init; }
-    /// <summary>Fresh primary-authentication proof for passkey registration only when the account has no usable MFA factor. Obtain it from <c>IStepUpAuthenticationService.CreateFreshPrimaryAuthenticationProof</c>; do not bind it from request JSON.</summary>
+    /// <summary>Fresh primary-authentication proof for passkey registration only when the account has no usable MFA factor. Obtain it from <c>StepUpAuthenticationService.CreateFreshPrimaryAuthenticationProof</c>; do not bind it from request JSON.</summary>
     public FreshPrimaryAuthenticationProof? FreshPrimaryAuthenticationProof { get; init; }
     /// <summary>Current Ashlar session ID from the authenticated request. It must match the supplied fresh-verification proof and stored challenge binding.</summary>
     public Guid? CurrentSessionId { get; init; }

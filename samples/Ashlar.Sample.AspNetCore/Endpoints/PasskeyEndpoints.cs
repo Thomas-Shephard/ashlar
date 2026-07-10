@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using Ashlar.AspNetCore.Mfa;
+using Ashlar.Identity.Features.Mfa;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Passkeys;
 using Ashlar.Sample.AspNetCore.Extensions;
@@ -25,7 +26,7 @@ internal static class PasskeyEndpoints
         app.MapDelete("/api/passkeys/{credentialId:guid}", RevokeAsync).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
     }
 
-    private static async Task<IResult> StartRegistrationAsync(PasskeyDisplayNameRequest request, IPasskeyService passkeys, IAccountSecurityService accountSecurity, IStepUpAuthenticationService stepUp, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
+    private static async Task<IResult> StartRegistrationAsync(PasskeyDisplayNameRequest request, IPasskeyService passkeys, IAccountSecurityService accountSecurity, StepUpAuthenticationService stepUp, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var registrationRequest = await CreateStartRegistrationRequestAsync(request.DisplayName, accountSecurity, stepUp, user, httpContext, cancellationToken);
         if (registrationRequest == null) return Results.Forbid();
@@ -34,7 +35,7 @@ internal static class PasskeyEndpoints
         return Results.Json(new { result.ChallengeId, result.ExpiresAt, options = JsonDocument.Parse(result.OptionsJson).RootElement });
     }
 
-    private static async Task<IResult> CompleteRegistrationAsync(PasskeyCompleteRegistrationSampleRequest request, IPasskeyService passkeys, IAccountSecurityService accountSecurity, IStepUpAuthenticationService stepUp, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
+    private static async Task<IResult> CompleteRegistrationAsync(PasskeyCompleteRegistrationSampleRequest request, IPasskeyService passkeys, IAccountSecurityService accountSecurity, StepUpAuthenticationService stepUp, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var registrationRequest = await CreateCompleteRegistrationRequestAsync(request, accountSecurity, stepUp, user, httpContext, cancellationToken);
         if (registrationRequest == null) return Results.Forbid();
@@ -43,7 +44,7 @@ internal static class PasskeyEndpoints
         return result.Succeeded ? Results.Ok() : Results.BadRequest(SampleResultErrors.From(result));
     }
 
-    private static async Task<StartPasskeyRegistrationRequest?> CreateStartRegistrationRequestAsync(string? displayName, IAccountSecurityService accountSecurity, IStepUpAuthenticationService stepUp, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
+    private static async Task<StartPasskeyRegistrationRequest?> CreateStartRegistrationRequestAsync(string? displayName, IAccountSecurityService accountSecurity, StepUpAuthenticationService stepUp, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var userId = user.GetAshlarUserId();
         if (!httpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return null;
@@ -63,7 +64,7 @@ internal static class PasskeyEndpoints
             : request with { FreshPrimaryAuthenticationProof = proof.FreshPrimaryAuthenticationProof };
     }
 
-    private static async Task<CompletePasskeyRegistrationRequest?> CreateCompleteRegistrationRequestAsync(PasskeyCompleteRegistrationSampleRequest input, IAccountSecurityService accountSecurity, IStepUpAuthenticationService stepUp, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
+    private static async Task<CompletePasskeyRegistrationRequest?> CreateCompleteRegistrationRequestAsync(PasskeyCompleteRegistrationSampleRequest input, IAccountSecurityService accountSecurity, StepUpAuthenticationService stepUp, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var userId = user.GetAshlarUserId();
         if (!httpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return null;
@@ -83,7 +84,7 @@ internal static class PasskeyEndpoints
             : request with { FreshPrimaryAuthenticationProof = proof.FreshPrimaryAuthenticationProof };
     }
 
-    private static async Task<PasskeyRegistrationProof?> CreateRegistrationProofAsync(IAccountSecurityService accountSecurity, IStepUpAuthenticationService stepUp, Guid userId, HttpContext httpContext, CancellationToken cancellationToken)
+    private static async Task<PasskeyRegistrationProof?> CreateRegistrationProofAsync(IAccountSecurityService accountSecurity, StepUpAuthenticationService stepUp, Guid userId, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var posture = await accountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(httpContext.ToTenantContext()), cancellationToken);
         if (!posture.Succeeded || posture.Value == null) return null;
@@ -202,7 +203,7 @@ internal static class PasskeyEndpoints
     private static async Task<IResult> RenameAsync(Guid credentialId, PasskeyDisplayNameRequest request, IPasskeyService passkeys, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
     {
         if (!httpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return Results.Forbid();
-        var proof = httpContext.CreateFreshMfaProof(httpContext.RequestServices.GetRequiredService<IStepUpAuthenticationService>(), SelfServicePasskeyManagementRequirement);
+        var proof = httpContext.CreateFreshMfaProof(httpContext.RequestServices.GetRequiredService<StepUpAuthenticationService>(), SelfServicePasskeyManagementRequirement);
         if (!proof.Succeeded || proof.Value == null) return Results.Forbid();
 
         var result = await passkeys.RenameAsync(new RenamePasskeyRequest(user.GetAshlarUserId(), httpContext.ToTenantContext(), sessionId, proof.Value, credentialId, request.DisplayName ?? "Passkey", httpContext.ToAuditContext()), cancellationToken);
@@ -212,7 +213,7 @@ internal static class PasskeyEndpoints
     private static async Task<IResult> RevokeAsync(Guid credentialId, IPasskeyService passkeys, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
     {
         if (!httpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return Results.Forbid();
-        var proof = httpContext.CreateFreshMfaProof(httpContext.RequestServices.GetRequiredService<IStepUpAuthenticationService>(), SelfServicePasskeyManagementRequirement);
+        var proof = httpContext.CreateFreshMfaProof(httpContext.RequestServices.GetRequiredService<StepUpAuthenticationService>(), SelfServicePasskeyManagementRequirement);
         if (!proof.Succeeded || proof.Value == null) return Results.Forbid();
 
         var result = await passkeys.RevokeAsync(new RevokePasskeyRequest(user.GetAshlarUserId(), httpContext.ToTenantContext(), sessionId, proof.Value, credentialId, httpContext.ToAuditContext()), cancellationToken);

@@ -1,4 +1,5 @@
 using Ashlar.AspNetCore.Authentication;
+using Ashlar.Identity.Features.Mfa;
 using Microsoft.AspNetCore.Http;
 
 namespace Ashlar.AspNetCore.Mfa;
@@ -21,19 +22,19 @@ public static class AshlarFreshMfaProofHttpContextExtensions
     /// </remarks>
     public static Result<FreshMfaVerificationProof> CreateFreshMfaProof(
         this HttpContext httpContext,
-        IStepUpAuthenticationService stepUp,
+        StepUpAuthenticationService stepUp,
         StepUpRequirement requirement)
     {
         ArgumentNullException.ThrowIfNull(httpContext);
         ArgumentNullException.ThrowIfNull(stepUp);
         ArgumentNullException.ThrowIfNull(requirement);
 
-        if (httpContext.Items[AshlarHttpContextItems.AuthenticationSession] is not AuthenticationSession session)
+        if (httpContext.Items[AshlarHttpContextItems.ValidatedAuthenticationSession] is not ValidatedAuthenticationSession session)
         {
             return Result.Failure<FreshMfaVerificationProof>(AshlarFailureCodes.SessionNotFoundOrInactive);
         }
 
-        return stepUp.CreateFreshMfaProof(new StepUpEvaluationRequest(session, requirement));
+        return stepUp.CreateFreshMfaProof(session, requirement);
     }
 
     /// <summary>
@@ -50,18 +51,18 @@ public static class AshlarFreshMfaProofHttpContextExtensions
     /// </remarks>
     public static Result<FreshPrimaryAuthenticationProof> CreateFreshPrimaryAuthenticationProof(
         this HttpContext httpContext,
-        IStepUpAuthenticationService stepUp,
+        StepUpAuthenticationService stepUp,
         TimeSpan freshnessWindow,
         string? purpose = null)
     {
         ArgumentNullException.ThrowIfNull(httpContext);
         ArgumentNullException.ThrowIfNull(stepUp);
 
-        if (httpContext.Items[AshlarHttpContextItems.AuthenticationSession] is not AuthenticationSession session)
+        if (httpContext.Items[AshlarHttpContextItems.ValidatedAuthenticationSession] is not ValidatedAuthenticationSession session)
         {
             return Result.Failure<FreshPrimaryAuthenticationProof>(AshlarFailureCodes.SessionNotFoundOrInactive);
         }
 
-        return stepUp.CreateFreshPrimaryAuthenticationProof(new PrimaryAuthenticationEvaluationRequest(session, freshnessWindow, purpose));
+        return stepUp.CreateFreshPrimaryAuthenticationProof(session, freshnessWindow, purpose);
     }
 }

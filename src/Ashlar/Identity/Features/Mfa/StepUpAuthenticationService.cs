@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace Ashlar.Identity.Features.Mfa;
 
 /// <summary>
@@ -38,26 +36,35 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
             return Failure(AshlarFailureCodes.SessionNotFoundOrInactive, "Session was not found or is inactive.");
         }
 
-        if (session.AdditionalVerificationAt == null)
+        return EvaluatePosture(session.AdditionalVerificationAt, session.AdditionalVerificationProvider,
+            session.AdditionalVerificationFactor, request.Requirement, now);
+    }
+
+    private static StepUpEvaluationResult EvaluatePosture(
+        DateTimeOffset? verifiedAt,
+        AuthenticationProviderKey? provider,
+        string? factor,
+        StepUpRequirement requirement,
+        DateTimeOffset now)
+    {
+        if (verifiedAt == null)
         {
             return Failure(AshlarFailureCodes.StepUpRequired, "Additional verification is required.");
         }
 
-        if (session.AdditionalVerificationAt.Value > now ||
-            now - session.AdditionalVerificationAt.Value > request.Requirement.FreshnessWindow)
+        if (verifiedAt.Value > now || now - verifiedAt.Value >= requirement.FreshnessWindow)
         {
             return Failure(AshlarFailureCodes.StepUpExpired, "Additional verification has expired.");
         }
 
-        if (request.Requirement.AllowedProviders is { Count: > 0 } allowedProviders &&
-            (session.AdditionalVerificationProvider == null || !allowedProviders.Contains(session.AdditionalVerificationProvider.Value)))
+        if (requirement.AllowedProviders is { Count: > 0 } allowedProviders &&
+            (provider == null || !allowedProviders.Contains(provider.Value)))
         {
             return Failure(AshlarFailureCodes.StepUpProviderNotAllowed, "Additional verification provider is not allowed.");
         }
 
-        if (request.Requirement.AllowedFactors is { Count: > 0 } allowedFactors &&
-            (string.IsNullOrWhiteSpace(session.AdditionalVerificationFactor) ||
-             !allowedFactors.Contains(session.AdditionalVerificationFactor, StringComparer.OrdinalIgnoreCase)))
+        if (requirement.AllowedFactors is { Count: > 0 } allowedFactors &&
+            (string.IsNullOrWhiteSpace(factor) || !allowedFactors.Contains(factor, StringComparer.OrdinalIgnoreCase)))
         {
             return Failure(AshlarFailureCodes.StepUpFactorNotAllowed, "Additional verification factor is not allowed.");
         }
@@ -65,42 +72,56 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
         return StepUpEvaluationResult.Success;
     }
 
-    /// <inheritdoc />
-    public Result<FreshMfaVerificationProof> CreateFreshMfaProof(StepUpEvaluationRequest request)
+    /// <summary>Creates a fresh-MFA proof from an Ashlar-validated session.</summary>
+    /// <param name="session">Ashlar-validated session capability.</param>
+    /// <param name="requirement">Freshness and posture requirement.</param>
+    /// <returns>A scoped proof, or failure when the requirement is not satisfied.</returns>
+    public Result<FreshMfaVerificationProof> CreateFreshMfaProof(ValidatedAuthenticationSession session, StepUpRequirement requirement)
     {
-        var evaluation = Evaluate(request);
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(requirement);
+        if (requirement.FreshnessWindow <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(requirement), requirement.FreshnessWindow, "Step-up freshness window must be positive.");
+        }
+
+        var now = _timeProvider.GetUtcNow();
+        var evaluation = session.ExpiresAt > now
+            ? EvaluatePosture(session.AdditionalVerificationAt, session.AdditionalVerificationProvider,
+                session.AdditionalVerificationFactor, requirement, now)
+            : Failure(AshlarFailureCodes.SessionNotFoundOrInactive, "Session was not found or is inactive.");
         if (!evaluation.Succeeded)
         {
             var failureCode = evaluation.FailureCode.GetValueOrDefault(AshlarFailureCodes.StepUpRequired);
             return Result.Failure<FreshMfaVerificationProof>(failureCode);
         }
 
-        var session = request.Session;
-        Debug.Assert(session != null);
-        Debug.Assert(session.AdditionalVerificationAt.HasValue);
-        var verifiedAt = session.AdditionalVerificationAt.Value;
+        var verifiedAt = session.AdditionalVerificationAt!.Value;
 
         return Result.Success(new FreshMfaVerificationProof(
             session.UserId,
             session.TenantId,
             session.Id,
             verifiedAt,
-            verifiedAt + request.Requirement.FreshnessWindow,
-            request.Requirement.Purpose));
+            ProofExpiry(verifiedAt, requirement.FreshnessWindow, session.ExpiresAt),
+            requirement.Purpose));
     }
 
-    /// <inheritdoc />
-    public Result<FreshPrimaryAuthenticationProof> CreateFreshPrimaryAuthenticationProof(PrimaryAuthenticationEvaluationRequest request)
+    /// <summary>Creates a fresh-primary-authentication proof from an Ashlar-validated session.</summary>
+    /// <param name="session">Ashlar-validated session capability.</param>
+    /// <param name="freshnessWindow">Maximum age of primary authentication.</param>
+    /// <param name="purpose">Optional operation purpose.</param>
+    /// <returns>A scoped proof, or failure when the requirement is not satisfied.</returns>
+    public Result<FreshPrimaryAuthenticationProof> CreateFreshPrimaryAuthenticationProof(ValidatedAuthenticationSession session, TimeSpan freshnessWindow, string? purpose = null)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        if (request.FreshnessWindow <= TimeSpan.Zero)
+        ArgumentNullException.ThrowIfNull(session);
+        if (freshnessWindow <= TimeSpan.Zero)
         {
-            throw new ArgumentOutOfRangeException(nameof(request), request.FreshnessWindow, "Primary-authentication freshness window must be positive.");
+            throw new ArgumentOutOfRangeException(nameof(freshnessWindow), freshnessWindow, "Primary-authentication freshness window must be positive.");
         }
 
         var now = _timeProvider.GetUtcNow();
-        var session = request.Session;
-        if (session == null || !session.IsActive(now))
+        if (session.ExpiresAt <= now)
         {
             return Result.Failure<FreshPrimaryAuthenticationProof>(AshlarFailureCodes.SessionNotFoundOrInactive);
         }
@@ -110,8 +131,7 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
             return Result.Failure<FreshPrimaryAuthenticationProof>(AshlarFailureCodes.StepUpRequired);
         }
 
-        if (session.AuthenticatedAt.Value > now ||
-            now - session.AuthenticatedAt.Value > request.FreshnessWindow)
+        if (session.AuthenticatedAt.Value > now || now - session.AuthenticatedAt.Value >= freshnessWindow)
         {
             return Result.Failure<FreshPrimaryAuthenticationProof>(AshlarFailureCodes.StepUpExpired);
         }
@@ -121,8 +141,8 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
             session.TenantId,
             session.Id,
             session.AuthenticatedAt.Value,
-            session.AuthenticatedAt.Value + request.FreshnessWindow,
-            request.Purpose));
+            ProofExpiry(session.AuthenticatedAt.Value, freshnessWindow, session.ExpiresAt),
+            purpose));
     }
 
     /// <inheritdoc />
@@ -167,5 +187,12 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
     private static StepUpEvaluationResult Failure(AshlarFailureCode code, string reason)
     {
         return new StepUpEvaluationResult(false, code, reason);
+    }
+
+    private static DateTimeOffset ProofExpiry(DateTimeOffset ceremonyAt, TimeSpan window, DateTimeOffset sessionExpiresAt)
+    {
+        var ceremonyUtc = ceremonyAt.ToUniversalTime();
+        var sessionExpiryUtc = sessionExpiresAt.ToUniversalTime();
+        return window >= sessionExpiryUtc - ceremonyUtc ? sessionExpiryUtc : ceremonyUtc + window;
     }
 }

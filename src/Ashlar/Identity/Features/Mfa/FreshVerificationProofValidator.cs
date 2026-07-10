@@ -10,7 +10,7 @@ public static class FreshVerificationProofValidator
     /// </summary>
     /// <param name="userId">The target user that must own the proof.</param>
     /// <param name="tenant">The target tenant scope that must match the proof.</param>
-    /// <param name="proof">The proof returned by <see cref="IStepUpAuthenticationService.CreateFreshMfaProof" />.</param>
+    /// <param name="proof">The proof returned by <see cref="StepUpAuthenticationService.CreateFreshMfaProof" />.</param>
     /// <param name="currentSessionId">The current Ashlar session id from the authenticated request.</param>
     /// <param name="now">Current UTC time.</param>
     /// <param name="requiredPurpose">Operation purpose the proof must have been minted for, or <see langword="null" /> to allow a general freshness proof.</param>
@@ -36,7 +36,7 @@ public static class FreshVerificationProofValidator
     /// </summary>
     /// <param name="userId">The target user that must own the proof.</param>
     /// <param name="tenant">The target tenant scope that must match the proof.</param>
-    /// <param name="proof">The proof returned by <see cref="IStepUpAuthenticationService.CreateFreshPrimaryAuthenticationProof" />.</param>
+    /// <param name="proof">The proof returned by <see cref="StepUpAuthenticationService.CreateFreshPrimaryAuthenticationProof" />.</param>
     /// <param name="currentSessionId">The current Ashlar session id from the authenticated request.</param>
     /// <param name="now">Current UTC time.</param>
     /// <param name="requiredPurpose">Operation purpose the proof must have been minted for, or <see langword="null" /> to allow a general freshness proof.</param>

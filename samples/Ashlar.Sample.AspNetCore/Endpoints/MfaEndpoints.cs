@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Ashlar.AspNetCore.Mfa;
+using Ashlar.Identity.Features.Mfa;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
@@ -35,7 +36,7 @@ internal static class MfaEndpoints
         [FromServices] ICredentialRepository Credentials,
         [FromServices] IAccountSecurityService AccountSecurity,
         [FromServices] IAuthorizationEvaluator Auth,
-        [FromServices] IStepUpAuthenticationService StepUp,
+        [FromServices] StepUpAuthenticationService StepUp,
         HttpContext HttpContext,
         ClaimsPrincipal User,
         [FromServices] IOptions<SampleAshlarOptions> Options,
@@ -85,7 +86,7 @@ internal static class MfaEndpoints
 
     private sealed record TotpEnrollmentVerifyServices(
         [FromServices] ITotpService Totp,
-        [FromServices] IStepUpAuthenticationService StepUp,
+        [FromServices] StepUpAuthenticationService StepUp,
         [FromServices] ICredentialRepository Credentials,
         [FromServices] IAccountSecurityService AccountSecurity,
         HttpContext HttpContext,
@@ -156,7 +157,7 @@ internal static class MfaEndpoints
 
     private sealed record TotpResetServices(
         [FromServices] ITotpService Totp,
-        [FromServices] IStepUpAuthenticationService StepUp,
+        [FromServices] StepUpAuthenticationService StepUp,
         HttpContext HttpContext,
         ClaimsPrincipal User,
         CancellationToken CancellationToken);
@@ -187,7 +188,7 @@ internal static class MfaEndpoints
 
     private sealed record RecoveryCodeGenerationServices(
         [FromServices] IRecoveryCodeService RecoveryCodes,
-        [FromServices] IStepUpAuthenticationService StepUp,
+        [FromServices] StepUpAuthenticationService StepUp,
         HttpContext HttpContext,
         CancellationToken CancellationToken);
 
@@ -237,7 +238,7 @@ internal static class MfaEndpoints
     private static async Task<IResult> VerifyCurrentSessionAsync(
         StepUpVerifyRequest request,
         IAuthenticationFactorPipeline factorPipeline,
-        IStepUpAuthenticationService stepUp,
+        StepUpAuthenticationService stepUp,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
