@@ -36,12 +36,16 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
     public void ConstructorRejectsNullRequiredArguments()
     {
         var connectionProvider = _provider.GetRequiredService<ISqliteConnectionProvider>();
+        var audit = _provider.GetRequiredService<ISecurityEventSink>();
+        var transactionProvider = _provider.GetRequiredService<IAshlarTransactionProvider>();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxOperations(null!, _timeProvider));
-            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxOperations(connectionProvider, null!));
-            Assert.DoesNotThrow(() => _ = new SqliteSecurityEventWebhookOutboxOperations(connectionProvider, _timeProvider));
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxOperations(null!, _timeProvider, audit, transactionProvider));
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxOperations(connectionProvider, null!, audit, transactionProvider));
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxOperations(connectionProvider, _timeProvider, null!, transactionProvider));
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxOperations(connectionProvider, _timeProvider, audit, null!));
+            Assert.DoesNotThrow(() => _ = new SqliteSecurityEventWebhookOutboxOperations(connectionProvider, _timeProvider, audit, transactionProvider));
         }
     }
 
@@ -210,6 +214,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
     {
         await using var provider = new ServiceCollection()
             .AddSingleton<TimeProvider>(_timeProvider)
+            .AddSingleton<ISecurityEventSink, NullSecurityEventSink>()
             .AddAshlarSqlite(GetConnectionString())
             .AddAshlarSqliteSecurityEventWebhookOutbox()
             .BuildServiceProvider();

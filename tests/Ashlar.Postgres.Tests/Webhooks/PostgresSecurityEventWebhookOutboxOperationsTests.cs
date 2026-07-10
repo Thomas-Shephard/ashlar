@@ -45,12 +45,16 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
     public void ConstructorRejectsNullRequiredArguments()
     {
         var connectionProvider = _provider.GetRequiredService<IPostgresConnectionProvider>();
+        var audit = _provider.GetRequiredService<ISecurityEventSink>();
+        var transactionProvider = _provider.GetRequiredService<IAshlarTransactionProvider>();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxOperations(null!, _timeProvider));
-            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxOperations(connectionProvider, null!));
-            Assert.DoesNotThrow(() => _ = new PostgresSecurityEventWebhookOutboxOperations(connectionProvider, _timeProvider));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxOperations(null!, _timeProvider, audit, transactionProvider));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxOperations(connectionProvider, null!, audit, transactionProvider));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxOperations(connectionProvider, _timeProvider, null!, transactionProvider));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxOperations(connectionProvider, _timeProvider, audit, null!));
+            Assert.DoesNotThrow(() => _ = new PostgresSecurityEventWebhookOutboxOperations(connectionProvider, _timeProvider, audit, transactionProvider));
         }
     }
 
@@ -221,6 +225,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
     {
         await using var provider = new ServiceCollection()
             .AddSingleton<TimeProvider>(_timeProvider)
+            .AddSingleton<ISecurityEventSink, NullSecurityEventSink>()
             .AddAshlarPostgres(GetConnectionString())
             .AddAshlarPostgresSecurityEventWebhookOutbox()
             .BuildServiceProvider();

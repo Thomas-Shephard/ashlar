@@ -245,19 +245,11 @@ internal sealed class EmailOutboxAdministrationProviderTests
     }
 
     [Test]
-    public async Task ServiceBaseAllowsOperationWithoutTransactionProvider()
+    public void ServiceBaseRequiresAuditAndTransactionDependencies()
     {
         var sink = new CapturingSecurityEventSink();
-        var id = Guid.NewGuid();
-        var service = new TestEmailOutboxAdministrationService(sink);
-
-        var result = await service.RetryAsync(new EmailOutboxOperationRequest(id, new AuditContext(Guid.NewGuid())));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Status, Is.EqualTo(EmailOutboxOperationStatus.Retried));
-            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.EmailOutboxDeliveryRetried));
-        }
+        Assert.Throws<ArgumentNullException>(() => new TestEmailOutboxAdministrationService(null!, new Support.RecordingTransactionProvider()));
+        Assert.Throws<ArgumentNullException>(() => new TestEmailOutboxAdministrationService(sink, null!));
     }
 
     [Test]
@@ -322,7 +314,7 @@ internal sealed class EmailOutboxAdministrationProviderTests
 
     private sealed class TestEmailOutboxAdministrationService(
         ISecurityEventSink sink,
-        global::Ashlar.Identity.Abstractions.Transactions.IAshlarTransactionProvider? transactionProvider = null)
+        global::Ashlar.Identity.Abstractions.Transactions.IAshlarTransactionProvider transactionProvider)
         : EmailOutboxAdministrationServiceBase(TimeProvider.System, sink, transactionProvider)
     {
         public override Task<EmailOutboxSearchResult> SearchAsync(EmailOutboxSearchRequest request, CancellationToken cancellationToken = default)

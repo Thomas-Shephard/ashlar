@@ -327,7 +327,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Scoped<IEmailOutboxAdministrationService>(provider => new PostgresEmailOutboxAdministrationService(
             provider.GetRequiredService<IPostgresConnectionProvider>(),
             provider.GetRequiredService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>(),
+            provider.GetRequiredService<ISecurityEventSink>(),
             provider.GetRequiredService<IAshlarTransactionProvider>())));
         services.Replace(ServiceDescriptor.Scoped<IEmailOutboxDiagnostics, PostgresEmailOutboxDiagnostics>());
         services.Replace(ServiceDescriptor.Scoped<IEmailSender, PostgresEmailOutboxSender>());
@@ -405,7 +405,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxOperations>(provider => new PostgresSecurityEventWebhookOutboxOperations(
             provider.GetRequiredService<IPostgresConnectionProvider>(),
             provider.GetRequiredService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>(),
+            provider.GetRequiredService<ISecurityEventSink>(),
             provider.GetRequiredService<IAshlarTransactionProvider>())));
         services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxBrowser, PostgresSecurityEventWebhookOutboxBrowser>());
         services.Replace(ServiceDescriptor.Scoped<ISecurityEventWebhookOutboxDiagnostics, PostgresSecurityEventWebhookOutboxDiagnostics>());

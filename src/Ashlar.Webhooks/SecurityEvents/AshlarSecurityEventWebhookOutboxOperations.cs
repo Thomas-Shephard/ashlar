@@ -112,15 +112,15 @@ public sealed record AshlarSecurityEventWebhookOutboxOperationState(
 /// Shared implementation for provider-specific manual durable outbox operations.
 /// </summary>
 /// <param name="timeProvider">Clock used for operation audit timestamps.</param>
-/// <param name="securityEventSink">Optional audit sink for successful mutating operations.</param>
-/// <param name="transactionProvider">Optional transaction provider used to commit provider mutations with required audit writes.</param>
+/// <param name="securityEventSink">Durable audit sink used for successful mutating operations. It is required so state changes and audit writes share one atomic boundary.</param>
+/// <param name="transactionProvider">Transaction provider used to commit provider mutations with their required audit writes. It is required for every mutating operation.</param>
 public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
     TimeProvider timeProvider,
-    ISecurityEventSink? securityEventSink = null,
-    IAshlarTransactionProvider? transactionProvider = null) : IAshlarSecurityEventWebhookOutboxOperations
+    ISecurityEventSink securityEventSink,
+    IAshlarTransactionProvider transactionProvider) : IAshlarSecurityEventWebhookOutboxOperations
 {
-    private readonly ISecurityEventSink _securityEventSink = securityEventSink ?? new NullSecurityEventSink();
-    private readonly IAshlarTransactionProvider? _transactionProvider = transactionProvider;
+    private readonly ISecurityEventSink _securityEventSink = securityEventSink ?? throw new ArgumentNullException(nameof(securityEventSink));
+    private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
 
     /// <summary>
     /// Gets the time provider.
@@ -192,9 +192,7 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
     {
         AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(request);
 
-        await using var transaction = _transactionProvider == null
-            ? null
-            : await _transactionProvider.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
         var row = await applyAsync(request.DeliveryId, cancellationToken).ConfigureAwait(false);
         if (row is null)
@@ -210,10 +208,7 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
             request,
             result,
             cancellationToken).ConfigureAwait(false);
-        if (transaction != null)
-        {
-            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-        }
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
         return result;
     }
