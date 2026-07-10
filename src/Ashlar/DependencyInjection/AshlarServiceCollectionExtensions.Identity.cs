@@ -29,7 +29,8 @@ public static partial class AshlarServiceCollectionExtensions
     /// <returns>The same service collection so calls can be chained.</returns>
     /// <remarks>
     /// This method intentionally does not register <see cref="IUserRepository"/>, <see cref="ICredentialRepository"/>,
-    /// <see cref="ISecretProtector"/>, <see cref="IAccountSecurityGuard"/>, or <see cref="IAshlarTransactionProvider"/>.
+    /// <see cref="ISecretProtector"/>, <see cref="IAccountSecurityGuard"/>, <see cref="IAccountSecurityOperationAuthorizer"/>,
+    /// or <see cref="IAshlarTransactionProvider"/>.
     /// Applications should provide those dependencies explicitly. Use <see cref="AddPermissiveAccountSecurityGuard"/>
     /// only when guarded account-security mutations may all proceed, and use <see cref="AddAshlarNullTransactions"/>
     /// only when no transaction atomicity is required.

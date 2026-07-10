@@ -474,13 +474,15 @@ internal sealed class AuthenticationSessionService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        ValidateSelfServiceRequest(request.ActorUserId, request.ActorTenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit);
         if (request.SessionId == Guid.Empty) throw new ArgumentException("Session ID cannot be empty.", $"{nameof(request)}.{nameof(request.SessionId)}");
         ValidateRevocationReason(request.Reason, nameof(request));
+        await ValidateSelfServiceRequestAsync(request.ActorUserId, request.ActorTenant, request.CurrentSessionId, request.FreshMfaProof,
+            request.Audit, AshlarSecurityEventTypes.SessionRevoked, request.SessionId, cancellationToken);
 
         await AuthorizeSelfServiceAsync(new AccountSecurityAuthorizationContext(
             request.ActorUserId, request.ActorTenant, request.ActorUserId, request.ActorTenant, false,
-            AccountSecurityOperation.RevokeOwnSession, TargetSessionId: request.SessionId, CurrentSessionId: request.CurrentSessionId), cancellationToken);
+            AccountSecurityOperation.RevokeOwnSession, TargetSessionId: request.SessionId, CurrentSessionId: request.CurrentSessionId),
+            request.Audit, AshlarSecurityEventTypes.SessionRevoked, request.SessionId, cancellationToken);
 
         return await RevokeSessionForUserAsync(request.ActorUserId, new RevokeAuthenticationSessionRequest
         {
@@ -496,12 +498,14 @@ internal sealed class AuthenticationSessionService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        ValidateSelfServiceRequest(request.ActorUserId, request.ActorTenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit);
         ValidateRevocationReason(request.Reason, nameof(request));
+        await ValidateSelfServiceRequestAsync(request.ActorUserId, request.ActorTenant, request.CurrentSessionId, request.FreshMfaProof,
+            request.Audit, AshlarSecurityEventTypes.SessionsRevokedForUser, null, cancellationToken);
 
         await AuthorizeSelfServiceAsync(new AccountSecurityAuthorizationContext(
             request.ActorUserId, request.ActorTenant, request.ActorUserId, request.ActorTenant, false,
-            AccountSecurityOperation.RevokeOwnOtherSessions, CurrentSessionId: request.CurrentSessionId), cancellationToken);
+            AccountSecurityOperation.RevokeOwnOtherSessions, CurrentSessionId: request.CurrentSessionId),
+            request.Audit, AshlarSecurityEventTypes.SessionsRevokedForUser, null, cancellationToken);
 
         return await RevokeOtherSessionsAsync(request.ActorUserId, new RevokeOtherAuthenticationSessionsRequest
         {
@@ -548,8 +552,8 @@ internal sealed class AuthenticationSessionService(
             request.Session.RollbackToken, request.Audit, request.Reason), cancellationToken);
     }
 
-    private void ValidateSelfServiceRequest(Guid actorUserId, TenantContext actorTenant, Guid currentSessionId,
-        FreshMfaVerificationProof proof, AuditContext audit)
+    private async Task ValidateSelfServiceRequestAsync(Guid actorUserId, TenantContext actorTenant, Guid currentSessionId,
+        FreshMfaVerificationProof proof, AuditContext audit, string eventType, Guid? targetSessionId, CancellationToken cancellationToken)
     {
         if (actorUserId == Guid.Empty) throw new ArgumentException("Actor user ID cannot be empty.", nameof(actorUserId));
         ArgumentNullException.ThrowIfNull(actorTenant);
@@ -557,16 +561,42 @@ internal sealed class AuthenticationSessionService(
         ArgumentNullException.ThrowIfNull(proof);
         ArgumentNullException.ThrowIfNull(audit);
         if (audit.ActorUserId != actorUserId)
+        {
+            await RecordSelfServiceRevocationFailureAsync(actorUserId, actorTenant, new AuditContext(actorUserId),
+                eventType, targetSessionId, AshlarFailureCodes.ValidationError, cancellationToken);
             throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Audit actor must match the authenticated actor.");
+        }
         var failure = FreshVerificationProofValidator.ValidateMfaProof(actorUserId, actorTenant, proof, currentSessionId, _timeProvider.GetUtcNow());
-        if (failure is { } code) throw new AshlarOperationException(code, "Fresh MFA proof is missing, expired, or does not match the actor and current session.");
+        if (failure is { } code)
+        {
+            await RecordSelfServiceRevocationFailureAsync(actorUserId, actorTenant, audit, eventType, targetSessionId, code, cancellationToken);
+            throw new AshlarOperationException(code, "Fresh MFA proof is missing, expired, or does not match the actor and current session.");
+        }
     }
 
-    private async ValueTask AuthorizeSelfServiceAsync(AccountSecurityAuthorizationContext context, CancellationToken cancellationToken)
+    private async ValueTask AuthorizeSelfServiceAsync(AccountSecurityAuthorizationContext context, AuditContext audit,
+        string eventType, Guid? targetSessionId, CancellationToken cancellationToken)
     {
         if (_operationAuthorizer == null || !await _operationAuthorizer.AuthorizeAsync(context, cancellationToken))
+        {
+            await RecordSelfServiceRevocationFailureAsync(context.ActorUserId, context.ActorTenant, audit, eventType,
+                targetSessionId, AshlarFailureCodes.ValidationError, cancellationToken);
             throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Authentication-session operation was not authorized.");
+        }
     }
+
+    private Task RecordSelfServiceRevocationFailureAsync(Guid actorUserId, TenantContext actorTenant, AuditContext audit,
+        string eventType, Guid? targetSessionId, AshlarFailureCode failure, CancellationToken cancellationToken) =>
+        _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = eventType,
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = actorUserId,
+            TenantId = actorTenant.TenantId,
+            SessionId = targetSessionId,
+            Audit = audit,
+            FailureReason = failure.Value
+        }, cancellationToken);
 
     public async Task<int> RevokeSessionsForUserAsync(
         Guid userId,

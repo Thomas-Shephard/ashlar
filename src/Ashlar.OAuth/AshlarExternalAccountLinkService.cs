@@ -26,19 +26,22 @@ public sealed class AshlarExternalAccountLinkService
     private readonly IUserRepository _repository;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _options;
     private readonly TimeProvider _timeProvider;
+    private readonly ISecurityEventSink _securityEvents;
 
     internal AshlarExternalAccountLinkService(
         IExternalAccountCredentialLinker credentialLinker,
         IAccountSecurityAdministrationService accountSecurityAdministration,
         IUserRepository repository,
         IOptionsMonitor<AshlarOAuthOptions> options,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        ISecurityEventSink? securityEventSink = null)
     {
         _credentialLinker = credentialLinker ?? throw new ArgumentNullException(nameof(credentialLinker));
         _accountSecurityAdministration = accountSecurityAdministration ?? throw new ArgumentNullException(nameof(accountSecurityAdministration));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _securityEvents = securityEventSink ?? new NullSecurityEventSink();
     }
 
     /// <summary>
@@ -258,18 +261,33 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
         }
 
-        if (FreshVerificationProofValidator.ValidateMfaProof(currentUserId, request.Tenant, freshMfaProof, currentSessionId, _timeProvider.GetUtcNow(), UnlinkPurpose) != null)
-        {
-            return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
-        }
-
         var providerOptions = AshlarExternalProviderResolver.GetProvider(_options.CurrentValue, providerName);
         if (providerOptions == null)
         {
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.UnsupportedProvider);
         }
-
         var provider = new AuthenticationProviderKey(providerOptions.Type, providerOptions.ProviderName);
+
+        if (FreshVerificationProofValidator.ValidateMfaProof(currentUserId, request.Tenant, freshMfaProof, currentSessionId, _timeProvider.GetUtcNow(), UnlinkPurpose) is { } proofFailure)
+        {
+            await _securityEvents.RecordAsync(new AshlarSecurityEvent
+            {
+                Id = Guid.NewGuid(),
+                EventType = AshlarSecurityEventTypes.UserCredentialsRevoked,
+                OccurredAt = _timeProvider.GetUtcNow(),
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = currentUserId,
+                TenantId = request.Tenant.TenantId,
+                ActorUserId = request.Audit.ActorUserId,
+                Provider = provider,
+                IpAddress = request.Audit.IpAddress,
+                UserAgent = request.Audit.UserAgent,
+                CorrelationId = request.Audit.CorrelationId,
+                FailureReason = proofFailure.Value
+            }, cancellationToken);
+            return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
+        }
+
         var actor = new AccountSecurityActorContext(currentUserId, request.Tenant, currentSessionId!.Value, freshMfaProof!, request.Audit);
         var revokeResult = await _accountSecurityAdministration.RevokeCredentialsAsync(new RevokeAccountCredentialsRequest(
             currentUserId, provider, actor, request.Tenant, reason: request.Reason, preservePrimarySignInMethod: true), cancellationToken);

@@ -1014,11 +1014,12 @@ Execute destructive recovery actions through `IAccountSecurityAdministrationServ
 ```csharp
 var request = new AccountSecurityAdministrationRequest(
     targetUserId,
-    actorUserId,
-    actorTenant,
-    currentSessionId,
-    freshMfaProof,
-    audit,
+    new AccountSecurityActorContext(
+        actorUserId,
+        actorTenant,
+        currentSessionId,
+        freshMfaProof,
+        audit),
     targetTenant,
     reason: "suspected compromise");
 
@@ -1369,8 +1370,9 @@ public class MySessionMaintenance(
         try
         {
             await accountSecurity.RevokeSessionsAsync(new AccountSecurityAdministrationRequest(
-                userId, actorUserId, actorTenant, currentSessionId, freshMfaProof,
-                audit, targetTenant));
+                userId,
+                new AccountSecurityActorContext(actorUserId, actorTenant, currentSessionId, freshMfaProof, audit),
+                targetTenant));
 
             // All operations in this scope now share the same transaction
             await transaction.CommitAsync();

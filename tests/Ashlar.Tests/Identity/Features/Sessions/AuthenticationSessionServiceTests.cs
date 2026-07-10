@@ -188,6 +188,109 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public void RevokeSessionForCurrentUserAsyncShouldAuditAuthorizationDenialOnceWithoutMutation()
+    {
+        var actor = Guid.NewGuid();
+        var currentSession = Guid.NewGuid();
+        var targetSession = Guid.NewGuid();
+        var audit = new AuditContext(actor, CorrelationId: "revoke-denied");
+        var proof = new FreshMfaVerificationProof(actor, null, currentSession, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5));
+        var events = new Mock<ISecurityEventSink>();
+        var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
+        authorizer.Setup(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, TimeProvider: _timeProvider,
+                SecurityEventSink: events.Object, OperationAuthorizer: authorizer.Object));
+
+        Assert.ThrowsAsync<AshlarOperationException>(() => service.RevokeSessionForCurrentUserAsync(
+            new RevokeOwnAuthenticationSessionRequest(actor, TenantContext.Global, currentSession, proof, audit, targetSession)));
+
+        events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.SessionRevoked && e.Outcome == SecurityEventOutcomes.Failure &&
+            e.UserId == actor && e.ActorUserId == actor && e.SessionId == targetSession &&
+            e.CorrelationId == "revoke-denied" && e.FailureReason == AshlarFailureCodes.ValidationErrorValue),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
+            It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public void RevokeOtherSessionsForCurrentUserAsyncShouldAuditAuthorizationDenialOnceWithoutMutation()
+    {
+        var actor = Guid.NewGuid();
+        var currentSession = Guid.NewGuid();
+        var audit = new AuditContext(actor);
+        var proof = new FreshMfaVerificationProof(actor, null, currentSession, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5));
+        var events = new Mock<ISecurityEventSink>();
+        var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
+        authorizer.Setup(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, TimeProvider: _timeProvider,
+                SecurityEventSink: events.Object, OperationAuthorizer: authorizer.Object));
+
+        Assert.ThrowsAsync<AshlarOperationException>(() => service.RevokeOtherSessionsForCurrentUserAsync(
+            new RevokeOwnOtherAuthenticationSessionsRequest(actor, TenantContext.Global, currentSession, proof, audit)));
+
+        events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.SessionsRevokedForUser && e.Outcome == SecurityEventOutcomes.Failure &&
+            e.UserId == actor && e.ActorUserId == actor && e.SessionId == null), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.RevokeOtherSessionsForUserAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
+            It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public void RevokeSessionForCurrentUserAsyncShouldAuditBoundValidationDenialsOnceWithoutMutation()
+    {
+        var actor = Guid.NewGuid();
+        var currentSession = Guid.NewGuid();
+        var targetSession = Guid.NewGuid();
+        var events = new Mock<ISecurityEventSink>();
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, TimeProvider: _timeProvider, SecurityEventSink: events.Object));
+        var expiredProof = new FreshMfaVerificationProof(actor, null, currentSession,
+            _timeProvider.GetUtcNow().AddMinutes(-10), _timeProvider.GetUtcNow().AddMinutes(-5));
+
+        Assert.ThrowsAsync<AshlarOperationException>(() => service.RevokeSessionForCurrentUserAsync(
+            new RevokeOwnAuthenticationSessionRequest(actor, TenantContext.Global, currentSession, expiredProof,
+                new AuditContext(actor, CorrelationId: "expired"), targetSession)));
+        events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e => e.ActorUserId == actor &&
+            e.SessionId == targetSession && e.CorrelationId == "expired" && e.FailureReason == AshlarFailureCodes.StepUpExpiredValue),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        events.Invocations.Clear();
+        var validProof = new FreshMfaVerificationProof(actor, null, currentSession, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5));
+        Assert.ThrowsAsync<AshlarOperationException>(() => service.RevokeSessionForCurrentUserAsync(
+            new RevokeOwnAuthenticationSessionRequest(actor, TenantContext.Global, currentSession, validProof,
+                new AuditContext(Guid.NewGuid(), IpAddress: "untrusted", CorrelationId: "mismatch"), targetSession)));
+        events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e => e.ActorUserId == actor && e.IpAddress == null &&
+            e.SessionId == targetSession && e.CorrelationId == null && e.FailureReason == AshlarFailureCodes.ValidationErrorValue),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        events.Invocations.Clear();
+        Assert.ThrowsAsync<AshlarOperationException>(() => service.RevokeOtherSessionsForCurrentUserAsync(
+            new RevokeOwnOtherAuthenticationSessionsRequest(actor, TenantContext.Global, currentSession, expiredProof,
+                new AuditContext(actor, CorrelationId: "other-expired"))));
+        events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e => e.EventType == AshlarSecurityEventTypes.SessionsRevokedForUser &&
+            e.ActorUserId == actor && e.SessionId == null && e.CorrelationId == "other-expired" &&
+            e.FailureReason == AshlarFailureCodes.StepUpExpiredValue), It.IsAny<CancellationToken>()), Times.Once);
+
+        events.Invocations.Clear();
+        Assert.ThrowsAsync<AshlarOperationException>(() => service.RevokeOtherSessionsForCurrentUserAsync(
+            new RevokeOwnOtherAuthenticationSessionsRequest(actor, TenantContext.Global, currentSession, validProof,
+                new AuditContext(Guid.NewGuid(), IpAddress: "untrusted"))));
+        events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e => e.EventType == AshlarSecurityEventTypes.SessionsRevokedForUser &&
+            e.ActorUserId == actor && e.SessionId == null && e.IpAddress == null && e.CorrelationId == null &&
+            e.FailureReason == AshlarFailureCodes.ValidationErrorValue), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
+            It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.RevokeOtherSessionsForUserAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
+            It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public void CreateSessionAsyncShouldValidateAshlarAuthenticationResultRequestBeforeMutation()
     {
         var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" })

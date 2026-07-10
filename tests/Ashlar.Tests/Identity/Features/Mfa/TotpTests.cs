@@ -984,7 +984,73 @@ internal sealed class TotpTests
             Assert.That(start?.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(complete.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(disable, Is.False);
+            foreach (var eventType in new[] { AshlarSecurityEventTypes.TotpEnrollmentStarted,
+                         AshlarSecurityEventTypes.TotpEnrollmentCompleted, AshlarSecurityEventTypes.TotpDisabled })
+                _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+                    e.EventType == eventType && e.Outcome == SecurityEventOutcomes.Failure && e.UserId == actor &&
+                    e.ActorUserId == actor && e.FailureReason == AshlarFailureCodes.ValidationErrorValue &&
+                    e.Provider == _options.ProviderKey), It.IsAny<CancellationToken>()), Times.Once);
+            _credentialRepository.Verify(x => x.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         }
+    }
+
+    [Test]
+    public void StartEnrollmentAsyncShouldAuditMissingProofOnceWithoutMutation()
+    {
+        var actor = Guid.NewGuid();
+
+        Assert.ThrowsAsync<AshlarOperationException>(() => CreateService().StartEnrollmentAsync(
+            new StartTotpEnrollmentRequest(actor, "issuer", "account")));
+
+        _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.TotpEnrollmentStarted && e.Outcome == SecurityEventOutcomes.Failure &&
+            e.UserId == actor && e.ActorUserId == actor && e.FailureReason == AshlarFailureCodes.StepUpRequiredValue),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _credentialRepository.Verify(x => x.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(),
+            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task TotpMutationsShouldAuditInvalidProofOnceWithoutMutation()
+    {
+        var actor = Guid.NewGuid();
+        var expiredAt = _timeProvider.GetUtcNow().AddMinutes(-1);
+        var primary = CreatePrimaryProof(actor, expiresAt: expiredAt);
+        var mfa = CreateProof(actor, expiresAt: expiredAt);
+        var service = CreateService();
+
+        Assert.ThrowsAsync<AshlarOperationException>(() => service.StartEnrollmentAsync(new StartTotpEnrollmentRequest(actor, "issuer", "account")
+        {
+            FreshPrimaryAuthenticationProof = primary,
+            CurrentSessionId = primary.SessionId
+        }));
+        _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.TotpEnrollmentStarted && e.Outcome == SecurityEventOutcomes.Failure &&
+            e.UserId == actor && e.FailureReason == AshlarFailureCodes.StepUpExpiredValue), It.IsAny<CancellationToken>()), Times.Once);
+
+        _securityEvents.Invocations.Clear();
+        var complete = await service.CompleteEnrollmentAsync(new VerifyTotpEnrollmentRequest(actor, "secret", "123456")
+        {
+            FreshPrimaryAuthenticationProof = primary,
+            CurrentSessionId = primary.SessionId
+        });
+        Assert.That(complete.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
+        _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.TotpEnrollmentCompleted && e.Outcome == SecurityEventOutcomes.Failure &&
+            e.UserId == actor && e.FailureReason == AshlarFailureCodes.StepUpExpiredValue), It.IsAny<CancellationToken>()), Times.Once);
+
+        _securityEvents.Invocations.Clear();
+        Assert.That(await service.DisableAsync(new DisableTotpRequest(actor)
+        {
+            FreshMfaProof = mfa,
+            CurrentSessionId = mfa.SessionId
+        }), Is.False);
+        _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.TotpDisabled && e.Outcome == SecurityEventOutcomes.Failure &&
+            e.UserId == actor && e.FailureReason == AshlarFailureCodes.StepUpExpiredValue), It.IsAny<CancellationToken>()), Times.Once);
+        _credentialRepository.Verify(x => x.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(),
+            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]

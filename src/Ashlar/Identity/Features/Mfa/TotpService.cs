@@ -57,7 +57,10 @@ internal sealed class TotpService : ITotpService
         ArgumentException.ThrowIfNullOrWhiteSpace(request.AccountName);
         var tenant = ValidateSelfServiceRequest(request.ActorUserId, request.Tenant, request.Audit, nameof(request));
         if (!HasExactlyOneEnrollmentProof(request.FreshMfaProof, request.FreshPrimaryAuthenticationProof))
+        {
+            await RecordProofFailureAsync(request.ActorUserId, tenant, request.Audit, AshlarSecurityEventTypes.TotpEnrollmentStarted, AshlarFailureCodes.StepUpRequired, cancellationToken);
             throw new AshlarOperationException(AshlarFailureCodes.StepUpRequired, "Exactly one fresh verification proof is required.");
+        }
         var proofResult = await ValidateEnrollmentProofAsync(CreateEnrollmentProofValidationRequest(request, tenant, AshlarSecurityEventTypes.TotpEnrollmentStarted), AccountSecurityOperation.StartTotpEnrollment, cancellationToken);
         if (!proofResult.Succeeded)
         {
@@ -67,7 +70,10 @@ internal sealed class TotpService : ITotpService
 
         await ValidateUserTenantAsync(request.ActorUserId, tenant, request.Audit, AshlarSecurityEventTypes.TotpEnrollmentStarted, throwOnFailure: true, cancellationToken);
         if (!await HasRequiredEnrollmentProofTypeAsync(request.ActorUserId, request.FreshMfaProof != null, cancellationToken))
+        {
+            await RecordProofFailureAsync(request.ActorUserId, tenant, request.Audit, AshlarSecurityEventTypes.TotpEnrollmentStarted, AshlarFailureCodes.StepUpRequired, cancellationToken);
             throw new AshlarOperationException(AshlarFailureCodes.StepUpRequired, "Fresh MFA verification is required when an additional-verification factor already exists.");
+        }
         return await StartEnrollmentCoreAsync(request, cancellationToken);
     }
 
@@ -100,7 +106,10 @@ internal sealed class TotpService : ITotpService
             return Result.Failure<TotpEnrollmentCompletionResult>(AshlarFailureCodes.InvalidSecret);
         var tenant = ValidateSelfServiceRequest(request.ActorUserId, request.Tenant, request.Audit, nameof(request));
         if (!HasExactlyOneEnrollmentProof(request.FreshMfaProof, request.FreshPrimaryAuthenticationProof))
+        {
+            await RecordProofFailureAsync(request.ActorUserId, tenant, request.Audit, AshlarSecurityEventTypes.TotpEnrollmentCompleted, AshlarFailureCodes.StepUpRequired, cancellationToken);
             return Result.Failure<TotpEnrollmentCompletionResult>(AshlarFailureCodes.StepUpRequired);
+        }
         var proofResult = await ValidateEnrollmentProofAsync(CreateEnrollmentProofValidationRequest(request, tenant, AshlarSecurityEventTypes.TotpEnrollmentCompleted), AccountSecurityOperation.CompleteTotpEnrollment, cancellationToken);
         if (!proofResult.Succeeded)
         {
@@ -224,6 +233,7 @@ internal sealed class TotpService : ITotpService
 
         if (!await AuthorizeAsync(request.ActorUserId, tenant, request.CurrentSessionId, AccountSecurityOperation.DisableTotp, cancellationToken))
         {
+            await RecordProofFailureAsync(request.ActorUserId, tenant, request.Audit, AshlarSecurityEventTypes.TotpDisabled, AshlarFailureCodes.ValidationError, cancellationToken);
             return false;
         }
 
@@ -335,6 +345,7 @@ internal sealed class TotpService : ITotpService
 
         if (!await AuthorizeAsync(request.UserId, request.Tenant, request.CurrentSessionId, operation, cancellationToken))
         {
+            await RecordProofFailureAsync(request.UserId, request.Tenant, request.Audit, request.EventType, AshlarFailureCodes.ValidationError, cancellationToken);
             return Result.Failure(AshlarFailureCodes.ValidationError);
         }
 

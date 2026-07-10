@@ -189,7 +189,10 @@ internal sealed class RecoveryCodeTests
         var actorId = Guid.NewGuid();
         var proof = CreateProof(actorId);
         var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
-        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 5 }, authorizer: authorizer.Object);
+        var events = new Mock<ISecurityEventSink>();
+        var credentials = new Mock<ICredentialRepository>();
+        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 5 }, authorizer: authorizer.Object,
+            securityEventSink: events.Object, credentialRepository: credentials.Object);
 
         var zero = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(actorId, proof, codeCount: 0));
         var tooMany = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(actorId, proof, codeCount: 11));
@@ -202,6 +205,12 @@ internal sealed class RecoveryCodeTests
             Assert.That(expiry.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidExpiry));
         }
         authorizer.Verify(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>()), Times.Never);
+        events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.RecoveryCodesGenerated && e.Outcome == SecurityEventOutcomes.Failure &&
+            e.UserId == actorId && e.ActorUserId == actorId && e.Provider == new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode") &&
+            (e.FailureReason == AshlarFailureCodes.InvalidCodeCountValue || e.FailureReason == AshlarFailureCodes.InvalidExpiryValue)),
+            It.IsAny<CancellationToken>()), Times.Exactly(3));
+        credentials.VerifyNoOtherCalls();
     }
 
     [Test]
@@ -423,9 +432,36 @@ internal sealed class RecoveryCodeTests
             Assert.That(proofFailure.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
             Assert.That(auditFailure.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(denied.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That(events.Events.Any(e => e.Outcome == SecurityEventOutcomes.Failure && e.TenantId == null), Is.True);
+            Assert.That(events.Events.Count(e => e.Outcome == SecurityEventOutcomes.Failure && e.TenantId == null &&
+                e.Properties?.GetValueOrDefault("scope") == "all_tenants"), Is.EqualTo(1));
         }
         authorizer.Verify(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task PublicMutationsShouldSanitizeAuditActorMismatchWithoutMutation()
+    {
+        var actorId = Guid.NewGuid();
+        var proof = CreateProof(actorId);
+        var unsafeAudit = new AuditContext(Guid.NewGuid(), "untrusted-ip", "untrusted-agent", "untrusted-correlation",
+            new Dictionary<string, string> { ["untrusted"] = "value" });
+        var events = new RecordingSecurityEventSink();
+        var credentials = new Mock<ICredentialRepository>();
+        var service = CreateService(Mock.Of<IUserRepository>(), new RecoveryCodeOptions(), credentials: credentials.Object,
+            securityEvents: events);
+
+        var generation = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(actorId, proof, audit: unsafeAudit));
+        var revocation = await service.RevokeRecoveryCodesAsync(CreateRevocationRequest(actorId, proof, audit: unsafeAudit));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generation.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(revocation.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            foreach (var eventType in new[] { AshlarSecurityEventTypes.RecoveryCodesGenerated, AshlarSecurityEventTypes.RecoveryCodesRevoked })
+                Assert.That(events.Events.Count(e => e.EventType == eventType && e.Outcome == SecurityEventOutcomes.Failure &&
+                    e.ActorUserId == actorId && e.IpAddress == null && e.UserAgent == null && e.CorrelationId == null), Is.EqualTo(1));
+        }
+        credentials.VerifyNoOtherCalls();
     }
 
     [Test]
@@ -1036,10 +1072,12 @@ internal sealed class RecoveryCodeTests
     private static RecoveryCodeService CreateServiceForGenerationValidation(
         RecoveryCodeOptions options,
         Guid? userTenantId = null,
-        IAccountSecurityOperationAuthorizer? authorizer = null)
+        IAccountSecurityOperationAuthorizer? authorizer = null,
+        ISecurityEventSink? securityEventSink = null,
+        ICredentialRepository? credentialRepository = null)
     {
         var repository = new Mock<IUserRepository>();
-        var credentialRepository = new Mock<ICredentialRepository>();
+        var credentials = credentialRepository ?? new Mock<ICredentialRepository>().Object;
         var transactionProvider = new Mock<IAshlarTransactionProvider>();
 
         repository.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -1048,7 +1086,7 @@ internal sealed class RecoveryCodeTests
         transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Mock<IAshlarTransaction>().Object);
 
-        return new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(options), authorizer: authorizer));
+        return new RecoveryCodeService(repository.Object, credentials, transactionProvider.Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(options), securityEventSink: securityEventSink, authorizer: authorizer));
     }
 
     private static RecoveryCodeServiceDependencies CreateDependencies(
