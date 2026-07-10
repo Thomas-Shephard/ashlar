@@ -473,8 +473,13 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             command => command.Parameters.AddWithValue("$uri", "https://127.0.0.1/security-events"));
 
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var webhookOptions = CreateWebhookOptions();
+        webhookOptions.Endpoints.Single().Uri = new Uri("https://127.0.0.1/security-events");
 
-        await CreateDispatcher(transport, new SqliteSecurityEventWebhookOutboxOptions { MaxAttempts = 1 }).ProcessBatchAsync();
+        await CreateDispatcher(
+            transport,
+            new SqliteSecurityEventWebhookOutboxOptions { MaxAttempts = 1 },
+            webhookOptions: webhookOptions).ProcessBatchAsync();
         var row = await QuerySingleOutboxRowAsync();
 
         using (Assert.EnterMultipleScope())

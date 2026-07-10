@@ -505,8 +505,13 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         }
 
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var webhookOptions = CreateWebhookOptions();
+        webhookOptions.Endpoints.Single().Uri = new Uri("https://127.0.0.1/security-events");
 
-        await CreateDispatcher(transport, new PostgresSecurityEventWebhookOutboxOptions { MaxAttempts = 1 }).ProcessBatchAsync();
+        await CreateDispatcher(
+            transport,
+            new PostgresSecurityEventWebhookOutboxOptions { MaxAttempts = 1 },
+            webhookOptions: webhookOptions).ProcessBatchAsync();
 
         await using var verifyConnection = await GetDataSource().OpenConnectionAsync();
         var row = await verifyConnection.QuerySingleAsync<RawWebhookRow>("""
