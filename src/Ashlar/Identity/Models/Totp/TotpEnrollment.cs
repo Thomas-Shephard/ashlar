@@ -20,6 +20,40 @@ public sealed record TotpEnrollmentCompletionResult(
     Guid UserId,
     MfaAuthenticationResult? StepUpAuthenticationResult);
 
+/// <summary>Actor and verification context required for self-service TOTP enrollment.</summary>
+public sealed record TotpEnrollmentVerificationContext
+{
+    /// <summary>Creates an actor-bound enrollment context with exactly one fresh proof.</summary>
+    /// <param name="actorUserId">Authenticated actor and target user.</param>
+    /// <param name="tenant">Explicit actor and target scope.</param>
+    /// <param name="currentSessionId">Current authenticated session.</param>
+    /// <param name="audit">Required audit metadata.</param>
+    /// <param name="freshMfaProof">Ashlar-issued MFA proof.</param>
+    /// <param name="freshPrimaryAuthenticationProof">Ashlar-issued primary proof for first enrollment.</param>
+    public TotpEnrollmentVerificationContext(Guid actorUserId, TenantContext tenant, Guid currentSessionId,
+        AuditContext audit, FreshMfaVerificationProof? freshMfaProof = null,
+        FreshPrimaryAuthenticationProof? freshPrimaryAuthenticationProof = null)
+    {
+        TotpRequestValidation.Validate(actorUserId, tenant, currentSessionId, audit);
+        TotpRequestValidation.ValidateProofs(freshMfaProof, freshPrimaryAuthenticationProof);
+        ActorUserId = actorUserId; Tenant = tenant; CurrentSessionId = currentSessionId; Audit = audit;
+        FreshMfaProof = freshMfaProof; FreshPrimaryAuthenticationProof = freshPrimaryAuthenticationProof;
+    }
+
+    /// <summary>Gets the authenticated actor.</summary>
+    public Guid ActorUserId { get; }
+    /// <summary>Gets the explicit actor and target tenant scope.</summary>
+    public TenantContext Tenant { get; }
+    /// <summary>Gets the current authenticated session.</summary>
+    public Guid CurrentSessionId { get; }
+    /// <summary>Gets required audit metadata.</summary>
+    public AuditContext Audit { get; }
+    /// <summary>Gets fresh MFA proof when an MFA factor exists.</summary>
+    public FreshMfaVerificationProof? FreshMfaProof { get; }
+    /// <summary>Gets fresh primary-authentication proof for first MFA enrollment.</summary>
+    public FreshPrimaryAuthenticationProof? FreshPrimaryAuthenticationProof { get; }
+}
+
 /// <summary>
 /// Request to begin self-service TOTP enrollment for the authenticated account owner.
 /// </summary>
@@ -34,19 +68,15 @@ public sealed record StartTotpEnrollmentRequest
         Tenant = TenantContext.Global; CurrentSessionId = Guid.Empty; Audit = new AuditContext(actorUserId);
     }
     /// <summary>Creates an actor-bound TOTP enrollment request.</summary>
-    /// <param name="actorUserId">Authenticated actor and target user.</param><param name="issuer">Authenticator issuer.</param>
-    /// <param name="accountName">Authenticator account label.</param><param name="tenant">Explicit actor and target scope.</param>
-    /// <param name="currentSessionId">Current authenticated session.</param><param name="audit">Required audit metadata.</param>
-    /// <param name="freshMfaProof">Ashlar-issued MFA proof bound to the actor and current session.</param><param name="freshPrimaryAuthenticationProof">Ashlar-issued primary proof for first MFA enrollment.</param>
-    public StartTotpEnrollmentRequest(Guid actorUserId, string issuer, string accountName, TenantContext tenant,
-        Guid currentSessionId, AuditContext audit, FreshMfaVerificationProof? freshMfaProof = null,
-        FreshPrimaryAuthenticationProof? freshPrimaryAuthenticationProof = null)
+    /// <param name="verification">Actor and fresh-verification context.</param>
+    /// <param name="issuer">Authenticator issuer.</param>
+    /// <param name="accountName">Authenticator account label.</param>
+    public StartTotpEnrollmentRequest(TotpEnrollmentVerificationContext verification, string issuer, string accountName)
     {
-        TotpRequestValidation.Validate(actorUserId, tenant, currentSessionId, audit);
-        TotpRequestValidation.ValidateProofs(freshMfaProof, freshPrimaryAuthenticationProof);
-        ActorUserId = actorUserId; Issuer = issuer; AccountName = accountName; Tenant = tenant;
-        CurrentSessionId = currentSessionId; Audit = audit; FreshMfaProof = freshMfaProof;
-        FreshPrimaryAuthenticationProof = freshPrimaryAuthenticationProof;
+        ArgumentNullException.ThrowIfNull(verification);
+        ActorUserId = verification.ActorUserId; Issuer = issuer; AccountName = accountName; Tenant = verification.Tenant;
+        CurrentSessionId = verification.CurrentSessionId; Audit = verification.Audit; FreshMfaProof = verification.FreshMfaProof;
+        FreshPrimaryAuthenticationProof = verification.FreshPrimaryAuthenticationProof;
     }
     /// <summary>Gets the authenticated actor.</summary>
     public Guid ActorUserId { get; }
@@ -79,20 +109,16 @@ public sealed record VerifyTotpEnrollmentRequest
         ActorUserId = actorUserId; SharedSecret = sharedSecret; Code = code;
         Tenant = TenantContext.Global; CurrentSessionId = Guid.Empty; Audit = new AuditContext(actorUserId);
     }
-    /// <summary>Creates an actor-bound TOTP enrollment verification request.</summary>
-    /// <param name="actorUserId">Authenticated actor and target user.</param><param name="sharedSecret">Pending shared secret.</param>
-    /// <param name="code">Verification code.</param><param name="tenant">Explicit actor and target scope.</param>
-    /// <param name="currentSessionId">Current authenticated session.</param><param name="audit">Required audit metadata.</param>
-    /// <param name="freshMfaProof">Ashlar-issued MFA proof bound to the actor and current session.</param><param name="freshPrimaryAuthenticationProof">Ashlar-issued primary proof for first MFA enrollment.</param>
-    public VerifyTotpEnrollmentRequest(Guid actorUserId, string sharedSecret, string code, TenantContext tenant,
-        Guid currentSessionId, AuditContext audit, FreshMfaVerificationProof? freshMfaProof = null,
-        FreshPrimaryAuthenticationProof? freshPrimaryAuthenticationProof = null)
+    /// <summary>Creates an actor-bound TOTP enrollment completion request.</summary>
+    /// <param name="verification">Actor and fresh-verification context.</param>
+    /// <param name="sharedSecret">Pending shared secret.</param>
+    /// <param name="code">Authenticator code.</param>
+    public VerifyTotpEnrollmentRequest(TotpEnrollmentVerificationContext verification, string sharedSecret, string code)
     {
-        TotpRequestValidation.Validate(actorUserId, tenant, currentSessionId, audit);
-        TotpRequestValidation.ValidateProofs(freshMfaProof, freshPrimaryAuthenticationProof);
-        ActorUserId = actorUserId; SharedSecret = sharedSecret; Code = code; Tenant = tenant;
-        CurrentSessionId = currentSessionId; Audit = audit; FreshMfaProof = freshMfaProof;
-        FreshPrimaryAuthenticationProof = freshPrimaryAuthenticationProof;
+        ArgumentNullException.ThrowIfNull(verification);
+        ActorUserId = verification.ActorUserId; SharedSecret = sharedSecret; Code = code; Tenant = verification.Tenant;
+        CurrentSessionId = verification.CurrentSessionId; Audit = verification.Audit; FreshMfaProof = verification.FreshMfaProof;
+        FreshPrimaryAuthenticationProof = verification.FreshPrimaryAuthenticationProof;
     }
     /// <summary>Gets the authenticated actor.</summary>
     public Guid ActorUserId { get; }

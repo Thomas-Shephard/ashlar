@@ -62,30 +62,57 @@ public sealed record AccountSecurityAuthorizationContext(
     Guid? RememberedMfaDeviceId = null,
     Guid? CurrentSessionId = null);
 
+/// <summary>Authenticated actor context required by destructive account-security requests.</summary>
+public sealed record AccountSecurityActorContext
+{
+    /// <summary>Creates actor context bound to a current session and fresh MFA proof.</summary>
+    /// <param name="actorUserId">The authenticated actor.</param>
+    /// <param name="actorTenant">The actor's authenticated tenant or global scope.</param>
+    /// <param name="currentSessionId">The actor's current authenticated session.</param>
+    /// <param name="freshMfaProof">Ashlar-issued fresh MFA proof.</param>
+    /// <param name="audit">Required audit metadata.</param>
+    public AccountSecurityActorContext(Guid actorUserId, TenantContext actorTenant, Guid currentSessionId,
+        FreshMfaVerificationProof freshMfaProof, AuditContext audit)
+    {
+        if (actorUserId == Guid.Empty) throw new ArgumentException("Actor user ID cannot be empty.", nameof(actorUserId));
+        if (currentSessionId == Guid.Empty) throw new ArgumentException("Current session ID cannot be empty.", nameof(currentSessionId));
+        ActorUserId = actorUserId;
+        ActorTenant = actorTenant ?? throw new ArgumentNullException(nameof(actorTenant));
+        CurrentSessionId = currentSessionId;
+        FreshMfaProof = freshMfaProof ?? throw new ArgumentNullException(nameof(freshMfaProof));
+        Audit = audit ?? throw new ArgumentNullException(nameof(audit));
+    }
+
+    /// <summary>Gets the authenticated actor.</summary>
+    public Guid ActorUserId { get; }
+    /// <summary>Gets the actor's authenticated tenant or global scope.</summary>
+    public TenantContext ActorTenant { get; }
+    /// <summary>Gets the actor's current authenticated session.</summary>
+    public Guid CurrentSessionId { get; }
+    /// <summary>Gets the Ashlar-issued fresh MFA proof.</summary>
+    public FreshMfaVerificationProof FreshMfaProof { get; }
+    /// <summary>Gets required audit metadata.</summary>
+    public AuditContext Audit { get; }
+}
+
 /// <summary>Actor-bound request for a destructive account-security operation.</summary>
 public record AccountSecurityAdministrationRequest
 {
     /// <summary>Creates an actor-bound destructive account-security request.</summary>
     /// <param name="targetUserId">The target user.</param>
-    /// <param name="actorUserId">The authenticated actor.</param>
-    /// <param name="actorTenant">The actor's authenticated tenant or global scope.</param>
-    /// <param name="currentSessionId">The actor's current authenticated session.</param>
-    /// <param name="freshMfaProof">Ashlar-issued fresh MFA proof for the actor and current session.</param>
-    /// <param name="audit">Required audit metadata whose actor must match <paramref name="actorUserId" />.</param>
+    /// <param name="actor">Authenticated actor, scope, current session, proof, and audit metadata.</param>
     /// <param name="tenant">The explicit target tenant or global scope.</param>
     /// <param name="includeAllTenants">Whether the target lookup may cross every tenant scope.</param>
     /// <param name="reason">An optional display-safe reason.</param>
-    public AccountSecurityAdministrationRequest(Guid targetUserId, Guid actorUserId, TenantContext actorTenant, Guid currentSessionId,
-        FreshMfaVerificationProof freshMfaProof, AuditContext audit, TenantContext? tenant = null, bool includeAllTenants = false,
-        string? reason = null)
+    public AccountSecurityAdministrationRequest(Guid targetUserId, AccountSecurityActorContext actor,
+        TenantContext? tenant = null, bool includeAllTenants = false, string? reason = null)
     {
         if (targetUserId == Guid.Empty) throw new ArgumentException("Target user ID cannot be empty.", nameof(targetUserId));
-        if (actorUserId == Guid.Empty) throw new ArgumentException("Actor user ID cannot be empty.", nameof(actorUserId));
-        if (currentSessionId == Guid.Empty) throw new ArgumentException("Current session ID cannot be empty.", nameof(currentSessionId));
+        ArgumentNullException.ThrowIfNull(actor);
         AdministrationScopeValidation.ThrowIfInvalidScope(tenant, includeAllTenants);
-        TargetUserId = targetUserId; ActorUserId = actorUserId; ActorTenant = actorTenant ?? throw new ArgumentNullException(nameof(actorTenant));
-        CurrentSessionId = currentSessionId; FreshMfaProof = freshMfaProof ?? throw new ArgumentNullException(nameof(freshMfaProof));
-        Audit = audit ?? throw new ArgumentNullException(nameof(audit)); Tenant = tenant; IncludeAllTenants = includeAllTenants;
+        TargetUserId = targetUserId; ActorUserId = actor.ActorUserId; ActorTenant = actor.ActorTenant;
+        CurrentSessionId = actor.CurrentSessionId; FreshMfaProof = actor.FreshMfaProof;
+        Audit = actor.Audit; Tenant = tenant; IncludeAllTenants = includeAllTenants;
         Reason = reason;
     }
     /// <summary>Gets the target user.</summary>
@@ -114,11 +141,7 @@ public sealed record SetUserAccountStateAdministrationRequest : AccountSecurityA
     /// <summary>Creates an actor-bound account-state request.</summary>
     /// <param name="targetUserId">The target user.</param>
     /// <param name="accountState">The required target account state.</param>
-    /// <param name="actorUserId">The authenticated actor.</param>
-    /// <param name="actorTenant">The actor's authenticated tenant or global scope.</param>
-    /// <param name="currentSessionId">The actor's current authenticated session.</param>
-    /// <param name="freshMfaProof">Ashlar-issued fresh MFA proof for the actor and current session.</param>
-    /// <param name="audit">Required audit metadata whose actor must match <paramref name="actorUserId" />.</param>
+    /// <param name="actor">Authenticated actor context.</param>
     /// <param name="tenant">The explicit target tenant or global scope.</param>
     /// <param name="includeAllTenants">Whether the target lookup may cross every tenant scope.</param>
     /// <param name="reason">An optional display-safe reason.</param>
@@ -126,16 +149,12 @@ public sealed record SetUserAccountStateAdministrationRequest : AccountSecurityA
     public SetUserAccountStateAdministrationRequest(
         Guid targetUserId,
         UserAccountState accountState,
-        Guid actorUserId,
-        TenantContext actorTenant,
-        Guid currentSessionId,
-        FreshMfaVerificationProof freshMfaProof,
-        AuditContext audit,
+        AccountSecurityActorContext actor,
         TenantContext? tenant = null,
         bool includeAllTenants = false,
         string? reason = null,
         bool revokeSessionsAndRememberedMfaDevices = true)
-        : base(targetUserId, actorUserId, actorTenant, currentSessionId, freshMfaProof, audit, tenant, includeAllTenants, reason)
+        : base(targetUserId, actor, tenant, includeAllTenants, reason)
     {
         if (!Enum.IsDefined(accountState))
         {
@@ -159,19 +178,14 @@ public sealed record RevokeAccountCredentialsRequest : AccountSecurityAdministra
     /// <summary>Creates an actor-bound provider credential-revocation request.</summary>
     /// <param name="targetUserId">The target user.</param>
     /// <param name="provider">The configured non-internal provider to revoke.</param>
-    /// <param name="actorUserId">The authenticated actor.</param>
-    /// <param name="actorTenant">The actor's authenticated tenant or global scope.</param>
-    /// <param name="currentSessionId">The actor's current authenticated session.</param>
-    /// <param name="freshMfaProof">Ashlar-issued fresh MFA proof for the actor and current session.</param>
-    /// <param name="audit">Required audit metadata whose actor must match <paramref name="actorUserId" />.</param>
+    /// <param name="actor">Authenticated actor context.</param>
     /// <param name="tenant">The explicit target tenant or global scope.</param>
     /// <param name="includeAllTenants">Whether the target lookup may cross every tenant scope.</param>
     /// <param name="reason">An optional display-safe reason.</param>
     /// <param name="preservePrimarySignInMethod">Whether revocation must leave another usable primary sign-in method.</param>
-    public RevokeAccountCredentialsRequest(Guid targetUserId, AuthenticationProviderKey provider, Guid actorUserId, TenantContext actorTenant,
-        Guid currentSessionId, FreshMfaVerificationProof freshMfaProof, AuditContext audit, TenantContext? tenant = null,
+    public RevokeAccountCredentialsRequest(Guid targetUserId, AuthenticationProviderKey provider, AccountSecurityActorContext actor, TenantContext? tenant = null,
         bool includeAllTenants = false, string? reason = null, bool preservePrimarySignInMethod = false)
-        : base(targetUserId, actorUserId, actorTenant, currentSessionId, freshMfaProof, audit, tenant, includeAllTenants, reason)
+        : base(targetUserId, actor, tenant, includeAllTenants, reason)
     {
         if (!provider.IsConfigured || provider.Type == ProviderType.Internal) throw new ArgumentException("Provider must be a configured, non-internal provider.", nameof(provider));
         Provider = provider;
@@ -190,18 +204,13 @@ public sealed record RevokeRememberedMfaDeviceAdministrationRequest : AccountSec
     /// <summary>Creates an actor-bound remembered-device revocation request.</summary>
     /// <param name="deviceId">The remembered device to revoke.</param>
     /// <param name="targetUserId">The device owner.</param>
-    /// <param name="actorUserId">The authenticated actor.</param>
-    /// <param name="actorTenant">The actor's authenticated scope.</param>
-    /// <param name="currentSessionId">The actor's current session.</param>
-    /// <param name="freshMfaProof">Actor/session-bound fresh MFA proof.</param>
-    /// <param name="audit">Required audit metadata.</param>
+    /// <param name="actor">Authenticated actor context.</param>
     /// <param name="tenant">The explicit target tenant or global scope.</param>
     /// <param name="includeAllTenants">Whether the target lookup crosses every tenant scope.</param>
     /// <param name="reason">An optional display-safe reason.</param>
-    public RevokeRememberedMfaDeviceAdministrationRequest(Guid deviceId, Guid targetUserId, Guid actorUserId,
-        TenantContext actorTenant, Guid currentSessionId, FreshMfaVerificationProof freshMfaProof, AuditContext audit,
+    public RevokeRememberedMfaDeviceAdministrationRequest(Guid deviceId, Guid targetUserId, AccountSecurityActorContext actor,
         TenantContext? tenant = null, bool includeAllTenants = false, string? reason = null)
-        : base(targetUserId, actorUserId, actorTenant, currentSessionId, freshMfaProof, audit, tenant, includeAllTenants, reason)
+        : base(targetUserId, actor, tenant, includeAllTenants, reason)
     {
         if (deviceId == Guid.Empty) throw new ArgumentException("Remembered MFA device ID cannot be empty.", nameof(deviceId));
         DeviceId = deviceId;

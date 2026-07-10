@@ -850,8 +850,10 @@ internal sealed class TotpTests
         var mfa = new FreshMfaVerificationProof(actor, tenant.TenantId, session, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5));
         var primary = new FreshPrimaryAuthenticationProof(actor, tenant.TenantId, session, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5));
 
-        var start = new StartTotpEnrollmentRequest(actor, "Ashlar", "user@example.com", tenant, session, audit, freshMfaProof: mfa);
-        var verify = new VerifyTotpEnrollmentRequest(actor, "secret", "123456", tenant, session, audit, freshPrimaryAuthenticationProof: primary);
+        var start = new StartTotpEnrollmentRequest(
+            new TotpEnrollmentVerificationContext(actor, tenant, session, audit, freshMfaProof: mfa), "Ashlar", "user@example.com");
+        var verify = new VerifyTotpEnrollmentRequest(
+            new TotpEnrollmentVerificationContext(actor, tenant, session, audit, freshPrimaryAuthenticationProof: primary), "secret", "123456");
         var disable = new DisableTotpRequest(actor, tenant, session, mfa, audit);
 
         using (Assert.EnterMultipleScope())
@@ -859,14 +861,16 @@ internal sealed class TotpTests
             Assert.That(start.FreshMfaProof, Is.SameAs(mfa));
             Assert.That(verify.FreshPrimaryAuthenticationProof, Is.SameAs(primary));
             Assert.That(disable.FreshMfaProof, Is.SameAs(mfa));
-            Assert.Throws<ArgumentException>(() => _ = new StartTotpEnrollmentRequest(Guid.Empty, "i", "a", tenant, session, audit, freshMfaProof: mfa));
-            Assert.Throws<ArgumentNullException>(() => _ = new StartTotpEnrollmentRequest(actor, "i", "a", null!, session, audit, freshMfaProof: mfa));
-            Assert.Throws<ArgumentException>(() => _ = new StartTotpEnrollmentRequest(actor, "i", "a", tenant, Guid.Empty, audit, freshMfaProof: mfa));
-            Assert.Throws<ArgumentNullException>(() => _ = new StartTotpEnrollmentRequest(actor, "i", "a", tenant, session, null!, freshMfaProof: mfa));
-            Assert.Throws<ArgumentException>(() => _ = new StartTotpEnrollmentRequest(actor, "i", "a", tenant, session, new AuditContext(Guid.NewGuid()), freshMfaProof: mfa));
-            Assert.Throws<ArgumentException>(() => _ = new StartTotpEnrollmentRequest(actor, "i", "a", tenant, session, new AuditContext(), freshMfaProof: mfa));
-            Assert.Throws<ArgumentException>(() => _ = new StartTotpEnrollmentRequest(actor, "i", "a", tenant, session, audit));
-            Assert.Throws<ArgumentException>(() => _ = new VerifyTotpEnrollmentRequest(actor, "s", "c", tenant, session, audit, mfa, primary));
+            Assert.Throws<ArgumentException>(() => _ = new TotpEnrollmentVerificationContext(Guid.Empty, tenant, session, audit, freshMfaProof: mfa));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpEnrollmentVerificationContext(actor, null!, session, audit, freshMfaProof: mfa));
+            Assert.Throws<ArgumentException>(() => _ = new TotpEnrollmentVerificationContext(actor, tenant, Guid.Empty, audit, freshMfaProof: mfa));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpEnrollmentVerificationContext(actor, tenant, session, null!, freshMfaProof: mfa));
+            Assert.Throws<ArgumentException>(() => _ = new TotpEnrollmentVerificationContext(actor, tenant, session, new AuditContext(Guid.NewGuid()), freshMfaProof: mfa));
+            Assert.Throws<ArgumentException>(() => _ = new TotpEnrollmentVerificationContext(actor, tenant, session, new AuditContext(), freshMfaProof: mfa));
+            Assert.Throws<ArgumentException>(() => _ = new TotpEnrollmentVerificationContext(actor, tenant, session, audit));
+            Assert.Throws<ArgumentException>(() => _ = new TotpEnrollmentVerificationContext(actor, tenant, session, audit, mfa, primary));
+            Assert.Throws<ArgumentNullException>(() => _ = new StartTotpEnrollmentRequest(null!, "i", "a"));
+            Assert.Throws<ArgumentNullException>(() => _ = new VerifyTotpEnrollmentRequest(null!, "s", "c"));
             Assert.Throws<ArgumentNullException>(() => _ = new DisableTotpRequest(actor, tenant, session, null!, audit));
         }
     }

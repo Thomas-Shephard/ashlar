@@ -270,9 +270,9 @@ public sealed class AshlarExternalAccountLinkService
         }
 
         var provider = new AuthenticationProviderKey(providerOptions.Type, providerOptions.ProviderName);
+        var actor = new AccountSecurityActorContext(currentUserId, request.Tenant, currentSessionId!.Value, freshMfaProof!, request.Audit);
         var revokeResult = await _accountSecurityAdministration.RevokeCredentialsAsync(new RevokeAccountCredentialsRequest(
-            currentUserId, provider, currentUserId, request.Tenant, currentSessionId!.Value, freshMfaProof!, request.Audit,
-            request.Tenant, reason: request.Reason, preservePrimarySignInMethod: true), cancellationToken);
+            currentUserId, provider, actor, request.Tenant, reason: request.Reason, preservePrimarySignInMethod: true), cancellationToken);
         if (!revokeResult.Succeeded)
         {
             return new AshlarExternalAccountUnlinkResult(MapRevokeFailure(revokeResult), revokeResult);

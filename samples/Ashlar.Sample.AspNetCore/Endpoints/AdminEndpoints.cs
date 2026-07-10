@@ -80,7 +80,11 @@ internal static partial class AdminEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            return await SetUserAccountStateAsync(userId, UserAccountState.Disabled, request, accountSecurity, stepUp, auth, httpContext, cancellationToken);
+            var adminRequest = await ToAdminRequestAsync(userId, request, httpContext, stepUp, auth, cancellationToken);
+            return adminRequest == null
+                ? Results.Forbid()
+                : ToAdminSecurityResult(await accountSecurity.SetUserAccountStateAsync(
+                    ToSetAccountStateRequest(adminRequest, UserAccountState.Disabled), cancellationToken));
         }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/admin/users/{userId:guid}/account-state", async (
@@ -112,7 +116,11 @@ internal static partial class AdminEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            return await SetUserAccountStateAsync(userId, UserAccountState.Active, request, accountSecurity, stepUp, auth, httpContext, cancellationToken);
+            var adminRequest = await ToAdminRequestAsync(userId, request, httpContext, stepUp, auth, cancellationToken);
+            return adminRequest == null
+                ? Results.Forbid()
+                : ToAdminSecurityResult(await accountSecurity.SetUserAccountStateAsync(
+                    ToSetAccountStateRequest(adminRequest, UserAccountState.Active), cancellationToken));
         }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/admin/users/{userId:guid}/sessions/revoke", async (
@@ -246,27 +254,6 @@ internal static partial class AdminEndpoints
     [GeneratedRegex("^[a-z0-9-]+$", RegexOptions.CultureInvariant)]
     private static partial Regex ProjectIdRegex();
 
-    private static async Task<IResult> SetUserAccountStateAsync(
-        Guid userId,
-        UserAccountState accountState,
-        AdminUserSecurityRequest? request,
-        IAccountSecurityAdministrationService accountSecurity,
-        IStepUpAuthenticationService stepUp,
-        IAuthorizationEvaluator auth,
-        HttpContext httpContext,
-        CancellationToken cancellationToken)
-    {
-        var adminRequest = await ToAdminRequestAsync(userId, request, httpContext, stepUp, auth, cancellationToken);
-        if (adminRequest == null)
-        {
-            return Results.Forbid();
-        }
-
-        return ToAdminSecurityResult(await accountSecurity.SetUserAccountStateAsync(
-            ToSetAccountStateRequest(adminRequest, accountState),
-            cancellationToken));
-    }
-
     private static async Task<AccountSecurityAdministrationRequest?> ToAdminRequestAsync(
         Guid targetUserId,
         AdminUserSecurityRequest? request,
@@ -284,8 +271,9 @@ internal static partial class AdminEndpoints
         var proof = httpContext.CreateFreshMfaProof(stepUp, AdminSecurityRequirement);
         return !proof.TryGetValue(out var freshProof)
             ? null
-            : new AccountSecurityAdministrationRequest(targetUserId, actorUserId, actorTenant, sessionId, freshProof,
-                httpContext.ToAuditContext(), tenant, reason: request?.Reason);
+            : new AccountSecurityAdministrationRequest(targetUserId,
+                new AccountSecurityActorContext(actorUserId, actorTenant, sessionId, freshProof, httpContext.ToAuditContext()),
+                tenant, reason: request?.Reason);
     }
 
     private static async Task<SetUserAccountStateAdministrationRequest?> ToSetAccountStateRequestAsync(
@@ -308,8 +296,9 @@ internal static partial class AdminEndpoints
         AccountSecurityAdministrationRequest request,
         UserAccountState accountState,
         bool revokeSessionsAndRememberedMfaDevices = true) =>
-        new(request.TargetUserId, accountState, request.ActorUserId, request.ActorTenant, request.CurrentSessionId,
-            request.FreshMfaProof, request.Audit, request.Tenant, request.IncludeAllTenants, request.Reason,
+        new(request.TargetUserId, accountState,
+            new AccountSecurityActorContext(request.ActorUserId, request.ActorTenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit),
+            request.Tenant, request.IncludeAllTenants, request.Reason,
             revokeSessionsAndRememberedMfaDevices);
 
     private static async Task<TenantContext?> ResolveAuthorizedAdminTenantScopeAsync(

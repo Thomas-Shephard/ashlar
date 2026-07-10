@@ -46,8 +46,8 @@ internal sealed class AccountSecurityAdministrationServiceTests
     {
         var baseRequest = CreateRequest();
         var request = new AccountSecurityAdministrationRequest(
-            baseRequest.TargetUserId, baseRequest.ActorUserId, baseRequest.ActorTenant, baseRequest.CurrentSessionId,
-            baseRequest.FreshMfaProof, new AuditContext(), baseRequest.Tenant);
+            baseRequest.TargetUserId, new AccountSecurityActorContext(baseRequest.ActorUserId, baseRequest.ActorTenant,
+                baseRequest.CurrentSessionId, baseRequest.FreshMfaProof, new AuditContext()), baseRequest.Tenant);
 
         var result = await _service.RevokeSessionsAsync(request);
 
@@ -106,11 +106,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
         var request = new RevokeAccountCredentialsRequest(
             baseRequest.TargetUserId,
             provider,
-            baseRequest.ActorUserId,
-            baseRequest.ActorTenant,
-            baseRequest.CurrentSessionId,
-            baseRequest.FreshMfaProof,
-            baseRequest.Audit,
+            ToActor(baseRequest),
             baseRequest.Tenant,
             preservePrimarySignInMethod: true);
         _authorizer
@@ -141,11 +137,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
         var request = new SetUserAccountStateAdministrationRequest(
             baseRequest.TargetUserId,
             UserAccountState.Disabled,
-            baseRequest.ActorUserId,
-            baseRequest.ActorTenant,
-            baseRequest.CurrentSessionId,
-            baseRequest.FreshMfaProof,
-            baseRequest.Audit,
+            ToActor(baseRequest),
             baseRequest.Tenant,
             revokeSessionsAndRememberedMfaDevices: false);
         _authorizer
@@ -195,8 +187,8 @@ internal sealed class AccountSecurityAdministrationServiceTests
         _executor.Result = Result.Success(new AccountSecurityOperationResult(_targetId));
 
         await _service.SetUserAccountStateAsync(new SetUserAccountStateAdministrationRequest(
-            _targetId, UserAccountState.Disabled, _actorId, _tenant, _sessionId, request.FreshMfaProof,
-            request.Audit, _tenant, reason: "state", revokeSessionsAndRememberedMfaDevices: false));
+            _targetId, UserAccountState.Disabled, ToActor(request), _tenant,
+            reason: "state", revokeSessionsAndRememberedMfaDevices: false));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_executor.Operation, Is.EqualTo(AccountSecurityOperation.SetAccountState));
@@ -205,7 +197,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
         }
 
         await _service.RevokeCredentialsAsync(new RevokeAccountCredentialsRequest(
-            _targetId, provider, _actorId, _tenant, _sessionId, request.FreshMfaProof, request.Audit, _tenant));
+            _targetId, provider, ToActor(request), _tenant));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_executor.Operation, Is.EqualTo(AccountSecurityOperation.RevokeCredentials));
@@ -217,7 +209,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
 
         var deviceId = Guid.NewGuid();
         await _service.RevokeRememberedMfaDeviceAsync(new RevokeRememberedMfaDeviceAdministrationRequest(
-            deviceId, _targetId, _actorId, _tenant, _sessionId, request.FreshMfaProof, request.Audit, _tenant));
+            deviceId, _targetId, ToActor(request), _tenant));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_executor.Operation, Is.EqualTo(AccountSecurityOperation.RevokeRememberedMfaDevice));
@@ -236,22 +228,23 @@ internal sealed class AccountSecurityAdministrationServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentException>(() => new AccountSecurityAdministrationRequest(Guid.Empty, _actorId, _tenant, _sessionId, proof, audit, _tenant));
-            Assert.Throws<ArgumentException>(() => new AccountSecurityAdministrationRequest(_targetId, Guid.Empty, _tenant, _sessionId, proof, audit, _tenant));
-            Assert.Throws<ArgumentException>(() => new AccountSecurityAdministrationRequest(_targetId, _actorId, _tenant, Guid.Empty, proof, audit, _tenant));
-            Assert.Throws<ArgumentNullException>(() => new AccountSecurityAdministrationRequest(_targetId, _actorId, null!, _sessionId, proof, audit, _tenant));
-            Assert.Throws<ArgumentNullException>(() => new AccountSecurityAdministrationRequest(_targetId, _actorId, _tenant, _sessionId, null!, audit, _tenant));
-            Assert.Throws<ArgumentNullException>(() => new AccountSecurityAdministrationRequest(_targetId, _actorId, _tenant, _sessionId, proof, null!, _tenant));
-            Assert.Throws<ArgumentException>(() => new AccountSecurityAdministrationRequest(_targetId, _actorId, _tenant, _sessionId, proof, audit));
-            Assert.Throws<ArgumentException>(() => new AccountSecurityAdministrationRequest(_targetId, _actorId, _tenant, _sessionId, proof, audit, _tenant, includeAllTenants: true));
+            Assert.Throws<ArgumentException>(() => new AccountSecurityAdministrationRequest(Guid.Empty, new AccountSecurityActorContext(_actorId, _tenant, _sessionId, proof, audit), _tenant));
+            Assert.Throws<ArgumentException>(() => new AccountSecurityActorContext(Guid.Empty, _tenant, _sessionId, proof, audit));
+            Assert.Throws<ArgumentException>(() => new AccountSecurityActorContext(_actorId, _tenant, Guid.Empty, proof, audit));
+            Assert.Throws<ArgumentNullException>(() => new AccountSecurityActorContext(_actorId, null!, _sessionId, proof, audit));
+            Assert.Throws<ArgumentNullException>(() => new AccountSecurityActorContext(_actorId, _tenant, _sessionId, null!, audit));
+            Assert.Throws<ArgumentNullException>(() => new AccountSecurityActorContext(_actorId, _tenant, _sessionId, proof, null!));
+            Assert.Throws<ArgumentNullException>(() => new AccountSecurityAdministrationRequest(_targetId, null!, _tenant));
+            Assert.Throws<ArgumentException>(() => new AccountSecurityAdministrationRequest(_targetId, new AccountSecurityActorContext(_actorId, _tenant, _sessionId, proof, audit)));
+            Assert.Throws<ArgumentException>(() => new AccountSecurityAdministrationRequest(_targetId, new AccountSecurityActorContext(_actorId, _tenant, _sessionId, proof, audit), _tenant, includeAllTenants: true));
             Assert.Throws<ArgumentOutOfRangeException>(() => new SetUserAccountStateAdministrationRequest(
-                _targetId, (UserAccountState)int.MaxValue, _actorId, _tenant, _sessionId, proof, audit, _tenant));
+                _targetId, (UserAccountState)int.MaxValue, new AccountSecurityActorContext(_actorId, _tenant, _sessionId, proof, audit), _tenant));
             Assert.Throws<ArgumentException>(() => new RevokeAccountCredentialsRequest(
-                _targetId, default, _actorId, _tenant, _sessionId, proof, audit, _tenant));
+                _targetId, default, new AccountSecurityActorContext(_actorId, _tenant, _sessionId, proof, audit), _tenant));
             Assert.Throws<ArgumentException>(() => new RevokeAccountCredentialsRequest(
-                _targetId, new AuthenticationProviderKey(ProviderType.Internal, "internal"), _actorId, _tenant, _sessionId, proof, audit, _tenant));
+                _targetId, new AuthenticationProviderKey(ProviderType.Internal, "internal"), new AccountSecurityActorContext(_actorId, _tenant, _sessionId, proof, audit), _tenant));
             Assert.Throws<ArgumentException>(() => new RevokeRememberedMfaDeviceAdministrationRequest(
-                Guid.Empty, _targetId, _actorId, _tenant, _sessionId, proof, audit, _tenant));
+                Guid.Empty, _targetId, new AccountSecurityActorContext(_actorId, _tenant, _sessionId, proof, audit), _tenant));
         }
     }
 
@@ -293,14 +286,15 @@ internal sealed class AccountSecurityAdministrationServiceTests
             problem == ProofProblem.Stale ? _time.GetUtcNow() : _time.GetUtcNow().AddMinutes(5));
         return new AccountSecurityAdministrationRequest(
             _targetId,
-            _actorId,
-            _tenant,
-            problem == ProofProblem.MissingSession ? Guid.NewGuid() : _sessionId,
-            proof,
-            new AuditContext(auditActorId ?? _actorId),
+            new AccountSecurityActorContext(_actorId, _tenant,
+                problem == ProofProblem.MissingSession ? Guid.NewGuid() : _sessionId,
+                proof, new AuditContext(auditActorId ?? _actorId)),
             targetTenant ?? (includeAllTenants ? null : _tenant),
             includeAllTenants);
     }
+
+    private static AccountSecurityActorContext ToActor(AccountSecurityAdministrationRequest request) =>
+        new(request.ActorUserId, request.ActorTenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit);
 
     internal enum ProofProblem
     {

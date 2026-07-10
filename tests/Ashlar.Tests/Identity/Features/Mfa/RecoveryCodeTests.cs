@@ -15,6 +15,23 @@ namespace Ashlar.Tests.Identity.Features.Mfa;
 internal sealed class RecoveryCodeTests
 {
     [Test]
+    public void GenerationRequestUsesDefaultSettings()
+    {
+        var actorId = Guid.NewGuid();
+        var proof = CreateProof(actorId);
+        var request = new RecoveryCodeGenerationRequest(actorId,
+            new AccountSecurityActorContext(actorId, TenantContext.Global, proof.SessionId, proof,
+                new AuditContext(actorId)), TenantContext.Global);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.ReplaceExisting, Is.True);
+            Assert.That(request.CodeCount, Is.Null);
+            Assert.That(request.ExpiresAfter, Is.Null);
+        }
+    }
+
+    [Test]
     public void GeneratorGeneratesUniqueCodes()
     {
         var codes = new HashSet<string>();
@@ -359,8 +376,9 @@ internal sealed class RecoveryCodeTests
             .ReturnsAsync(new User { Id = actorId, DisplayEmail = "test@example.com" });
         var service = CreateService(repository.Object, new RecoveryCodeOptions(), securityEvents: events,
             authorizer: authorizer.Object);
-        var wrongSession = new RevokeRecoveryCodesRequest(actorId, actorId, TenantContext.Global,
-            Guid.NewGuid(), proof, new AuditContext(ActorUserId: actorId), TenantContext.Global);
+        var wrongSession = new RevokeRecoveryCodesRequest(actorId,
+            new AccountSecurityActorContext(actorId, TenantContext.Global, Guid.NewGuid(), proof,
+                new AuditContext(ActorUserId: actorId)), TenantContext.Global);
 
         var proofFailure = await service.RevokeRecoveryCodesAsync(wrongSession);
         var denied = await service.RevokeRecoveryCodesAsync(CreateRevocationRequest(actorId, proof));
@@ -385,12 +403,15 @@ internal sealed class RecoveryCodeTests
         var events = new RecordingSecurityEventSink();
         var service = CreateService(Mock.Of<IUserRepository>(), new RecoveryCodeOptions { CodeCount = 1 },
             securityEvents: events, authorizer: authorizer.Object);
-        var mismatch = new RecoveryCodeGenerationRequest(actorId, actorId, TenantContext.Global,
-            mismatchedProof.SessionId, mismatchedProof, new AuditContext(ActorUserId: actorId), TenantContext.Global,
-            codeCount: 1);
+        var mismatch = new RecoveryCodeGenerationRequest(actorId,
+            new AccountSecurityActorContext(actorId, TenantContext.Global, mismatchedProof.SessionId, mismatchedProof,
+                new AuditContext(ActorUserId: actorId)), TenantContext.Global,
+            settings: new RecoveryCodeGenerationSettings(CodeCount: 1));
         var validProof = CreateProof(actorId);
-        var missingAuditActor = new RecoveryCodeGenerationRequest(actorId, actorId, TenantContext.Global,
-            validProof.SessionId, validProof, new AuditContext(), TenantContext.Global, codeCount: 1);
+        var missingAuditActor = new RecoveryCodeGenerationRequest(actorId,
+            new AccountSecurityActorContext(actorId, TenantContext.Global, validProof.SessionId, validProof,
+                new AuditContext()), TenantContext.Global,
+            settings: new RecoveryCodeGenerationSettings(CodeCount: 1));
 
         var proofFailure = await service.GenerateRecoveryCodesAsync(mismatch);
         var auditFailure = await service.GenerateRecoveryCodesAsync(missingAuditActor);
@@ -1050,9 +1071,11 @@ internal sealed class RecoveryCodeTests
         AuditContext? audit = null,
         int? codeCount = 1,
         TimeSpan? expiresAfter = null) =>
-        new(targetId ?? actorId, actorId, tenant ?? TenantContext.Global, proof.SessionId, proof,
-            audit ?? new AuditContext(ActorUserId: actorId), includeAllTenants ? null : tenant ?? TenantContext.Global,
-            includeAllTenants, codeCount: codeCount, expiresAfter: expiresAfter);
+        new(targetId ?? actorId,
+            new AccountSecurityActorContext(actorId, tenant ?? TenantContext.Global, proof.SessionId, proof,
+                audit ?? new AuditContext(ActorUserId: actorId)),
+            includeAllTenants ? null : tenant ?? TenantContext.Global,
+            includeAllTenants, settings: new RecoveryCodeGenerationSettings(CodeCount: codeCount, ExpiresAfter: expiresAfter));
 
     private static RevokeRecoveryCodesRequest CreateRevocationRequest(
         Guid actorId,
@@ -1062,8 +1085,10 @@ internal sealed class RecoveryCodeTests
         bool includeAllTenants = false,
         AuditContext? audit = null,
         string? reason = null) =>
-        new(targetId ?? actorId, actorId, tenant ?? TenantContext.Global, proof.SessionId, proof,
-            audit ?? new AuditContext(ActorUserId: actorId), includeAllTenants ? null : tenant ?? TenantContext.Global,
+        new(targetId ?? actorId,
+            new AccountSecurityActorContext(actorId, tenant ?? TenantContext.Global, proof.SessionId, proof,
+                audit ?? new AuditContext(ActorUserId: actorId)),
+            includeAllTenants ? null : tenant ?? TenantContext.Global,
             includeAllTenants, reason);
 
     private static RecoveryCodeGenerationExecutionRequest GenerationExecution(

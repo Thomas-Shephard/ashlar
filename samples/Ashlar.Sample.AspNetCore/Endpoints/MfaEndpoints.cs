@@ -75,8 +75,9 @@ internal static class MfaEndpoints
             freshPrimaryProof = proof.Value;
         }
 
-        var enrollmentRequest = new StartTotpEnrollmentRequest(userId, services.Options.Value.AppName, ashlarUser.DisplayEmail,
-            services.HttpContext.ToTenantContext(), sessionId, services.HttpContext.ToAuditContext(), freshMfaProof, freshPrimaryProof);
+        var verification = new TotpEnrollmentVerificationContext(userId, services.HttpContext.ToTenantContext(), sessionId,
+            services.HttpContext.ToAuditContext(), freshMfaProof, freshPrimaryProof);
+        var enrollmentRequest = new StartTotpEnrollmentRequest(verification, services.Options.Value.AppName, ashlarUser.DisplayEmail);
         var enrollment = await services.Totp.StartEnrollmentAsync(enrollmentRequest, services.CancellationToken);
         var isAdmin = (await services.Auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), services.CancellationToken)).Succeeded;
         return AppViews.RenderMfaSetup(enrollment.SharedSecret, enrollment.AuthenticatorUri, isAdmin);
@@ -127,8 +128,9 @@ internal static class MfaEndpoints
             freshMfaProof = proof.Value;
         }
 
-        var verifyRequest = new VerifyTotpEnrollmentRequest(userId, request.SharedSecret, request.Code,
-            services.HttpContext.ToTenantContext(), currentSessionId, services.HttpContext.ToAuditContext(), freshMfaProof, freshPrimaryProof);
+        var verification = new TotpEnrollmentVerificationContext(userId, services.HttpContext.ToTenantContext(), currentSessionId,
+            services.HttpContext.ToAuditContext(), freshMfaProof, freshPrimaryProof);
+        var verifyRequest = new VerifyTotpEnrollmentRequest(verification, request.SharedSecret, request.Code);
         var result = await services.Totp.CompleteEnrollmentAsync(
             verifyRequest,
             services.CancellationToken);
@@ -209,11 +211,8 @@ internal static class MfaEndpoints
         var result = await services.RecoveryCodes.GenerateRecoveryCodesAsync(
             new RecoveryCodeGenerationRequest(
                 userId,
-                userId,
-                scope,
-                currentSessionId,
-                freshProof,
-                services.HttpContext.ToAuditContext(),
+                new AccountSecurityActorContext(userId, scope, currentSessionId, freshProof,
+                    services.HttpContext.ToAuditContext()),
                 scope),
             services.CancellationToken);
         return result.Succeeded ? Results.Ok(new { codes = result.Value }) : Results.BadRequest(SampleResultErrors.From(result));
