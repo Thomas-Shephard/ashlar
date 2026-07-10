@@ -28,6 +28,7 @@ dotnet_diagnostic.IDE0005.severity = warning
 dotnet_diagnostic.IDE0130.severity = warning
 # prefer Assert.EnterMultipleScope
 dotnet_diagnostic.NUnit2045.severity = warning
+dotnet_diagnostic.NUnit2056.severity = warning
 
 # Naming rules
 

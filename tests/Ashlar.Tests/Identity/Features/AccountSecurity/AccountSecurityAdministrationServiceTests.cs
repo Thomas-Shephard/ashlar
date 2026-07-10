@@ -89,12 +89,12 @@ internal sealed class AccountSecurityAdministrationServiceTests
 
         var result = await _service.ResetMfaAsync(request);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(_executor.CallCount, Is.Zero);
             Assert.That(_events.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.UserMfaReset));
-        });
+        }
         _authorizer.Verify(x => x.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -124,11 +124,11 @@ internal sealed class AccountSecurityAdministrationServiceTests
 
         var result = await _service.RevokeCredentialsAsync(request);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(_executor.CallCount, Is.Zero);
-        });
+        }
         _authorizer.Verify(x => x.AuthorizeAsync(
             It.Is<AccountSecurityAuthorizationContext>(context => context.PreservePrimarySignInMethod),
             It.IsAny<CancellationToken>()), Times.Once);
@@ -159,11 +159,11 @@ internal sealed class AccountSecurityAdministrationServiceTests
 
         var result = await _service.SetUserAccountStateAsync(request);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(_executor.CallCount, Is.Zero);
-        });
+        }
     }
 
     [Test]
@@ -177,13 +177,13 @@ internal sealed class AccountSecurityAdministrationServiceTests
         var result = await _service.RevokeSessionsAsync(request);
 
         Assert.That(result, Is.SameAs(expected));
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(_executor.CallCount, Is.EqualTo(1));
             Assert.That(_executor.UserId, Is.EqualTo(_targetId));
             Assert.That(_executor.Request?.Audit, Is.EqualTo(request.Audit));
             Assert.That(_executor.Request?.Tenant, Is.EqualTo(_tenant));
-        });
+        }
     }
 
     [Test]
@@ -197,20 +197,20 @@ internal sealed class AccountSecurityAdministrationServiceTests
         await _service.SetUserAccountStateAsync(new SetUserAccountStateAdministrationRequest(
             _targetId, UserAccountState.Disabled, _actorId, _tenant, _sessionId, request.FreshMfaProof,
             request.Audit, _tenant, reason: "state", revokeSessionsAndRememberedMfaDevices: false));
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(_executor.Operation, Is.EqualTo(AccountSecurityOperation.SetAccountState));
             Assert.That(_executor.StateRequest?.AccountState, Is.EqualTo(UserAccountState.Disabled));
             Assert.That(_executor.StateRequest?.RevokeSessionsAndRememberedMfaDevices, Is.False);
-        });
+        }
 
         await _service.RevokeCredentialsAsync(new RevokeAccountCredentialsRequest(
             _targetId, provider, _actorId, _tenant, _sessionId, request.FreshMfaProof, request.Audit, _tenant));
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(_executor.Operation, Is.EqualTo(AccountSecurityOperation.RevokeCredentials));
             Assert.That(_executor.Provider, Is.EqualTo(provider));
-        });
+        }
 
         await _service.ResetMfaAsync(request);
         Assert.That(_executor.Operation, Is.EqualTo(AccountSecurityOperation.ResetMfa));
@@ -218,11 +218,11 @@ internal sealed class AccountSecurityAdministrationServiceTests
         var deviceId = Guid.NewGuid();
         await _service.RevokeRememberedMfaDeviceAsync(new RevokeRememberedMfaDeviceAdministrationRequest(
             deviceId, _targetId, _actorId, _tenant, _sessionId, request.FreshMfaProof, request.Audit, _tenant));
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(_executor.Operation, Is.EqualTo(AccountSecurityOperation.RevokeRememberedMfaDevice));
             Assert.That(_executor.DeviceId, Is.EqualTo(deviceId));
-        });
+        }
 
         await _service.RevokeRememberedMfaDevicesAsync(request);
         Assert.That(_executor.Operation, Is.EqualTo(AccountSecurityOperation.RevokeRememberedMfaDevices));
@@ -234,7 +234,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
         var proof = new FreshMfaVerificationProof(_actorId, _tenant.TenantId, _sessionId, _time.GetUtcNow(), _time.GetUtcNow().AddMinutes(5));
         var audit = new AuditContext(_actorId);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentException>(() => new AccountSecurityAdministrationRequest(Guid.Empty, _actorId, _tenant, _sessionId, proof, audit, _tenant));
             Assert.Throws<ArgumentException>(() => new AccountSecurityAdministrationRequest(_targetId, Guid.Empty, _tenant, _sessionId, proof, audit, _tenant));
@@ -252,13 +252,13 @@ internal sealed class AccountSecurityAdministrationServiceTests
                 _targetId, new AuthenticationProviderKey(ProviderType.Internal, "internal"), _actorId, _tenant, _sessionId, proof, audit, _tenant));
             Assert.Throws<ArgumentException>(() => new RevokeRememberedMfaDeviceAdministrationRequest(
                 Guid.Empty, _targetId, _actorId, _tenant, _sessionId, proof, audit, _tenant));
-        });
+        }
     }
 
     [Test]
     public void AdministrationServiceRejectsNullRequests()
     {
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.ThrowsAsync<ArgumentNullException>(() => _service.SetUserAccountStateAsync(null!));
             Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeSessionsAsync(null!));
@@ -266,17 +266,17 @@ internal sealed class AccountSecurityAdministrationServiceTests
             Assert.ThrowsAsync<ArgumentNullException>(() => _service.ResetMfaAsync(null!));
             Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeRememberedMfaDeviceAsync(null!));
             Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeRememberedMfaDevicesAsync(null!));
-        });
+        }
     }
 
     [Test]
     public void PublicReadAndAdministrationSurfacesDoNotExposeRawTargetMutationMethods()
     {
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(typeof(IAccountSecurityService).GetMethods().Select(method => method.Name), Is.EqualTo(["GetUserSecurityPostureAsync"]));
             Assert.That(typeof(IAccountSecurityAdministrationService).GetMethods().All(method => method.GetParameters()[0].ParameterType != typeof(Guid)), Is.True);
-        });
+        }
     }
 
     private AccountSecurityAdministrationRequest CreateRequest(

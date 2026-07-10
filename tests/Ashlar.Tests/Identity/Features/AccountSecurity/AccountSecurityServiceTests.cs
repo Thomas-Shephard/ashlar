@@ -634,11 +634,11 @@ internal sealed class AccountSecurityServiceTests
 
         var result = await _service.RevokeCredentialsAsync(_userId, AuthenticationProviderKey.Local, CreateRequest(tenantId: tenantId));
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
             Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Null);
-        });
+        }
     }
 
     [Test]
@@ -1998,14 +1998,14 @@ internal sealed class AccountSecurityServiceTests
         var noStoreOne = await _service.RevokeRememberedMfaDeviceAsync(_userId, Guid.NewGuid(), CreateRequest());
         var noStoreAll = await _service.RevokeRememberedMfaDevicesAsync(_userId, CreateRequest());
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(missingOne.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
             Assert.That(missingAll.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
             Assert.That(noStoreOne.Value?.RememberedMfaDevicesRevoked, Is.Zero);
             Assert.That(noStoreAll.Value?.RememberedMfaDevicesRevoked, Is.Zero);
             Assert.That(rememberedDevices.RevokeCalls, Is.Zero);
-        });
+        }
     }
 
     private sealed class TestRememberedMfaDeviceMutationExecutor : IRememberedMfaDeviceMutationExecutor
