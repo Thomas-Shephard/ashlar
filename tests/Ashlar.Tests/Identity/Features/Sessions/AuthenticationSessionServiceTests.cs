@@ -172,7 +172,7 @@ internal sealed class AuthenticationSessionServiceTests
             ExpiresAt = now.AddHours(1)
         };
         return new StepUpAuthenticationService(_timeProvider)
-            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(5))).Value!;
+            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(5), Purpose: AuthenticationSessionService.SelfServiceProofPurpose)).Value!;
     }
 
     [Test]
@@ -181,7 +181,7 @@ internal sealed class AuthenticationSessionServiceTests
         var actor = Guid.NewGuid();
         var session = Guid.NewGuid();
         var audit = new AuditContext(actor);
-        var proof = new FreshMfaVerificationProof(actor, null, session, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5));
+        var proof = new FreshMfaVerificationProof(actor, null, session, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5), AuthenticationSessionService.SelfServiceProofPurpose);
 
         using (Assert.EnterMultipleScope())
         {
@@ -196,7 +196,9 @@ internal sealed class AuthenticationSessionServiceTests
             Assert.ThrowsAsync<AshlarOperationException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, TenantContext.Global, session, proof, new AuditContext(Guid.NewGuid()), Guid.NewGuid())));
             Assert.ThrowsAsync<AshlarOperationException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, TenantContext.Global, session, proof, new AuditContext(), Guid.NewGuid())));
             Assert.ThrowsAsync<AshlarOperationException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, TenantContext.Global, session,
-                new FreshMfaVerificationProof(actor, null, session, _timeProvider.GetUtcNow().AddMinutes(-10), _timeProvider.GetUtcNow().AddMinutes(-5)), audit, Guid.NewGuid())));
+                new FreshMfaVerificationProof(actor, null, session, _timeProvider.GetUtcNow().AddMinutes(-10), _timeProvider.GetUtcNow().AddMinutes(-5), AuthenticationSessionService.SelfServiceProofPurpose), audit, Guid.NewGuid())));
+            Assert.ThrowsAsync<AshlarOperationException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, TenantContext.Global, session,
+                new FreshMfaVerificationProof(actor, null, session, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5), "totp-management"), audit, Guid.NewGuid())));
             Assert.ThrowsAsync<AshlarOperationException>(() => _service.RevokeSessionForCurrentUserAsync(new(actor, TenantContext.Global, session, proof, audit, Guid.NewGuid())));
         }
         _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
@@ -210,7 +212,7 @@ internal sealed class AuthenticationSessionServiceTests
         var currentSession = Guid.NewGuid();
         var targetSession = Guid.NewGuid();
         var audit = new AuditContext(actor, CorrelationId: "revoke-denied");
-        var proof = new FreshMfaVerificationProof(actor, null, currentSession, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5));
+        var proof = new FreshMfaVerificationProof(actor, null, currentSession, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5), AuthenticationSessionService.SelfServiceProofPurpose);
         var events = new Mock<ISecurityEventSink>();
         var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
         authorizer.Setup(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
@@ -237,7 +239,7 @@ internal sealed class AuthenticationSessionServiceTests
         var actor = Guid.NewGuid();
         var currentSession = Guid.NewGuid();
         var audit = new AuditContext(actor);
-        var proof = new FreshMfaVerificationProof(actor, null, currentSession, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5));
+        var proof = new FreshMfaVerificationProof(actor, null, currentSession, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5), AuthenticationSessionService.SelfServiceProofPurpose);
         var events = new Mock<ISecurityEventSink>();
         var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
         authorizer.Setup(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
@@ -267,7 +269,7 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), new NullTransactionProvider(),
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, TimeProvider: _timeProvider, SecurityEventSink: events.Object));
         var expiredProof = new FreshMfaVerificationProof(actor, null, currentSession,
-            _timeProvider.GetUtcNow().AddMinutes(-10), _timeProvider.GetUtcNow().AddMinutes(-5));
+            _timeProvider.GetUtcNow().AddMinutes(-10), _timeProvider.GetUtcNow().AddMinutes(-5), AuthenticationSessionService.SelfServiceProofPurpose);
 
         Assert.ThrowsAsync<AshlarOperationException>(() => service.RevokeSessionForCurrentUserAsync(
             new RevokeOwnAuthenticationSessionRequest(actor, TenantContext.Global, currentSession, expiredProof,
@@ -277,7 +279,7 @@ internal sealed class AuthenticationSessionServiceTests
             It.IsAny<CancellationToken>()), Times.Once);
 
         events.Invocations.Clear();
-        var validProof = new FreshMfaVerificationProof(actor, null, currentSession, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5));
+        var validProof = new FreshMfaVerificationProof(actor, null, currentSession, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5), AuthenticationSessionService.SelfServiceProofPurpose);
         Assert.ThrowsAsync<AshlarOperationException>(() => service.RevokeSessionForCurrentUserAsync(
             new RevokeOwnAuthenticationSessionRequest(actor, TenantContext.Global, currentSession, validProof,
                 new AuditContext(Guid.NewGuid(), IpAddress: "untrusted", CorrelationId: "mismatch"), targetSession)));

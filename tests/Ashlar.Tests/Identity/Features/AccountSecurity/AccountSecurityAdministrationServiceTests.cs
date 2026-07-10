@@ -60,6 +60,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
     [TestCase(ProofProblem.WrongActor)]
     [TestCase(ProofProblem.WrongTenant)]
     [TestCase(ProofProblem.Stale)]
+    [TestCase(ProofProblem.WrongPurpose)]
     public async Task InvalidProofFailsBeforeAuthorizationOrMutation(ProofProblem problem)
     {
         var request = CreateRequest(problem);
@@ -283,7 +284,8 @@ internal sealed class AccountSecurityAdministrationServiceTests
             problem == ProofProblem.WrongTenant ? Guid.NewGuid() : _tenant.TenantId,
             _sessionId,
             _time.GetUtcNow().AddMinutes(-1),
-            problem == ProofProblem.Stale ? _time.GetUtcNow() : _time.GetUtcNow().AddMinutes(5));
+            problem == ProofProblem.Stale ? _time.GetUtcNow() : _time.GetUtcNow().AddMinutes(5),
+            problem == ProofProblem.WrongPurpose ? AuthenticationSessionService.SelfServiceProofPurpose : AccountSecurityAdministrationService.ProofPurpose);
         return new AccountSecurityAdministrationRequest(
             _targetId,
             new AccountSecurityActorContext(_actorId, _tenant,
@@ -307,7 +309,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
             ExpiresAt = now.AddHours(1)
         };
         return new StepUpAuthenticationService(_time)
-            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(5))).Value!;
+            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(5), Purpose: AccountSecurityAdministrationService.ProofPurpose)).Value!;
     }
 
     private static AccountSecurityActorContext ToActor(AccountSecurityAdministrationRequest request) =>
@@ -319,7 +321,8 @@ internal sealed class AccountSecurityAdministrationServiceTests
         MissingSession,
         WrongActor,
         WrongTenant,
-        Stale
+        Stale,
+        WrongPurpose
     }
 
     private sealed class FakeExecutor : IAccountSecurityMutationExecutor

@@ -10,6 +10,7 @@ namespace Ashlar.Identity.Features.Mfa;
 
 internal sealed class TotpService : ITotpService
 {
+    internal const string ProofPurpose = "totp-management";
     private const string EmptyActorUserIdMessage = "Actor user ID cannot be empty.";
 
     private readonly IUserRepository _userRepository;
@@ -313,7 +314,7 @@ internal sealed class TotpService : ITotpService
         string eventType,
         CancellationToken cancellationToken)
     {
-        var failure = FreshVerificationProofValidator.ValidateMfaProof(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow());
+        var failure = FreshVerificationProofValidator.ValidateMfaProof(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow(), ProofPurpose);
         if (failure == null)
         {
             return Result.Success();
@@ -394,7 +395,7 @@ internal sealed class TotpService : ITotpService
         string eventType,
         CancellationToken cancellationToken)
     {
-        var failure = FreshVerificationProofValidator.ValidatePrimaryAuthenticationProof(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow());
+        var failure = FreshVerificationProofValidator.ValidatePrimaryAuthenticationProof(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow(), ProofPurpose);
         if (failure == null)
         {
             return Result.Success();

@@ -18,7 +18,7 @@ internal sealed record AdminSetUserAccountStateRequest(UserAccountState AccountS
 internal static partial class AdminEndpoints
 {
     private const string AdminPolicy = "admin";
-    private static readonly StepUpRequirement AdminSecurityRequirement = new(TimeSpan.FromMinutes(5));
+    private static readonly StepUpRequirement AdminSecurityRequirement = new(TimeSpan.FromMinutes(5), Purpose: "account-security-administration");
 
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app)
     {

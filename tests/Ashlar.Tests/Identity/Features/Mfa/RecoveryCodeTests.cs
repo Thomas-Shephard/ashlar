@@ -423,6 +423,8 @@ internal sealed class RecoveryCodeTests
             settings: new RecoveryCodeGenerationSettings(CodeCount: 1));
 
         var proofFailure = await service.GenerateRecoveryCodesAsync(mismatch);
+        var purposeFailure = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(actorId,
+            new FreshMfaVerificationProof(actorId, null, Guid.NewGuid(), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), "totp-management")));
         var auditFailure = await service.GenerateRecoveryCodesAsync(missingAuditActor);
         var denied = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(actorId, validProof,
             includeAllTenants: true));
@@ -430,6 +432,7 @@ internal sealed class RecoveryCodeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(proofFailure.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            Assert.That(purposeFailure.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
             Assert.That(auditFailure.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(denied.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(events.Events.Count(e => e.Outcome == SecurityEventOutcomes.Failure && e.TenantId == null &&
@@ -1158,7 +1161,7 @@ internal sealed class RecoveryCodeTests
     private static FreshMfaVerificationProof CreateProof(Guid userId, TenantContext? tenant = null, DateTimeOffset? expiresAt = null)
     {
         var verifiedAt = DateTimeOffset.UtcNow;
-        return new FreshMfaVerificationProof(userId, tenant?.TenantId, Guid.NewGuid(), verifiedAt, expiresAt ?? verifiedAt.AddMinutes(10));
+        return new FreshMfaVerificationProof(userId, tenant?.TenantId, Guid.NewGuid(), verifiedAt, expiresAt ?? verifiedAt.AddMinutes(10), RecoveryCodeService.ProofPurpose);
     }
 
     private sealed class DefaultResolveCredentialProvider : IAuthenticationProvider
