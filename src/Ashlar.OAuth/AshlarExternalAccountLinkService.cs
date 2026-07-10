@@ -25,17 +25,20 @@ public sealed class AshlarExternalAccountLinkService
     private readonly IAccountSecurityAdministrationService _accountSecurityAdministration;
     private readonly IUserRepository _repository;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _options;
+    private readonly TimeProvider _timeProvider;
 
     internal AshlarExternalAccountLinkService(
         IExternalAccountCredentialLinker credentialLinker,
         IAccountSecurityAdministrationService accountSecurityAdministration,
         IUserRepository repository,
-        IOptionsMonitor<AshlarOAuthOptions> options)
+        IOptionsMonitor<AshlarOAuthOptions> options,
+        TimeProvider timeProvider)
     {
         _credentialLinker = credentialLinker ?? throw new ArgumentNullException(nameof(credentialLinker));
         _accountSecurityAdministration = accountSecurityAdministration ?? throw new ArgumentNullException(nameof(accountSecurityAdministration));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     }
 
     /// <summary>
@@ -153,13 +156,13 @@ public sealed class AshlarExternalAccountLinkService
             cancellationToken);
     }
 
-    private static AshlarFailureCode? ValidateFreshLinkProof(
+    private AshlarFailureCode? ValidateFreshLinkProof(
         Guid currentUserId,
         FreshMfaVerificationProof? freshMfaProof,
         Guid? currentSessionId,
         TenantContext tenant)
     {
-        return FreshVerificationProofValidator.ValidateMfaProof(currentUserId, tenant, freshMfaProof, currentSessionId, TimeProvider.System.GetUtcNow(), LinkPurpose);
+        return FreshVerificationProofValidator.ValidateMfaProof(currentUserId, tenant, freshMfaProof, currentSessionId, _timeProvider.GetUtcNow(), LinkPurpose);
     }
 
     private async Task<AshlarExternalAccountLinkResult> LinkValidatedExternalAccountCoreAsync(
@@ -255,7 +258,7 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
         }
 
-        if (FreshVerificationProofValidator.ValidateMfaProof(currentUserId, request.Tenant, freshMfaProof, currentSessionId, TimeProvider.System.GetUtcNow(), UnlinkPurpose) != null)
+        if (FreshVerificationProofValidator.ValidateMfaProof(currentUserId, request.Tenant, freshMfaProof, currentSessionId, _timeProvider.GetUtcNow(), UnlinkPurpose) != null)
         {
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
         }

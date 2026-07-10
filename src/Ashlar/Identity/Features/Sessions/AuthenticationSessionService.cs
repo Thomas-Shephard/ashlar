@@ -774,21 +774,13 @@ internal sealed class AuthenticationSessionService(
         }, cancellationToken);
     }
 
-    private static AuthenticationContext? ToNotificationContext(AuditContext audit, TenantContext? tenant = null)
-    {
-        Guid? tenantId = null;
-        if (tenant != null)
-        {
-            tenantId = tenant.TenantId;
-        }
-
-        return new AuthenticationContext(
+    private static AuthenticationContext ToNotificationContext(AuditContext audit, TenantContext? tenant = null) =>
+        new(
             UserId: audit.ActorUserId,
-            TenantId: tenantId,
+            TenantId: tenant?.TenantId,
             IpAddress: audit.IpAddress,
             UserAgent: audit.UserAgent,
             CorrelationId: audit.CorrelationId);
-    }
 
     private static Dictionary<string, string> CreateRevocationScopeProperties(TenantContext? tenant, bool includeAllTenants)
     {

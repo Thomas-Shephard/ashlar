@@ -13,6 +13,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 7, 9, 12, 0, 0, TimeSpan.Zero));
     private FakeExecutor _executor = null!;
     private Mock<IAccountSecurityOperationAuthorizer> _authorizer = null!;
+    private RecordingSecurityEventSink _events = null!;
     private AccountSecurityAdministrationService _service = null!;
 
     [SetUp]
@@ -20,7 +21,8 @@ internal sealed class AccountSecurityAdministrationServiceTests
     {
         _executor = new FakeExecutor();
         _authorizer = new Mock<IAccountSecurityOperationAuthorizer>(MockBehavior.Strict);
-        _service = new AccountSecurityAdministrationService(_executor, _authorizer.Object, _time);
+        _events = new RecordingSecurityEventSink();
+        _service = new AccountSecurityAdministrationService(_executor, _authorizer.Object, _time, _events);
     }
 
     [Test]
@@ -30,9 +32,13 @@ internal sealed class AccountSecurityAdministrationServiceTests
 
         var result = await _service.RevokeSessionsAsync(request);
 
-        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
         _authorizer.VerifyNoOtherCalls();
-        Assert.That(_executor.CallCount, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(_executor.CallCount, Is.Zero);
+            Assert.That(_events.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.SessionsRevokedForUser));
+        }
     }
 
     [Test]
@@ -87,6 +93,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(_executor.CallCount, Is.Zero);
+            Assert.That(_events.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.UserMfaReset));
         });
         _authorizer.Verify(x => x.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -363,6 +370,17 @@ internal sealed class AccountSecurityAdministrationServiceTests
             UserId = userId;
             Request = request;
             Operation = operation;
+        }
+    }
+
+    private sealed class RecordingSecurityEventSink : ISecurityEventSink
+    {
+        public List<AshlarSecurityEvent> Events { get; } = [];
+
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            Events.Add(securityEvent);
+            return Task.CompletedTask;
         }
     }
 }

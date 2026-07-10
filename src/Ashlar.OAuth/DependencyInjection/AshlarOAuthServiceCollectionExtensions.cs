@@ -47,7 +47,8 @@ public static class AshlarOAuthServiceCollectionExtensions
             provider.GetRequiredService<IExternalAccountCredentialLinker>(),
             provider.GetRequiredService<IAccountSecurityAdministrationService>(),
             provider.GetRequiredService<IUserRepository>(),
-            provider.GetRequiredService<global::Microsoft.Extensions.Options.IOptionsMonitor<AshlarOAuthOptions>>()));
+            provider.GetRequiredService<global::Microsoft.Extensions.Options.IOptionsMonitor<AshlarOAuthOptions>>(),
+            provider.GetService<TimeProvider>() ?? TimeProvider.System));
         services.TryAddScoped(provider => new AshlarOidcInvitationRegistrationService(
             provider.GetRequiredService<IInvitationService>(),
             provider.GetRequiredService<ICredentialRepository>(),

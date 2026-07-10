@@ -36,10 +36,11 @@ internal sealed class AshlarExternalAccountLinkServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(null!, accountSecurityAdministration, repository, options));
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, null!, repository, options));
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, accountSecurityAdministration, null!, options));
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, accountSecurityAdministration, repository, null!));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(null!, accountSecurityAdministration, repository, options, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, null!, repository, options, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, accountSecurityAdministration, null!, options, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, accountSecurityAdministration, repository, null!, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, accountSecurityAdministration, repository, options, null!));
         }
     }
 
@@ -994,6 +995,26 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
+    public async Task UnlinkExternalAccountShouldUseConfiguredClockForFreshProof()
+    {
+        var now = new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var timeProvider = new FixedTimeProvider(now);
+        var userId = Guid.NewGuid();
+        var tenant = new TenantContext(Guid.NewGuid());
+        var sessionId = Guid.NewGuid();
+        var accountSecurity = CreateAccountSecurityService(revokeResult:
+            Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
+        var service = CreateService(accountSecurityService: accountSecurity.Object,
+            repository: new StubRepository(new TenantUser(userId, tenant.TenantId)), timeProvider: timeProvider);
+
+        var result = await service.UnlinkExternalAccountAsync(userId, "Google",
+            ExternalAccountLinkServiceTestExtensions.CreateProof(userId, tenant, sessionId, "external-account-unlinking", now), sessionId,
+            CreateRequest(tenant, userId));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Unlinked));
+    }
+
+    [Test]
     public async Task UnlinkExternalAccountShouldRejectAuditActorMismatch()
     {
         var service = CreateService();
@@ -1300,7 +1321,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         IAccountSecurityService? accountSecurityService = null,
         IUserRepository? repository = null,
         bool includeGitHub = false,
-        Action<AshlarOAuthOptions>? configureOptions = null)
+        Action<AshlarOAuthOptions>? configureOptions = null,
+        TimeProvider? timeProvider = null)
     {
         var options = new AshlarOAuthOptions();
         options.AddGoogle();
@@ -1320,7 +1342,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             credentialService,
             accountSecurityService as IAccountSecurityAdministrationService ?? CreateAccountSecurityService().Object,
             repository ?? new StubRepository(returnAnyGlobalUser: true),
-            new TestOptionsMonitor(options));
+            new TestOptionsMonitor(options),
+            timeProvider ?? TimeProvider.System);
     }
 
     private static AshlarExternalAccountLinkService CreateServiceWithProvider(AshlarOidcProviderOptions provider)
@@ -1335,7 +1358,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             Mock.Of<IExternalAccountCredentialLinker>(),
             CreateAccountSecurityService().Object,
             new StubRepository(),
-            new TestOptionsMonitor(options));
+            new TestOptionsMonitor(options),
+            TimeProvider.System);
     }
 
     private static Mock<ITestAccountSecurityService> CreateAccountSecurityService(
@@ -1575,4 +1599,10 @@ internal static class ExternalAccountLinkServiceTestExtensions
             args: [userId, (tenant ?? TenantContext.Global).TenantId, sessionId, resolvedVerifiedAt, resolvedVerifiedAt.Add(resolvedFreshnessWindow), purpose],
             culture: null)!;
     }
+
+}
+
+internal sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+{
+    public override DateTimeOffset GetUtcNow() => utcNow;
 }

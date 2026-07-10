@@ -1,51 +1,76 @@
+using Ashlar.Auditing;
+
 namespace Ashlar.Identity.Features.AccountSecurity;
 
 internal sealed class AccountSecurityAdministrationService(
     IAccountSecurityMutationExecutor executor,
     IAccountSecurityOperationAuthorizer authorizer,
-    TimeProvider timeProvider) : IAccountSecurityAdministrationService
+    TimeProvider timeProvider,
+    ISecurityEventSink? securityEventSink) : IAccountSecurityAdministrationService
 {
     private readonly TimeProvider _timeProvider = timeProvider;
+    private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider);
 
     public Task<Result<AccountSecurityOperationResult>> SetUserAccountStateAsync(SetUserAccountStateAdministrationRequest request, CancellationToken cancellationToken = default) =>
-        ExecuteAsync(request, AccountSecurityOperation.SetAccountState, () => executor.SetUserAccountStateAsync(request.TargetUserId,
+        ExecuteAsync(request, AccountSecurityOperation.SetAccountState, AshlarSecurityEventTypes.UserAccountStateChanged, () => executor.SetUserAccountStateAsync(request.TargetUserId,
             new SetUserAccountStateRequest(request.AccountState, request.Audit,
                 request.Tenant, request.Reason, request.RevokeSessionsAndRememberedMfaDevices, request.IncludeAllTenants), cancellationToken), cancellationToken);
 
     public Task<Result<AccountSecurityOperationResult>> RevokeSessionsAsync(AccountSecurityAdministrationRequest request, CancellationToken cancellationToken = default) =>
-        ExecuteAsync(request, AccountSecurityOperation.RevokeSessions, () => executor.RevokeSessionsAsync(request.TargetUserId, ToExecutorRequest(request), cancellationToken), cancellationToken);
+        ExecuteAsync(request, AccountSecurityOperation.RevokeSessions, AshlarSecurityEventTypes.SessionsRevokedForUser, () => executor.RevokeSessionsAsync(request.TargetUserId, ToExecutorRequest(request), cancellationToken), cancellationToken);
 
     public Task<Result<AccountSecurityOperationResult>> RevokeCredentialsAsync(RevokeAccountCredentialsRequest request, CancellationToken cancellationToken = default) =>
-        ExecuteAsync(request, AccountSecurityOperation.RevokeCredentials, () => executor.RevokeCredentialsAsync(request.TargetUserId, request.Provider, ToExecutorRequest(request), cancellationToken), cancellationToken);
+        ExecuteAsync(request, AccountSecurityOperation.RevokeCredentials, AshlarSecurityEventTypes.UserCredentialsRevoked, () => executor.RevokeCredentialsAsync(request.TargetUserId, request.Provider, ToExecutorRequest(request), cancellationToken), cancellationToken);
 
     public Task<Result<AccountSecurityOperationResult>> ResetMfaAsync(AccountSecurityAdministrationRequest request, CancellationToken cancellationToken = default) =>
-        ExecuteAsync(request, AccountSecurityOperation.ResetMfa, () => executor.ResetMfaAsync(request.TargetUserId, ToExecutorRequest(request), cancellationToken), cancellationToken);
+        ExecuteAsync(request, AccountSecurityOperation.ResetMfa, AshlarSecurityEventTypes.UserMfaReset, () => executor.ResetMfaAsync(request.TargetUserId, ToExecutorRequest(request), cancellationToken), cancellationToken);
 
     public Task<Result<AccountSecurityOperationResult>> RevokeRememberedMfaDeviceAsync(RevokeRememberedMfaDeviceAdministrationRequest request, CancellationToken cancellationToken = default) =>
-        ExecuteAsync(request, AccountSecurityOperation.RevokeRememberedMfaDevice,
+        ExecuteAsync(request, AccountSecurityOperation.RevokeRememberedMfaDevice, AshlarSecurityEventTypes.RememberedMfaDeviceRevoked,
             () => executor.RevokeRememberedMfaDeviceAsync(request.TargetUserId, request.DeviceId, ToExecutorRequest(request), cancellationToken), cancellationToken);
 
     public Task<Result<AccountSecurityOperationResult>> RevokeRememberedMfaDevicesAsync(AccountSecurityAdministrationRequest request, CancellationToken cancellationToken = default) =>
-        ExecuteAsync(request, AccountSecurityOperation.RevokeRememberedMfaDevices,
+        ExecuteAsync(request, AccountSecurityOperation.RevokeRememberedMfaDevices, AshlarSecurityEventTypes.RememberedMfaDevicesRevoked,
             () => executor.RevokeRememberedMfaDevicesAsync(request.TargetUserId, ToExecutorRequest(request), cancellationToken), cancellationToken);
 
-    private async Task<Result<AccountSecurityOperationResult>> ExecuteAsync(AccountSecurityAdministrationRequest request, AccountSecurityOperation operation,
+    private async Task<Result<AccountSecurityOperationResult>> ExecuteAsync(AccountSecurityAdministrationRequest request, AccountSecurityOperation operation, string eventType,
         Func<Task<Result<AccountSecurityOperationResult>>> execute, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.Audit.ActorUserId != request.ActorUserId)
-            return Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.ValidationError, "Audit actor must match the authenticated actor.");
+            return await RejectAsync(request, eventType, AshlarFailureCodes.ValidationError,
+                "Audit actor must match the authenticated actor.", cancellationToken);
 
         var proofFailure = FreshVerificationProofValidator.ValidateMfaProof(request.ActorUserId, request.ActorTenant, request.FreshMfaProof,
             request.CurrentSessionId, _timeProvider.GetUtcNow());
         if (proofFailure is { } failure)
-            return Result.Failure<AccountSecurityOperationResult>(failure);
+            return await RejectAsync(request, eventType, failure, cancellationToken: cancellationToken);
 
         var authorized = await authorizer.AuthorizeAsync(CreateAuthorizationContext(request, operation), cancellationToken);
         if (!authorized)
-            return Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.ValidationError, "Account-security operation was not authorized.");
+            return await RejectAsync(request, eventType, AshlarFailureCodes.ValidationError,
+                "Account-security operation was not authorized.", cancellationToken);
 
         return await execute();
+    }
+
+    private async Task<Result<AccountSecurityOperationResult>> RejectAsync(
+        AccountSecurityAdministrationRequest request,
+        string eventType,
+        AshlarFailureCode failure,
+        string? message = null,
+        CancellationToken cancellationToken = default)
+    {
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = eventType,
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = request.TargetUserId,
+            TenantId = request.Tenant?.TenantId,
+            Audit = request.Audit,
+            FailureReason = failure.Value
+        }, cancellationToken);
+        return Result.Failure<AccountSecurityOperationResult>(failure, message);
     }
 
     private static AccountSecurityOperationRequest ToExecutorRequest(AccountSecurityAdministrationRequest request) =>
