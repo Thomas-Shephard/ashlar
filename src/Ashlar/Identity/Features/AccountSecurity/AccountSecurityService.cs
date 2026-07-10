@@ -239,7 +239,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         request = RequireAudit(request);
 
         var userResult = await GetUserForMutationAsync(userId, request, cancellationToken);
-        if (!userResult.TryGetValue(out var user))
+        if (!userResult.TryGetValue(out _))
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
             await RecordFailureAsync(
@@ -251,7 +251,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         await _credentialRepository.AcquireUserMutationLockAsync(userId, cancellationToken);
         var lockedUserResult = await GetUserForMutationAsync(userId, request, cancellationToken);
-        if (!lockedUserResult.TryGetValue(out user))
+        if (!lockedUserResult.TryGetValue(out var user))
         {
             var failure = lockedUserResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
             await RecordFailureAsync(new AccountSecurityFailureEvent(

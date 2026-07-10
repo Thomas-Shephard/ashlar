@@ -36,7 +36,7 @@ public sealed class AshlarSignInManager(
         var existingSession = await GetExistingSessionContextAsync(httpContext, authenticationOptions, cancellationToken);
         if (existingSession != null)
         {
-            await RevokeCurrentSessionAsync(httpContext, existingSession, "session-replaced", cancellationToken);
+            await RevokeCurrentSessionAsync(httpContext, "session-replaced", cancellationToken);
         }
 
         var sessionRequest = request ?? CreateRequestFromHttpContext(httpContext);
@@ -61,7 +61,7 @@ public sealed class AshlarSignInManager(
 
         if (session != null)
         {
-            await RevokeCurrentSessionAsync(httpContext, session, reason ?? "signed-out", cancellationToken);
+            await RevokeCurrentSessionAsync(httpContext, reason ?? "signed-out", cancellationToken);
         }
 
         httpContext.Response.Cookies.Delete(authenticationOptions.CookieName, authenticationOptions.Cookie.Build(httpContext));
@@ -154,7 +154,6 @@ public sealed class AshlarSignInManager(
 
     private Task<bool> RevokeCurrentSessionAsync(
         HttpContext httpContext,
-        CurrentSessionContext session,
         string reason,
         CancellationToken cancellationToken)
     {

@@ -108,7 +108,7 @@ internal sealed class TotpService : ITotpService
         }
 
         var userResult = await ValidateUserTenantAsync(request.ActorUserId, tenant, request.Audit, AshlarSecurityEventTypes.TotpEnrollmentCompleted, throwOnFailure: false, cancellationToken);
-        if (!userResult.TryGetValue(out var user))
+        if (!userResult.TryGetValue(out _))
         {
             return ToEnrollmentFailureResult(userResult);
         }
@@ -119,7 +119,7 @@ internal sealed class TotpService : ITotpService
             await _credentialRepository.AcquireUserMutationLockAsync(request.ActorUserId, cancellationToken);
             var lockedUserResult = await ValidateUserTenantAsync(request.ActorUserId, tenant, request.Audit,
                 AshlarSecurityEventTypes.TotpEnrollmentCompleted, throwOnFailure: false, cancellationToken);
-            if (!lockedUserResult.TryGetValue(out user))
+            if (!lockedUserResult.TryGetValue(out var user))
             {
                 completionResult = ToEnrollmentFailureResult(lockedUserResult);
             }

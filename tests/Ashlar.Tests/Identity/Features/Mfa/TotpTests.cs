@@ -930,13 +930,13 @@ internal sealed class TotpTests
             CurrentSessionId = proof.SessionId
         });
         var shortSecret = Base32.Encode(new byte[15]);
-        var invalidCode = await service.CompleteEnrollmentAsync(new VerifyTotpEnrollmentRequest(actor, shortSecret, "123456")
+        _ = await service.CompleteEnrollmentAsync(new VerifyTotpEnrollmentRequest(actor, shortSecret, "123456")
         {
             FreshPrimaryAuthenticationProof = proof,
             CurrentSessionId = proof.SessionId
         });
         var secret = Base32.Encode(new byte[20]);
-        invalidCode = await service.CompleteEnrollmentAsync(new VerifyTotpEnrollmentRequest(actor, secret, "999999")
+        var invalidCode = await service.CompleteEnrollmentAsync(new VerifyTotpEnrollmentRequest(actor, secret, "999999")
         {
             FreshPrimaryAuthenticationProof = proof,
             CurrentSessionId = proof.SessionId

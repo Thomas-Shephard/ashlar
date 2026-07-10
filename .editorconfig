@@ -24,6 +24,10 @@ indent_size = 2
 dotnet_diagnostic.IDE0055.severity = warning
 # unnecessary usings
 dotnet_diagnostic.IDE0005.severity = warning
+# unnecessary assignments
+dotnet_diagnostic.IDE0059.severity = warning
+# unused parameters
+dotnet_diagnostic.IDE0060.severity = warning
 # namespace matches folder
 dotnet_diagnostic.IDE0130.severity = warning
 # prefer Assert.EnterMultipleScope

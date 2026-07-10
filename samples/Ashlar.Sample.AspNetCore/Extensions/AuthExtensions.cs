@@ -108,14 +108,14 @@ internal static class HttpContextExtensions
 
             if (!result.Succeeded)
             {
-                await CleanupUnverifiedSessionAsync(httpContext, signInManager, sessionService, authenticationResult, session, cancellationToken);
+                await CleanupUnverifiedSessionAsync(httpContext, signInManager, sessionService, session, cancellationToken);
             }
 
             return result;
         }
         catch
         {
-            await CleanupUnverifiedSessionAsync(httpContext, signInManager, sessionService, authenticationResult, session, cancellationToken);
+            await CleanupUnverifiedSessionAsync(httpContext, signInManager, sessionService, session, cancellationToken);
             throw;
         }
     }
@@ -124,7 +124,6 @@ internal static class HttpContextExtensions
         HttpContext httpContext,
         IAshlarSignInManager signInManager,
         IAuthenticationSessionService sessionService,
-        MfaAuthenticationResult authenticationResult,
         CreatedAuthenticationSession session,
         CancellationToken cancellationToken)
     {
