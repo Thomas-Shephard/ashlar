@@ -28,31 +28,7 @@ internal static partial class AdminEndpoints
 
     private static void MapAdminUserEndpoints(IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/admin/users", async (
-            IAuthorizationEvaluator auth,
-            NpgsqlDataSource dataSource,
-            HttpContext httpContext,
-            CancellationToken cancellationToken) =>
-        {
-            var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
-            if (tenant == null)
-            {
-                return Results.Forbid();
-            }
-
-            await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-            var command = tenant.TenantId.HasValue
-                ? new CommandDefinition(
-                    "SELECT id, display_email AS displayEmail, name FROM ashlar_users WHERE tenant_id = @TenantId ORDER BY display_email, id LIMIT 100",
-                    new { tenant.TenantId },
-                    cancellationToken: cancellationToken)
-                : new CommandDefinition(
-                    "SELECT id, display_email AS displayEmail, name FROM ashlar_users WHERE tenant_id IS NULL ORDER BY display_email, id LIMIT 100",
-                    cancellationToken: cancellationToken);
-            var users = await connection.QueryAsync(command);
-
-            return Results.Ok(users);
-        }).RequireAuthorization();
+        app.MapGet("/api/admin/users", ListAdminUsersAsync).RequireAuthorization();
 
         app.MapGet("/api/admin/users/{userId:guid}/security", async (
             Guid userId,
@@ -152,6 +128,32 @@ internal static partial class AdminEndpoints
                 ? Results.Forbid()
                 : ToAdminSecurityResult(await accountSecurity.ResetMfaAsync(adminRequest, cancellationToken));
         }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
+    }
+
+    private static async Task<IResult> ListAdminUsersAsync(
+        IAuthorizationEvaluator auth,
+        NpgsqlDataSource dataSource,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
+        if (tenant == null)
+        {
+            return Results.Forbid();
+        }
+
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        var command = tenant.TenantId.HasValue
+            ? new CommandDefinition(
+                "SELECT id, display_email AS displayEmail, name FROM ashlar_users WHERE tenant_id = @TenantId ORDER BY display_email, id LIMIT 100",
+                new { tenant.TenantId },
+                cancellationToken: cancellationToken)
+            : new CommandDefinition(
+                "SELECT id, display_email AS displayEmail, name FROM ashlar_users WHERE tenant_id IS NULL ORDER BY display_email, id LIMIT 100",
+                cancellationToken: cancellationToken);
+        var users = await connection.QueryAsync(command);
+
+        return Results.Ok(users);
     }
 
     private static void MapAdminProjectEndpoints(IEndpointRouteBuilder app)
