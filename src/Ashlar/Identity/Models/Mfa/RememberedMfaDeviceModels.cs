@@ -76,32 +76,32 @@ public sealed record ListRememberedMfaDevicesRequest
     public bool ActiveOnly { get; init; } = true;
 }
 
-/// <summary>
-/// Request to revoke one remembered MFA device.
-/// </summary>
-/// <param name="DeviceId">Public identifier returned by remembered-device management APIs.</param>
-public sealed record RevokeRememberedMfaDeviceRequest(Guid DeviceId)
+/// <summary>Capability-bound request to revoke the authenticated owner's current remembered MFA device.</summary>
+/// <param name="ActorUserId">Authenticated owner of the remembered device.</param>
+/// <param name="Token">Raw remembered-device token presented by the client. Do not log or persist it.</param>
+/// <param name="Tenant">Explicit tenant or global scope.</param>
+/// <param name="Audit">Required audit metadata whose actor matches <paramref name="ActorUserId" />.</param>
+/// <param name="Reason">Optional display-safe revocation reason.</param>
+public sealed record RevokeCurrentRememberedMfaDeviceRequest(
+    Guid ActorUserId,
+    string Token,
+    TenantContext Tenant,
+    AuditContext Audit,
+    string? Reason = null);
+
+internal sealed record RevokeRememberedMfaDeviceRequest(Guid DeviceId)
 {
-    /// <summary>Tenant scope. Omit or use <see cref="TenantContext.Global" /> for global users; this API does not use <see langword="null" /> as an all-tenant scope.</summary>
     public TenantContext? Tenant { get; init; }
-    /// <summary>Optional provider-neutral, display-safe reason recorded with audit events. Do not include secrets, tokens, or credentials.</summary>
+    public bool IncludeAllTenants { get; init; }
     public string? Reason { get; init; }
-    /// <summary>Audit metadata recorded with the remembered-device operation.</summary>
     public AuditContext? Audit { get; init; }
 }
 
-/// <summary>
-/// Request to revoke all remembered MFA devices for a user.
-/// </summary>
-public sealed record RevokeAllRememberedMfaDevicesRequest
+internal sealed record RevokeAllRememberedMfaDevicesRequest
 {
-    /// <summary>Tenant scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <see cref="IncludeAllTenants" /> is enabled.</summary>
     public TenantContext? Tenant { get; init; }
-    /// <summary>Whether revocation should apply across all tenant scopes. Cannot be combined with <see cref="Tenant" />.</summary>
     public bool IncludeAllTenants { get; init; }
-    /// <summary>Optional provider-neutral, display-safe reason recorded with audit events. Do not include secrets, tokens, or credentials.</summary>
     public string? Reason { get; init; }
-    /// <summary>Audit metadata recorded with the remembered-device operation.</summary>
     public AuditContext? Audit { get; init; }
 }
 

@@ -7,7 +7,7 @@ internal sealed class SampleAccountSecurityGuard(NpgsqlDataSource dataSource) : 
 {
     internal const string LastAdminCannotBeChangedToNonSignInStateCode = "last_admin_cannot_be_changed_to_non_sign_in_state";
 
-    public async Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityGuardContext request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(request);

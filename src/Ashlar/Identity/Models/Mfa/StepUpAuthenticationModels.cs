@@ -48,7 +48,8 @@ public sealed record StepUpEvaluationResult(bool Succeeded, AshlarFailureCode? F
 /// <remarks>
 /// Hosts obtain this proof from <see cref="Ashlar.Identity.Abstractions.Services.IStepUpAuthenticationService.CreateFreshMfaProof" />
 /// after Ashlar has validated the current session. The type has no public constructor so normal request JSON cannot mint proof.
-/// It is valid only for self-service mutations on the same user and tenant-bound session.
+/// It proves recent MFA by the user that owns the tenant-bound session. Services must separately authorize
+/// whether that actor may mutate their own account or a different target account.
 /// </remarks>
 public sealed class FreshMfaVerificationProof
 {

@@ -35,7 +35,7 @@ internal static class HttpContextExtensions
     {
         userId = Guid.Empty;
         sessionId = Guid.Empty;
-        tenant = null;
+        tenant = TenantContext.Global;
 
         if (TryGetAshlarUserId(httpContext.User) is not { } resolvedUserId)
         {
@@ -108,14 +108,14 @@ internal static class HttpContextExtensions
 
             if (!result.Succeeded)
             {
-                await CleanupUnverifiedSessionAsync(httpContext, signInManager, sessionService, authenticationResult.User.Id, session, cancellationToken);
+                await CleanupUnverifiedSessionAsync(httpContext, signInManager, sessionService, authenticationResult, session, cancellationToken);
             }
 
             return result;
         }
         catch
         {
-            await CleanupUnverifiedSessionAsync(httpContext, signInManager, sessionService, authenticationResult.User.Id, session, cancellationToken);
+            await CleanupUnverifiedSessionAsync(httpContext, signInManager, sessionService, authenticationResult, session, cancellationToken);
             throw;
         }
     }
@@ -124,22 +124,15 @@ internal static class HttpContextExtensions
         HttpContext httpContext,
         IAshlarSignInManager signInManager,
         IAuthenticationSessionService sessionService,
-        Guid userId,
+        MfaAuthenticationResult authenticationResult,
         CreatedAuthenticationSession session,
         CancellationToken cancellationToken)
     {
         Exception? revocationException = null;
         try
         {
-            await sessionService.RevokeSessionForUserAsync(
-                userId,
-                new RevokeAuthenticationSessionRequest
-                {
-                    SessionId = session.Id,
-                    Reason = "step-up-verification-mark-failed",
-                    Tenant = session.TenantId is null ? TenantContext.Global : new TenantContext(session.TenantId),
-                    Audit = httpContext.ToAuditContext()
-                },
+            await sessionService.RevokeIssuedSessionAsync(
+                new RevokeIssuedAuthenticationSessionRequest(session, httpContext.ToAuditContext(), "step-up-verification-mark-failed"),
                 cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

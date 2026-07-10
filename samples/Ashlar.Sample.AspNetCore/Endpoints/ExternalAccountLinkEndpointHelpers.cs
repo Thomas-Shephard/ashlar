@@ -65,7 +65,7 @@ internal static class ExternalAccountLinkEndpointHelpers
             providerName,
             proof.Value,
             sessionId,
-            new AccountSecurityOperationRequest(httpContext.ToAuditContext(), httpContext.ToTenantContext(), auditReason),
+            new AshlarExternalAccountUnlinkRequest(httpContext.ToAuditContext(), httpContext.ToTenantContext(), auditReason),
             cancellationToken);
 
         return result.Status switch

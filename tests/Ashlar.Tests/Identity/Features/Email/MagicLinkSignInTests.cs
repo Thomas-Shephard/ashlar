@@ -971,6 +971,8 @@ internal sealed class MagicLinkSignInTests
 
     private sealed class InMemoryUserCredentialStore(params User?[] users) : IUserRepository, ICredentialRepository
     {
+        public Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
         private readonly List<User> _users = users.OfType<User>().ToList();
         public List<UserCredential> Credentials { get; } = [];
         public int GetUserByEmailCalls { get; private set; }

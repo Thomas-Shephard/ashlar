@@ -39,21 +39,9 @@ public interface IRememberedMfaDeviceService
     /// <returns>Safe remembered device summaries.</returns>
     Task<IReadOnlyList<RememberedMfaDeviceSummary>> ListAsync(Guid userId, ListRememberedMfaDevicesRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Revokes a single remembered MFA device owned by a user and records a security event for the attempt.
-    /// </summary>
-    /// <param name="userId">User that must own the remembered device.</param>
-    /// <param name="request">Device identifier, tenant scope, display-safe revocation reason, and audit context.</param>
-    /// <param name="cancellationToken">A token that can cancel device revocation.</param>
-    /// <returns><see langword="true" /> when a device was revoked.</returns>
-    Task<bool> RevokeAsync(Guid userId, RevokeRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Revokes all remembered MFA devices for a user and records a security event for the attempt.
-    /// </summary>
-    /// <param name="userId">User whose remembered devices should be revoked.</param>
-    /// <param name="request">Tenant scope, all-tenant flag, display-safe revocation reason, and audit context.</param>
-    /// <param name="cancellationToken">A token that can cancel bulk device revocation.</param>
-    /// <returns>The number of revoked devices.</returns>
-    Task<int> RevokeAllAsync(Guid userId, RevokeAllRememberedMfaDevicesRequest request, CancellationToken cancellationToken = default);
+    /// <summary>Revokes the remembered device identified by its bearer token for the authenticated owner.</summary>
+    /// <param name="request">The capability-bound owner, scope, token, reason, and audit context.</param>
+    /// <param name="cancellationToken">A token that can cancel revocation.</param>
+    /// <returns><see langword="true" /> when the current remembered device was revoked.</returns>
+    Task<bool> RevokeCurrentAsync(RevokeCurrentRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default);
 }

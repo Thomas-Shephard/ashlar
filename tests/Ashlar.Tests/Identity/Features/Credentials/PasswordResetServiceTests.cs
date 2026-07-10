@@ -244,11 +244,8 @@ internal sealed class PasswordResetServiceTests
     {
         var tenantId = Guid.NewGuid();
         var user = CreateUser(tenantId: tenantId);
-        var rememberedDevices = new Mock<IRememberedMfaDeviceService>();
-        rememberedDevices
-            .Setup(s => s.RevokeAllAsync(user.Id, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(2);
-        var fixture = CreateFixture(user, configure: options => options.RevokeSessions = false, rememberedMfaDeviceService: rememberedDevices.Object);
+        var rememberedDevices = new TestRememberedMfaDeviceMutationExecutor { RevokeAllResult = 2 };
+        var fixture = CreateFixture(user, configure: options => options.RevokeSessions = false, rememberedMfaDeviceService: rememberedDevices);
         var context = new AuthenticationContext(TenantId: tenantId, IpAddress: "203.0.113.10", UserAgent: "unit-test", CorrelationId: "corr");
         await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"), context);
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
@@ -261,15 +258,15 @@ internal sealed class PasswordResetServiceTests
             Assert.That(fixture.Sessions.RevokeAllCount, Is.Zero);
         }
 
-        rememberedDevices.Verify(s => s.RevokeAllAsync(user.Id, It.Is<RevokeAllRememberedMfaDevicesRequest>(r =>
-            r.Tenant != null &&
-            r.Tenant.TenantId == tenantId &&
-            r.Reason == "Password reset" &&
-            r.Audit != null &&
-            r.Audit.ActorUserId == user.Id &&
-            r.Audit.IpAddress == "203.0.113.10" &&
-            r.Audit.UserAgent == "unit-test" &&
-            r.Audit.CorrelationId == "corr"), It.IsAny<CancellationToken>()), Times.Once);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rememberedDevices.LastRequest?.Tenant?.TenantId, Is.EqualTo(tenantId));
+            Assert.That(rememberedDevices.LastRequest?.Reason, Is.EqualTo("Password reset"));
+            Assert.That(rememberedDevices.LastRequest?.Audit?.ActorUserId, Is.EqualTo(user.Id));
+            Assert.That(rememberedDevices.LastRequest?.Audit?.IpAddress, Is.EqualTo("203.0.113.10"));
+            Assert.That(rememberedDevices.LastRequest?.Audit?.UserAgent, Is.EqualTo("unit-test"));
+            Assert.That(rememberedDevices.LastRequest?.Audit?.CorrelationId, Is.EqualTo("corr"));
+        }
     }
 
     [Test]
@@ -297,20 +294,19 @@ internal sealed class PasswordResetServiceTests
     public async Task ResetPasswordAsyncRevokesRememberedMfaDevicesForGlobalUser()
     {
         var user = CreateUser();
-        var rememberedDevices = new Mock<IRememberedMfaDeviceService>();
-        rememberedDevices
-            .Setup(s => s.RevokeAllAsync(user.Id, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-        var fixture = CreateFixture(user, rememberedMfaDeviceService: rememberedDevices.Object);
+        var rememberedDevices = new TestRememberedMfaDeviceMutationExecutor { RevokeAllResult = 1 };
+        var fixture = CreateFixture(user, rememberedMfaDeviceService: rememberedDevices);
         await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
 
         var result = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword });
 
-        Assert.That(result.Succeeded, Is.True);
-        rememberedDevices.Verify(s => s.RevokeAllAsync(user.Id, It.Is<RevokeAllRememberedMfaDevicesRequest>(r =>
-            r.Tenant == null &&
-            r.Reason == "Password reset"), It.IsAny<CancellationToken>()), Times.Once);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(rememberedDevices.LastRequest?.Tenant, Is.Null);
+            Assert.That(rememberedDevices.LastRequest?.Reason, Is.EqualTo("Password reset"));
+        }
     }
 
     [Test]
@@ -622,10 +618,7 @@ internal sealed class PasswordResetServiceTests
         var fixture = CreateFixture(user);
         await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
 
-        var sessionService = new Mock<IAuthenticationSessionService>();
-        sessionService
-            .Setup(s => s.ListSessionsForUserAsync(user.Id, It.IsAny<ListAuthenticationSessionsRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<AuthenticationSessionSummary>());
+        var sessionService = new TestAuthenticationSessionMutationExecutor();
         var localProvider = new Mock<IPrimaryAuthenticationProvider>();
         localProvider.SetupGet(provider => provider.Key).Returns(AuthenticationProviderKey.Local);
         var providerRegistry = new AuthenticationProviderRegistry([localProvider.Object]);
@@ -633,7 +626,7 @@ internal sealed class PasswordResetServiceTests
         var accountSecurity = new AccountSecurityService(
             fixture.Store,
             fixture.Store,
-            sessionService.Object,
+            sessionService,
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(fixture.Time, fixture.Audit, ProviderRegistry: providerRegistry));
@@ -753,7 +746,7 @@ internal sealed class PasswordResetServiceTests
         bool verifyAllowed = true,
         Action<PasswordResetOptions>? configure = null,
         bool transactionalEmailSender = false,
-        IRememberedMfaDeviceService? rememberedMfaDeviceService = null,
+        IRememberedMfaDeviceMutationExecutor? rememberedMfaDeviceService = null,
         bool transactionAwareStore = false)
     {
         var time = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-25T12:00:00Z", CultureInfo.InvariantCulture));
@@ -997,6 +990,8 @@ internal sealed class PasswordResetServiceTests
 
     private sealed class InMemoryUserCredentialStore(TimeProvider timeProvider) : IUserRepository, ICredentialRepository
     {
+        public Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
         public List<IUser> Users { get; } = [];
         public List<UserCredential> Credentials { get; } = [];
         public bool ConsumeSucceeds { get; set; } = true;
@@ -1152,6 +1147,22 @@ internal sealed class PasswordResetServiceTests
 
         public Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, bool includeAllTenants = false, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, bool includeAllTenants = false, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    }
+
+    private sealed class TestRememberedMfaDeviceMutationExecutor : IRememberedMfaDeviceMutationExecutor
+    {
+        public int RevokeAllResult { get; set; }
+        public RevokeAllRememberedMfaDevicesRequest? LastRequest { get; private set; }
+        public Task<bool> RevokeAsync(Guid userId, RevokeRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default) => Task.FromResult(false);
+        public Task<int> RevokeAllAsync(Guid userId, RevokeAllRememberedMfaDevicesRequest request, CancellationToken cancellationToken = default) { LastRequest = request; return Task.FromResult(RevokeAllResult); }
+    }
+
+    private sealed class TestAuthenticationSessionMutationExecutor : IAuthenticationSessionMutationExecutor
+    {
+        public Task<IReadOnlyList<AuthenticationSessionSummary>> ListSessionsForUserAsync(Guid userId, ListAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<AuthenticationSessionSummary>>([]);
+        public Task<int> RevokeSessionsForUserAsync(Guid userId, RevokeAuthenticationSessionsForUserRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
+        public Task<bool> RevokeSessionForUserAsync(Guid userId, RevokeAuthenticationSessionRequest request, CancellationToken cancellationToken = default) => Task.FromResult(false);
+        public Task<int> RevokeOtherSessionsAsync(Guid userId, RevokeOtherAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
     }
 
     private sealed class NonTenantUser : IUser

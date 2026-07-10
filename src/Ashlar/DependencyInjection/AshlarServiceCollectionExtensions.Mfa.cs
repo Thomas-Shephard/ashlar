@@ -76,7 +76,8 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),
             provider.GetService<ISecurityNotificationService>()));
-        services.TryAddScoped<ITotpService, TotpService>();
+        services.TryAddScoped<TotpService>();
+        services.TryAddScoped<ITotpService>(provider => provider.GetRequiredService<TotpService>());
 
         return services;
     }
@@ -143,7 +144,9 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<IOptions<RememberedMfaDeviceOptions>>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>()));
-        services.TryAddScoped<IRememberedMfaDeviceService, RememberedMfaDeviceService>();
+        services.TryAddScoped<RememberedMfaDeviceService>();
+        services.TryAddScoped<IRememberedMfaDeviceService>(provider => provider.GetRequiredService<RememberedMfaDeviceService>());
+        services.TryAddScoped<IRememberedMfaDeviceMutationExecutor>(provider => provider.GetRequiredService<RememberedMfaDeviceService>());
         services.TryAddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         services.TryAddSingleton<ISecureTokenHasher, Sha256TokenHasher>();
 

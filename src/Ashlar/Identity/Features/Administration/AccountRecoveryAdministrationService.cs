@@ -7,10 +7,6 @@ namespace Ashlar.Identity.Features.Administration;
 /// </summary>
 /// <param name="userAdministrationService">Service used to retrieve safe user and security posture details.</param>
 /// <param name="rememberedMfaDeviceService">Optional remembered MFA device service used to preview MFA reset impact.</param>
-/// <remarks>
-/// These operations are intended for administrative diagnostics and operations tooling and do not authorize the caller.
-/// Host applications must protect usage of this service with appropriate admin authorization and step-up policy.
-/// </remarks>
 public sealed class AccountRecoveryAdministrationService(
     IUserAdministrationService userAdministrationService,
     IRememberedMfaDeviceService? rememberedMfaDeviceService = null)

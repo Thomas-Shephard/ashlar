@@ -97,6 +97,7 @@ internal static class ServiceCollectionExtensions
         });
         services.AddAshlarPostgresAuditSink();
         services.AddScoped<IAccountSecurityGuard, SampleAccountSecurityGuard>();
+        services.AddScoped<IAccountSecurityOperationAuthorizer, SampleAccountSecurityOperationAuthorizer>();
         services.AddAshlarPostgresRateLimiting();
         services.AddAshlarPostgresEmailOutboxHostedService<DevelopmentEmailTransport>(options =>
         {

@@ -434,13 +434,9 @@ if (!proof.Succeeded)
 }
 
 var enrollment = await totpService.StartEnrollmentAsync(
-    new StartTotpEnrollmentRequest(actorUserId, "Ashlar", "user@example.com")
-    {
-        FreshPrimaryAuthenticationProof = proof.Value,
-        CurrentSessionId = sessionId,
-        Tenant = httpContext.ToTenantContext(),
-        Audit = httpContext.ToAuditContext()
-    });
+    new StartTotpEnrollmentRequest(actorUserId, "Ashlar", "user@example.com",
+        httpContext.ToTenantContext(), sessionId, httpContext.ToAuditContext(),
+        freshPrimaryAuthenticationProof: proof.Value));
 
 // 2. Return enrollment.AuthenticatorUri to the client for QR code generation.
 // 3. Keep enrollment.SharedSecret temporarily to verify the first code.
@@ -451,13 +447,9 @@ The user must verify a code from their authenticator app to finalize enrollment:
 ```csharp
 // 4. Verify first code and finalize enrollment for the authenticated owner
 var result = await totpService.CompleteEnrollmentAsync(
-    new VerifyTotpEnrollmentRequest(actorUserId, sharedSecret, userInputCode)
-    {
-        FreshPrimaryAuthenticationProof = proof.Value,
-        CurrentSessionId = sessionId,
-        Tenant = httpContext.ToTenantContext(),
-        Audit = httpContext.ToAuditContext()
-    });
+    new VerifyTotpEnrollmentRequest(actorUserId, sharedSecret, userInputCode,
+        httpContext.ToTenantContext(), sessionId, httpContext.ToAuditContext(),
+        freshPrimaryAuthenticationProof: proof.Value));
 bool success = result.Succeeded;
 ```
 
@@ -491,13 +483,8 @@ if (!proof.Succeeded)
     return Results.Forbid();
 }
 
-await totpService.DisableAsync(new DisableTotpRequest(actorUserId)
-{
-    FreshMfaProof = proof.Value,
-    CurrentSessionId = sessionId,
-    Tenant = httpContext.ToTenantContext(),
-    Audit = httpContext.ToAuditContext()
-});
+await totpService.DisableAsync(new DisableTotpRequest(actorUserId,
+    httpContext.ToTenantContext(), sessionId, proof.Value, httpContext.ToAuditContext()));
 ```
 
 TOTP verification is automatically throttled by `IAuthenticationRateLimiter` to protect against brute-force attacks. Shared secrets are never stored in raw form; they are always encrypted using `ISecretProtector`.
@@ -879,7 +866,7 @@ Authentication sessions are tenant-bound. Session creation derives a tenant scop
 
 ```csharp
 var createResult = await sessionService.CreateSessionAsync(
-    authenticationResult.User.Id,
+    authenticationResult,
     new CreateAuthenticationSessionRequest(
         IpAddress: ipAddress,
         UserAgent: userAgent));
@@ -892,12 +879,8 @@ if (validation.Succeeded)
     var userId = validation.UserId.Value;
 }
 
-await sessionService.RevokeSessionForUserAsync(authenticationResult.User.Id, new RevokeAuthenticationSessionRequest
-{
-    SessionId = createResult.Session.Id,
-    Reason = "signed-out",
-    Tenant = createResult.Session.TenantId is null ? TenantContext.Global : new TenantContext(createResult.Session.TenantId)
-});
+await sessionService.RevokeCurrentSessionAsync(
+    new RevokeCurrentAuthenticationSessionRequest(rawTokenFromRequest, audit, "signed-out"));
 ```
 
 ### Session and Device Management
@@ -920,24 +903,16 @@ foreach (var summary in sessions)
     // summary includes Id, CreatedAt, LastSeenAt, IpAddress, UserAgent, IsCurrent, etc.
 }
 
-// 2. Revoke a specific session (ownership is enforced)
-await sessionService.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest
-{
-    SessionId = targetSessionId,
-    Reason = "user-initiated",
-    Tenant = TenantContext.Global
-});
+// 2. Revoke a specific session owned by the authenticated actor
+await sessionService.RevokeSessionForCurrentUserAsync(new RevokeOwnAuthenticationSessionRequest(
+    userId, tenant, currentSessionId, freshMfaProof, audit, targetSessionId, "user-initiated"));
 
 // 3. Revoke all other sessions for a user
-await sessionService.RevokeOtherSessionsAsync(userId, new RevokeOtherAuthenticationSessionsRequest
-{
-    CurrentSessionId = currentSessionId,
-    Reason = "security-sweep",
-    Tenant = TenantContext.Global
-});
+await sessionService.RevokeOtherSessionsForCurrentUserAsync(new RevokeOwnOtherAuthenticationSessionsRequest(
+    userId, tenant, currentSessionId, freshMfaProof, audit, "security-sweep"));
 ```
 
-Pass the user's tenant context for tenant-scoped users. Omit `Tenant` only when the caller is intentionally applying revocation across all tenant scopes for that user.
+Both self-service requests require the authenticated actor's explicit tenant/global scope, current session, fresh MFA proof, matching audit actor, and host authorization. Administrative all-tenant revocation goes through `IAccountSecurityAdministrationService`.
 
 #### ASP.NET Core Helpers
 Use `IAshlarSignInManager` for simplified management of the currently authenticated user:
@@ -1037,28 +1012,26 @@ Requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAl
 
 This service is read-only and does not authorize callers or execute recovery operations. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing it. Results are previews derived from existing account security posture and intentionally omit credential secrets, token hashes, session tokens, metadata payloads, audit internals, and raw provider identifiers beyond safe public provider keys.
 
-Use `IAccountRecoveryAdministrationExecutor` only after the host application has authorized the administrator, collected confirmation, and enforced fresh MFA or equivalent step-up policy. It provides named destructive helpers for recovery UI actions:
+Execute destructive recovery actions through `IAccountSecurityAdministrationService`. The public boundary requires the target user, exact target scope, audit metadata, authenticated actor and actor scope, current session, Ashlar-issued fresh-MFA proof, and a host `IAccountSecurityOperationAuthorizer` decision:
 
 ```csharp
-var reset = await accountRecoveryExecutor.ResetMfaAsync(
-    new AccountRecoveryResetMfaRequest(userId, audit, new TenantContext(tenantId), "lost device"));
+var request = new AccountSecurityAdministrationRequest(
+    targetUserId,
+    actorUserId,
+    actorTenant,
+    currentSessionId,
+    freshMfaProof,
+    audit,
+    targetTenant,
+    reason: "suspected compromise");
 
-var sessions = await accountRecoveryExecutor.RevokeSessionsAsync(
-    new AccountRecoveryRevokeSessionsRequest(userId, audit, new TenantContext(tenantId), "suspected compromise"));
-
-var credentials = await accountRecoveryExecutor.RevokeProviderCredentialsAsync(
-    new AccountRecoveryRevokeProviderCredentialsRequest(
-        userId,
-        new AuthenticationProviderKey(ProviderType.Oidc, "Google"),
-        audit,
-        new TenantContext(tenantId),
-        "provider compromise"));
+var sessions = await accountSecurityAdministration.RevokeSessionsAsync(request);
 ```
 
-Execution requests require a target user id, audit context, and explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. Provider credential revocation is limited to recovery-safe provider keys and rejects unknown or internal operational providers. Beyond facade-level request validation, the executor delegates tenant and user mutation rules, auditing, operation behavior, counts, and stable failure details to `IAccountSecurityService`; it does not authorize callers or run multiple unrelated destructive actions from a generic action enum.
+The host authorizer receives the complete operation details, including provider or requested account state, and must authorize tenant, global, and all-tenant scopes separately. Ashlar validates actor/audit identity and the actor/session-bound fresh proof before calling the authorizer. Raw target-user mutation executors are internal infrastructure and are not available for route or job wiring.
 
 ### Admin Account Recovery
-Ashlar exposes framework-neutral administrator primitives through `IAccountSecurityService`. The service is intentionally small and composes existing identity, credential, MFA, recovery-code, session, and audit infrastructure.
+`IAccountSecurityService` is read-only and exposes `GetUserSecurityPostureAsync`. Destructive administrator operations are available only through `IAccountSecurityAdministrationService` and its actor-bound request models.
 
 Available operations:
 
@@ -1066,7 +1039,7 @@ Available operations:
 - `RevokeSessionsAsync`: revokes all active sessions for a user.
 - `RevokeCredentialsAsync`: revokes active credentials for a specific provider key.
 - `ResetMfaAsync`: revokes configured TOTP credentials, recovery-code credentials, and remembered MFA devices.
-- `GetUserSecurityPostureAsync`: returns a non-secret `AccountSecurityPosture` read model containing active state, email verification state, primary sign-in methods, additional verification factors, policy readiness, missing required factors, readable credential inventory, active session count, and recent security event count when the persistence provider supports it.
+- `IAccountSecurityService.GetUserSecurityPostureAsync`: returns a non-secret `AccountSecurityPosture` read model containing active state, email verification state, primary sign-in methods, additional verification factors, policy readiness, missing required factors, readable credential inventory, active session count, and recent security event count when the persistence provider supports it.
 
 Transitions to non-active states revoke active sessions and remembered MFA devices by default, but they do not revoke credentials. Transitions back to `Active` do not restore sessions, credentials, or remembered MFA devices. No-op state transitions report `UserChanged = false` and do not revoke sessions or remembered MFA devices. `AccountSecurityOperationResult` includes the previous and current account states, whether the user row changed, session and credential revocation counts, and the remembered MFA device revocation count when a remembered-device service is registered.
 
@@ -1074,7 +1047,7 @@ Account posture separates durable primary credentials from additional verificati
 
 Applications should render `PrimaryCredentials`, `AdditionalVerificationFactors`, and `Policy` instead of formatting raw provider keys. Use the supplied display names such as "Password", "Email sign-in", "Authenticator app", "Recovery codes", and "Passkeys"; use `Policy.IsReadyForAdditionalVerification` and `Policy.MissingRequiredFactorDisplayNames` to explain whether the user can satisfy the current MFA or step-up policy. The posture inventory intentionally omits credential values, token hashes, public keys, passkey ceremony JSON, recovery codes, password hashes, and protected secrets.
 
-Sensitive admin operations require `AccountSecurityOperationRequest` with an `AuditContext` and an explicit scope. Pass a concrete `TenantContext`, `TenantContext.Global` for global users, or `IncludeAllTenants = true` for intentionally unrestricted mutations; requests with no scope or both scope forms are rejected. Applications are responsible for authorizing access before calling these methods, typically with an application admin role or scoped permission enforced by ASP.NET Core authorization. Ashlar records audit events with actor metadata, target user id, tenant id, reason, and affected counts; it does not return or log raw secrets, tokens, password hashes, recovery codes, protected payloads, or session tokens.
+Sensitive admin operations require an actor-bound administration request with `AuditContext`, current session, Ashlar-issued fresh-MFA proof, and explicit target scope. Pass a concrete `TenantContext`, `TenantContext.Global` for global users, or `IncludeAllTenants = true`; requests with no scope or both scope forms are rejected. Ashlar validates the actor, audit identity, and proof before invoking the required host `IAccountSecurityOperationAuthorizer`, then records audit events with target and affected counts without returning or logging secrets.
 
 `AddAshlarIdentity()` does not register an `IAccountSecurityGuard`. Production applications should register an application-specific guard for business safety rules such as approval policy, risk review, tenant-specific constraints, or separation of duties. If allowing every guarded account-state change is deliberate, include an explicit `AddPermissiveAccountSecurityGuard()` call so the choice is visible in service registration; configuration validation reports this as `ASHLAR-CONFIG-PERMISSIVE-ACCOUNT-SECURITY-GUARD`.
 
@@ -1101,7 +1074,7 @@ Unknown users, disabled/suspended/manually locked users, non-local providers, to
 
 Custom provider integrations can still use `IAccountLockoutService` directly. Call `RecordFailureAsync(user, provider, context)` only after resolving a real active user and failing credential verification for that provider. `ResetAsync(user, provider, context)` clears the failure counter after successful authentication, and `GetStatusAsync(user, provider, context)` reports the current temporary lockout status.
 
-Automatic lockout does not change `UserAccountState`. Manual states such as `Disabled`, `Locked`, and `Suspended` remain durable user state controlled through `IAccountSecurityService.SetUserAccountStateAsync`; temporary automatic lockout is provider-scoped failure state with a `LockedUntil` timestamp. Clearing automatic lockout counters must not be treated as reactivating a disabled, suspended, or manually locked user.
+Automatic lockout does not change `UserAccountState`. Manual states such as `Disabled`, `Locked`, and `Suspended` remain durable user state controlled through `IAccountSecurityAdministrationService.SetUserAccountStateAsync`; temporary automatic lockout is provider-scoped failure state with a `LockedUntil` timestamp. Clearing automatic lockout counters must not be treated as reactivating a disabled, suspended, or manually locked user.
 
 PostgreSQL and SQLite persistence providers register durable `IAccountLockoutRepository` implementations through `AddAshlarPostgres(...)` and `AddAshlarSqlite(...)`. Their embedded schemas include `ashlar_account_lockouts`, keyed by user id, tenant id, provider type, and provider name, with failed-attempt timestamps, temporary lockout expiry, and a version token. Initialize or migrate the provider schema before using lockout:
 
@@ -1381,22 +1354,26 @@ Ashlar supports scoped database transactions through the `IAshlarTransactionProv
 
 ```csharp
 public class MySessionMaintenance(
-    IAuthenticationSessionService sessions,
+    IAccountSecurityAdministrationService accountSecurity,
     IAshlarTransactionProvider transactionProvider)
 {
-    public async Task RevokeCompromisedSessionAsync(Guid userId, Guid sessionId, AuditContext audit)
+    public async Task RevokeCompromisedSessionsAsync(
+        Guid userId,
+        Guid actorUserId,
+        TenantContext actorTenant,
+        Guid currentSessionId,
+        FreshMfaVerificationProof freshMfaProof,
+        AuditContext audit,
+        TenantContext targetTenant)
     {
         // Start a transaction for the current scope
         await using var transaction = await transactionProvider.BeginTransactionAsync();
 
         try
         {
-            await sessions.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest
-            {
-                SessionId = sessionId,
-                Tenant = TenantContext.Global,
-                Audit = audit
-            });
+            await accountSecurity.RevokeSessionsAsync(new AccountSecurityAdministrationRequest(
+                userId, actorUserId, actorTenant, currentSessionId, freshMfaProof,
+                audit, targetTenant));
 
             // All operations in this scope now share the same transaction
             await transaction.CommitAsync();

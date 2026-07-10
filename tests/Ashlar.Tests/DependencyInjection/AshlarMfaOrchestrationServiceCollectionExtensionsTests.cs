@@ -110,6 +110,7 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<IRememberedMfaDeviceService>(), Is.TypeOf<RememberedMfaDeviceService>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IRememberedMfaDeviceMutationExecutor>(), Is.TypeOf<RememberedMfaDeviceService>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecureTokenGenerator>(), Is.TypeOf<SecureTokenGenerator>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecureTokenHasher>(), Is.TypeOf<Sha256TokenHasher>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IOptions<RememberedMfaDeviceOptions>>().Value.DefaultLifetime, Is.EqualTo(TimeSpan.FromDays(7)));
@@ -129,7 +130,11 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
 
         services.AddAshlarRememberedMfaDevices();
 
-        AssertDescriptor<IRememberedMfaDeviceService, RememberedMfaDeviceService>(services, ServiceLifetime.Scoped);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(IRememberedMfaDeviceService)), Is.True);
+            Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(IRememberedMfaDeviceMutationExecutor)), Is.True);
+        }
     }
 
     [Test]

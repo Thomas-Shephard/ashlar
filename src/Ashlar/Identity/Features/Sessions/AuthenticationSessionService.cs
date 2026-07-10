@@ -14,7 +14,7 @@ internal sealed class AuthenticationSessionService(
     IAshlarTransactionProvider transactionProvider,
     AuthenticationSessionServiceDependencies dependencies,
     ILogger<AuthenticationSessionService>? logger = null)
-    : IAuthenticationSessionService
+    : IAuthenticationSessionService, IAuthenticationSessionMutationExecutor
 {
     private static readonly Action<ILogger, Guid, Guid, Exception?> SessionLastSeenUpdateNotPersisted =
         LoggerMessage.Define<Guid, Guid>(
@@ -44,6 +44,7 @@ internal sealed class AuthenticationSessionService(
     private readonly ILogger<AuthenticationSessionService> _logger = logger ?? dependencies.Logger ?? NullLogger<AuthenticationSessionService>.Instance;
     private readonly IUserRepository _userRepository = dependencies.UserRepository ?? throw new ArgumentNullException($"{nameof(dependencies)}.{nameof(dependencies.UserRepository)}");
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
+    private readonly IAccountSecurityOperationAuthorizer? _operationAuthorizer = dependencies.OperationAuthorizer;
 
     public async Task<CreateAuthenticationSessionResult> CreateSessionAsync(
         MfaAuthenticationResult authenticationResult,
@@ -191,7 +192,7 @@ internal sealed class AuthenticationSessionService(
 
         await transaction.CommitAsync(cancellationToken);
 
-        return new CreateAuthenticationSessionResult(token, ToCreatedSession(session));
+        return new CreateAuthenticationSessionResult(token, ToCreatedSession(session) with { RollbackToken = token });
     }
 
     private async Task<IUser> GetUserForTenantValidationAsync(
@@ -239,7 +240,13 @@ internal sealed class AuthenticationSessionService(
 
     public async Task<ValidateAuthenticationSessionResult> ValidateSessionAsync(
         string? token,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await ValidateSessionAsync(token, null, cancellationToken);
+
+    private async Task<ValidateAuthenticationSessionResult> ValidateSessionAsync(
+        string? token,
+        Guid? expectedActorUserId,
+        CancellationToken cancellationToken)
     {
         if (!SecureTokenHashing.TryHashToken(_tokenHasher, token, out var tokenHash))
         {
@@ -262,6 +269,9 @@ internal sealed class AuthenticationSessionService(
 
             return ValidateAuthenticationSessionResult.Failed;
         }
+
+        if (expectedActorUserId != null && expectedActorUserId != session.UserId)
+            throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Audit actor must match the authenticated session owner.");
 
         var now = _timeProvider.GetUtcNow();
         if (session.ExpiresAt <= now)
@@ -338,21 +348,6 @@ internal sealed class AuthenticationSessionService(
         {
             return Task.FromResult(Result.Failure<AuthenticationSession>(AshlarFailureCodes.StepUpRequired, "Step-up marking requires a successful Ashlar MFA verification result."));
         }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
         ArgumentNullException.ThrowIfNull(request);
         var verifiedFactor = ValidateStepUpRequest(request);
@@ -472,6 +467,105 @@ internal sealed class AuthenticationSessionService(
         return updated == null
             ? Result.Failure<AuthenticationSession>(AshlarFailureCodes.SessionNotFoundOrInactive, "Session was not found, is inactive, or does not belong to the user.")
             : Result.Success(updated);
+    }
+
+    public async Task<bool> RevokeSessionForCurrentUserAsync(
+        RevokeOwnAuthenticationSessionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ValidateSelfServiceRequest(request.ActorUserId, request.ActorTenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit);
+        if (request.SessionId == Guid.Empty) throw new ArgumentException("Session ID cannot be empty.", $"{nameof(request)}.{nameof(request.SessionId)}");
+        ValidateRevocationReason(request.Reason, nameof(request));
+
+        await AuthorizeSelfServiceAsync(new AccountSecurityAuthorizationContext(
+            request.ActorUserId, request.ActorTenant, request.ActorUserId, request.ActorTenant, false,
+            AccountSecurityOperation.RevokeOwnSession, TargetSessionId: request.SessionId, CurrentSessionId: request.CurrentSessionId), cancellationToken);
+
+        return await RevokeSessionForUserAsync(request.ActorUserId, new RevokeAuthenticationSessionRequest
+        {
+            SessionId = request.SessionId,
+            Tenant = request.ActorTenant,
+            Audit = request.Audit,
+            Reason = request.Reason
+        }, cancellationToken);
+    }
+
+    public async Task<int> RevokeOtherSessionsForCurrentUserAsync(
+        RevokeOwnOtherAuthenticationSessionsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ValidateSelfServiceRequest(request.ActorUserId, request.ActorTenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit);
+        ValidateRevocationReason(request.Reason, nameof(request));
+
+        await AuthorizeSelfServiceAsync(new AccountSecurityAuthorizationContext(
+            request.ActorUserId, request.ActorTenant, request.ActorUserId, request.ActorTenant, false,
+            AccountSecurityOperation.RevokeOwnOtherSessions, CurrentSessionId: request.CurrentSessionId), cancellationToken);
+
+        return await RevokeOtherSessionsAsync(request.ActorUserId, new RevokeOtherAuthenticationSessionsRequest
+        {
+            CurrentSessionId = request.CurrentSessionId,
+            Tenant = request.ActorTenant,
+            Audit = request.Audit,
+            Reason = request.Reason
+        }, cancellationToken);
+    }
+
+    public async Task<bool> RevokeCurrentSessionAsync(
+        RevokeCurrentAuthenticationSessionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.Token);
+        ArgumentNullException.ThrowIfNull(request.Audit);
+        ValidateRevocationReason(request.Reason, nameof(request));
+
+        var validation = await ValidateSessionAsync(request.Token, request.Audit.ActorUserId, cancellationToken);
+        if (!validation.Succeeded || validation.Session == null) return false;
+        var session = validation.Session;
+
+        return await RevokeSessionForUserAsync(session.UserId, new RevokeAuthenticationSessionRequest
+        {
+            SessionId = session.Id,
+            Tenant = session.TenantId is { } tenantId ? new TenantContext(tenantId) : TenantContext.Global,
+            Audit = request.Audit,
+            Reason = request.Reason
+        }, cancellationToken);
+    }
+
+    public Task<bool> RevokeIssuedSessionAsync(
+        RevokeIssuedAuthenticationSessionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Session);
+        ArgumentNullException.ThrowIfNull(request.Audit);
+        if (string.IsNullOrWhiteSpace(request.Session.RollbackToken))
+            throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Session rollback requires the session returned by Ashlar session issuance.");
+
+        return RevokeCurrentSessionAsync(new RevokeCurrentAuthenticationSessionRequest(
+            request.Session.RollbackToken, request.Audit, request.Reason), cancellationToken);
+    }
+
+    private void ValidateSelfServiceRequest(Guid actorUserId, TenantContext actorTenant, Guid currentSessionId,
+        FreshMfaVerificationProof proof, AuditContext audit)
+    {
+        if (actorUserId == Guid.Empty) throw new ArgumentException("Actor user ID cannot be empty.", nameof(actorUserId));
+        ArgumentNullException.ThrowIfNull(actorTenant);
+        if (currentSessionId == Guid.Empty) throw new ArgumentException("Current session ID cannot be empty.", nameof(currentSessionId));
+        ArgumentNullException.ThrowIfNull(proof);
+        ArgumentNullException.ThrowIfNull(audit);
+        if (audit.ActorUserId != actorUserId)
+            throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Audit actor must match the authenticated actor.");
+        var failure = FreshVerificationProofValidator.ValidateMfaProof(actorUserId, actorTenant, proof, currentSessionId, _timeProvider.GetUtcNow());
+        if (failure is { } code) throw new AshlarOperationException(code, "Fresh MFA proof is missing, expired, or does not match the actor and current session.");
+    }
+
+    private async ValueTask AuthorizeSelfServiceAsync(AccountSecurityAuthorizationContext context, CancellationToken cancellationToken)
+    {
+        if (_operationAuthorizer == null || !await _operationAuthorizer.AuthorizeAsync(context, cancellationToken))
+            throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Authentication-session operation was not authorized.");
     }
 
     public async Task<int> RevokeSessionsForUserAsync(
@@ -847,4 +941,5 @@ internal sealed record AuthenticationSessionServiceDependencies(
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,
     ISecurityNotificationService? NotificationService = null,
-    ILogger<AuthenticationSessionService>? Logger = null);
+    ILogger<AuthenticationSessionService>? Logger = null,
+    IAccountSecurityOperationAuthorizer? OperationAuthorizer = null);

@@ -105,6 +105,18 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public void RevokeIssuedSessionAsyncShouldRejectCallerConstructedSessionBeforeMutation()
+    {
+        var session = new CreatedAuthenticationSession(Guid.NewGuid(), Guid.NewGuid(), null, _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow(), null, _timeProvider.GetUtcNow().AddHours(1), null, null, null);
+
+        Assert.ThrowsAsync<AshlarOperationException>(() => _service.RevokeIssuedSessionAsync(
+            new RevokeIssuedAuthenticationSessionRequest(session, new AuditContext(session.UserId))));
+        _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
+            It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public void CreateSessionAsyncShouldValidateAshlarAuthenticationResultRequestBeforeMutation()
     {
         var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" })
@@ -431,18 +443,18 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
-    public void AuthenticationSessionServiceInterfaceShouldNotExposeIdOnlyRevocation()
+    public void AuthenticationSessionServiceInterfaceShouldNotExposeRawTargetRevocation()
     {
-        var idOnlyRevocation = typeof(IAuthenticationSessionService)
-            .GetMethods()
-            .Where(method => method.Name == "RevokeSessionAsync")
-            .SingleOrDefault(method =>
-            {
-                var parameters = method.GetParameters();
-                return parameters.Length > 0 && parameters[0].ParameterType == typeof(Guid);
-            });
+        var methodNames = typeof(IAuthenticationSessionService).GetMethods().Select(method => method.Name).ToArray();
 
-        Assert.That(idOnlyRevocation, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(methodNames, Does.Not.Contain("RevokeSessionsForUserAsync"));
+            Assert.That(methodNames, Does.Not.Contain("RevokeSessionForUserAsync"));
+            Assert.That(methodNames, Does.Not.Contain("RevokeOtherSessionsAsync"));
+            Assert.That(methodNames, Does.Contain(nameof(IAuthenticationSessionService.RevokeSessionForCurrentUserAsync)));
+            Assert.That(methodNames, Does.Contain(nameof(IAuthenticationSessionService.RevokeOtherSessionsForCurrentUserAsync)));
+        }
     }
 
     [Test]
@@ -777,6 +789,25 @@ internal sealed class AuthenticationSessionServiceTests
             Assert.That(result.Session, Is.EqualTo(session));
             Assert.That(result.UserId, Is.EqualTo(session.UserId));
         }
+    }
+
+    [Test]
+    public void RevokeCurrentSessionAsyncShouldRejectAuditMismatchBeforeValidationMutation()
+    {
+        var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1));
+        _repositoryMock
+            .Setup(r => r.GetSessionByTokenHashAsync("hashed:raw-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+
+        Assert.ThrowsAsync<AshlarOperationException>(() => _service.RevokeCurrentSessionAsync(
+            new RevokeCurrentAuthenticationSessionRequest("raw-token", new AuditContext(Guid.NewGuid()))));
+        Assert.Multiple(() =>
+        {
+            _repositoryMock.Verify(r => r.GetSessionByTokenHashAsync("hashed:raw-token", It.IsAny<CancellationToken>()), Times.Once);
+            _repositoryMock.Verify(r => r.UpdateSessionLastSeenAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+            _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
+                It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        });
     }
 
     [Test]

@@ -8,7 +8,6 @@ using System.Text.RegularExpressions;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.AspNetCore.Authorization;
-using Ashlar.Identity.Models.Tenants;
 using Ashlar.Identity.Models.Totp;
 using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
@@ -627,20 +626,21 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     private async Task<string> EnrollTotpForAccountRecoverySmokeAsync(Guid userId)
     {
         await using var scope = _factory!.Services.CreateAsyncScope();
-        var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
-        var totp = scope.ServiceProvider.GetRequiredService<ITotpService>();
-        var user = await users.GetUserByIdAsync(userId);
-        Assert.That(user, Is.Not.Null);
-        var tenant = user is ITenantUser { TenantId: { } tenantId } ? new TenantContext(tenantId) : TenantContext.Global;
-        var audit = new AuditContext(ActorUserId: userId, Items: new Dictionary<string, string> { ["reason"] = "smoke-test-fresh-mfa-setup" });
-
-        var enrollment = await totp.StartEnrollmentForAccountRecoveryAsync(new AccountRecoveryStartTotpEnrollmentRequest(userId, "Ashlar Sample", user!.DisplayEmail, audit, tenant));
-        var code = GenerateTotpCode(enrollment.SharedSecret);
-        var result = await totp.CompleteEnrollmentForAccountRecoveryAsync(new AccountRecoveryCompleteTotpEnrollmentRequest(userId, enrollment.SharedSecret, code, audit, tenant));
-
-        Assert.That(result.Succeeded, Is.True);
+        const string secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+        await scope.ServiceProvider.GetRequiredService<ICredentialRepository>().CreateCredentialAsync(new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            ProviderType = TotpOptions.DefaultProviderKey.Type,
+            ProviderName = TotpOptions.DefaultProviderKey.Name,
+            ProviderKey = userId.ToString("D"),
+            Version = Guid.NewGuid().ToString("N"),
+            CredentialValue = secret,
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active
+        });
         await MarkActiveSessionsFreshAsync(userId);
-        return enrollment.SharedSecret;
+        return secret;
     }
 
     private async Task MarkActiveSessionsFreshAsync(Guid userId)
@@ -972,7 +972,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             Assert.That(authExtensions, Does.Contain("if (!result.Succeeded)"));
             Assert.That(authExtensions, Does.Contain("catch"));
             Assert.That(authExtensions, Does.Contain("CleanupUnverifiedSessionAsync"));
-            Assert.That(authExtensions, Does.Contain("sessionService.RevokeSessionForUserAsync"));
+            Assert.That(authExtensions, Does.Contain("sessionService.RevokeIssuedSessionAsync"));
             Assert.That(authExtensions, Does.Contain("signInManager.SignOutAsync"));
             Assert.That(authExtensions, Does.Contain("TenantContext.Global"));
             Assert.That(mfaEndpoints, Does.Contain("httpContext.SignInAndMarkStepUpVerifiedAsync"));

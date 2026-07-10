@@ -504,12 +504,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             return Task.FromResult(Devices);
         }
 
-        public Task<bool> RevokeAsync(Guid userId, RevokeRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
-        }
-
-        public Task<int> RevokeAllAsync(Guid userId, RevokeAllRememberedMfaDevicesRequest request, CancellationToken cancellationToken = default)
+        public Task<bool> RevokeCurrentAsync(RevokeCurrentRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }

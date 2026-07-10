@@ -18,7 +18,7 @@ public interface IAccountSecurityGuard
     /// <param name="request">Audit metadata and optional tenant scope.</param>
     /// <param name="cancellationToken">A token that can cancel guard evaluation.</param>
     /// <returns>The guard decision.</returns>
-    Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default);
+    Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityGuardContext request, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -32,7 +32,7 @@ public interface IAccountSecurityGuard
 public sealed class PermissiveAccountSecurityGuard : IAccountSecurityGuard
 {
     /// <inheritdoc />
-    public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
+    public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityGuardContext request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(request);

@@ -470,6 +470,8 @@ internal sealed class EmailVerificationServiceTests
 
     private sealed class InMemoryUserCredentialStore : IUserRepository, ICredentialRepository
     {
+        public Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
         public List<IUser> Users { get; } = [];
         public List<UserCredential> Credentials { get; } = [];
         public bool ConsumeSucceeds { get; set; } = true;

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.RegularExpressions;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
+using Ashlar.AspNetCore.Mfa;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
 using Dapper;
@@ -16,6 +17,7 @@ internal sealed record AdminSetUserAccountStateRequest(UserAccountState AccountS
 internal static partial class AdminEndpoints
 {
     private const string AdminPolicy = "admin";
+    private static readonly StepUpRequirement AdminSecurityRequirement = new(TimeSpan.FromMinutes(5));
 
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
@@ -72,18 +74,20 @@ internal static partial class AdminEndpoints
         app.MapPost("/api/admin/users/{userId:guid}/disable", async (
             Guid userId,
             AdminUserSecurityRequest? request,
-            IAccountSecurityService accountSecurity,
+            IAccountSecurityAdministrationService accountSecurity,
+            IStepUpAuthenticationService stepUp,
             IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            return await SetUserAccountStateAsync(userId, UserAccountState.Disabled, request, accountSecurity, auth, httpContext, cancellationToken);
+            return await SetUserAccountStateAsync(userId, UserAccountState.Disabled, request, accountSecurity, stepUp, auth, httpContext, cancellationToken);
         }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/admin/users/{userId:guid}/account-state", async (
             Guid userId,
             AdminSetUserAccountStateRequest request,
-            IAccountSecurityService accountSecurity,
+            IAccountSecurityAdministrationService accountSecurity,
+            IStepUpAuthenticationService stepUp,
             IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
@@ -93,49 +97,52 @@ internal static partial class AdminEndpoints
                 return Results.BadRequest(new { error = "Invalid account state." });
             }
 
-            var setAccountStateRequest = await ToSetAccountStateRequestAsync(request, httpContext, auth, cancellationToken);
+            var setAccountStateRequest = await ToSetAccountStateRequestAsync(userId, request, httpContext, stepUp, auth, cancellationToken);
             return setAccountStateRequest == null
                 ? Results.Forbid()
-                : ToAdminSecurityResult(await accountSecurity.SetUserAccountStateAsync(userId, setAccountStateRequest, cancellationToken));
+                : ToAdminSecurityResult(await accountSecurity.SetUserAccountStateAsync(setAccountStateRequest, cancellationToken));
         }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/admin/users/{userId:guid}/reactivate", async (
             Guid userId,
             AdminUserSecurityRequest? request,
-            IAccountSecurityService accountSecurity,
+            IAccountSecurityAdministrationService accountSecurity,
+            IStepUpAuthenticationService stepUp,
             IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            return await SetUserAccountStateAsync(userId, UserAccountState.Active, request, accountSecurity, auth, httpContext, cancellationToken);
+            return await SetUserAccountStateAsync(userId, UserAccountState.Active, request, accountSecurity, stepUp, auth, httpContext, cancellationToken);
         }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/admin/users/{userId:guid}/sessions/revoke", async (
             Guid userId,
             AdminUserSecurityRequest? request,
-            IAccountSecurityService accountSecurity,
+            IAccountSecurityAdministrationService accountSecurity,
+            IStepUpAuthenticationService stepUp,
             IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var adminRequest = await ToAdminRequestAsync(request, httpContext, auth, cancellationToken);
+            var adminRequest = await ToAdminRequestAsync(userId, request, httpContext, stepUp, auth, cancellationToken);
             return adminRequest == null
                 ? Results.Forbid()
-                : ToAdminSecurityResult(await accountSecurity.RevokeSessionsAsync(userId, adminRequest, cancellationToken));
+                : ToAdminSecurityResult(await accountSecurity.RevokeSessionsAsync(adminRequest, cancellationToken));
         }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/admin/users/{userId:guid}/mfa/reset", async (
             Guid userId,
             AdminUserSecurityRequest? request,
-            IAccountSecurityService accountSecurity,
+            IAccountSecurityAdministrationService accountSecurity,
+            IStepUpAuthenticationService stepUp,
             IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var adminRequest = await ToAdminRequestAsync(request, httpContext, auth, cancellationToken);
+            var adminRequest = await ToAdminRequestAsync(userId, request, httpContext, stepUp, auth, cancellationToken);
             return adminRequest == null
                 ? Results.Forbid()
-                : ToAdminSecurityResult(await accountSecurity.ResetMfaAsync(userId, adminRequest, cancellationToken));
+                : ToAdminSecurityResult(await accountSecurity.ResetMfaAsync(adminRequest, cancellationToken));
         }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
     }
 
@@ -243,48 +250,67 @@ internal static partial class AdminEndpoints
         Guid userId,
         UserAccountState accountState,
         AdminUserSecurityRequest? request,
-        IAccountSecurityService accountSecurity,
+        IAccountSecurityAdministrationService accountSecurity,
+        IStepUpAuthenticationService stepUp,
         IAuthorizationEvaluator auth,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var adminRequest = await ToAdminRequestAsync(request, httpContext, auth, cancellationToken);
+        var adminRequest = await ToAdminRequestAsync(userId, request, httpContext, stepUp, auth, cancellationToken);
         if (adminRequest == null)
         {
             return Results.Forbid();
         }
 
         return ToAdminSecurityResult(await accountSecurity.SetUserAccountStateAsync(
-            userId,
-            new SetUserAccountStateRequest(accountState, adminRequest.Audit, adminRequest.Tenant, adminRequest.Reason, IncludeAllTenants: adminRequest.IncludeAllTenants),
+            ToSetAccountStateRequest(adminRequest, accountState),
             cancellationToken));
     }
 
-    private static async Task<AccountSecurityOperationRequest?> ToAdminRequestAsync(
+    private static async Task<AccountSecurityAdministrationRequest?> ToAdminRequestAsync(
+        Guid targetUserId,
         AdminUserSecurityRequest? request,
         HttpContext httpContext,
+        IStepUpAuthenticationService stepUp,
         IAuthorizationEvaluator auth,
         CancellationToken cancellationToken)
     {
         var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
-        return tenant == null ? null : new AccountSecurityOperationRequest(httpContext.ToAuditContext(), tenant, request?.Reason);
+        if (tenant == null || !httpContext.TryGetAshlarSessionContext(out var actorUserId, out var sessionId, out var actorTenant) || actorTenant == null)
+        {
+            return null;
+        }
+
+        var proof = httpContext.CreateFreshMfaProof(stepUp, AdminSecurityRequirement);
+        return !proof.TryGetValue(out var freshProof)
+            ? null
+            : new AccountSecurityAdministrationRequest(targetUserId, actorUserId, actorTenant, sessionId, freshProof,
+                httpContext.ToAuditContext(), tenant, reason: request?.Reason);
     }
 
-    private static async Task<SetUserAccountStateRequest?> ToSetAccountStateRequestAsync(
+    private static async Task<SetUserAccountStateAdministrationRequest?> ToSetAccountStateRequestAsync(
+        Guid targetUserId,
         AdminSetUserAccountStateRequest request,
         HttpContext httpContext,
+        IStepUpAuthenticationService stepUp,
         IAuthorizationEvaluator auth,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
-        return tenant == null ? null : new SetUserAccountStateRequest(
+        var baseRequest = await ToAdminRequestAsync(targetUserId, new AdminUserSecurityRequest(request.Reason), httpContext, stepUp, auth, cancellationToken);
+        return baseRequest == null ? null : ToSetAccountStateRequest(
+            baseRequest,
             request.AccountState,
-            httpContext.ToAuditContext(),
-            tenant,
-            request.Reason,
             request.RevokeSessionsAndRememberedMfaDevices ?? true);
     }
+
+    private static SetUserAccountStateAdministrationRequest ToSetAccountStateRequest(
+        AccountSecurityAdministrationRequest request,
+        UserAccountState accountState,
+        bool revokeSessionsAndRememberedMfaDevices = true) =>
+        new(request.TargetUserId, accountState, request.ActorUserId, request.ActorTenant, request.CurrentSessionId,
+            request.FreshMfaProof, request.Audit, request.Tenant, request.IncludeAllTenants, request.Reason,
+            revokeSessionsAndRememberedMfaDevices);
 
     private static async Task<TenantContext?> ResolveAuthorizedAdminTenantScopeAsync(
         HttpContext httpContext,

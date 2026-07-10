@@ -6,6 +6,18 @@ namespace Ashlar.Identity.Abstractions.Repositories;
 public interface ICredentialRepository
 {
     /// <summary>
+    /// Acquires the provider's transaction-scoped mutation lock for a user.
+    /// </summary>
+    /// <param name="userId">The user whose credential state will be mutated.</param>
+    /// <param name="cancellationToken">A token that can cancel lock acquisition.</param>
+    /// <exception cref="InvalidOperationException">No transaction is active, or the user does not exist.</exception>
+    /// <remarks>
+    /// Callers must hold an active <see cref="IAshlarTransactionProvider" /> transaction until all dependent credential
+    /// reads and writes complete. Implementations must serialize calls for the same user across application instances.
+    /// </remarks>
+    Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Retrieves one credential for a user and provider.
     /// </summary>
     /// <param name="userId">The user that must own the credential.</param>

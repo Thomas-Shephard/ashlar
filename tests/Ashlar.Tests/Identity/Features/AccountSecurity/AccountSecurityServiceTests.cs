@@ -72,18 +72,16 @@ internal sealed class AccountSecurityServiceTests
     {
         var tenantId = Guid.NewGuid();
         var request = CreateRequest("account-disabled", tenantId);
-        var rememberedDevices = new Mock<IRememberedMfaDeviceService>();
-        rememberedDevices
-            .Setup(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(2);
+        var rememberedDevices = new TestRememberedMfaDeviceMutationExecutor();
+        rememberedDevices.RevokeAllResult = 2;
         _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Active, TenantId = tenantId };
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
-            Mock.Of<IAuthenticationSessionService>(),
+            new TestAuthenticationSessionMutationExecutor(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices.Object));
+            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices));
 
         var result = await service.SetUserAccountStateAsync(
             _userId,
@@ -97,10 +95,13 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(accountStateChangedEvent.Properties?["remembered_mfa_devices_revoked"], Is.EqualTo("2"));
         }
 
-        rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.Is<RevokeAllRememberedMfaDevicesRequest>(r =>
-            r.Tenant == request.Tenant &&
-            r.Reason == "account-disabled" &&
-            r.Audit == request.Audit), It.IsAny<CancellationToken>()), Times.Once);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rememberedDevices.RevokeAllCalls, Is.EqualTo(1));
+            Assert.That(rememberedDevices.LastRequest?.Tenant, Is.EqualTo(request.Tenant));
+            Assert.That(rememberedDevices.LastRequest?.Reason, Is.EqualTo("account-disabled"));
+            Assert.That(rememberedDevices.LastRequest?.Audit, Is.EqualTo(request.Audit));
+        }
     }
 
     [TestCase(UserAccountState.Disabled)]
@@ -191,16 +192,16 @@ internal sealed class AccountSecurityServiceTests
     public async Task SetUserAccountStateAsyncShouldRespectExplicitNoRevocationBehavior()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Active };
-        var sessionService = new Mock<IAuthenticationSessionService>();
-        var rememberedDevices = new Mock<IRememberedMfaDeviceService>();
+        var sessionService = new TestAuthenticationSessionMutationExecutor();
+        var rememberedDevices = new TestRememberedMfaDeviceMutationExecutor();
         var request = CreateStateRequest(UserAccountState.Suspended, revokeSessionsAndRememberedMfaDevices: false);
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
-            sessionService.Object,
+            sessionService,
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices.Object));
+            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices));
 
         var result = await service.SetUserAccountStateAsync(_userId, request);
 
@@ -212,8 +213,11 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.Zero);
         }
 
-        sessionService.Verify(s => s.RevokeSessionsForUserAsync(_userId, It.IsAny<RevokeAuthenticationSessionsForUserRequest>(), It.IsAny<CancellationToken>()), Times.Never);
-        rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sessionService.RevokeCalls, Is.Zero);
+            Assert.That(rememberedDevices.RevokeAllCalls, Is.Zero);
+        }
     }
 
     [Test]
@@ -278,7 +282,7 @@ internal sealed class AccountSecurityServiceTests
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
-            Mock.Of<IAuthenticationSessionService>(),
+            new TestAuthenticationSessionMutationExecutor(),
             new NullTransactionProvider(),
             new RejectingAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
@@ -393,15 +397,15 @@ internal sealed class AccountSecurityServiceTests
     public async Task SetUserAccountStateAsyncToDisabledShouldNoopForAlreadyDisabledUserWithoutRevokingSessions()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Disabled };
-        var sessionService = new Mock<IAuthenticationSessionService>();
-        var rememberedDevices = new Mock<IRememberedMfaDeviceService>();
+        var sessionService = new TestAuthenticationSessionMutationExecutor();
+        var rememberedDevices = new TestRememberedMfaDeviceMutationExecutor();
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
-            sessionService.Object,
+            sessionService,
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices.Object));
+            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices));
 
         var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled));
 
@@ -413,8 +417,11 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.Zero);
         }
 
-        sessionService.Verify(s => s.RevokeSessionsForUserAsync(_userId, It.IsAny<RevokeAuthenticationSessionsForUserRequest>(), It.IsAny<CancellationToken>()), Times.Never);
-        rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sessionService.RevokeCalls, Is.Zero);
+            Assert.That(rememberedDevices.RevokeAllCalls, Is.Zero);
+        }
     }
 
     [Test]
@@ -424,7 +431,7 @@ internal sealed class AccountSecurityServiceTests
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
-            Mock.Of<IAuthenticationSessionService>(),
+            new TestAuthenticationSessionMutationExecutor(),
             new NullTransactionProvider(),
             new EmptyFailureAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
@@ -562,8 +569,29 @@ internal sealed class AccountSecurityServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value?.CredentialsRevoked, Is.EqualTo(1));
+            Assert.That(_userRepository.MutationLockCalls, Is.EqualTo(1));
             Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Not.Null);
             Assert.That(_events.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.UserCredentialsRevoked));
+        }
+    }
+
+    [Test]
+    public async Task RevokeCredentialsAsyncShouldPreserveLastPrimarySignInMethodWhenRequested()
+    {
+        _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Active };
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+
+        var result = await _service.RevokeCredentialsAsync(
+            _userId,
+            AuthenticationProviderKey.Local,
+            CreateRequest(preservePrimarySignInMethod: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.LastPrimarySignInMethod));
+            Assert.That(_userRepository.MutationLockCalls, Is.EqualTo(1));
+            Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Null);
+            Assert.That(_events.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.LastPrimarySignInMethodValue));
         }
     }
 
@@ -662,18 +690,16 @@ internal sealed class AccountSecurityServiceTests
     {
         var tenantId = Guid.NewGuid();
         var request = CreateRequest("mfa-reset", tenantId);
-        var rememberedDevices = new Mock<IRememberedMfaDeviceService>();
-        rememberedDevices
-            .Setup(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(3);
+        var rememberedDevices = new TestRememberedMfaDeviceMutationExecutor();
+        rememberedDevices.RevokeAllResult = 3;
         _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Active, TenantId = tenantId };
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
-            Mock.Of<IAuthenticationSessionService>(),
+            new TestAuthenticationSessionMutationExecutor(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices.Object));
+            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices));
 
         var result = await service.ResetMfaAsync(_userId, request);
         var resetEvent = _events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserMfaReset);
@@ -685,10 +711,13 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(resetEvent.Properties?["remembered_mfa_devices_revoked"], Is.EqualTo("3"));
         }
 
-        rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.Is<RevokeAllRememberedMfaDevicesRequest>(r =>
-            r.Tenant == request.Tenant &&
-            r.Reason == "mfa-reset" &&
-            r.Audit == request.Audit), It.IsAny<CancellationToken>()), Times.Once);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rememberedDevices.RevokeAllCalls, Is.EqualTo(1));
+            Assert.That(rememberedDevices.LastRequest?.Tenant, Is.EqualTo(request.Tenant));
+            Assert.That(rememberedDevices.LastRequest?.Reason, Is.EqualTo("mfa-reset"));
+            Assert.That(rememberedDevices.LastRequest?.Audit, Is.EqualTo(request.Audit));
+        }
     }
 
     [Test]
@@ -731,7 +760,7 @@ internal sealed class AccountSecurityServiceTests
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
-            Mock.Of<IAuthenticationSessionService>(),
+            new TestAuthenticationSessionMutationExecutor(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(
@@ -756,7 +785,7 @@ internal sealed class AccountSecurityServiceTests
         var service = new AccountSecurityService(
             repository.Object,
             Mock.Of<ICredentialRepository>(),
-            Mock.Of<IAuthenticationSessionService>(),
+            new TestAuthenticationSessionMutationExecutor(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies());
@@ -780,7 +809,7 @@ internal sealed class AccountSecurityServiceTests
         var service = new AccountSecurityService(
             repository.Object,
             Mock.Of<ICredentialRepository>(),
-            Mock.Of<IAuthenticationSessionService>(),
+            new TestAuthenticationSessionMutationExecutor(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
@@ -1157,10 +1186,7 @@ internal sealed class AccountSecurityServiceTests
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
-            Mock.Of<IAuthenticationSessionService>(s => s.ListSessionsForUserAsync(
-                It.IsAny<Guid>(),
-                It.IsAny<ListAuthenticationSessionsRequest>(),
-                It.IsAny<CancellationToken>()) == Task.FromResult<IReadOnlyList<AuthenticationSessionSummary>>(Array.Empty<AuthenticationSessionSummary>())),
+            new TestAuthenticationSessionMutationExecutor(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
@@ -1299,10 +1325,7 @@ internal sealed class AccountSecurityServiceTests
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
-            Mock.Of<IAuthenticationSessionService>(s => s.ListSessionsForUserAsync(
-                It.IsAny<Guid>(),
-                It.IsAny<ListAuthenticationSessionsRequest>(),
-                It.IsAny<CancellationToken>()) == Task.FromResult<IReadOnlyList<AuthenticationSessionSummary>>(Array.Empty<AuthenticationSessionSummary>())),
+            new TestAuthenticationSessionMutationExecutor(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(
@@ -1391,14 +1414,11 @@ internal sealed class AccountSecurityServiceTests
     {
         _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode")));
-        var sessionService = new Mock<IAuthenticationSessionService>();
-        sessionService
-            .Setup(s => s.ListSessionsForUserAsync(_userId, It.IsAny<ListAuthenticationSessionsRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<AuthenticationSessionSummary>());
+        var sessionService = new TestAuthenticationSessionMutationExecutor();
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
-            sessionService.Object,
+            sessionService,
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, ProviderRegistry: CreateDefaultProviderRegistry()));
@@ -1418,12 +1438,12 @@ internal sealed class AccountSecurityServiceTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(null!, _userRepository, Mock.Of<IAuthenticationSessionService>(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
-            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, null!, Mock.Of<IAuthenticationSessionService>(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
+            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(null!, _userRepository, new TestAuthenticationSessionMutationExecutor(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
+            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, null!, new TestAuthenticationSessionMutationExecutor(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
             Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, null!, new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
-            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, Mock.Of<IAuthenticationSessionService>(), null!, new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
-            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, Mock.Of<IAuthenticationSessionService>(), new NullTransactionProvider(), null!, new AccountSecurityServiceDependencies()));
-            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, Mock.Of<IAuthenticationSessionService>(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), null!, new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
+            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), new NullTransactionProvider(), null!, new AccountSecurityServiceDependencies()));
+            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), null!));
         }
     }
 
@@ -1513,7 +1533,7 @@ internal sealed class AccountSecurityServiceTests
         var service = new AccountSecurityService(
             userRepository.Object,
             Mock.Of<ICredentialRepository>(),
-            Mock.Of<IAuthenticationSessionService>(),
+            new TestAuthenticationSessionMutationExecutor(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
@@ -1535,7 +1555,7 @@ internal sealed class AccountSecurityServiceTests
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
-            Mock.Of<IAuthenticationSessionService>(),
+            new TestAuthenticationSessionMutationExecutor(),
             new NullTransactionProvider(),
             new RejectingAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
@@ -1566,12 +1586,14 @@ internal sealed class AccountSecurityServiceTests
         }
     }
 
-    private static AccountSecurityOperationRequest CreateRequest(string? reason = null, Guid? tenantId = null, bool includeAllTenants = false)
+    private static AccountSecurityOperationRequest CreateRequest(string? reason = null, Guid? tenantId = null, bool includeAllTenants = false,
+        bool preservePrimarySignInMethod = false)
     {
         var tenant = includeAllTenants
             ? null
             : tenantId.HasValue ? new TenantContext(tenantId) : TenantContext.Global;
-        return new AccountSecurityOperationRequest(new AuditContext(Guid.NewGuid(), "127.0.0.1", "agent", "corr"), tenant, reason, includeAllTenants);
+        return new AccountSecurityOperationRequest(new AuditContext(Guid.NewGuid(), "127.0.0.1", "agent", "corr"), tenant, reason, includeAllTenants,
+            preservePrimarySignInMethod);
     }
 
     private static SetUserAccountStateRequest CreateStateRequest(UserAccountState accountState, string? reason = null, Guid? tenantId = null, bool revokeSessionsAndRememberedMfaDevices = true, bool includeAllTenants = false)
@@ -1609,10 +1631,7 @@ internal sealed class AccountSecurityServiceTests
         return new AccountSecurityService(
             _userRepository,
             _userRepository,
-            Mock.Of<IAuthenticationSessionService>(s => s.ListSessionsForUserAsync(
-                It.IsAny<Guid>(),
-                It.IsAny<ListAuthenticationSessionsRequest>(),
-                It.IsAny<CancellationToken>()) == Task.FromResult<IReadOnlyList<AuthenticationSessionSummary>>(Array.Empty<AuthenticationSessionSummary>())),
+            new TestAuthenticationSessionMutationExecutor(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(
@@ -1744,7 +1763,7 @@ internal sealed class AccountSecurityServiceTests
 
     private sealed class RejectingAccountSecurityGuard : IAccountSecurityGuard
     {
-        public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
+        public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityGuardContext request, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(Result.Failure(new AshlarFailureCode("guard_rejected")));
         }
@@ -1752,7 +1771,7 @@ internal sealed class AccountSecurityServiceTests
 
     private sealed class EmptyFailureAccountSecurityGuard : IAccountSecurityGuard
     {
-        public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
+        public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityGuardContext request, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new Result(false));
         }
@@ -1787,6 +1806,13 @@ internal sealed class AccountSecurityServiceTests
 
     private sealed class InMemoryUserCredentialStore : IUserRepository, ICredentialRepository
     {
+        public int MutationLockCalls { get; private set; }
+        public Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default)
+        {
+            MutationLockCalls++;
+            return Task.CompletedTask;
+        }
+
         public Dictionary<Guid, User> Users { get; } = [];
         public List<UserCredential> Credentials { get; } = [];
 
@@ -1861,6 +1887,28 @@ internal sealed class AccountSecurityServiceTests
 
             return Task.FromResult(count);
         }
+    }
+
+    private sealed class TestAuthenticationSessionMutationExecutor : IAuthenticationSessionMutationExecutor
+    {
+        public int RevokeCalls { get; private set; }
+        public int RevokeResult { get; set; }
+        public IReadOnlyList<AuthenticationSessionSummary> Sessions { get; set; } = [];
+
+        public Task<IReadOnlyList<AuthenticationSessionSummary>> ListSessionsForUserAsync(Guid userId, ListAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) => Task.FromResult(Sessions);
+        public Task<int> RevokeSessionsForUserAsync(Guid userId, RevokeAuthenticationSessionsForUserRequest request, CancellationToken cancellationToken = default) { RevokeCalls++; return Task.FromResult(RevokeResult); }
+        public Task<bool> RevokeSessionForUserAsync(Guid userId, RevokeAuthenticationSessionRequest request, CancellationToken cancellationToken = default) => Task.FromResult(false);
+        public Task<int> RevokeOtherSessionsAsync(Guid userId, RevokeOtherAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
+    }
+
+    private sealed class TestRememberedMfaDeviceMutationExecutor : IRememberedMfaDeviceMutationExecutor
+    {
+        public int RevokeAllCalls { get; private set; }
+        public int RevokeAllResult { get; set; }
+        public RevokeAllRememberedMfaDevicesRequest? LastRequest { get; private set; }
+
+        public Task<bool> RevokeAsync(Guid userId, RevokeRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default) => Task.FromResult(false);
+        public Task<int> RevokeAllAsync(Guid userId, RevokeAllRememberedMfaDevicesRequest request, CancellationToken cancellationToken = default) { RevokeAllCalls++; LastRequest = request; return Task.FromResult(RevokeAllResult); }
     }
 
     private sealed class InMemorySessionRepository : IAuthenticationSessionRepository

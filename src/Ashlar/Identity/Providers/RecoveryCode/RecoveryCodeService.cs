@@ -102,6 +102,13 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
+        await _credentialRepository.AcquireUserMutationLockAsync(userId, cancellationToken);
+        var lockedUserResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.RecoveryCodesGenerated, cancellationToken);
+        if (!lockedUserResult.TryGetValue(out user))
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return Result.Failure<IReadOnlyList<string>>(lockedUserResult.GetFailureOr(AshlarFailureCodes.UserNotFoundOrUnavailable));
+        }
 
         // Revoke existing recovery codes if requested
         if (request.ReplaceExisting)
@@ -207,6 +214,13 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
+        await _credentialRepository.AcquireUserMutationLockAsync(userId, cancellationToken);
+        var lockedUserResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.RecoveryCodesRevoked, cancellationToken);
+        if (!lockedUserResult.Succeeded)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return 0;
+        }
 
         var count = await _credentialRepository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
 

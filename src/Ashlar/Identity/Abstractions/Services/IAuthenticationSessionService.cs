@@ -42,23 +42,6 @@ public interface IAuthenticationSessionService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Revokes all currently unrevoked sessions for a user within an explicit scope.
-    /// </summary>
-    /// <param name="userId">The user whose sessions will be revoked.</param>
-    /// <param name="request">Explicit tenant, global, or all-tenant/operator scope plus required audit metadata.</param>
-    /// <param name="cancellationToken">A token that can cancel revocation.</param>
-    /// <returns>The number of sessions revoked.</returns>
-    /// <remarks>
-    /// This is a destructive service-level operation. Omitted tenant scope is rejected unless
-    /// <see cref="RevokeAuthenticationSessionsForUserRequest.IncludeAllTenants" /> is explicitly enabled.
-    /// Host applications must authorize the actor before calling it.
-    /// </remarks>
-    Task<int> RevokeSessionsForUserAsync(
-        Guid userId,
-        RevokeAuthenticationSessionsForUserRequest request,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Lists authentication sessions for a user.
     /// </summary>
     /// <param name="userId">The user whose sessions will be listed.</param>
@@ -71,28 +54,30 @@ public interface IAuthenticationSessionService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Revokes a single authentication session for a user.
+    /// Revokes one authentication session owned by the authenticated actor.
     /// </summary>
-    /// <param name="userId">The session owner. Callers must enforce that the actor may administer this user.</param>
-    /// <param name="request">The target session, explicit tenant/global/all-tenant scope, display-safe revocation reason, and required audit context.</param>
+    /// <param name="request">Actor, current session, fresh proof, target session, tenant scope, and audit context.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns><see langword="true" /> when the target session was revoked.</returns>
-    /// <remarks>Host applications must authorize the actor before calling this destructive operation.</remarks>
-    Task<bool> RevokeSessionForUserAsync(
-        Guid userId,
-        RevokeAuthenticationSessionRequest request,
-        CancellationToken cancellationToken = default);
+    Task<bool> RevokeSessionForCurrentUserAsync(RevokeOwnAuthenticationSessionRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Revokes all authentication sessions for a user except one.
+    /// Revokes all other authentication sessions owned by the authenticated actor.
     /// </summary>
-    /// <param name="userId">The session owner. Callers must enforce that the actor may administer this user.</param>
-    /// <param name="request">The session to keep, explicit tenant/global/all-tenant scope, display-safe revocation reason, and required audit context.</param>
+    /// <param name="request">Actor, current session, fresh proof, tenant scope, and audit context.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns>The number of other sessions revoked.</returns>
-    /// <remarks>Host applications must authorize the actor before calling this destructive operation.</remarks>
-    Task<int> RevokeOtherSessionsAsync(
-        Guid userId,
-        RevokeOtherAuthenticationSessionsRequest request,
-        CancellationToken cancellationToken = default);
+    Task<int> RevokeOtherSessionsForCurrentUserAsync(RevokeOwnOtherAuthenticationSessionsRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>Revokes the session identified by a currently presented raw session token.</summary>
+    /// <param name="request">The raw token, audit context, and optional reason.</param>
+    /// <param name="cancellationToken">A token that can cancel revocation.</param>
+    /// <returns><see langword="true" /> when the presented active session was revoked.</returns>
+    Task<bool> RevokeCurrentSessionAsync(RevokeCurrentAuthenticationSessionRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>Rolls back a newly issued session using its Ashlar-issued authentication capability.</summary>
+    /// <param name="request">The issued session, audit context, and optional reason.</param>
+    /// <param name="cancellationToken">A token that can cancel revocation.</param>
+    /// <returns><see langword="true" /> when the matching issued session was revoked.</returns>
+    Task<bool> RevokeIssuedSessionAsync(RevokeIssuedAuthenticationSessionRequest request, CancellationToken cancellationToken = default);
 }

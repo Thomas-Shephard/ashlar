@@ -298,6 +298,7 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
 
     private sealed class RepositoryFacade(IUserRepository users, ICredentialRepository credentials) : IUserRepository, ICredentialRepository
     {
+        public Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default) => credentials.AcquireUserMutationLockAsync(userId, cancellationToken);
         public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default) => users.GetUserByEmailAsync(email, tenantId, cancellationToken);
         public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => users.GetUserByIdAsync(userId, cancellationToken);
         public Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default) => users.GetUserByProviderKeyAsync(type, providerName, providerKey, cancellationToken);
