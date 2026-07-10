@@ -156,6 +156,23 @@ internal sealed class StepUpAuthenticationServiceTests
     }
 
     [Test]
+    public void CreateFreshMfaProofShouldRejectInvalidRequirementOrInactiveSession()
+    {
+        var service = CreateService();
+        using var _ = Assert.EnterMultipleScope();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => service.CreateFreshMfaProof(
+            new ValidatedAuthenticationSession(CreateSession(additionalVerificationAt: _now)),
+            new StepUpRequirement(TimeSpan.Zero)));
+
+        var inactive = service.CreateFreshMfaProof(
+            new ValidatedAuthenticationSession(CreateSession(expiresAt: _now, additionalVerificationAt: _now.AddMinutes(-1))),
+            new StepUpRequirement(TimeSpan.FromMinutes(10)));
+
+        Assert.That(inactive.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
+    }
+
+    [Test]
     public void CreateFreshPrimaryAuthenticationProofShouldScopeProofToFreshSession()
     {
         var service = CreateService();
