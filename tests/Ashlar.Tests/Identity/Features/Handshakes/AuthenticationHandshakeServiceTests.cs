@@ -20,6 +20,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     private Mock<ISecureTokenHasher> _tokenHasherMock;
     private Mock<IAuthenticationRateLimiter> _rateLimiterMock;
     private Mock<ISecurityEventSink> _eventSinkMock;
+    private Mock<IUserRepository> _userRepositoryMock;
     private FakeTimeProvider _timeProvider;
     private AuthenticationHandshakeService _service;
 
@@ -30,11 +31,14 @@ internal sealed class AuthenticationHandshakeServiceTests
         _tokenHasherMock = new Mock<ISecureTokenHasher>();
         _rateLimiterMock = new Mock<IAuthenticationRateLimiter>();
         _eventSinkMock = new Mock<ISecurityEventSink>();
+        _userRepositoryMock = new Mock<IUserRepository>();
         _timeProvider = new FakeTimeProvider(new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero));
 
         _tokenHasherMock.Setup(h => h.HashToken(It.IsAny<string>())).Returns<string>(token => $"hashed:{token}");
         _repositoryMock.Setup(r => r.UpdateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
+        _userRepositoryMock.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) => new AshlarUser { Id = id, DisplayEmail = "user@example.com" });
 
         _rateLimiterMock.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RateLimitDecision
@@ -53,7 +57,63 @@ internal sealed class AuthenticationHandshakeServiceTests
                 Options.Create(new AuthenticationHandshakeOptions()),
                 _timeProvider,
                 _eventSinkMock.Object,
-                _rateLimiterMock.Object));
+                _rateLimiterMock.Object,
+                _userRepositoryMock.Object));
+    }
+
+    [Test]
+    public async Task CreateHandshakeAsyncShouldRejectNonexistentUser()
+    {
+        _userRepositoryMock.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync((IUser?)null);
+
+        var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"]));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+        _repositoryMock.Verify(r => r.CreateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task CreateHandshakeAsyncShouldRejectWhenUserRepositoryIsUnavailable()
+    {
+        var service = new AuthenticationHandshakeService(
+            _repositoryMock.Object,
+            new FixedTokenGenerator("raw-token"),
+            _tokenHasherMock.Object,
+            new NullTransactionProvider());
+
+        var result = await service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"]));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task CreateHandshakeAsyncShouldEnforceTenantOwnership(bool includeTenantContext)
+    {
+        var userId = Guid.NewGuid();
+        var userTenantId = Guid.NewGuid();
+        _userRepositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AshlarUser { Id = userId, DisplayEmail = "user@example.com", TenantId = userTenantId });
+        var context = includeTenantContext ? new AuthenticationContext(TenantId: Guid.NewGuid()) : null;
+
+        var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(userId, ["totp"], Context: context));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+        _repositoryMock.Verify(r => r.CreateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task CreateHandshakeAsyncShouldAllowTenantOwnedUserInMatchingTenant()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        _userRepositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AshlarUser { Id = userId, DisplayEmail = "user@example.com", TenantId = tenantId });
+
+        var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(
+            userId, ["totp"], Context: new AuthenticationContext(TenantId: tenantId)));
+
+        Assert.That(result.Succeeded, Is.True);
     }
 
     [Test]
@@ -107,9 +167,12 @@ internal sealed class AuthenticationHandshakeServiceTests
     public async Task CreateHandshakeAsyncShouldPersistTenantFromContext()
     {
         var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        _userRepositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AshlarUser { Id = userId, DisplayEmail = "user@example.com", TenantId = tenantId });
 
         var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(
-            Guid.NewGuid(),
+            userId,
             ["totp"],
             Context: new AuthenticationContext(TenantId: tenantId)));
 

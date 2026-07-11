@@ -45,6 +45,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
     private readonly IAuthenticationPipeline _pipeline;
     private readonly IAuthenticationFactorPipeline _factorPipeline;
     private readonly IAuthenticationHandshakeService _handshakeService;
+    private readonly IAuthenticationHandshakeOrchestrationService _handshakeCreationService;
     private readonly IAuthenticationHandshakeCompletionService _handshakeCompletionService;
     private readonly IMfaPolicyEvaluator _policyEvaluator;
     private readonly IAuthenticationProviderRegistry _providerRegistry;
@@ -55,7 +56,20 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
     internal AuthenticationOrchestrator(
         IAuthenticationPipeline pipeline,
         IAuthenticationFactorPipeline factorPipeline,
+        IAuthenticationHandshakeOrchestrationService handshakeService,
+        IAuthenticationHandshakeCompletionService handshakeCompletionService,
+        IMfaPolicyEvaluator policyEvaluator,
+        IAuthenticationProviderRegistry providerRegistry,
+        AuthenticationOrchestratorDependencies? dependencies = null)
+        : this(pipeline, factorPipeline, handshakeService, handshakeService, handshakeCompletionService, policyEvaluator, providerRegistry, dependencies)
+    {
+    }
+
+    internal AuthenticationOrchestrator(
+        IAuthenticationPipeline pipeline,
+        IAuthenticationFactorPipeline factorPipeline,
         IAuthenticationHandshakeService handshakeService,
+        IAuthenticationHandshakeOrchestrationService handshakeCreationService,
         IAuthenticationHandshakeCompletionService handshakeCompletionService,
         IMfaPolicyEvaluator policyEvaluator,
         IAuthenticationProviderRegistry providerRegistry,
@@ -64,6 +78,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
         _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
         _factorPipeline = factorPipeline ?? throw new ArgumentNullException(nameof(factorPipeline));
         _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
+        _handshakeCreationService = handshakeCreationService ?? throw new ArgumentNullException(nameof(handshakeCreationService));
         _handshakeCompletionService = handshakeCompletionService ?? throw new ArgumentNullException(nameof(handshakeCompletionService));
         _policyEvaluator = policyEvaluator ?? throw new ArgumentNullException(nameof(policyEvaluator));
         _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
@@ -271,7 +286,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             };
         }
 
-        var result = await _handshakeService.CreateHandshakeAsync(
+        var result = await _handshakeCreationService.CreateHandshakeAsync(
             new CreateAuthenticationHandshakeRequest(user.Id, requiredFactors, BuildClaimMetadata(response.Claims, primaryAssertion), context with { UserId = user.Id }),
             cancellationToken);
 

@@ -118,6 +118,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<ISecurityNotificationService>()));
         services.TryAddScoped<AuthenticationHandshakeService>();
         services.TryAddScoped<IAuthenticationHandshakeService>(provider => provider.GetRequiredService<AuthenticationHandshakeService>());
+        services.TryAddScoped<IAuthenticationHandshakeOrchestrationService>(provider => provider.GetRequiredService<AuthenticationHandshakeService>());
         services.TryAddScoped<IAuthenticationHandshakeCompletionService>(provider =>
             provider.GetRequiredService<AuthenticationHandshakeService>());
 
@@ -192,6 +193,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<IAuthenticationPipeline>(),
             provider.GetRequiredService<IAuthenticationFactorPipeline>(),
             provider.GetRequiredService<IAuthenticationHandshakeService>(),
+            provider.GetRequiredService<IAuthenticationHandshakeOrchestrationService>(),
             provider.GetRequiredService<IAuthenticationHandshakeCompletionService>(),
             provider.GetRequiredService<IMfaPolicyEvaluator>(),
             provider.GetRequiredService<IAuthenticationProviderRegistry>(),

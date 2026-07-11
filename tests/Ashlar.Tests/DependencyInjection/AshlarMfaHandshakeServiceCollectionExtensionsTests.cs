@@ -18,20 +18,23 @@ internal sealed class AshlarMfaHandshakeServiceCollectionExtensionsTests
         {
             AssertDescriptor<AuthenticationHandshakeService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAuthenticationHandshakeService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IAuthenticationHandshakeOrchestrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAuthenticationHandshakeCompletionService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<AuthenticationHandshakeOptions>(services, ServiceLifetime.Singleton);
         }
     }
 
     [Test]
-    public void AuthenticationHandshakeServicePublicApiDoesNotExposeFactorCompletion()
+    public void AuthenticationHandshakeServicePublicApiDoesNotExposeMintingOrFactorCompletion()
     {
+        var creationMethod = typeof(IAuthenticationHandshakeService).GetMethod(nameof(IAuthenticationHandshakeOrchestrationService.CreateHandshakeAsync));
         var method = typeof(IAuthenticationHandshakeService).GetMethod(
             "CompleteFactorVerificationAsync",
             [typeof(VerifyAuthenticationHandshakeRequest), typeof(CancellationToken)]);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(creationMethod, Is.Null);
             Assert.That(method, Is.Null);
             Assert.That(typeof(AuthenticationHandshakeService).IsPublic, Is.False);
         }
@@ -51,11 +54,13 @@ internal sealed class AshlarMfaHandshakeServiceCollectionExtensionsTests
         var concrete = scope.ServiceProvider.GetRequiredService<AuthenticationHandshakeService>();
         var publicService = scope.ServiceProvider.GetRequiredService<IAuthenticationHandshakeService>();
         var completionService = scope.ServiceProvider.GetRequiredService<IAuthenticationHandshakeCompletionService>();
+        var orchestrationService = scope.ServiceProvider.GetRequiredService<IAuthenticationHandshakeOrchestrationService>();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(publicService, Is.SameAs(concrete));
             Assert.That(completionService, Is.SameAs(concrete));
+            Assert.That(orchestrationService, Is.SameAs(concrete));
         }
     }
 

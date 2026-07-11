@@ -812,7 +812,7 @@ internal sealed class MagicLinkSignInTests
     private static AuthenticationOrchestrator CreateOrchestrator(IAuthenticationPipeline pipeline, User? user, bool requireMfa)
     {
         var policy = new StaticMfaPolicyEvaluator(requireMfa);
-        var handshakes = new Mock<IAuthenticationHandshakeService>();
+        var handshakes = new Mock<TestAuthenticationHandshakeOrchestrationService>();
         if (requireMfa && user != null)
         {
             handshakes

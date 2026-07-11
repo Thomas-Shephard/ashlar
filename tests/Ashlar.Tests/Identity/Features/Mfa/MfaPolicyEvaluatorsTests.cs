@@ -276,7 +276,7 @@ internal sealed class MfaPolicyEvaluatorsTests
         var assertion = new Mock<IAuthenticationAssertion>();
         var pipeline = new Mock<IAuthenticationPipeline>();
         var factorPipeline = new Mock<IAuthenticationFactorPipeline>();
-        var handshakeService = new Mock<IAuthenticationHandshakeService>();
+        var handshakeService = new Mock<TestAuthenticationHandshakeOrchestrationService>();
         var policy = new CompositeMfaPolicyEvaluator([
             new MfaPolicyEvaluatorComponent<StaticMfaPolicyEvaluator>(new StaticMfaPolicyEvaluator(new MfaPolicyEvaluation(false))),
             new MfaPolicyEvaluatorComponent<StaticMfaPolicyEvaluator>(new StaticMfaPolicyEvaluator(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"]))))
