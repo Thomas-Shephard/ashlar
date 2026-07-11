@@ -171,8 +171,33 @@ internal sealed class AuthenticationSessionServiceTests
             AdditionalVerificationAt = now,
             ExpiresAt = now.AddHours(1)
         };
+        _repositoryMock.Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>())).ReturnsAsync(session);
         return new StepUpAuthenticationService(_timeProvider)
             .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(5), Purpose: AuthenticationSessionService.SelfServiceProofPurpose)).Value!;
+    }
+
+    [Test]
+    public void SelfServiceMutationShouldRejectProofAfterSourceSessionRevocation()
+    {
+        var actor = Guid.NewGuid();
+        var currentSession = Guid.NewGuid();
+        var proof = CreateProof(actor, currentSession);
+        _repositoryMock.Setup(r => r.GetSessionAsync(currentSession, It.IsAny<CancellationToken>())).ReturnsAsync(new AuthenticationSession
+        {
+            Id = currentSession,
+            UserId = actor,
+            TokenHash = "hash",
+            CreatedAt = _timeProvider.GetUtcNow().AddMinutes(-1),
+            ExpiresAt = _timeProvider.GetUtcNow().AddHours(1),
+            RevokedAt = _timeProvider.GetUtcNow()
+        });
+
+        var exception = Assert.ThrowsAsync<AshlarOperationException>(() => _service.RevokeOtherSessionsForCurrentUserAsync(
+            new RevokeOwnOtherAuthenticationSessionsRequest(actor, TenantContext.Global, currentSession, proof, new AuditContext(actor))));
+
+        Assert.That(exception!.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+        _repositoryMock.Verify(r => r.RevokeOtherSessionsForUserAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
+            It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -212,7 +237,7 @@ internal sealed class AuthenticationSessionServiceTests
         var currentSession = Guid.NewGuid();
         var targetSession = Guid.NewGuid();
         var audit = new AuditContext(actor, CorrelationId: "revoke-denied");
-        var proof = new FreshMfaVerificationProof(actor, null, currentSession, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5), AuthenticationSessionService.SelfServiceProofPurpose);
+        var proof = CreateProof(actor, currentSession);
         var events = new Mock<ISecurityEventSink>();
         var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
         authorizer.Setup(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
@@ -239,7 +264,7 @@ internal sealed class AuthenticationSessionServiceTests
         var actor = Guid.NewGuid();
         var currentSession = Guid.NewGuid();
         var audit = new AuditContext(actor);
-        var proof = new FreshMfaVerificationProof(actor, null, currentSession, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5), AuthenticationSessionService.SelfServiceProofPurpose);
+        var proof = CreateProof(actor, currentSession);
         var events = new Mock<ISecurityEventSink>();
         var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
         authorizer.Setup(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);

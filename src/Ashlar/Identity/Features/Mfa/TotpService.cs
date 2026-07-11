@@ -24,6 +24,7 @@ internal sealed class TotpService : ITotpService
     private readonly SecurityNotificationEmitter _notifications;
     private readonly IReadOnlyList<ISecondaryAuthenticationFactorProvider> _additionalVerificationProviders;
     private readonly IAccountSecurityOperationAuthorizer _authorizer;
+    private readonly ActiveSessionFreshProofValidator _proofValidator;
 
     public TotpService(
         IUserRepository userRepository,
@@ -38,8 +39,9 @@ internal sealed class TotpService : ITotpService
         _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
         _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
         _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
-        _authorizer = authorizer ?? throw new ArgumentNullException(nameof(authorizer));
         ArgumentNullException.ThrowIfNull(dependencies);
+        _authorizer = authorizer ?? throw new ArgumentNullException(nameof(authorizer));
+        _proofValidator = dependencies.ProofValidator;
         _options = dependencies.Options.Value;
         TotpOptions.ThrowIfInvalid(_options);
         _timeProvider = dependencies.TimeProvider;
@@ -314,7 +316,7 @@ internal sealed class TotpService : ITotpService
         string eventType,
         CancellationToken cancellationToken)
     {
-        var failure = FreshVerificationProofValidator.ValidateMfaProof(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow(), ProofPurpose);
+        var failure = await _proofValidator.ValidateAsync(userId, tenant, proof, currentSessionId, ProofPurpose, cancellationToken);
         if (failure == null)
         {
             return Result.Success();
@@ -395,7 +397,7 @@ internal sealed class TotpService : ITotpService
         string eventType,
         CancellationToken cancellationToken)
     {
-        var failure = FreshVerificationProofValidator.ValidatePrimaryAuthenticationProof(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow(), ProofPurpose);
+        var failure = await _proofValidator.ValidateAsync(userId, tenant, proof, currentSessionId, ProofPurpose, cancellationToken);
         if (failure == null)
         {
             return Result.Success();
@@ -521,11 +523,13 @@ internal sealed class TotpEnrollmentCompletionContext
 
 internal sealed class TotpServiceDependencies(
     IOptions<TotpOptions> options,
+    ActiveSessionFreshProofValidator proofValidator,
     TimeProvider? timeProvider = null,
     ISecurityEventSink? securityEventSink = null,
     ISecurityNotificationService? notificationService = null)
 {
     public IOptions<TotpOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
+    public ActiveSessionFreshProofValidator ProofValidator { get; } = proofValidator ?? throw new ArgumentNullException(nameof(proofValidator));
     public TimeProvider TimeProvider { get; } = timeProvider ?? TimeProvider.System;
     public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
     public ISecurityNotificationService? NotificationService { get; } = notificationService;

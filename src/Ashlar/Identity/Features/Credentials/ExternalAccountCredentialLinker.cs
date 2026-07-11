@@ -5,14 +5,14 @@ namespace Ashlar.Identity.Features.Credentials;
 internal sealed class ExternalAccountCredentialLinker(
     IUserRepository userRepository,
     ICredentialLinkingInfrastructure credentialLinking,
-    TimeProvider timeProvider)
+    ActiveSessionFreshProofValidator proofValidator)
     : IExternalAccountCredentialLinker
 {
     public const string LinkPurpose = "external-account-linking";
 
     private readonly IUserRepository _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
     private readonly ICredentialLinkingInfrastructure _credentialLinking = credentialLinking ?? throw new ArgumentNullException(nameof(credentialLinking));
-    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly ActiveSessionFreshProofValidator _proofValidator = proofValidator ?? throw new ArgumentNullException(nameof(proofValidator));
 
     public async Task<Result> LinkExternalAccountCredentialAsync(ExternalAccountCredentialLinkRequest request, CancellationToken cancellationToken = default)
     {
@@ -26,13 +26,13 @@ internal sealed class ExternalAccountCredentialLinker(
             return Result.Failure(AshlarFailureCodes.ValidationError);
         }
 
-        var proofFailure = FreshVerificationProofValidator.ValidateMfaProof(
+        var proofFailure = await _proofValidator.ValidateAsync(
             request.CurrentUserId,
             request.Tenant,
             request.FreshMfaProof,
             request.CurrentSessionId,
-            _timeProvider.GetUtcNow(),
-            LinkPurpose);
+            LinkPurpose,
+            cancellationToken);
         if (proofFailure is { } failureCode)
         {
             return Result.Failure(failureCode);

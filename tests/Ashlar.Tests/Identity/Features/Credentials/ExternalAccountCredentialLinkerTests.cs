@@ -7,6 +7,7 @@ namespace Ashlar.Tests.Identity.Features.Credentials;
 internal sealed class ExternalAccountCredentialLinkerTests
 {
     private readonly DateTimeOffset _now = new(2026, 1, 2, 3, 4, 5, TimeSpan.Zero);
+    private readonly Dictionary<Guid, AuthenticationSession> _sessions = [];
 
     [Test]
     public void ConstructorShouldRejectNullDependencies()
@@ -17,9 +18,9 @@ internal sealed class ExternalAccountCredentialLinkerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new ExternalAccountCredentialLinker(null!, linking, clock));
-            Assert.Throws<ArgumentNullException>(() => _ = new ExternalAccountCredentialLinker(users, null!, clock));
-            Assert.DoesNotThrow(() => _ = new ExternalAccountCredentialLinker(users, linking, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new ExternalAccountCredentialLinker(null!, linking, ProofValidator()));
+            Assert.Throws<ArgumentNullException>(() => _ = new ExternalAccountCredentialLinker(users, null!, ProofValidator()));
+            Assert.Throws<ArgumentNullException>(() => _ = new ExternalAccountCredentialLinker(users, linking, null!));
         }
     }
 
@@ -63,6 +64,20 @@ internal sealed class ExternalAccountCredentialLinkerTests
     }
 
     [Test]
+    public async Task LinkExternalAccountCredentialAsyncShouldRejectRevokedSourceSession()
+    {
+        var service = CreateService(out var users, out var linking);
+        var request = CreateRequest();
+        _sessions[request.CurrentSessionId!.Value].RevokedAt = _now;
+
+        var result = await service.LinkExternalAccountCredentialAsync(request);
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+        users.Verify(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.That(linking.Calls, Is.Zero);
+    }
+
+    [Test]
     public async Task LinkExternalAccountCredentialAsyncShouldRejectNonExternalProvidersBeforeRepositoryLookup()
     {
         var service = CreateService(out var users, out var linking);
@@ -102,7 +117,7 @@ internal sealed class ExternalAccountCredentialLinkerTests
         users.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AshlarUser { Id = userId, DisplayEmail = "user@example.com", TenantId = Guid.NewGuid() });
         var linking = new RecordingCredentialLinkingInfrastructure();
-        var service = new ExternalAccountCredentialLinker(users.Object, linking, new FakeTimeProvider(_now));
+        var service = new ExternalAccountCredentialLinker(users.Object, linking, ProofValidator());
 
         var result = await service.LinkExternalAccountCredentialAsync(CreateRequest(userId: userId, tenantId: tenantId));
 
@@ -130,7 +145,7 @@ internal sealed class ExternalAccountCredentialLinkerTests
         users.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AshlarUser { Id = userId, DisplayEmail = "user@example.com", TenantId = tenantId });
         var linking = new RecordingCredentialLinkingInfrastructure();
-        var service = new ExternalAccountCredentialLinker(users.Object, linking, new FakeTimeProvider(_now));
+        var service = new ExternalAccountCredentialLinker(users.Object, linking, ProofValidator());
 
         var result = await service.LinkExternalAccountCredentialAsync(CreateRequest(
             userId,
@@ -159,7 +174,7 @@ internal sealed class ExternalAccountCredentialLinkerTests
     {
         users = new Mock<IUserRepository>();
         linking = new RecordingCredentialLinkingInfrastructure();
-        return new ExternalAccountCredentialLinker(users.Object, linking, new FakeTimeProvider(_now));
+        return new ExternalAccountCredentialLinker(users.Object, linking, ProofValidator());
     }
 
     private ExternalAccountCredentialLinkRequest CreateRequest(
@@ -182,6 +197,16 @@ internal sealed class ExternalAccountCredentialLinkerTests
             _now,
             _now.AddMinutes(5),
             ExternalAccountCredentialLinker.LinkPurpose);
+        _sessions[resolvedSessionId] = new AuthenticationSession
+        {
+            Id = resolvedSessionId,
+            UserId = resolvedUserId,
+            TenantId = resolvedTenantId,
+            TokenHash = "hash",
+            CreatedAt = _now,
+            AuthenticatedAt = _now,
+            ExpiresAt = _now.AddHours(1)
+        };
 
         var providerMock = new Mock<IAuthenticationProvider>();
         providerMock.SetupGet(p => p.Key)
@@ -196,6 +221,14 @@ internal sealed class ExternalAccountCredentialLinkerTests
             new TenantContext(resolvedTenantId),
             audit,
             metadata);
+    }
+
+    private ActiveSessionFreshProofValidator ProofValidator()
+    {
+        var repository = new Mock<IAuthenticationSessionRepository>();
+        repository.Setup(r => r.GetSessionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) => _sessions.GetValueOrDefault(id));
+        return new(repository.Object, new FakeTimeProvider(_now));
     }
 
     private sealed class RecordingCredentialLinkingInfrastructure : ICredentialLinkingInfrastructure

@@ -1,6 +1,7 @@
 namespace Ashlar.Identity.Providers.RecoveryCode;
 
 /// <summary>Manages recovery codes through actor-bound, host-authorized requests.</summary>
+/// <remarks>Revoking or expiring a proof's source session immediately invalidates the proof for every recovery-code mutation.</remarks>
 public interface IRecoveryCodeService
 {
     /// <summary>Generates recovery codes through an authorized destructive request.</summary>

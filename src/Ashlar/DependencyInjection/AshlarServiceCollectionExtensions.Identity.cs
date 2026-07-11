@@ -101,6 +101,7 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped<ICredentialService>(provider => provider.GetRequiredService<CredentialService>());
         services.TryAddScoped<ICredentialLinkingInfrastructure>(provider => provider.GetRequiredService<CredentialService>());
         services.TryAddScoped<IExternalAccountCredentialLinker, ExternalAccountCredentialLinker>();
+        services.TryAddScoped<ActiveSessionFreshProofValidator>();
         services.TryAddScoped(provider => new AccountSecurityServiceDependencies(
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),

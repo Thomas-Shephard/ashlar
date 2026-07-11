@@ -55,6 +55,7 @@ internal sealed class PasskeyService : IPasskeyService
     private readonly PasskeyOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly IAuthenticationSessionRepository _sessionRepository;
+    private readonly ActiveSessionFreshProofValidator _proofValidator;
     private readonly ISecurityEventSink? _securityEventSink;
     private readonly IAshlarTransactionProvider? _transactionProvider;
     private readonly IReadOnlyList<ISecondaryAuthenticationFactorProvider> _additionalVerificationProviders;
@@ -81,6 +82,7 @@ internal sealed class PasskeyService : IPasskeyService
         _options = dependencies.Options.Value;
         _timeProvider = dependencies.TimeProvider;
         _sessionRepository = dependencies.SessionRepository;
+        _proofValidator = new(_sessionRepository, _timeProvider);
         _securityEventSink = dependencies.SecurityEventSink;
         _transactionProvider = dependencies.TransactionProvider;
     }
@@ -101,14 +103,14 @@ internal sealed class PasskeyService : IPasskeyService
         var tenant = request.Tenant ?? TenantContext.Global;
         var user = await GetAvailableRegistrationUserAsync(request.ActorUserId, tenant, cancellationToken);
         var existing = await _credentialRepository.ListCredentialsForUserAsync(request.ActorUserId, cancellationToken: cancellationToken);
-        var proofBindingResult = ValidateRegistrationProof(
+        var proofBindingResult = await ValidateRegistrationProofAsync(
             new RegistrationProofValidationRequest(
                 request.ActorUserId,
                 tenant,
                 request.FreshMfaProof,
                 request.FreshPrimaryAuthenticationProof,
                 request.CurrentSessionId),
-            existing);
+            existing, cancellationToken);
         if (!proofBindingResult.TryGetValue(out var proofBinding))
         {
             var failure = proofBindingResult.GetFailureOr(AshlarFailureCodes.StepUpRequired);
@@ -152,14 +154,14 @@ internal sealed class PasskeyService : IPasskeyService
             return Result.Failure(AshlarFailureCodes.TenantMismatch);
         }
 
-        var proofResult = ValidateRegistrationCompletionProof(
+        var proofResult = await ValidateRegistrationCompletionProofAsync(
             challenge,
             new RegistrationProofValidationRequest(
                 request.ActorUserId,
                 tenant,
                 request.FreshMfaProof,
                 request.FreshPrimaryAuthenticationProof,
-                request.CurrentSessionId));
+                request.CurrentSessionId), cancellationToken);
         if (!proofResult.Succeeded)
         {
             return Result.Failure(proofResult.GetFailureOr(AshlarFailureCodes.StepUpRequired));
@@ -590,18 +592,8 @@ internal sealed class PasskeyService : IPasskeyService
             return AshlarFailureCodes.ValidationError;
         }
 
-        var proofFailure = FreshVerificationProofValidator.ValidateMfaProof(actorUserId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow(), ManagementPurpose);
-        if (proofFailure != null)
-        {
-            return proofFailure;
-        }
-
-        var session = await _sessionRepository.GetSessionAsync(currentSessionId!.Value, cancellationToken);
-        if (session is null || session.UserId != actorUserId || session.TenantId != tenant.TenantId
-            || !session.IsActive(_timeProvider.GetUtcNow()))
-        {
-            return AshlarFailureCodes.StepUpRequired;
-        }
+        var proofFailure = await _proofValidator.ValidateAsync(actorUserId, tenant, proof, currentSessionId, ManagementPurpose, cancellationToken);
+        if (proofFailure != null) return proofFailure;
 
         return await ActorMatchesTenantAsync(actorUserId, tenant, cancellationToken)
             ? null
@@ -732,16 +724,17 @@ internal sealed class PasskeyService : IPasskeyService
         return true;
     }
 
-    private Result<RegistrationProofBinding> ValidateRegistrationProof(
+    private async Task<Result<RegistrationProofBinding>> ValidateRegistrationProofAsync(
         RegistrationProofValidationRequest request,
-        IReadOnlyList<UserCredential> existingCredentials)
+        IReadOnlyList<UserCredential> existingCredentials,
+        CancellationToken cancellationToken)
     {
         var proofType = HasExistingAdditionalVerification(existingCredentials)
             ? MfaRegistrationProofType
             : PrimaryRegistrationProofType;
         var result = proofType == MfaRegistrationProofType
-            ? ValidateMfaRegistrationProof(request)
-            : ValidatePrimaryRegistrationProof(request);
+            ? await ValidateMfaRegistrationProofAsync(request, cancellationToken)
+            : await ValidatePrimaryRegistrationProofAsync(request, cancellationToken);
 
         if (result.TryGetValue(out var binding))
         {
@@ -751,34 +744,34 @@ internal sealed class PasskeyService : IPasskeyService
         return Result.Failure<RegistrationProofBinding>(result.GetFailureOr(AshlarFailureCodes.StepUpRequired));
     }
 
-    private Result ValidateRegistrationCompletionProof(PasskeyChallenge challenge, RegistrationProofValidationRequest request)
+    private async Task<Result> ValidateRegistrationCompletionProofAsync(PasskeyChallenge challenge, RegistrationProofValidationRequest request, CancellationToken cancellationToken)
     {
         if (challenge.RegistrationProofType == MfaRegistrationProofType)
         {
-            var result = ValidateMfaRegistrationProof(request);
+            var result = await ValidateMfaRegistrationProofAsync(request, cancellationToken);
             return ValidateStoredProofBinding(challenge, result);
         }
 
         if (challenge.RegistrationProofType == PrimaryRegistrationProofType)
         {
-            var result = ValidatePrimaryRegistrationProof(request);
+            var result = await ValidatePrimaryRegistrationProofAsync(request, cancellationToken);
             return ValidateStoredProofBinding(challenge, result);
         }
 
         return Result.Failure(AshlarFailureCodes.StepUpRequired);
     }
 
-    private Result<RegistrationProofBinding> ValidateMfaRegistrationProof(RegistrationProofValidationRequest request)
+    private async Task<Result<RegistrationProofBinding>> ValidateMfaRegistrationProofAsync(RegistrationProofValidationRequest request, CancellationToken cancellationToken)
     {
-        var failure = FreshVerificationProofValidator.ValidateMfaProof(request.UserId, request.Tenant, request.MfaProof, request.CurrentSessionId, _timeProvider.GetUtcNow(), RegistrationPurpose);
+        var failure = await _proofValidator.ValidateAsync(request.UserId, request.Tenant, request.MfaProof, request.CurrentSessionId, RegistrationPurpose, cancellationToken);
         return failure == null
             ? Result.Success(new RegistrationProofBinding(MfaRegistrationProofType, request.MfaProof!.SessionId, request.MfaProof.ExpiresAt))
             : Result.Failure<RegistrationProofBinding>(failure.Value);
     }
 
-    private Result<RegistrationProofBinding> ValidatePrimaryRegistrationProof(RegistrationProofValidationRequest request)
+    private async Task<Result<RegistrationProofBinding>> ValidatePrimaryRegistrationProofAsync(RegistrationProofValidationRequest request, CancellationToken cancellationToken)
     {
-        var failure = FreshVerificationProofValidator.ValidatePrimaryAuthenticationProof(request.UserId, request.Tenant, request.PrimaryProof, request.CurrentSessionId, _timeProvider.GetUtcNow(), RegistrationPurpose);
+        var failure = await _proofValidator.ValidateAsync(request.UserId, request.Tenant, request.PrimaryProof, request.CurrentSessionId, RegistrationPurpose, cancellationToken);
         return failure == null
             ? Result.Success(new RegistrationProofBinding(PrimaryRegistrationProofType, request.PrimaryProof!.SessionId, request.PrimaryProof.ExpiresAt))
             : Result.Failure<RegistrationProofBinding>(failure.Value);

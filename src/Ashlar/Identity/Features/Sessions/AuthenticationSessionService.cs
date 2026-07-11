@@ -16,6 +16,7 @@ internal sealed class AuthenticationSessionService(
     ILogger<AuthenticationSessionService>? logger = null)
     : IAuthenticationSessionService, IAuthenticationSessionMutationExecutor
 {
+    private readonly ActiveSessionFreshProofValidator _proofValidator = new(repository, dependencies.TimeProvider ?? TimeProvider.System);
     internal const string SelfServiceProofPurpose = "session-management";
     private static readonly Action<ILogger, Guid, Guid, Exception?> SessionLastSeenUpdateNotPersisted =
         LoggerMessage.Define<Guid, Guid>(
@@ -574,7 +575,7 @@ internal sealed class AuthenticationSessionService(
                 eventType, targetSessionId, AshlarFailureCodes.ValidationError, cancellationToken);
             throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Audit actor must match the authenticated actor.");
         }
-        var failure = FreshVerificationProofValidator.ValidateMfaProof(actorUserId, actorTenant, proof, currentSessionId, _timeProvider.GetUtcNow(), SelfServiceProofPurpose);
+        var failure = await _proofValidator.ValidateAsync(actorUserId, actorTenant, proof, currentSessionId, SelfServiceProofPurpose, cancellationToken);
         if (failure is { } code)
         {
             await RecordSelfServiceRevocationFailureAsync(actorUserId, actorTenant, audit, eventType, targetSessionId, code, cancellationToken);

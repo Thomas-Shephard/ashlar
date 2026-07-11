@@ -22,7 +22,7 @@ public interface IExternalAccountCredentialLinker
 /// <param name="CurrentUserId">The currently authenticated Ashlar user that must own the credential.</param>
 /// <param name="Assertion">Assertion mapped from a trusted external authentication ticket.</param>
 /// <param name="Provider">Ashlar authenticator that owns the credential format.</param>
-/// <param name="FreshMfaProof">Ashlar-issued fresh MFA proof minted for <c>external-account-linking</c>.</param>
+/// <param name="FreshMfaProof">Ashlar-issued fresh MFA proof minted for <c>external-account-linking</c>. Revoking or expiring its source session immediately invalidates it.</param>
 /// <param name="CurrentSessionId">Current Ashlar session id from the authenticated request.</param>
 /// <param name="Tenant">Tenant scope that must match both the current user and the fresh proof. Use <see cref="TenantContext.Global" /> for global users.</param>
 /// <param name="Audit">Caller audit metadata for the account-security mutation.</param>

@@ -13,10 +13,51 @@ namespace Ashlar.Passkeys.Tests;
 
 internal sealed class PasskeyServiceTests
 {
+    private readonly Dictionary<Guid, AuthenticationSession> _proofSessions = [];
     private static readonly Guid RegistrationSessionId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly TimeSpan RegistrationFreshnessWindow = TimeSpan.FromMinutes(10);
     private const string RegistrationPurpose = "passkey-registration";
     private const string ManagementPurpose = "passkey-management";
+
+    [Test]
+    public async Task RegistrationShouldRejectProofAfterSourceSessionRevocation()
+    {
+        var user = new TestUser(Guid.NewGuid(), "test@example.com");
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var sessions = new Mock<IAuthenticationSessionRepository>();
+        sessions.Setup(r => r.GetSessionAsync(RegistrationSessionId, It.IsAny<CancellationToken>())).ReturnsAsync(new AuthenticationSession
+        {
+            Id = RegistrationSessionId,
+            UserId = user.Id,
+            TokenHash = "hash",
+            CreatedAt = now.AddMinutes(-1),
+            AuthenticatedAt = now,
+            ExpiresAt = now.AddHours(1),
+            RevokedAt = now
+        });
+        var users = new Mock<IUserRepository>();
+        users.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        var credentials = new Mock<ICredentialRepository>();
+        credentials.Setup(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var challenge = CreateRegistrationChallenge(now, user.Id);
+        challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
+        var service = new PasskeyService(users.Object, credentials.Object, challenges.Object, new Mock<IPasskeyCeremonyValidator>().Object,
+            CreateDependencies(new FakeTimeProvider(now), sessionRepository: sessions.Object));
+
+        var start = Assert.ThrowsAsync<AshlarOperationException>(() => service.StartRegistrationAsync(
+            CreateStartRegistrationRequest(user.Id, "Passkey", now: now)));
+        using var response = JsonDocument.Parse("{}");
+        var complete = await service.CompleteRegistrationAsync(CreateCompleteRegistrationRequest(challenge, response.RootElement, now: now));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(start!.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(complete.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+        }
+        challenges.Verify(r => r.CreateAsync(It.IsAny<PasskeyChallenge>(), It.IsAny<CancellationToken>()), Times.Never);
+        credentials.Verify(r => r.CreateOrReplaceCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 
     [Test]
     public async Task StartRegistrationAsyncShouldCreateChallengeAndRecordAuditEvent()
@@ -2937,7 +2978,7 @@ internal sealed class PasskeyServiceTests
         }
     }
 
-    private static void AssertStartRegistrationTenantFailure(TestUser user, TenantContext? tenant)
+    private void AssertStartRegistrationTenantFailure(TestUser user, TenantContext? tenant)
     {
         var repo = new Mock<IUserRepository>();
         var credentials = new Mock<ICredentialRepository>();
@@ -2964,7 +3005,7 @@ internal sealed class PasskeyServiceTests
             .ReturnsAsync(new TestUser(userId, "test@example.com", accountState, challenge.TenantId));
     }
 
-    private static async Task<Result> CompleteRegistrationForTenantAsync(Guid? challengeTenantId, Guid? userTenantId, TenantContext? requestTenant)
+    private async Task<Result> CompleteRegistrationForTenantAsync(Guid? challengeTenantId, Guid? userTenantId, TenantContext? requestTenant)
     {
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var userId = Guid.NewGuid();
@@ -3034,7 +3075,7 @@ internal sealed class PasskeyServiceTests
         };
     }
 
-    private static StartPasskeyRegistrationRequest CreateStartRegistrationRequest(Guid userId, string displayName, TenantContext? tenant = null, AuditContext? audit = null, DateTimeOffset? now = null, Guid? sessionId = null)
+    private StartPasskeyRegistrationRequest CreateStartRegistrationRequest(Guid userId, string displayName, TenantContext? tenant = null, AuditContext? audit = null, DateTimeOffset? now = null, Guid? sessionId = null)
     {
         var resolvedNow = now ?? DateTimeOffset.UtcNow;
         return new StartPasskeyRegistrationRequest(userId, displayName)
@@ -3046,7 +3087,7 @@ internal sealed class PasskeyServiceTests
         };
     }
 
-    private static CompletePasskeyRegistrationRequest CreateCompleteRegistrationRequest(PasskeyChallenge challenge, JsonElement credentialResponse, string? displayName = null, TenantContext? tenant = null, Guid? userId = null, DateTimeOffset? now = null, Guid? sessionId = null)
+    private CompletePasskeyRegistrationRequest CreateCompleteRegistrationRequest(PasskeyChallenge challenge, JsonElement credentialResponse, string? displayName = null, TenantContext? tenant = null, Guid? userId = null, DateTimeOffset? now = null, Guid? sessionId = null)
     {
         var resolvedUserId = userId ?? challenge.UserId.GetValueOrDefault();
         var resolvedTenant = tenant ?? TenantContext.Global;
@@ -3060,7 +3101,7 @@ internal sealed class PasskeyServiceTests
         };
     }
 
-    private static FreshPrimaryAuthenticationProof CreatePrimaryProof(Guid userId, Guid? tenantId, DateTimeOffset now, Guid sessionId, string? purpose = RegistrationPurpose)
+    private FreshPrimaryAuthenticationProof CreatePrimaryProof(Guid userId, Guid? tenantId, DateTimeOffset now, Guid sessionId, string? purpose = RegistrationPurpose)
     {
         var stepUp = new StepUpAuthenticationService(new FakeTimeProvider(now));
         var session = new AuthenticationSession
@@ -3074,10 +3115,11 @@ internal sealed class PasskeyServiceTests
             ExpiresAt = now.AddHours(1)
         };
         var result = stepUp.CreateFreshPrimaryAuthenticationProof(CreateValidatedSession(session), RegistrationFreshnessWindow, purpose);
+        _proofSessions[sessionId] = session;
         return result.Value!;
     }
 
-    private static FreshMfaVerificationProof CreateMfaProof(Guid userId, Guid? tenantId, DateTimeOffset now, Guid sessionId, string? purpose = RegistrationPurpose)
+    private FreshMfaVerificationProof CreateMfaProof(Guid userId, Guid? tenantId, DateTimeOffset now, Guid sessionId, string? purpose = RegistrationPurpose)
     {
         var stepUp = new StepUpAuthenticationService(new FakeTimeProvider(now));
         var session = new AuthenticationSession
@@ -3094,6 +3136,7 @@ internal sealed class PasskeyServiceTests
             ExpiresAt = now.AddHours(1)
         };
         var result = stepUp.CreateFreshMfaProof(CreateValidatedSession(session), new StepUpRequirement(RegistrationFreshnessWindow, Purpose: purpose));
+        _proofSessions[sessionId] = session;
         return result.Value!;
     }
 
@@ -3101,7 +3144,7 @@ internal sealed class PasskeyServiceTests
         (ValidatedAuthenticationSession)Activator.CreateInstance(typeof(ValidatedAuthenticationSession),
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [session], null)!;
 
-    private static RenamePasskeyRequest CreateRenameRequest(
+    private RenamePasskeyRequest CreateRenameRequest(
         Guid userId,
         Guid credentialId,
         string displayName,
@@ -3124,7 +3167,7 @@ internal sealed class PasskeyServiceTests
             omitAudit ? null : audit ?? new AuditContext(userId, "127.0.0.1", "NUnit", "corr"));
     }
 
-    private static RevokePasskeyRequest CreateRevokeRequest(
+    private RevokePasskeyRequest CreateRevokeRequest(
         Guid userId,
         Guid credentialId,
         DateTimeOffset now,
@@ -3205,7 +3248,7 @@ internal sealed class PasskeyServiceTests
     private static bool IsCapability(IAuthenticationAssertion assertion, AuthenticationProviderKey? providerKey = null) =>
         PasskeyService.TryReadCapability(assertion, providerKey ?? AuthenticationProviderKey.Passkey, out _, out _);
 
-    private static PasskeyServiceDependencies CreateDependencies(
+    private PasskeyServiceDependencies CreateDependencies(
         TimeProvider? timeProvider = null,
         ISecurityEventSink? securityEventSink = null,
         IAuthenticationOrchestrator? authenticationOrchestrator = null,
@@ -3306,18 +3349,19 @@ internal sealed class PasskeyServiceTests
         credentials.VerifyNoOtherCalls();
     }
 
-    private static IAuthenticationSessionRepository ActiveSessionRepository(Guid userId = default, Guid? tenantId = null)
+    private IAuthenticationSessionRepository ActiveSessionRepository(Guid userId = default, Guid? tenantId = null)
     {
         var repository = new Mock<IAuthenticationSessionRepository>();
-        repository.Setup(x => x.GetSessionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync((Guid id, CancellationToken _) => new AuthenticationSession
-        {
-            Id = id,
-            UserId = userId,
-            TenantId = tenantId,
-            TokenHash = "hash",
-            CreatedAt = DateTimeOffset.MinValue,
-            ExpiresAt = DateTimeOffset.MaxValue
-        });
+        repository.Setup(x => x.GetSessionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync((Guid id, CancellationToken _) =>
+            userId == Guid.Empty && _proofSessions.TryGetValue(id, out var session) ? session : new AuthenticationSession
+            {
+                Id = id,
+                UserId = userId,
+                TenantId = tenantId,
+                TokenHash = "hash",
+                CreatedAt = DateTimeOffset.MinValue,
+                ExpiresAt = DateTimeOffset.MaxValue
+            });
         return repository.Object;
     }
 }
