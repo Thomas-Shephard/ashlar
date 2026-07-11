@@ -76,7 +76,7 @@ jobs:
             --configuration "$CONFIGURATION"
             --no-build
             --no-restore
-            --settings .runsettings
+            --coverlet
             --results-directory "$COVERAGE_DIR"
           )
 
@@ -91,7 +91,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: dotnet sonarscanner end
       - name: Check Coverage
-        run: dotnet coveragechecker --format Cobertura --glob-patterns "${COVERAGE_DIR}/**/coverage.cobertura.xml" --line-threshold 100 --branch-threshold 100
+        run: dotnet coveragechecker --format Cobertura --glob-patterns "${COVERAGE_DIR}/**/coverage.cobertura.*.xml" --line-threshold 100 --branch-threshold 100
       - name: Pack
         run: |
           args=("$SOLUTION_PATH" --configuration "$CONFIGURATION" --no-restore --output "$PACKAGE_OUTPUT_PATH")

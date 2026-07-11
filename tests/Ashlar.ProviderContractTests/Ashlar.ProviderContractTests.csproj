@@ -9,6 +9,8 @@
     <InternalsVisibleTo Include="Ashlar.Postgres.Tests" />
     <InternalsVisibleTo Include="Ashlar.Redis.Tests" />
     <InternalsVisibleTo Include="Ashlar.Sqlite.Tests" />
+    <PackageReference Include="NUnit" />
+    <Using Include="NUnit.Framework" />
   </ItemGroup>
 
   <ItemGroup>

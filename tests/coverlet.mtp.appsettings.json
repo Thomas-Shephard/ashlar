@@ -1,0 +1,8 @@
+{
+  "Coverlet": {
+    "Format": "cobertura,opencover",
+    "Exclude": "[System.*]*,[Microsoft.*]*,[*.Tests]*,[Ashlar.ProviderContractTests]*,[Ashlar.Sample.*]*",
+    "ExcludeByAttribute": "Obsolete,GeneratedCodeAttribute,CompilerGeneratedAttribute,LoggerMessageAttribute",
+    "ExcludeByFile": "**/System.*.cs,**/*.g.cs"
+  }
+}
