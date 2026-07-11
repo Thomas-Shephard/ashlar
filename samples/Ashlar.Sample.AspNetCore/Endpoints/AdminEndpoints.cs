@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.RegularExpressions;
 using Ashlar.Authorization.Abstractions;
+using Ashlar.Authorization;
 using Ashlar.Authorization.Models;
 using Ashlar.AspNetCore.Mfa;
 using Ashlar.Identity.Features.Mfa;
@@ -19,6 +20,7 @@ internal static partial class AdminEndpoints
 {
     private const string AdminPolicy = "admin";
     private static readonly StepUpRequirement AdminSecurityRequirement = new(TimeSpan.FromMinutes(5), Purpose: "account-security-administration");
+    private static readonly StepUpRequirement GrantAdministrationRequirement = new(TimeSpan.FromMinutes(5), Purpose: AuthorizationGrantService.AdministrationProofPurpose);
 
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
@@ -232,22 +234,32 @@ internal static partial class AdminEndpoints
         ProjectGrantRequest request,
         IAuthorizationGrantService grants,
         IAuthorizationEvaluator auth,
+        StepUpAuthenticationService stepUp,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
-        if (tenant == null)
+        if (tenant == null || !httpContext.TryGetAshlarSessionContext(out var actorUserId, out var sessionId, out var actorTenant) || actorTenant == null)
         {
             return Results.Forbid();
         }
 
+        var proof = httpContext.CreateFreshMfaProof(stepUp, GrantAdministrationRequirement);
+        if (!proof.TryGetValue(out var freshProof))
+        {
+            return Results.Json(SampleResultErrors.From(proof, "Fresh MFA proof required"), statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var actor = new AccountSecurityActorContext(actorUserId, actorTenant, sessionId, freshProof,
+            httpContext.ToAuditContext());
+
         var result = await grants.CreateGrantAsync(new CreateAuthorizationGrantRequest(
-            UserId: request.UserId,
-            TenantId: tenant.TenantId,
-            ScopeType: "project",
-            ScopeId: projectId,
-            Permission: "project.manage",
-            Audit: httpContext.ToAuditContext()), cancellationToken);
+            request.UserId, actor, actor.Audit, tenant, new AuthorizationGrantSpecification
+            {
+                ScopeType = "project",
+                ScopeId = projectId,
+                Permission = "project.manage"
+            }), cancellationToken);
 
         return !result.Succeeded || result.Value == null
             ? Results.BadRequest(SampleResultErrors.From(result, "Failed to create grant"))

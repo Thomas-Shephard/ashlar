@@ -8,14 +8,18 @@ namespace Ashlar.Authorization;
 /// <summary>
 /// Creates, revokes, and lists authorization grants for users.
 /// </summary>
-public sealed class AuthorizationGrantService : IAuthorizationGrantService
+public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAuthorizationGrantBootstrapService
 {
+    /// <summary>Purpose required on fresh MFA proofs used for app-facing grant creation and revocation.</summary>
+    public const string AdministrationProofPurpose = "authorization-grant-administration";
     private readonly IAuthorizationGrantRepository _repository;
     private readonly AuthorizationGrantOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly IUserRepository _userRepository;
     private readonly IAshlarTransactionProvider? _transactionProvider;
+    private readonly IAccountSecurityOperationAuthorizer? _authorizer;
+    private readonly IAuthenticationSessionRepository? _sessionRepository;
 
     /// <summary>Initializes the grant service with storage, validation, and audit dependencies.</summary>
     /// <param name="repository">Grant storage used for authorization assignments.</param>
@@ -24,13 +28,15 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
     /// <param name="timeProvider">Clock used for timestamps and expiration checks.</param>
     /// <param name="securityEventSink">Optional sink that receives grant creation and revocation audit events.</param>
     /// <param name="transactionProvider">Optional transaction provider used to commit grant mutations with required audit writes.</param>
+    /// <param name="mutationContext">Host authorization and active-session dependencies for app-facing grant mutations.</param>
     public AuthorizationGrantService(
         IAuthorizationGrantRepository repository,
         IUserRepository userRepository,
         AuthorizationGrantOptions? options = null,
         TimeProvider? timeProvider = null,
         ISecurityEventSink? securityEventSink = null,
-        IAshlarTransactionProvider? transactionProvider = null)
+        IAshlarTransactionProvider? transactionProvider = null,
+        AuthorizationGrantMutationContext? mutationContext = null)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
@@ -43,12 +49,14 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         _timeProvider = timeProvider ?? TimeProvider.System;
         _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
         _transactionProvider = transactionProvider;
+        _authorizer = mutationContext?.Authorizer;
+        _sessionRepository = mutationContext?.SessionRepository;
     }
 
     /// <summary>
-    /// Creates a role or permission grant after validating user and tenant ownership.
+    /// Creates a role or permission grant after validating the actor's proof, active session, audit identity, host authorization, and target ownership.
     /// </summary>
-    /// <param name="request">Grant details and required audit context supplied by an authorized caller.</param>
+    /// <param name="request">Actor-bound grant details, explicit target scope, and required audit metadata.</param>
     /// <param name="cancellationToken">A token that can cancel the create operation.</param>
     /// <returns>Created grant, or a failure when validation or tenant checks fail.</returns>
     public async Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
@@ -59,12 +67,19 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
             return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.ValidationError);
         }
 
+        var actorFailure = await ValidateActorAsync(request.Actor, request.Audit, request.IncludeAllTenants, request.IsInfrastructureMutation, cancellationToken);
+        if (actorFailure is null)
+            actorFailure = await AuthorizeActorAsync(request.Actor, request.UserId, request.TenantId,
+                AccountSecurityOperation.CreateAuthorizationGrant, request.IsInfrastructureMutation, cancellationToken);
+        if (actorFailure is not null)
+            return Result.Failure<AuthorizationGrant>(actorFailure.Value);
+
         if (request.UserId == Guid.Empty)
         {
             throw new ArgumentException("User id must not be empty.", nameof(request));
         }
 
-        if (string.IsNullOrWhiteSpace(request.Role) == string.IsNullOrWhiteSpace(request.Permission))
+        if (!HasValidGrantShape(request.Role, request.Permission))
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -118,9 +133,8 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
             return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.InvalidScopeShape);
         }
 
-        var metadata = string.IsNullOrWhiteSpace(request.Metadata) ? null : request.Metadata;
-
-        if (metadata is { Length: > 0 } && metadata.Length > _options.MaxMetadataLength)
+        var (metadata, metadataFailure) = ValidateMetadata(request.Metadata);
+        if (metadataFailure is not null)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -129,30 +143,9 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
                 UserId = request.UserId,
                 TenantId = request.TenantId,
                 Audit = request.Audit,
-                FailureReason = AshlarFailureCodes.MetadataTooLong.Value
+                FailureReason = metadataFailure.Value.Value
             }, cancellationToken);
-            return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.MetadataTooLong);
-        }
-
-        if (metadata != null)
-        {
-            try
-            {
-                using var _ = JsonDocument.Parse(metadata);
-            }
-            catch (JsonException)
-            {
-                await _securityEvents.RecordAsync(new SecurityEventDescriptor
-                {
-                    EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
-                    Outcome = SecurityEventOutcomes.Failure,
-                    UserId = request.UserId,
-                    TenantId = request.TenantId,
-                    Audit = request.Audit,
-                    FailureReason = AshlarFailureCodes.InvalidMetadataJson.Value
-                }, cancellationToken);
-                return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.InvalidMetadataJson);
-            }
+            return Result.Failure<AuthorizationGrant>(metadataFailure.Value);
         }
 
         var tenantValidation = await ValidateUserTenantAsync(request.UserId, request.TenantId, request.Audit, cancellationToken);
@@ -233,9 +226,9 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
     }
 
     /// <summary>
-    /// Revokes an authorization grant in the requested tenant scope.
+    /// Revokes an authorization grant after validating the actor's proof, active session, audit identity, host authorization, and requested scope.
     /// </summary>
-    /// <param name="request">Grant identifier, tenant scope, and required audit context for the revocation.</param>
+    /// <param name="request">Actor-bound grant identifier, explicit target scope, and required audit metadata.</param>
     /// <param name="cancellationToken">A token that can cancel the revoke operation.</param>
     /// <returns>Revocation result with the grant id, requested tenant boundary, and outcome.</returns>
     public async Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
@@ -245,6 +238,10 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         {
             return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.ValidationFailed, request.GrantId, request.TenantId);
         }
+
+        var actorFailure = await ValidateActorAsync(request.Actor, request.Audit, request.IncludeAllTenants, request.IsInfrastructureMutation, cancellationToken);
+        if (actorFailure is not null)
+            return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.ValidationFailed, request.GrantId, request.TenantId);
 
         if (request.GrantId == Guid.Empty)
         {
@@ -257,6 +254,11 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
             await RecordRevokeFailureAsync(request, "grant_not_found", cancellationToken);
             return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.NotFound, request.GrantId, request.TenantId);
         }
+
+        actorFailure = await AuthorizeActorAsync(request.Actor, grant.UserId, request.TenantId,
+            AccountSecurityOperation.RevokeAuthorizationGrant, request.IsInfrastructureMutation, cancellationToken);
+        if (actorFailure is not null)
+            return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.NotFound, request.GrantId, request.TenantId);
 
         await using var transaction = _transactionProvider == null
             ? null
@@ -388,5 +390,59 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
             FailureReason = failureReason,
             Properties = CreateAuditProperties(request.GrantId, null)
         }, cancellationToken);
+    }
+
+    private static bool HasValidGrantShape(string? role, string? permission) =>
+        string.IsNullOrWhiteSpace(role) != string.IsNullOrWhiteSpace(permission);
+
+    private (string? Metadata, AshlarFailureCode? Failure) ValidateMetadata(string? value)
+    {
+        var metadata = string.IsNullOrWhiteSpace(value) ? null : value;
+        if (metadata?.Length > _options.MaxMetadataLength)
+            return (metadata, AshlarFailureCodes.MetadataTooLong);
+
+        try
+        {
+            if (metadata is not null)
+            {
+                using var document = JsonDocument.Parse(metadata);
+            }
+            return (metadata, null);
+        }
+        catch (JsonException)
+        {
+            return (metadata, AshlarFailureCodes.InvalidMetadataJson);
+        }
+    }
+
+    private async ValueTask<AshlarFailureCode?> ValidateActorAsync(AccountSecurityActorContext? actor, AuditContext audit,
+        bool includeAllTenants, bool infrastructureMutation, CancellationToken cancellationToken)
+    {
+        if (infrastructureMutation) return null;
+        ArgumentNullException.ThrowIfNull(actor);
+        if (audit.ActorUserId != actor.ActorUserId || includeAllTenants) return AshlarFailureCodes.ValidationError;
+
+        var proofFailure = FreshVerificationProofValidator.ValidateMfaProof(actor.ActorUserId, actor.ActorTenant,
+            actor.FreshMfaProof, actor.CurrentSessionId, _timeProvider.GetUtcNow(), AdministrationProofPurpose);
+        if (proofFailure is not null) return proofFailure;
+        if (_sessionRepository is null) return AshlarFailureCodes.ValidationError;
+
+        var session = await _sessionRepository.GetSessionAsync(actor.CurrentSessionId, cancellationToken);
+        return session is null || session.UserId != actor.ActorUserId || session.TenantId != actor.ActorTenant.TenantId
+            || !session.IsActive(_timeProvider.GetUtcNow()) ? AshlarFailureCodes.StepUpRequired : null;
+    }
+
+    private async ValueTask<AshlarFailureCode?> AuthorizeActorAsync(AccountSecurityActorContext? actor,
+        Guid targetUserId, Guid? tenantId, AccountSecurityOperation operation, bool infrastructureMutation,
+        CancellationToken cancellationToken)
+    {
+        if (infrastructureMutation) return null;
+        ArgumentNullException.ThrowIfNull(actor);
+        if (_authorizer is null) return AshlarFailureCodes.ValidationError;
+
+        var authorized = await _authorizer.AuthorizeAsync(new AccountSecurityAuthorizationContext(
+            actor.ActorUserId, actor.ActorTenant, targetUserId, new TenantContext(tenantId), false, operation,
+            CurrentSessionId: actor.CurrentSessionId), cancellationToken);
+        return authorized ? null : AshlarFailureCodes.ValidationError;
     }
 }

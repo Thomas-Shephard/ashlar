@@ -1,3 +1,4 @@
+using Ashlar.Authorization;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
@@ -178,6 +179,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
     {
         AddEmailSenderIssue(serviceProvider, issues);
         AddNullSecurityEventSinkIssue(serviceProvider, issues);
+        AddAuthorizationGrantMutationDependencyIssues(serviceProvider, issues);
         AddAccountSecurityOperationAuthorizerIssue(serviceProvider, issues);
         AddPermissiveAccountSecurityGuardIssue(serviceProvider, issues);
         AddMfaPolicyIssues(serviceProvider, issues);
@@ -422,7 +424,8 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
 
     private static void AddAccountSecurityOperationAuthorizerIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
     {
-        if (serviceProvider.IsServiceRegistered<IAccountSecurityAdministrationService>()
+        if ((serviceProvider.IsServiceRegistered<IAccountSecurityAdministrationService>()
+                || serviceProvider.IsServiceRegistered<AuthorizationGrantService>())
             && !serviceProvider.IsServiceRegistered<IAccountSecurityOperationAuthorizer>())
         {
             issues.Add(new AshlarConfigurationIssue(
@@ -432,6 +435,20 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
                 "Register an application-specific IAccountSecurityOperationAuthorizer that evaluates the actor, target, operation details, and exact tenant, global, or all-tenant scope.",
                 "Account security authorization"));
         }
+    }
+
+    private static void AddAuthorizationGrantMutationDependencyIssues(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
+    {
+        if (!serviceProvider.IsServiceRegistered<AuthorizationGrantService>()
+            || serviceProvider.IsServiceRegistered<IAuthenticationSessionRepository>()
+            || issues.Any(issue => issue.Code == AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing)) return;
+
+        issues.Add(new AshlarConfigurationIssue(
+            AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing,
+            AshlarConfigurationIssueSeverity.Error,
+            "Authentication session persistence is not configured.",
+            "Register an IAuthenticationSessionRepository implementation before using built-in authorization grant mutations.",
+            "Session persistence"));
     }
 
     private static void AddMfaPolicyIssues(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
@@ -576,7 +593,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
                 "Bootstrap authorization"));
         }
 
-        if (options.Grants.Count > 0 && !serviceProvider.IsServiceRegistered<IAuthorizationGrantService>())
+        if (options.Grants.Count > 0 && !serviceProvider.IsServiceRegistered<IAuthorizationGrantBootstrapService>())
         {
             issues.Add(new AshlarConfigurationIssue(
                 AshlarConfigurationIssueCodes.BootstrapGrantServiceMissing,

@@ -19,7 +19,7 @@ internal sealed class BootstrapDependencies(
     SecureTokenContext tokenContext,
     IdentityInfrastructureContext infrastructure,
     IdentityAuditContext audit,
-    IAuthorizationGrantService? grantService = null)
+    IAuthorizationGrantBootstrapService? grantService = null)
 {
     private readonly BootstrapStoreContext _storeContext = storeContext ?? throw new ArgumentNullException(nameof(storeContext));
     private readonly SecureTokenContext _tokenContext = tokenContext ?? throw new ArgumentNullException(nameof(tokenContext));
@@ -61,5 +61,5 @@ internal sealed class BootstrapDependencies(
     /// <summary>
     /// Gets the optional authorization grant service.
     /// </summary>
-    public IAuthorizationGrantService? GrantService { get; } = grantService;
+    public IAuthorizationGrantBootstrapService? GrantService { get; } = grantService;
 }

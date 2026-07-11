@@ -1,4 +1,3 @@
-using Ashlar.Authorization.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -48,7 +47,7 @@ internal sealed class AshlarBootstrapServiceCollectionExtensionsTests
 
         var exception = Assert.Throws<InvalidOperationException>(() => _ = provider.GetService<IBootstrapService>());
 
-        Assert.That(exception?.Message, Does.Contain(nameof(IAuthorizationGrantService)));
+        Assert.That(exception?.Message, Does.Contain("built-in authorization"));
     }
 
     [Test]
