@@ -102,7 +102,7 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
     [TestCase("https://[::ffff:192.168.0.1]/security-events")]
     [TestCase("https://[fd00::1]/security-events")]
     [TestCase("https://[fec0::1]/security-events")]
-    [TestCase("https://[64:ff9b:1::1]/security-events")]
+    [TestCase("https://[64:ff9b:1:5db8:d8:2200::]/security-events")]
     [TestCase("https://[64:ff9b::a00:1]/security-events")]
     public void AllowPrivateNetworksAcceptsPrivateIpLiterals(string uri)
     {
@@ -151,6 +151,87 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
             }));
 
         var result = await validator.ValidateAsync(new Uri("https://receiver.internal/security-events"));
+
+        Assert.That(result.IsValid, Is.False);
+    }
+
+    [TestCase("2001:db8::/32", "2001:db8:7f00:1::")]
+    [TestCase("2001:db8:1200::/40", "2001:db8:127f:0:1::")]
+    [TestCase("2001:db8:1234::/48", "2001:db8:1234:7f00:0:100::")]
+    [TestCase("2001:db8:1234:5600::/56", "2001:db8:1234:567f:0:1::")]
+    [TestCase("2001:db8:1234:5678::/64", "2001:db8:1234:5678:7f:0:100:0")]
+    [TestCase("2001:db8:1234:5678:9abc:def0::/96", "2001:db8:1234:5678:9abc:def0:7f00:1")]
+    public async Task ConfiguredNat64PrefixLengthsRejectEmbeddedLoopback(string prefix, string address)
+    {
+        var validator = CreateValidator(AshlarSecurityEventWebhookDestinationPolicy.PublicInternetOnly, prefix, IPAddress.Parse(address));
+
+        var result = await validator.ValidateAsync(new Uri("https://receiver.test/security-events"));
+
+        Assert.That(result.IsValid, Is.False);
+    }
+
+    [TestCase("127.0.0.1", false, false)]
+    [TestCase("169.254.1.1", false, false)]
+    [TestCase("224.0.0.1", false, false)]
+    [TestCase("0.0.0.0", false, false)]
+    [TestCase("10.0.0.1", false, true)]
+    [TestCase("93.184.216.34", true, true)]
+    public async Task ConfiguredNat64AppliesDirectIPv4Policy(string embeddedAddress, bool publicInternetOnly, bool allowPrivateNetworks)
+    {
+        var address = $"2001:db8:1234:5678:9abc:def0:{IPAddress.Parse(embeddedAddress).GetAddressBytes()[0]:x2}{IPAddress.Parse(embeddedAddress).GetAddressBytes()[1]:x2}:{IPAddress.Parse(embeddedAddress).GetAddressBytes()[2]:x2}{IPAddress.Parse(embeddedAddress).GetAddressBytes()[3]:x2}";
+
+        var publicResult = await CreateValidator(AshlarSecurityEventWebhookDestinationPolicy.PublicInternetOnly, "2001:db8:1234:5678:9abc:def0::/96", IPAddress.Parse(address))
+            .ValidateAsync(new Uri("https://receiver.test"));
+        var privateResult = await CreateValidator(AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks, "2001:db8:1234:5678:9abc:def0::/96", IPAddress.Parse(address))
+            .ValidateAsync(new Uri("https://receiver.test"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(publicResult.IsValid, Is.EqualTo(publicInternetOnly));
+            Assert.That(privateResult.IsValid, Is.EqualTo(allowPrivateNetworks));
+        }
+    }
+
+    [Test]
+    public async Task ConfiguredNat64AppliesToIpLiteralAndConnectedPeer()
+    {
+        var address = IPAddress.Parse("2001:db8:1234:5678:9abc:def0:7f00:1");
+        var validator = CreateValidator(AshlarSecurityEventWebhookDestinationPolicy.PublicInternetOnly, "2001:db8:1234:5678:9abc:def0::/96");
+
+        var literal = await validator.ValidateAsync(new Uri($"https://[{address}]/security-events"));
+        var peer = validator.ValidateAddress(address);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(literal.IsValid, Is.False);
+            Assert.That(peer.IsValid, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task ConfiguredNat64UsesLongestMatchingPrefix()
+    {
+        var options = new AshlarSecurityEventWebhookOptions();
+        options.Nat64Prefixes.Add(IPNetwork.Parse("2001:db8::/32"));
+        options.Nat64Prefixes.Add(IPNetwork.Parse("2001:db8:5db8:d822::/96"));
+        var validator = new AshlarSecurityEventWebhookDestinationValidator(
+            new StaticResolver(IPAddress.Parse("2001:db8:5db8:d822::7f00:1")),
+            Options.Create(options));
+
+        var result = await validator.ValidateAsync(new Uri("https://receiver.test"));
+
+        Assert.That(result.IsValid, Is.False);
+    }
+
+    [Test]
+    public async Task ConfiguredNat64UsesLongestPrefixWithinBuiltInLocalUsePrefix()
+    {
+        var validator = CreateValidator(
+            AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks,
+            "64:ff9b:1:5db8:d822::/96",
+            IPAddress.Parse("64:ff9b:1:5db8:d822::7f00:1"));
+
+        var result = await validator.ValidateAsync(new Uri("https://receiver.test"));
 
         Assert.That(result.IsValid, Is.False);
     }
@@ -495,6 +576,16 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
             validator,
             connectToAddressAsync,
             CancellationToken.None);
+    }
+
+    private static AshlarSecurityEventWebhookDestinationValidator CreateValidator(
+        AshlarSecurityEventWebhookDestinationPolicy policy,
+        string prefix,
+        params IPAddress[] addresses)
+    {
+        var options = new AshlarSecurityEventWebhookOptions { DestinationPolicy = policy };
+        options.Nat64Prefixes.Add(IPNetwork.Parse(prefix));
+        return new AshlarSecurityEventWebhookDestinationValidator(new StaticResolver(addresses), Options.Create(options));
     }
 
     private sealed class StaticResolver(params IPAddress[] addresses) : IAshlarSecurityEventWebhookDestinationResolver

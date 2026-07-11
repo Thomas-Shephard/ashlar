@@ -57,12 +57,13 @@ public sealed class AshlarSecurityEventWebhookEndpointOptions
 
     internal static bool Validate(
         AshlarSecurityEventWebhookEndpointOptions? endpoint,
-        AshlarSecurityEventWebhookDestinationPolicy destinationPolicy)
+        AshlarSecurityEventWebhookDestinationPolicy destinationPolicy,
+        IEnumerable<System.Net.IPNetwork>? nat64Prefixes = null)
     {
         return endpoint is not null
             && !string.IsNullOrWhiteSpace(endpoint.Name)
             && AshlarSecurityEventWebhookHeaderValues.IsSafe(endpoint.Name)
-            && AshlarSecurityEventWebhookDestinationValidator.ValidateUri(endpoint.Uri, destinationPolicy).IsValid
+            && AshlarSecurityEventWebhookDestinationValidator.ValidateUri(endpoint.Uri, destinationPolicy, nat64Prefixes).IsValid
             && (endpoint.SharedSecret is null || !string.IsNullOrWhiteSpace(endpoint.SharedSecret))
             && (endpoint.AllowUnsigned || !string.IsNullOrWhiteSpace(endpoint.SharedSecret))
             && (!endpoint.Timeout.HasValue || endpoint.Timeout.Value > TimeSpan.Zero)
