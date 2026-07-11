@@ -93,7 +93,7 @@ public sealed record ListPasskeysRequest(Guid ActorUserId, TenantContext Tenant)
 /// <param name="ActorUserId">Current authenticated user. This user must own the credential.</param>
 /// <param name="Tenant">Explicit tenant scope that must match the actor and fresh proof.</param>
 /// <param name="CurrentSessionId">Current Ashlar session id from the authenticated request; it must match <paramref name="FreshMfaProof" />.</param>
-/// <param name="FreshMfaProof">Ashlar-issued fresh MFA proof minted for <c>passkey-management</c>.</param>
+/// <param name="FreshMfaProof">Ashlar-issued fresh MFA proof minted for <c>passkey-management</c>; rejected when its source session is missing, expired, or revoked.</param>
 /// <param name="CredentialId">The passkey credential id.</param>
 /// <param name="DisplayName">The new display name.</param>
 /// <param name="Audit">Required audit metadata recorded atomically with the mutation.</param>
@@ -104,7 +104,7 @@ public sealed record RenamePasskeyRequest(Guid ActorUserId, TenantContext Tenant
 /// <param name="ActorUserId">Current authenticated user. This user must own the credential.</param>
 /// <param name="Tenant">Explicit tenant scope that must match the actor and fresh proof.</param>
 /// <param name="CurrentSessionId">Current Ashlar session id from the authenticated request; it must match <paramref name="FreshMfaProof" />.</param>
-/// <param name="FreshMfaProof">Ashlar-issued fresh MFA proof minted for <c>passkey-management</c>.</param>
+/// <param name="FreshMfaProof">Ashlar-issued fresh MFA proof minted for <c>passkey-management</c>; rejected when its source session is missing, expired, or revoked.</param>
 /// <param name="CredentialId">The passkey credential id.</param>
 /// <param name="Audit">Required audit metadata recorded atomically with the mutation.</param>
 public sealed record RevokePasskeyRequest(Guid ActorUserId, TenantContext Tenant, Guid? CurrentSessionId, FreshMfaVerificationProof? FreshMfaProof, Guid CredentialId, AuditContext? Audit);

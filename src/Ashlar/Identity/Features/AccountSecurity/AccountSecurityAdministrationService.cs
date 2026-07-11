@@ -5,10 +5,12 @@ namespace Ashlar.Identity.Features.AccountSecurity;
 internal sealed class AccountSecurityAdministrationService(
     IAccountSecurityMutationExecutor executor,
     IAccountSecurityOperationAuthorizer authorizer,
+    IAuthenticationSessionRepository sessionRepository,
     TimeProvider timeProvider,
     ISecurityEventSink? securityEventSink) : IAccountSecurityAdministrationService
 {
     internal const string ProofPurpose = "account-security-administration";
+    private readonly IAuthenticationSessionRepository _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
     private readonly TimeProvider _timeProvider = timeProvider;
     private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider);
 
@@ -46,6 +48,11 @@ internal sealed class AccountSecurityAdministrationService(
             request.CurrentSessionId, _timeProvider.GetUtcNow(), ProofPurpose);
         if (proofFailure is { } failure)
             return await RejectAsync(request, eventType, failure, cancellationToken: cancellationToken);
+
+        var session = await _sessionRepository.GetSessionAsync(request.CurrentSessionId, cancellationToken);
+        if (session is null || session.UserId != request.ActorUserId || session.TenantId != request.ActorTenant.TenantId
+            || !session.IsActive(_timeProvider.GetUtcNow()))
+            return await RejectAsync(request, eventType, AshlarFailureCodes.StepUpRequired, cancellationToken: cancellationToken);
 
         var authorized = await authorizer.AuthorizeAsync(CreateAuthorizationContext(request, operation), cancellationToken);
         if (!authorized)

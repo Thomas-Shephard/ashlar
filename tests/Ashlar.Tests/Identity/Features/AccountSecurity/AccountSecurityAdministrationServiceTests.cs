@@ -14,6 +14,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
     private FakeExecutor _executor = null!;
     private Mock<IAccountSecurityOperationAuthorizer> _authorizer = null!;
     private RecordingSecurityEventSink _events = null!;
+    private Mock<IAuthenticationSessionRepository> _sessions = null!;
     private AccountSecurityAdministrationService _service = null!;
 
     [SetUp]
@@ -22,7 +23,9 @@ internal sealed class AccountSecurityAdministrationServiceTests
         _executor = new FakeExecutor();
         _authorizer = new Mock<IAccountSecurityOperationAuthorizer>(MockBehavior.Strict);
         _events = new RecordingSecurityEventSink();
-        _service = new AccountSecurityAdministrationService(_executor, _authorizer.Object, _time, _events);
+        _sessions = new Mock<IAuthenticationSessionRepository>();
+        _sessions.Setup(x => x.GetSessionAsync(_sessionId, It.IsAny<CancellationToken>())).ReturnsAsync(CreateSession());
+        _service = new AccountSecurityAdministrationService(_executor, _authorizer.Object, _sessions.Object, _time, _events);
     }
 
     [Test]
@@ -68,6 +71,20 @@ internal sealed class AccountSecurityAdministrationServiceTests
         var result = await _service.RevokeSessionsAsync(request);
 
         Assert.That(result.Succeeded, Is.False);
+        _authorizer.VerifyNoOtherCalls();
+        Assert.That(_executor.CallCount, Is.Zero);
+    }
+
+    [Test]
+    public async Task RevokedSourceSessionFailsBeforeAuthorizationOrMutation()
+    {
+        var session = CreateSession();
+        session.RevokedAt = _time.GetUtcNow();
+        _sessions.Setup(x => x.GetSessionAsync(_sessionId, It.IsAny<CancellationToken>())).ReturnsAsync(session);
+
+        var result = await _service.RevokeSessionsAsync(CreateRequest());
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
         _authorizer.VerifyNoOtherCalls();
         Assert.That(_executor.CallCount, Is.Zero);
     }
@@ -297,20 +314,20 @@ internal sealed class AccountSecurityAdministrationServiceTests
 
     private FreshMfaVerificationProof CreateProof()
     {
-        var now = _time.GetUtcNow();
-        var session = new AuthenticationSession
-        {
-            Id = _sessionId,
-            UserId = _actorId,
-            TenantId = _tenant.TenantId,
-            TokenHash = "hash",
-            CreatedAt = now.AddMinutes(-1),
-            AdditionalVerificationAt = now.AddMinutes(-1),
-            ExpiresAt = now.AddHours(1)
-        };
         return new StepUpAuthenticationService(_time)
-            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(5), Purpose: AccountSecurityAdministrationService.ProofPurpose)).Value!;
+            .CreateFreshMfaProof(new ValidatedAuthenticationSession(CreateSession()), new StepUpRequirement(TimeSpan.FromMinutes(5), Purpose: AccountSecurityAdministrationService.ProofPurpose)).Value!;
     }
+
+    private AuthenticationSession CreateSession() => new()
+    {
+        Id = _sessionId,
+        UserId = _actorId,
+        TenantId = _tenant.TenantId,
+        TokenHash = "hash",
+        CreatedAt = _time.GetUtcNow().AddMinutes(-1),
+        AdditionalVerificationAt = _time.GetUtcNow().AddMinutes(-1),
+        ExpiresAt = _time.GetUtcNow().AddHours(1)
+    };
 
     private static AccountSecurityActorContext ToActor(AccountSecurityAdministrationRequest request) =>
         new(request.ActorUserId, request.ActorTenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit);

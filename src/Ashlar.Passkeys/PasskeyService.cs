@@ -54,6 +54,7 @@ internal sealed class PasskeyService : IPasskeyService
     private readonly AuthenticationRateLimitChecker _rateLimitChecker;
     private readonly PasskeyOptions _options;
     private readonly TimeProvider _timeProvider;
+    private readonly IAuthenticationSessionRepository _sessionRepository;
     private readonly ISecurityEventSink? _securityEventSink;
     private readonly IAshlarTransactionProvider? _transactionProvider;
     private readonly IReadOnlyList<ISecondaryAuthenticationFactorProvider> _additionalVerificationProviders;
@@ -79,6 +80,7 @@ internal sealed class PasskeyService : IPasskeyService
         _rateLimitChecker = new AuthenticationRateLimitChecker(dependencies.RateLimiter);
         _options = dependencies.Options.Value;
         _timeProvider = dependencies.TimeProvider;
+        _sessionRepository = dependencies.SessionRepository;
         _securityEventSink = dependencies.SecurityEventSink;
         _transactionProvider = dependencies.TransactionProvider;
     }
@@ -594,6 +596,13 @@ internal sealed class PasskeyService : IPasskeyService
             return proofFailure;
         }
 
+        var session = await _sessionRepository.GetSessionAsync(currentSessionId!.Value, cancellationToken);
+        if (session is null || session.UserId != actorUserId || session.TenantId != tenant.TenantId
+            || !session.IsActive(_timeProvider.GetUtcNow()))
+        {
+            return AshlarFailureCodes.StepUpRequired;
+        }
+
         return await ActorMatchesTenantAsync(actorUserId, tenant, cancellationToken)
             ? null
             : AshlarFailureCodes.UserNotFoundOrUnavailable;
@@ -1026,6 +1035,7 @@ internal sealed class PasskeyServiceDependencies(
     IAuthenticationHandshakeService handshakeService,
     ISecureTokenHasher tokenHasher,
     IAuthenticationRateLimiter rateLimiter,
+    IAuthenticationSessionRepository sessionRepository,
     PasskeyServiceInfrastructure? infrastructure = null)
 {
     public IOptions<PasskeyOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
@@ -1033,6 +1043,7 @@ internal sealed class PasskeyServiceDependencies(
     public IAuthenticationHandshakeService HandshakeService { get; } = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
     public ISecureTokenHasher TokenHasher { get; } = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
     public IAuthenticationRateLimiter RateLimiter { get; } = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
+    public IAuthenticationSessionRepository SessionRepository { get; } = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
     public TimeProvider TimeProvider { get; } = infrastructure?.TimeProvider ?? TimeProvider.System;
     public ISecurityEventSink? SecurityEventSink { get; } = infrastructure?.SecurityEventSink;
     public IAshlarTransactionProvider? TransactionProvider { get; } = infrastructure?.TransactionProvider;
