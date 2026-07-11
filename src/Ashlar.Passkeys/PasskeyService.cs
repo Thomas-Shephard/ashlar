@@ -54,7 +54,6 @@ internal sealed class PasskeyService : IPasskeyService
     private readonly AuthenticationRateLimitChecker _rateLimitChecker;
     private readonly PasskeyOptions _options;
     private readonly TimeProvider _timeProvider;
-    private readonly IAuthenticationSessionRepository _sessionRepository;
     private readonly ActiveSessionFreshProofValidator _proofValidator;
     private readonly ISecurityEventSink? _securityEventSink;
     private readonly IAshlarTransactionProvider? _transactionProvider;
@@ -81,8 +80,7 @@ internal sealed class PasskeyService : IPasskeyService
         _rateLimitChecker = new AuthenticationRateLimitChecker(dependencies.RateLimiter);
         _options = dependencies.Options.Value;
         _timeProvider = dependencies.TimeProvider;
-        _sessionRepository = dependencies.SessionRepository;
-        _proofValidator = new(_sessionRepository, _timeProvider);
+        _proofValidator = new(dependencies.SessionRepository, _timeProvider);
         _securityEventSink = dependencies.SecurityEventSink;
         _transactionProvider = dependencies.TransactionProvider;
     }
