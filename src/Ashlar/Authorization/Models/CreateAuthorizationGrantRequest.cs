@@ -11,16 +11,13 @@ public sealed record CreateAuthorizationGrantRequest
     /// <param name="tenant">Explicit tenant or global target scope.</param>
     /// <param name="grant">Role or permission and optional resource constraints.</param>
     /// <param name="includeAllTenants">Whether every tenant is targeted; grant creation rejects this because one grant has one scope.</param>
-    public CreateAuthorizationGrantRequest(Guid userId, AccountSecurityActorContext actor, AuditContext audit,
-        TenantContext? tenant, AuthorizationGrantSpecification grant, bool includeAllTenants = false)
+    public CreateAuthorizationGrantRequest(Guid userId, AccountSecurityActorContext? actor, AuditContext? audit,
+        TenantContext? tenant, AuthorizationGrantSpecification? grant, bool includeAllTenants = false)
     {
-        ArgumentNullException.ThrowIfNull(actor);
-        ArgumentNullException.ThrowIfNull(audit);
-        ArgumentNullException.ThrowIfNull(grant);
-        AdministrationScopeValidation.ThrowIfInvalidScope(tenant, includeAllTenants);
         UserId = userId; Actor = actor; TenantId = tenant?.TenantId; IncludeAllTenants = includeAllTenants;
-        Audit = audit; ScopeType = grant.ScopeType; ScopeId = grant.ScopeId; Role = grant.Role; Permission = grant.Permission;
-        ExpiresAt = grant.ExpiresAt; Metadata = grant.Metadata;
+        IsScopeInvalid = tenant is null || includeAllTenants;
+        IsGrantMissing = grant is null; Audit = audit; ScopeType = grant?.ScopeType; ScopeId = grant?.ScopeId;
+        Role = grant?.Role; Permission = grant?.Permission; ExpiresAt = grant?.ExpiresAt; Metadata = grant?.Metadata;
     }
 
     /// <summary>Creates an actor-bound permission grant without resource constraints.</summary>
@@ -30,7 +27,7 @@ public sealed record CreateAuthorizationGrantRequest
     /// <param name="tenant">Explicit tenant or global target scope.</param>
     /// <param name="includeAllTenants">Whether every tenant is targeted; grant creation rejects this because one grant has one scope.</param>
     /// <param name="permission">Permission to grant.</param>
-    public CreateAuthorizationGrantRequest(Guid userId, AccountSecurityActorContext actor, AuditContext audit,
+    public CreateAuthorizationGrantRequest(Guid userId, AccountSecurityActorContext? actor, AuditContext? audit,
         TenantContext? tenant = null, bool includeAllTenants = false, string? permission = null)
         : this(userId, actor, audit, tenant, new AuthorizationGrantSpecification { Permission = permission }, includeAllTenants)
     { }
@@ -61,7 +58,7 @@ public sealed record CreateAuthorizationGrantRequest
     /// <summary>Gets the validated actor capability supplied by an app caller.</summary>
     public AccountSecurityActorContext? Actor { get; }
     /// <summary>Gets required audit metadata whose actor must match <see cref="Actor"/>.</summary>
-    public AuditContext Audit { get; }
+    public AuditContext? Audit { get; }
     /// <summary>Gets the exact tenant identifier, or <see langword="null"/> for global scope.</summary>
     public Guid? TenantId { get; }
     /// <summary>Gets whether all tenant scopes were requested.</summary>
@@ -79,4 +76,6 @@ public sealed record CreateAuthorizationGrantRequest
     /// <summary>Gets optional provider-neutral JSON metadata.</summary>
     public string? Metadata { get; }
     internal bool IsInfrastructureMutation { get; }
+    internal bool IsScopeInvalid { get; }
+    internal bool IsGrantMissing { get; }
 }

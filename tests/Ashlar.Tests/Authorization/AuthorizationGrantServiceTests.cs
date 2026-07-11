@@ -95,7 +95,7 @@ internal sealed class AuthorizationGrantServiceTests
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(_repository.Grants, Is.Empty);
-            Assert.That(auditSink.Events, Is.Empty);
+            AssertSanitizedRejection(auditSink.Events.Single(), AshlarSecurityEventTypes.AuthorizationGrantCreated);
         }
     }
 
@@ -373,8 +373,17 @@ internal sealed class AuthorizationGrantServiceTests
             Assert.That(grant.RevokedAt, Is.Null);
             Assert.That(_repository.GetCalls, Is.Zero);
             Assert.That(_repository.RevokeCalls, Is.Zero);
-            Assert.That(auditSink.Events, Is.Empty);
+            AssertSanitizedRejection(auditSink.Events.Single(), AshlarSecurityEventTypes.AuthorizationGrantRevoked);
         }
+    }
+
+    private static void AssertSanitizedRejection(AshlarSecurityEvent securityEvent, string eventType)
+    {
+        Assert.That(securityEvent.EventType == eventType
+            && securityEvent.Outcome == SecurityEventOutcomes.Failure
+            && securityEvent.UserId is null
+            && securityEvent.TenantId is null
+            && (securityEvent.Properties is null || securityEvent.Properties.Count == 0), Is.True);
     }
 
     [Test]
