@@ -168,7 +168,7 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
                 throw new InvalidOperationException($"Ashlar security event webhook endpoint configuration for '{entry.EndpointName}' is unavailable.");
             }
 
-            if (!endpoint.Enabled)
+            if (!AshlarSecurityEventWebhookDeliveryFactory.ShouldSend(endpoint, entry.EventType, entry.Outcome))
             {
                 throw new TerminalEndpointConfigurationException();
             }
@@ -205,6 +205,11 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
                 var exception = new HttpRequestException(null, null, response.StatusCode);
                 RecordFailure(context, entry, start, AshlarSecurityEventWebhookDeliveryTelemetry.HttpStatusFailureKind);
                 await MarkAsFailedAsync(entry, context, exception).ConfigureAwait(false);
+                return;
+            }
+
+            if (!await context.RenewLockAsync(entry.Id, CancellationToken.None).ConfigureAwait(false))
+            {
                 return;
             }
         }
@@ -406,7 +411,7 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
     }
 
     private sealed class TerminalEndpointConfigurationException()
-        : InvalidOperationException("The queued webhook endpoint is disabled or its destination has changed.");
+        : InvalidOperationException("The queued webhook endpoint is disabled, excluded by its current filters, or its destination has changed.");
 }
 
 /// <summary>

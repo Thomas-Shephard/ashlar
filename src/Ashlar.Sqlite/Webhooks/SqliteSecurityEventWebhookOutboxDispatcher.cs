@@ -173,7 +173,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxDispatcher(
         command.AddParameter("$id", id.ToString("D"));
         command.AddParameter(LockedByParameter, lockId);
         command.AddDateTimeOffsetParameter("$now", now);
-        command.AddDateTimeOffsetParameter("$lockedUntil", now.Add(_options.LockDuration > sendTimeout ? _options.LockDuration : sendTimeout));
+        command.AddDateTimeOffsetParameter("$lockedUntil", now.Add(sendTimeout).Add(_options.LockDuration));
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 

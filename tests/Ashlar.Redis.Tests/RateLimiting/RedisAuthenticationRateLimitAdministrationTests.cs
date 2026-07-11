@@ -115,44 +115,11 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     }
 
     [Test]
-    public async Task ResetBucketAsyncFailsClosedBeforeDeletingRedisBucketWhenDurableAuditFails()
+    public void PersistentAuditCompositionRejectsRedisWithoutDurableTransactions()
     {
-        await using var provider = CreateProviderWithPersistentAudit(new ThrowingPersistentSecurityEventSink());
-        var limiter = provider.GetRequiredService<IAuthenticationRateLimiter>();
-        var administration = provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
-        await limiter.CheckAsync(
-            new RateLimitAttempt { Purpose = "detail", Key = UniqueKey() },
-            new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
-        var bucket = (await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" })).Value!.Items.Single();
+        using var provider = CreateProviderWithPersistentAudit(Moq.Mock.Of<IPersistentSecurityEventSink>());
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await administration.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "detail", new AuditContext(Guid.NewGuid()))));
-
-        var existing = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "detail"));
-        Assert.That(existing.Succeeded, Is.True);
-    }
-
-    [Test]
-    public async Task ResetBucketAsyncWithDurableAuditConfiguredRecordsFailureAndDoesNotDeleteRedisBucket()
-    {
-        var sink = new RecordingPersistentSecurityEventSink();
-        await using var provider = CreateProviderWithPersistentAudit(sink);
-        var limiter = provider.GetRequiredService<IAuthenticationRateLimiter>();
-        var administration = provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
-        await limiter.CheckAsync(
-            new RateLimitAttempt { Purpose = "detail", Key = UniqueKey() },
-            new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
-        var bucket = (await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" })).Value!.Items.Single();
-
-        var reset = await administration.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "detail", new AuditContext(Guid.NewGuid())));
-
-        var existing = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "detail"));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(reset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
-            Assert.That(existing.Succeeded, Is.True);
-            Assert.That(sink.Events.Single().Properties?["reset_status"], Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed.ToString()));
-        }
+        Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>());
     }
 
     [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde")]
@@ -294,24 +261,5 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
         services.Replace(ServiceDescriptor.Singleton(sink));
         services.Replace(ServiceDescriptor.Singleton<ISecurityEventSink, SecurityEventFanOutSink>());
         return services.BuildServiceProvider();
-    }
-
-    private sealed class ThrowingPersistentSecurityEventSink : IPersistentSecurityEventSink
-    {
-        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
-        {
-            throw new InvalidOperationException("durable audit failed");
-        }
-    }
-
-    private sealed class RecordingPersistentSecurityEventSink : IPersistentSecurityEventSink
-    {
-        public List<AshlarSecurityEvent> Events { get; } = [];
-
-        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
-        {
-            Events.Add(securityEvent);
-            return Task.CompletedTask;
-        }
     }
 }

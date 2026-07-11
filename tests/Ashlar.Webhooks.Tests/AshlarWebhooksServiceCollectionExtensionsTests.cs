@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.Identity.Abstractions.Transactions;
 using Ashlar.Operational.Diagnostics;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
@@ -288,6 +289,9 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IAshlarSecurityEventWebhookEnqueuer, TestWebhookEnqueuer>();
         services.AddAshlarNullTransactions();
+        var transactionProvider = Mock.Of<IAshlarDurableTransactionProvider>();
+        services.AddSingleton<IAshlarTransactionProvider>(transactionProvider);
+        services.AddSingleton(transactionProvider);
         services.AddPermissiveAccountSecurityGuard();
         services.AddPasswordHasher<PasswordHasherV1>();
         services.AddAshlarSecurityEventWebhooks(options =>

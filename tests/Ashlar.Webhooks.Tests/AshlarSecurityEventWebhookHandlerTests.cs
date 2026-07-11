@@ -1364,7 +1364,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
 
     private const string AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName = "Ashlar.Webhooks.Tests.Outbox";
 
-    private static AshlarSecurityEventWebhookOutboxEntry CreateOutboxEntry(string? headers = null, string? uri = null)
+    private static AshlarSecurityEventWebhookOutboxEntry CreateOutboxEntry(string? headers = null, string? uri = null, int attemptCount = 0)
     {
         var delivery = CreateDelivery();
         return new AshlarSecurityEventWebhookOutboxEntry
@@ -1379,7 +1379,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             Body = delivery.Body.ToArray(),
             Headers = headers ?? JsonSerializer.Serialize(delivery.Headers),
             TimeoutMs = (long)delivery.Timeout.TotalMilliseconds,
-            AttemptCount = 0
+            AttemptCount = attemptCount
         };
     }
 
@@ -2108,6 +2108,84 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             Assert.That(failure?.AvailableAt, Is.EqualTo(now));
             Assert.That(failure?.AttemptCount, Is.EqualTo(1));
             Assert.That(exhaustedRetry.FailedAt, Is.EqualTo(now));
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task SharedOutboxDispatchTerminallyDiscardsEndpointExcludedByCurrentFilters(bool eventTypeFilter)
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var endpoint = CreateEndpoint();
+        (eventTypeFilter ? endpoint.EventTypes : endpoint.Outcomes).Add("excluded");
+        AshlarSecurityEventWebhookOutboxFailureUpdate? failure = null;
+        string? failureMessage = null;
+        var renewals = 0;
+        var now = DateTimeOffset.UtcNow;
+        var context = new AshlarSecurityEventWebhookOutboxDispatchContext(
+            new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
+            AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
+            3,
+            (_, _) => Task.FromResult(true),
+            (entry, exception, _) =>
+            {
+                failureMessage = exception.Message;
+                failure = AshlarSecurityEventWebhookOutboxDispatch.CreateFailureUpdate(
+                    entry.AttemptCount, 3, TimeSpan.FromMinutes(1), now, exception);
+                return Task.CompletedTask;
+            },
+            (_, _, _, _) => { },
+            CreateDestinationValidator(),
+            CreateOptions(endpoint),
+            TimeProvider.System,
+            DeliveryObserver: null,
+            RenewLockAsync: (_, _) => { renewals++; return Task.FromResult(true); });
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(attemptCount: 1), context, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Is.Empty);
+            Assert.That(failure?.AttemptCount, Is.EqualTo(2));
+            Assert.That(failure?.FailedAt, Is.EqualTo(now));
+            Assert.That(failure?.AvailableAt, Is.EqualTo(now));
+            Assert.That(failureMessage, Does.Contain("excluded by its current filters"));
+            Assert.That(renewals, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task SharedOutboxDispatchSendsWhenCurrentFiltersAreEmpty()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
+            CreateOutboxEntry(attemptCount: 1),
+            CreateOutboxDispatchContext(transport, new RecordingDeliveryObserver()),
+            CancellationToken.None);
+
+        Assert.That(transport.Requests, Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public async Task SharedOutboxDispatchRequiresLeaseOwnershipAtSettlement()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var renewals = 0;
+        var sent = false;
+        var context = CreateOutboxDispatchContext(transport, new RecordingDeliveryObserver()) with
+        {
+            RenewLockAsync = (_, _) => Task.FromResult(++renewals == 1),
+            MarkAsSentAsync = (_, _) => { sent = true; return Task.FromResult(true); }
+        };
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+            Assert.That(renewals, Is.EqualTo(2));
+            Assert.That(sent, Is.False);
         }
     }
 
