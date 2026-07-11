@@ -37,8 +37,10 @@ public static class ServiceProviderValidation
         }
         catch
         {
-            scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            provider.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            var scopeDisposal = scope.DisposeAsync();
+            scopeDisposal.AsTask().GetAwaiter().GetResult();
+            var providerDisposal = provider.DisposeAsync();
+            providerDisposal.AsTask().GetAwaiter().GetResult();
             throw;
         }
 
