@@ -11,7 +11,7 @@ public enum AshlarSecurityEventWebhookDestinationPolicy
     PublicInternetOnly = 0,
 
     /// <summary>
-    /// Allows private network destinations while continuing to block loopback, link-local, multicast, and unspecified destinations.
+    /// Allows private network destinations while continuing to block loopback, link-local, multicast, unspecified, and special-use destinations, including those embedded in <c>64:ff9b::/96</c> NAT64 addresses.
     /// </summary>
     AllowPrivateNetworks = 1
 }

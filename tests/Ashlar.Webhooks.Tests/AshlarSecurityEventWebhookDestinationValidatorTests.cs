@@ -120,11 +120,37 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
     [TestCase("https://0.0.0.0/security-events")]
     [TestCase("https://localhost/security-events")]
     [TestCase("https://[fe80::1]/security-events")]
+    [TestCase("https://[64:ff9b::7f00:1]/security-events")]
+    [TestCase("https://[64:ff9b::a9fe:1]/security-events")]
+    [TestCase("https://[64:ff9b::e000:1]/security-events")]
+    [TestCase("https://[64:ff9b::]/security-events")]
+    [TestCase("https://[64:ff9b::6440:1]/security-events")]
+    [TestCase("https://[64:ff9b::c000:201]/security-events")]
     public void AllowPrivateNetworksStillRejectsNonRoutableDestinations(string uri)
     {
         var result = AshlarSecurityEventWebhookDestinationValidator.ValidateUri(
             new Uri(uri),
             AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks);
+
+        Assert.That(result.IsValid, Is.False);
+    }
+
+    [TestCase("64:ff9b::7f00:1")]
+    [TestCase("64:ff9b::a9fe:1")]
+    [TestCase("64:ff9b::e000:1")]
+    [TestCase("64:ff9b::")]
+    [TestCase("64:ff9b::6440:1")]
+    [TestCase("64:ff9b::c000:201")]
+    public async Task AllowPrivateNetworksRejectsUnsafeNat64DnsResolvedAddress(string address)
+    {
+        var validator = new AshlarSecurityEventWebhookDestinationValidator(
+            new StaticResolver(IPAddress.Parse(address)),
+            Options.Create(new AshlarSecurityEventWebhookOptions
+            {
+                DestinationPolicy = AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks
+            }));
+
+        var result = await validator.ValidateAsync(new Uri("https://receiver.internal/security-events"));
 
         Assert.That(result.IsValid, Is.False);
     }
@@ -320,6 +346,37 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
                 validator,
                 (_, _, _) => ValueTask.FromResult(new AshlarSecurityEventWebhookConnection(stream, IPAddress.Parse(address))),
                 "example.test").AsTask());
+
+        await stream.DisposeTask.ConfigureAwait(false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception, Is.Not.Null);
+            Assert.That(stream.IsAsyncDisposed, Is.True);
+        }
+    }
+
+    [TestCase("64:ff9b::7f00:1")]
+    [TestCase("64:ff9b::a9fe:1")]
+    [TestCase("64:ff9b::e000:1")]
+    [TestCase("64:ff9b::")]
+    [TestCase("64:ff9b::6440:1")]
+    [TestCase("64:ff9b::c000:201")]
+    public async Task AllowPrivateNetworksDisposesStreamWhenConnectedNat64AddressEmbedsUnsafeIPv4(string address)
+    {
+        using var stream = new TrackingStream();
+        var validator = new AshlarSecurityEventWebhookDestinationValidator(
+            new StaticResolver(IPAddress.Parse("10.0.0.5")),
+            Options.Create(new AshlarSecurityEventWebhookOptions
+            {
+                DestinationPolicy = AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks
+            }));
+
+        var exception = Assert.ThrowsAsync<AshlarSecurityEventWebhookUnsafeDestinationException>(
+            () => InvokeConnectAsync(
+                validator,
+                (_, _, _) => ValueTask.FromResult(new AshlarSecurityEventWebhookConnection(stream, IPAddress.Parse(address))),
+                "receiver.internal").AsTask());
 
         await stream.DisposeTask.ConfigureAwait(false);
 
