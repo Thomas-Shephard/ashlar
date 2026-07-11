@@ -449,6 +449,19 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
+    public async Task CompleteExternalAssertionShouldFailWhenClearingSuccessfulTicketThrows()
+    {
+        var service = CreateService(new AuthenticationResponse(false));
+        var authService = new TestAuthenticationService(
+            AuthenticateResult.Success(new AuthenticationTicket(CreatePrincipal("subject"), CreateProperties("Google", "Google"), "Ashlar.OAuth.External")),
+            signOutException: new InvalidOperationException("clear failed"));
+
+        var result = await service.CompleteExternalAssertionAsync(CreateHttpContext(authService), "Google");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.AuthenticationFailed));
+    }
+
+    [Test]
     public void CompleteExternalAssertionShouldRejectNullHttpContext()
     {
         var service = CreateService(new AuthenticationResponse(false));
