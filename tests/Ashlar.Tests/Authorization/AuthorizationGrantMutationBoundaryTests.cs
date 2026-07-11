@@ -13,19 +13,36 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
     private readonly Dictionary<Guid, AuthenticationSession> _sessions = [];
 
     [Test]
-    public void PublicRequestsRejectMissingActorAndAudit()
+    public async Task PublicRequestsAuditMissingActorAndAudit()
     {
+        var repository = new Repository();
+        var events = new Sink();
+        var service = Service(repository, events);
         var audit = new AuditContext(Guid.NewGuid());
-        Assert.Throws<ArgumentNullException>(() => new CreateAuthorizationGrantRequest(Guid.NewGuid(), null!, audit, TenantContext.Global, permission: "read"));
-        Assert.Throws<ArgumentNullException>(() => new RevokeAuthorizationGrantRequest(Guid.NewGuid(), null!, audit, TenantContext.Global));
-        Assert.Throws<ArgumentNullException>(() => new CreateAuthorizationGrantRequest(Guid.NewGuid(), Actor(), null!, TenantContext.Global, permission: "read"));
+        var actor = Actor();
+
+        var createMissingActor = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), null, audit, TenantContext.Global, permission: "read"));
+        var revokeMissingActor = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(Guid.NewGuid(), null, audit, TenantContext.Global));
+        var createMissingAudit = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), actor, null, TenantContext.Global, permission: "read"));
+        var revokeMissingAudit = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(Guid.NewGuid(), actor, null, TenantContext.Global));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(createMissingActor.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(revokeMissingActor.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.ValidationFailed));
+            Assert.That(createMissingAudit.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(revokeMissingAudit.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.ValidationFailed));
+            Assert.That(events.Events, Has.Count.EqualTo(4));
+            Assert.That(events.Events.All(IsSanitizedFailure), Is.True);
+        }
     }
 
     [Test]
     public async Task CreateAndRevokeRejectAuditActorMismatch()
     {
         var repository = new Repository();
-        var service = Service(repository);
+        var events = new Sink();
+        var service = Service(repository, events);
         var actor = Actor();
         var mismatchedAudit = new AuditContext(Guid.NewGuid());
 
@@ -37,6 +54,8 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
             Assert.That(create.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(revoke.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.ValidationFailed));
             Assert.That(repository.Grants, Is.Empty);
+            Assert.That(events.Events, Has.Count.EqualTo(2));
+            Assert.That(events.Events.All(IsSanitizedFailure), Is.True);
         }
     }
 
@@ -44,9 +63,10 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
     public async Task CreateRejectsMissingAuditActorIdentity()
     {
         var repository = new Repository();
+        var events = new Sink();
         var actor = Actor();
 
-        var result = await Service(repository).CreateGrantAsync(new CreateAuthorizationGrantRequest(
+        var result = await Service(repository, events).CreateGrantAsync(new CreateAuthorizationGrantRequest(
             Guid.NewGuid(), actor, new AuditContext(), TenantContext.Global, permission: "read"));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
@@ -57,14 +77,16 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
     public async Task CreateRejectsWrongPurposeOrStaleProof(string purpose, int expiryMinutes)
     {
         var repository = new Repository();
+        var events = new Sink();
         var actor = Actor(purpose, expiryMinutes);
-        var result = await Service(repository).CreateGrantAsync(new CreateAuthorizationGrantRequest(
+        var result = await Service(repository, events).CreateGrantAsync(new CreateAuthorizationGrantRequest(
             Guid.NewGuid(), actor, actor.Audit, TenantContext.Global, permission: "read"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(repository.Grants, Is.Empty);
+            Assert.That(IsSanitizedFailure(events.Events.Single()), Is.True);
         }
     }
 
@@ -73,6 +95,7 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
     public async Task RevokeRejectsWrongPurposeOrStaleProof(string purpose, int expiryMinutes)
     {
         var repository = new Repository();
+        var events = new Sink();
         var grant = new AuthorizationGrant
         {
             Id = Guid.NewGuid(),
@@ -83,13 +106,14 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
         repository.Grants.Add(grant);
         var actor = Actor(purpose, expiryMinutes);
 
-        var result = await Service(repository).RevokeGrantAsync(new RevokeAuthorizationGrantRequest(
+        var result = await Service(repository, events).RevokeGrantAsync(new RevokeAuthorizationGrantRequest(
             grant.Id, actor, actor.Audit, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.ValidationFailed));
             Assert.That(grant.RevokedAt, Is.Null);
+            Assert.That(IsSanitizedFailure(events.Events.Single()), Is.True);
         }
     }
 
@@ -97,16 +121,36 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
     public async Task CreateRejectsProofFromRevokedSession()
     {
         var repository = new Repository();
+        var events = new Sink();
         var actor = Actor();
         _sessions[actor.CurrentSessionId].RevokedAt = _clock.GetUtcNow();
 
-        var result = await Service(repository).CreateGrantAsync(new CreateAuthorizationGrantRequest(
+        var result = await Service(repository, events).CreateGrantAsync(new CreateAuthorizationGrantRequest(
             Guid.NewGuid(), actor, actor.Audit, TenantContext.Global, permission: "read"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
             Assert.That(repository.Grants, Is.Empty);
+            Assert.That(IsSanitizedFailure(events.Events.Single()), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task RevokeRejectsProofFromRevokedSession()
+    {
+        var repository = new Repository();
+        var events = new Sink();
+        var actor = Actor();
+        _sessions[actor.CurrentSessionId].RevokedAt = _clock.GetUtcNow();
+
+        var result = await Service(repository, events).RevokeGrantAsync(new RevokeAuthorizationGrantRequest(
+            Guid.NewGuid(), actor, actor.Audit, TenantContext.Global));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.ValidationFailed));
+            Assert.That(IsSanitizedFailure(events.Events.Single()), Is.True);
         }
     }
 
@@ -116,6 +160,7 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
     public async Task CreateRejectsMissingOrMismatchedActiveSession(string mismatch)
     {
         var repository = new Repository();
+        var events = new Sink();
         var actor = Actor();
         var session = _sessions[actor.CurrentSessionId];
         if (mismatch == "missing")
@@ -135,10 +180,50 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
             };
         }
 
-        var result = await Service(repository).CreateGrantAsync(new CreateAuthorizationGrantRequest(
+        var result = await Service(repository, events).CreateGrantAsync(new CreateAuthorizationGrantRequest(
             Guid.NewGuid(), actor, actor.Audit, TenantContext.Global, permission: "read"));
 
-        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(IsSanitizedFailure(events.Events.Single()), Is.True);
+        }
+    }
+
+    [TestCase("missing")]
+    [TestCase("user")]
+    [TestCase("tenant")]
+    public async Task RevokeRejectsMissingOrMismatchedActiveSession(string mismatch)
+    {
+        var repository = new Repository();
+        var events = new Sink();
+        var actor = Actor();
+        var session = _sessions[actor.CurrentSessionId];
+        if (mismatch == "missing")
+        {
+            _sessions.Remove(actor.CurrentSessionId);
+        }
+        else
+        {
+            _sessions[actor.CurrentSessionId] = new AuthenticationSession
+            {
+                Id = session.Id,
+                UserId = mismatch == "user" ? Guid.NewGuid() : session.UserId,
+                TenantId = mismatch == "tenant" ? Guid.NewGuid() : session.TenantId,
+                TokenHash = session.TokenHash,
+                CreatedAt = session.CreatedAt,
+                ExpiresAt = session.ExpiresAt
+            };
+        }
+
+        var result = await Service(repository, events).RevokeGrantAsync(new RevokeAuthorizationGrantRequest(
+            Guid.NewGuid(), actor, actor.Audit, TenantContext.Global));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.ValidationFailed));
+            Assert.That(IsSanitizedFailure(events.Events.Single()), Is.True);
+        }
     }
 
     [Test]
@@ -162,8 +247,9 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
     public async Task CreateAndRevokeRejectAllTenantScope()
     {
         var repository = new Repository();
+        var events = new Sink();
         var actor = Actor();
-        var service = Service(repository);
+        var service = Service(repository, events);
 
         var create = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), actor, actor.Audit, includeAllTenants: true, permission: "read"));
         var revoke = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(Guid.NewGuid(), actor, actor.Audit, includeAllTenants: true));
@@ -172,6 +258,100 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
         {
             Assert.That(create.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(revoke.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.ValidationFailed));
+            Assert.That(events.Events, Has.Count.EqualTo(2));
+            Assert.That(events.Events.All(IsSanitizedFailure), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task CreateAndRevokeAuditMissingOrConflictingScope()
+    {
+        var repository = new Repository();
+        var events = new Sink();
+        var actor = Actor();
+        var service = Service(repository, events);
+
+        var createMissing = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), actor, actor.Audit, null, permission: "read"));
+        var revokeMissing = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(Guid.NewGuid(), actor, actor.Audit, null));
+        var createConflicting = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), actor, actor.Audit, TenantContext.Global, includeAllTenants: true, permission: "read"));
+        var revokeConflicting = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(Guid.NewGuid(), actor, actor.Audit, TenantContext.Global, includeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(createMissing.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(revokeMissing.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.ValidationFailed));
+            Assert.That(createConflicting.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(revokeConflicting.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.ValidationFailed));
+            Assert.That(events.Events, Has.Count.EqualTo(4));
+            Assert.That(events.Events.All(IsSanitizedFailure), Is.True);
+            Assert.That(repository.Grants, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task CreateAndRevokeAuditEmptyTargetIdsBeforeAuthorizationOrLookup()
+    {
+        var repository = new Repository();
+        var events = new Sink();
+        var authorizer = new CountingAuthorizer();
+        var actor = Actor();
+        var service = Service(repository, events, authorizer);
+
+        var create = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.Empty, actor, actor.Audit, TenantContext.Global, permission: "read"));
+        var revoke = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(Guid.Empty, actor, actor.Audit, TenantContext.Global));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(create.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(revoke.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.ValidationFailed));
+            Assert.That(events.Events, Has.Count.EqualTo(2));
+            Assert.That(events.Events.All(IsSanitizedFailure), Is.True);
+            Assert.That(authorizer.Calls, Is.Zero);
+            Assert.That(repository.GetCalls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task CreateAuditsMissingGrantBeforeAuthorization()
+    {
+        var repository = new Repository();
+        var events = new Sink();
+        var authorizer = new CountingAuthorizer();
+        var actor = Actor();
+
+        var result = await Service(repository, events, authorizer).CreateGrantAsync(
+            new CreateAuthorizationGrantRequest(Guid.NewGuid(), actor, actor.Audit, TenantContext.Global, grant: null));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(IsSanitizedFailure(events.Events.Single()), Is.True);
+            Assert.That(authorizer.Calls, Is.Zero);
+            Assert.That(repository.Grants, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task CreateAndRevokeAuditHostAuthorizerDenial()
+    {
+        var repository = new Repository();
+        var events = new Sink();
+        var actor = Actor();
+        var userId = Guid.NewGuid();
+        var grant = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, Permission = "read", CreatedAt = _clock.GetUtcNow() };
+        repository.Grants.Add(grant);
+        var service = Service(repository, events, new DenyAuthorizer());
+
+        var create = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, actor, actor.Audit, TenantContext.Global, permission: "write"));
+        var revoke = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, actor, actor.Audit, TenantContext.Global));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(create.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(revoke.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.NotFound));
+            Assert.That(grant.RevokedAt, Is.Null);
+            Assert.That(events.Events, Has.Count.EqualTo(2));
+            Assert.That(events.Events.All(IsSanitizedFailure), Is.True);
         }
     }
 
@@ -179,6 +359,7 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
     public async Task CreateAndRevokeRejectActorTargetTenantMismatch()
     {
         var repository = new Repository();
+        var events = new Sink();
         var actorTenant = new TenantContext(Guid.NewGuid());
         var targetTenant = new TenantContext(Guid.NewGuid());
         var actor = Actor(tenant: actorTenant);
@@ -186,7 +367,7 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
         repository.Users[userId] = new User { Id = userId, DisplayEmail = "target@example.test", TenantId = targetTenant.TenantId };
         var grant = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, TenantId = targetTenant.TenantId, Permission = "read", CreatedAt = _clock.GetUtcNow() };
         repository.Grants.Add(grant);
-        var service = Service(repository, authorizer: new SameTenantAuthorizer());
+        var service = Service(repository, events, authorizer: new SameTenantAuthorizer());
 
         var create = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, actor, actor.Audit, targetTenant, permission: "write"));
         var revoke = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, actor, actor.Audit, targetTenant));
@@ -197,6 +378,8 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
             Assert.That(revoke.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.NotFound));
             Assert.That(repository.Grants, Has.Count.EqualTo(1));
             Assert.That(grant.RevokedAt, Is.Null);
+            Assert.That(events.Events, Has.Count.EqualTo(2));
+            Assert.That(events.Events.All(IsSanitizedFailure), Is.True);
         }
     }
 
@@ -253,6 +436,12 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
                 includeSessionRepository ? sessions.Object : null));
     }
 
+    private static bool IsSanitizedFailure(AshlarSecurityEvent securityEvent) =>
+        securityEvent.Outcome == SecurityEventOutcomes.Failure
+        && securityEvent.UserId is null
+        && securityEvent.TenantId is null
+        && (securityEvent.Properties is null || securityEvent.Properties.Count == 0);
+
     private sealed class AllowAuthorizer : IAccountSecurityOperationAuthorizer
     {
         public ValueTask<bool> AuthorizeAsync(AccountSecurityAuthorizationContext context, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
@@ -264,6 +453,21 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
             ValueTask.FromResult(context.ActorTenant.TenantId == context.TargetTenant?.TenantId);
     }
 
+    private sealed class DenyAuthorizer : IAccountSecurityOperationAuthorizer
+    {
+        public ValueTask<bool> AuthorizeAsync(AccountSecurityAuthorizationContext context, CancellationToken cancellationToken = default) => ValueTask.FromResult(false);
+    }
+
+    private sealed class CountingAuthorizer : IAccountSecurityOperationAuthorizer
+    {
+        public int Calls { get; private set; }
+        public ValueTask<bool> AuthorizeAsync(AccountSecurityAuthorizationContext context, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return ValueTask.FromResult(true);
+        }
+    }
+
     private sealed class Sink : ISecurityEventSink
     {
         public List<AshlarSecurityEvent> Events { get; } = [];
@@ -272,11 +476,12 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
 
     private sealed class Repository : IAuthorizationGrantRepository, IUserRepository
     {
+        public int GetCalls { get; private set; }
         public List<AuthorizationGrant> Grants { get; } = [];
         public Dictionary<Guid, User> Users { get; } = [];
         public Task CreateGrantAsync(AuthorizationGrant grant, CancellationToken cancellationToken = default) { Grants.Add(grant); return Task.CompletedTask; }
         public Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<AuthorizationGrant>>(Grants);
-        public Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, Guid? tenantId, CancellationToken cancellationToken = default) => Task.FromResult(Grants.SingleOrDefault(g => g.Id == grantId && g.TenantId == tenantId));
+        public Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, Guid? tenantId, CancellationToken cancellationToken = default) { GetCalls++; return Task.FromResult(Grants.SingleOrDefault(g => g.Id == grantId && g.TenantId == tenantId)); }
         public Task<bool> RevokeGrantAsync(Guid grantId, Guid? tenantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default) { var grant = Grants.SingleOrDefault(g => g.Id == grantId && g.TenantId == tenantId); if (grant is null) return Task.FromResult(false); grant.RevokedAt = revokedAt; return Task.FromResult(true); }
         public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(Users.GetValueOrDefault(userId));
         public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(null);
