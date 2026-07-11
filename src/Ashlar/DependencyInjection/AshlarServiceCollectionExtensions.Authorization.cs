@@ -21,8 +21,8 @@ public static partial class AshlarServiceCollectionExtensions
     /// <param name="configure">Optional authorization grant configuration callback.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
     /// <remarks>
-    /// This method intentionally does not register <see cref="IAuthorizationGrantRepository"/>.
-    /// Applications should provide that dependency explicitly, such as by using Ashlar.Postgres.
+    /// This method intentionally does not register grant persistence.
+    /// Applications should add an Ashlar persistence provider, such as Ashlar.Postgres.
     /// </remarks>
     public static IServiceCollection AddAshlarAuthorization(
         this IServiceCollection services,
@@ -57,7 +57,10 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped<IAuthorizationGrantAdministrationService>(provider => new AuthorizationGrantAdministrationService(
             provider.GetRequiredService<IAuthorizationGrantAdministrationRepository>(),
             provider.GetService<AuthorizationGrantOptions>(),
-            provider.GetService<TimeProvider>()));
+            provider.GetService<TimeProvider>(),
+            new AuthorizationGrantMutationContext(
+                provider.GetService<IAccountSecurityOperationAuthorizer>(),
+                provider.GetService<IAuthenticationSessionRepository>())));
         services.TryAddScoped<IAuthorizationEvaluator, AuthorizationEvaluator>();
 
         return services;

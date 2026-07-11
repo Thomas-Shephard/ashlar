@@ -39,19 +39,11 @@ internal static class HomeEndpoints
                     "SELECT id, name FROM sample_projects ORDER BY created_at",
                     cancellationToken: cancellationToken));
 
-                var userGrants = await services.Grants.ListGrantsAsync(new ListAuthorizationGrantsRequest(
-                    UserId: userId,
-                    ScopeType: "project",
-                    ActiveOnly: true), cancellationToken);
-
-                var managedProjectIds = userGrants
-                    .Where(g => g is { Permission: "project.manage", ScopeId: not null })
-                    .Select(g => g.ScopeId)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
                 foreach (var (id, name) in projects)
                 {
-                    projectsWithAccess.Add((id, name, managedProjectIds.Contains(id)));
+                    var access = await services.Auth.EvaluateAsync(new AuthorizationEvaluationRequest(
+                        userId, Permission: "project.manage", ScopeType: "project", ScopeId: id), cancellationToken);
+                    projectsWithAccess.Add((id, name, access.Succeeded));
                 }
             }
 
@@ -69,7 +61,6 @@ internal static class HomeEndpoints
     private sealed record HomeServices(
         [FromServices] IBootstrapService Bootstrap,
         [FromServices] IAuthorizationEvaluator Auth,
-        [FromServices] IAuthorizationGrantService Grants,
         [FromServices] IUserRepository Users,
         [FromServices] NpgsqlDataSource DataSource,
         [FromServices] IConfiguration Configuration);

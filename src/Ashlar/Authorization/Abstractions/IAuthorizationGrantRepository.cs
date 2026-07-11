@@ -5,6 +5,11 @@ namespace Ashlar.Authorization.Abstractions;
 /// <summary>
 /// Persists and queries provider-neutral authorization grants.
 /// </summary>
+/// <remarks>
+/// Infrastructure-only provider contract. It performs no actor authorization and returns raw grants, including metadata.
+/// Application code must use <see cref="IAuthorizationEvaluator" /> for decisions and
+/// <see cref="IAuthorizationGrantAdministrationService" /> for authorized display-safe reads.
+/// </remarks>
 public interface IAuthorizationGrantRepository
 {
     /// <summary>

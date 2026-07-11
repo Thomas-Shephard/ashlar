@@ -275,7 +275,6 @@ internal sealed class AuthorizationGrantServiceTests
             Assert.That(missingScopeType.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidScopeShape));
         }
         Assert.ThrowsAsync<ArgumentNullException>(() => _service.CreateGrantAsync(null!));
-        Assert.ThrowsAsync<ArgumentNullException>(() => _service.ListGrantsAsync(null!));
         Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeGrantAsync(null!));
         Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(Guid.Empty, _audit)));
     }
@@ -641,85 +640,6 @@ internal sealed class AuthorizationGrantServiceTests
     }
 
     [Test]
-    public async Task ListGrantsAsyncShouldValidateAndDelegate()
-    {
-        var userId = Guid.NewGuid();
-
-        await _service.ListGrantsAsync(new ListAuthorizationGrantsRequest(userId, ScopeType: " Project ", ScopeId: " ABC "));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(_repository.LastListRequest?.UserId, Is.EqualTo(userId));
-            Assert.That(_repository.LastListRequest?.ScopeType, Is.EqualTo("project"));
-            Assert.That(_repository.LastListRequest?.ScopeId, Is.EqualTo("abc"));
-        }
-    }
-
-    [Test]
-    public async Task ListGrantsAsyncShouldReturnOnlyGlobalGrantsWhenTenantIsNull()
-    {
-        var userId = Guid.NewGuid();
-        var tenantId = Guid.NewGuid();
-        var global = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, Permission = "global", CreatedAt = _timeProvider.GetUtcNow() };
-        var tenant = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, TenantId = tenantId, Permission = "tenant", CreatedAt = _timeProvider.GetUtcNow() };
-        _repository.Grants.Add(global);
-        _repository.Grants.Add(tenant);
-
-        var grants = await _service.ListGrantsAsync(new ListAuthorizationGrantsRequest(userId));
-
-        Assert.That(grants.Select(grant => grant.Id), Is.EquivalentTo(new[] { global.Id }));
-    }
-
-    [Test]
-    public async Task ListGrantsAsyncShouldReturnOnlyRequestedTenantGrants()
-    {
-        var userId = Guid.NewGuid();
-        var tenantId = Guid.NewGuid();
-        var otherTenantId = Guid.NewGuid();
-        var matching = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, TenantId = tenantId, Permission = "tenant", CreatedAt = _timeProvider.GetUtcNow() };
-        var global = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, Permission = "global", CreatedAt = _timeProvider.GetUtcNow() };
-        var otherTenant = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, TenantId = otherTenantId, Permission = "other", CreatedAt = _timeProvider.GetUtcNow() };
-        _repository.Grants.AddRange([matching, global, otherTenant]);
-
-        var grants = await _service.ListGrantsAsync(new ListAuthorizationGrantsRequest(userId, tenantId));
-
-        Assert.That(grants.Select(grant => grant.Id), Is.EquivalentTo(new[] { matching.Id }));
-    }
-
-    [Test]
-    public async Task ListGrantsAsyncShouldAllowBroadScopeWithoutBroadeningTenantBoundary()
-    {
-        var userId = Guid.NewGuid();
-        var tenantId = Guid.NewGuid();
-        var otherTenantId = Guid.NewGuid();
-        var broadTenantGrant = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, TenantId = tenantId, Permission = "tenant", CreatedAt = _timeProvider.GetUtcNow() };
-        var scopedTenantGrant = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, TenantId = tenantId, ScopeType = "project", ScopeId = "alpha", Permission = "scoped", CreatedAt = _timeProvider.GetUtcNow() };
-        var broadOtherTenantGrant = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, TenantId = otherTenantId, Permission = "other", CreatedAt = _timeProvider.GetUtcNow() };
-        var broadGlobalGrant = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, Permission = "global", CreatedAt = _timeProvider.GetUtcNow() };
-        _repository.Grants.AddRange([broadTenantGrant, scopedTenantGrant, broadOtherTenantGrant, broadGlobalGrant]);
-
-        var grants = await _service.ListGrantsAsync(new ListAuthorizationGrantsRequest(userId, tenantId, "project", "alpha"));
-
-        Assert.That(grants.Select(grant => grant.Id), Is.EquivalentTo(new[] { broadTenantGrant.Id, scopedTenantGrant.Id }));
-    }
-
-    [Test]
-    public async Task ListGrantsAsyncShouldReturnEmptyForInvalidSearchValues()
-    {
-        var userId = Guid.NewGuid();
-        var service = new AuthorizationGrantService(_repository, _userRepository, new AuthorizationGrantOptions { MaxScopeTypeLength = 1 });
-
-        var missingScopeId = await _service.ListGrantsAsync(new ListAuthorizationGrantsRequest(userId, ScopeType: "project"));
-        var oversizedScope = await service.ListGrantsAsync(new ListAuthorizationGrantsRequest(userId, ScopeType: "project", ScopeId: "1"));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(missingScopeId, Is.Empty);
-            Assert.That(oversizedScope, Is.Empty);
-        }
-    }
-
-    [Test]
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void ConstructorsShouldRejectInvalidDependenciesAndOptions()
     {
@@ -728,6 +648,22 @@ internal sealed class AuthorizationGrantServiceTests
         Assert.Throws<ArgumentNullException>(() => AuthorizationGrantOptions.Validate(null!));
         Assert.Throws<ArgumentException>(() => _ = new AuthorizationGrantService(_repository, _userRepository, new AuthorizationGrantOptions { MaxRoleLength = 0 }));
         Assert.Throws<ArgumentException>(() => _ = new AuthorizationEvaluator(_repository, new AuthorizationGrantOptions { MaxMetadataLength = 0 }));
+    }
+
+    [Test]
+    public void ConstructorRequiresDurableTransactionsForPersistentAudit()
+    {
+        var persistent = Moq.Mock.Of<IPersistentSecurityEventSink>();
+        var fanOut = new SecurityEventFanOutSink(persistent);
+        var transactionProvider = Moq.Mock.Of<IAshlarDurableTransactionProvider>();
+        var boundFanOut = new SecurityEventFanOutSink(persistent, transactionProvider: transactionProvider);
+
+        Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository, securityEventSink: persistent));
+        Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository, securityEventSink: fanOut));
+        Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository, securityEventSink: boundFanOut,
+            transactionProvider: Moq.Mock.Of<IAshlarDurableTransactionProvider>()));
+        Assert.DoesNotThrow(() => new AuthorizationGrantService(_repository, _userRepository, securityEventSink: boundFanOut,
+            transactionProvider: transactionProvider));
     }
 
     private Guid AddGlobalUser()

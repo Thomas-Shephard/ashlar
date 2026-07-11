@@ -6,6 +6,8 @@ namespace Ashlar.Authorization.Abstractions;
 /// Provides read-only administrator authorization grant lookup operations.
 /// </summary>
 /// <remarks>
+/// Infrastructure-only provider contract. It performs no actor authorization and must only be called by
+/// <see cref="IAuthorizationGrantAdministrationService" />, which enforces actor proof, session, scope, audit, and host authorization.
 /// Implementations must return display-safe grant projections and must not expose raw grant metadata.
 /// </remarks>
 public interface IAuthorizationGrantAdministrationRepository
