@@ -40,6 +40,18 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
         }
     }
 
+    [Test]
+    public async Task CreateRejectsMissingAuditActorIdentity()
+    {
+        var repository = new Repository();
+        var actor = Actor();
+
+        var result = await Service(repository).CreateGrantAsync(new CreateAuthorizationGrantRequest(
+            Guid.NewGuid(), actor, new AuditContext(), TenantContext.Global, permission: "read"));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+    }
+
     [TestCase("wrong-purpose", 1)]
     [TestCase(AuthorizationGrantService.AdministrationProofPurpose, -1)]
     public async Task CreateRejectsWrongPurposeOrStaleProof(string purpose, int expiryMinutes)

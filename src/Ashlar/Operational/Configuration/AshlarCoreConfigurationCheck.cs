@@ -439,17 +439,16 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
 
     private static void AddAuthorizationGrantMutationDependencyIssues(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
     {
-        if (serviceProvider.IsServiceRegistered<AuthorizationGrantService>()
-            && !serviceProvider.IsServiceRegistered<IAuthenticationSessionRepository>()
-            && issues.All(issue => issue.Code != AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing))
-        {
-            issues.Add(new AshlarConfigurationIssue(
-                AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing,
-                AshlarConfigurationIssueSeverity.Error,
-                "Authentication session persistence is not configured.",
-                "Register an IAuthenticationSessionRepository implementation before using built-in authorization grant mutations.",
-                "Session persistence"));
-        }
+        if (!serviceProvider.IsServiceRegistered<AuthorizationGrantService>()
+            || serviceProvider.IsServiceRegistered<IAuthenticationSessionRepository>()
+            || issues.Any(issue => issue.Code == AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing)) return;
+
+        issues.Add(new AshlarConfigurationIssue(
+            AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing,
+            AshlarConfigurationIssueSeverity.Error,
+            "Authentication session persistence is not configured.",
+            "Register an IAuthenticationSessionRepository implementation before using built-in authorization grant mutations.",
+            "Session persistence"));
     }
 
     private static void AddMfaPolicyIssues(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)

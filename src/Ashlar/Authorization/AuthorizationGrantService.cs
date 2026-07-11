@@ -69,7 +69,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
 
         var actorFailure = await ValidateActorAsync(request.Actor, request.Audit, request.IncludeAllTenants, request.IsInfrastructureMutation, cancellationToken);
         if (actorFailure is null)
-            actorFailure = await AuthorizeActorAsync(request.Actor!, request.UserId, request.TenantId,
+            actorFailure = await AuthorizeActorAsync(request.Actor, request.UserId, request.TenantId,
                 AccountSecurityOperation.CreateAuthorizationGrant, request.IsInfrastructureMutation, cancellationToken);
         if (actorFailure is not null)
             return Result.Failure<AuthorizationGrant>(actorFailure.Value);
@@ -255,7 +255,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
             return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.NotFound, request.GrantId, request.TenantId);
         }
 
-        actorFailure = await AuthorizeActorAsync(request.Actor!, grant.UserId, request.TenantId,
+        actorFailure = await AuthorizeActorAsync(request.Actor, grant.UserId, request.TenantId,
             AccountSecurityOperation.RevokeAuthorizationGrant, request.IsInfrastructureMutation, cancellationToken);
         if (actorFailure is not null)
             return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.NotFound, request.GrantId, request.TenantId);
@@ -404,7 +404,9 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
         try
         {
             if (metadata is not null)
-                using (JsonDocument.Parse(metadata)) { }
+            {
+                using var document = JsonDocument.Parse(metadata);
+            }
             return (metadata, null);
         }
         catch (JsonException)
@@ -417,7 +419,8 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
         bool includeAllTenants, bool infrastructureMutation, CancellationToken cancellationToken)
     {
         if (infrastructureMutation) return null;
-        if (actor is null || audit.ActorUserId != actor.ActorUserId || includeAllTenants) return AshlarFailureCodes.ValidationError;
+        ArgumentNullException.ThrowIfNull(actor);
+        if (audit.ActorUserId != actor.ActorUserId || includeAllTenants) return AshlarFailureCodes.ValidationError;
 
         var proofFailure = FreshVerificationProofValidator.ValidateMfaProof(actor.ActorUserId, actor.ActorTenant,
             actor.FreshMfaProof, actor.CurrentSessionId, _timeProvider.GetUtcNow(), AdministrationProofPurpose);
@@ -429,11 +432,12 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
             || !session.IsActive(_timeProvider.GetUtcNow()) ? AshlarFailureCodes.StepUpRequired : null;
     }
 
-    private async ValueTask<AshlarFailureCode?> AuthorizeActorAsync(AccountSecurityActorContext actor,
+    private async ValueTask<AshlarFailureCode?> AuthorizeActorAsync(AccountSecurityActorContext? actor,
         Guid targetUserId, Guid? tenantId, AccountSecurityOperation operation, bool infrastructureMutation,
         CancellationToken cancellationToken)
     {
         if (infrastructureMutation) return null;
+        ArgumentNullException.ThrowIfNull(actor);
         if (_authorizer is null) return AshlarFailureCodes.ValidationError;
 
         var authorized = await _authorizer.AuthorizeAsync(new AccountSecurityAuthorizationContext(

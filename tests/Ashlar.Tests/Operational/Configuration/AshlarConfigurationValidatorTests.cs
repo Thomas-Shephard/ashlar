@@ -476,6 +476,19 @@ internal sealed class AshlarConfigurationValidatorTests
     }
 
     [Test]
+    public async Task CoreCheckDoesNotReportMissingSessionForBuiltInGrantServiceWhenRegistered()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarAuthorization();
+
+        using var provider = services.BuildServiceProvider();
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing));
+    }
+
+    [Test]
     public async Task CoreCheckReportsBootstrapSetupAuthorizationErrorWhenBootstrapHasNoSecureGate()
     {
         var services = new ServiceCollection();
