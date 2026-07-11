@@ -29,6 +29,20 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
         Assert.That(AshlarSecurityEventWebhookOptions.Validate(options), Is.False);
     }
 
+    [TestCase(32)]
+    [TestCase(40)]
+    [TestCase(48)]
+    [TestCase(56)]
+    [TestCase(64)]
+    [TestCase(96)]
+    public void ValidateAcceptsRfc6052Nat64PrefixLengths(int prefixLength)
+    {
+        var options = new AshlarSecurityEventWebhookOptions();
+        options.Nat64Prefixes.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("2001:db8::"), prefixLength));
+
+        Assert.That(AshlarSecurityEventWebhookOptions.Validate(options), Is.True);
+    }
+
     [Test]
     public void EndpointValidateAcceptsHttpsEndpoint()
     {
@@ -111,6 +125,15 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
         yield return null;
         yield return new AshlarSecurityEventWebhookOptions { Timeout = TimeSpan.Zero };
         yield return new AshlarSecurityEventWebhookOptions { DestinationPolicy = (AshlarSecurityEventWebhookDestinationPolicy)99 };
+        var invalidNat64Length = new AshlarSecurityEventWebhookOptions();
+        invalidNat64Length.Nat64Prefixes.Add(System.Net.IPNetwork.Parse("2001:db8::/65"));
+        yield return invalidNat64Length;
+        var ipv4Nat64Prefix = new AshlarSecurityEventWebhookOptions();
+        ipv4Nat64Prefix.Nat64Prefixes.Add(System.Net.IPNetwork.Parse("192.0.2.0/32"));
+        yield return ipv4Nat64Prefix;
+        var nonZeroReservedOctet = new AshlarSecurityEventWebhookOptions();
+        nonZeroReservedOctet.Nat64Prefixes.Add(System.Net.IPNetwork.Parse("2001:db8:1234:5678:100::/96"));
+        yield return nonZeroReservedOctet;
         yield return CreateOptions(null);
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = " ", Uri = new Uri("https://example.test") });
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("http://example.test") });

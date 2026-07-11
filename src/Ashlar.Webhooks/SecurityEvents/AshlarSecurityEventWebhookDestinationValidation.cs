@@ -39,6 +39,9 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
 {
     private readonly IAshlarSecurityEventWebhookDestinationResolver _resolver;
     private readonly AshlarSecurityEventWebhookDestinationPolicy _destinationPolicy;
+    private readonly IReadOnlyCollection<IPNetwork> _nat64Prefixes;
+    private static readonly IPNetwork WellKnownNat64Prefix = IPNetwork.Parse("64:ff9b::/96");
+    private static readonly IPNetwork LocalUseNat64Prefix = IPNetwork.Parse("64:ff9b:1::/48");
 
     /// <summary>
     /// Initializes a new instance of the validator.
@@ -53,6 +56,7 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
 
         _resolver = resolver;
         _destinationPolicy = options?.Value.DestinationPolicy ?? AshlarSecurityEventWebhookDestinationPolicy.PublicInternetOnly;
+        _nat64Prefixes = options?.Value.Nat64Prefixes.ToArray() ?? [];
     }
 
     /// <summary>
@@ -74,6 +78,14 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
     public static AshlarSecurityEventWebhookDestinationValidationResult ValidateUri(
         Uri? uri,
         AshlarSecurityEventWebhookDestinationPolicy destinationPolicy)
+    {
+        return ValidateUri(uri, destinationPolicy, null);
+    }
+
+    internal static AshlarSecurityEventWebhookDestinationValidationResult ValidateUri(
+        Uri? uri,
+        AshlarSecurityEventWebhookDestinationPolicy destinationPolicy,
+        IEnumerable<IPNetwork>? nat64Prefixes)
     {
         if (uri is not { IsAbsoluteUri: true })
         {
@@ -100,7 +112,7 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
             return AshlarSecurityEventWebhookDestinationValidationResult.Rejected("Webhook destination host must not be localhost.");
         }
 
-        if (IPAddress.TryParse(uri.Host, out var address) && IsBlockedAddress(address, destinationPolicy))
+        if (IPAddress.TryParse(uri.Host, out var address) && IsBlockedAddress(address, destinationPolicy, nat64Prefixes))
         {
             return AshlarSecurityEventWebhookDestinationValidationResult.Rejected("Webhook destination host resolves to a blocked address.");
         }
@@ -128,14 +140,14 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
         ArgumentException.ThrowIfNullOrWhiteSpace(host);
 
         var addresses = await _resolver.ResolveAsync(host, cancellationToken).ConfigureAwait(false);
-        return addresses.Where(address => !IsBlockedAddress(address, _destinationPolicy)).ToArray();
+        return addresses.Where(address => !IsBlockedAddress(address, _destinationPolicy, _nat64Prefixes)).ToArray();
     }
 
     internal AshlarSecurityEventWebhookDestinationValidationResult ValidateAddress(IPAddress address)
     {
         ArgumentNullException.ThrowIfNull(address);
 
-        return IsBlockedAddress(address, _destinationPolicy)
+        return IsBlockedAddress(address, _destinationPolicy, _nat64Prefixes)
             ? AshlarSecurityEventWebhookDestinationValidationResult.Rejected("Webhook destination host resolves to a blocked address.")
             : AshlarSecurityEventWebhookDestinationValidationResult.Valid;
     }
@@ -144,7 +156,7 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
         Uri? uri,
         CancellationToken cancellationToken = default)
     {
-        var uriResult = ValidateUri(uri, _destinationPolicy);
+        var uriResult = ValidateUri(uri, _destinationPolicy, _nat64Prefixes);
         if (!uriResult.IsValid || uri is null)
         {
             return new AshlarSecurityEventWebhookResolvedDestinationValidation(uriResult, []);
@@ -163,7 +175,7 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
                 []);
         }
 
-        if (addresses.Any(address => IsBlockedAddress(address, _destinationPolicy)))
+        if (addresses.Any(address => IsBlockedAddress(address, _destinationPolicy, _nat64Prefixes)))
         {
             return new AshlarSecurityEventWebhookResolvedDestinationValidation(
                 AshlarSecurityEventWebhookDestinationValidationResult.Rejected("Webhook destination host resolves to a blocked address."),
@@ -182,11 +194,19 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
 
     internal static bool IsBlockedAddress(IPAddress address, AshlarSecurityEventWebhookDestinationPolicy destinationPolicy)
     {
+        return IsBlockedAddress(address, destinationPolicy, null);
+    }
+
+    private static bool IsBlockedAddress(
+        IPAddress address,
+        AshlarSecurityEventWebhookDestinationPolicy destinationPolicy,
+        IEnumerable<IPNetwork>? nat64Prefixes)
+    {
         ArgumentNullException.ThrowIfNull(address);
 
         if (address.IsIPv4MappedToIPv6)
         {
-            return IsBlockedAddress(address.MapToIPv4(), destinationPolicy);
+            return IsBlockedAddress(address.MapToIPv4(), destinationPolicy, nat64Prefixes);
         }
 
         if (address.AddressFamily == AddressFamily.InterNetwork)
@@ -194,7 +214,14 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
             return IsBlockedIPv4(address.GetAddressBytes(), destinationPolicy);
         }
 
-        return IsBlockedIPv6(address, destinationPolicy);
+        return IsBlockedIPv6(address, destinationPolicy, nat64Prefixes);
+    }
+
+    internal static bool IsValidNat64Prefix(IPNetwork prefix)
+    {
+        return prefix.BaseAddress.AddressFamily == AddressFamily.InterNetworkV6
+            && (prefix.PrefixLength is 32 or 40 or 48 or 56 or 64
+                || prefix.PrefixLength == 96 && prefix.BaseAddress.GetAddressBytes()[8] == 0);
     }
 
     private static bool IsLocalhost(string host)
@@ -231,7 +258,10 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
             || bytes[0] == 203 && bytes[1] == 0 && bytes[2] == 113;
     }
 
-    private static bool IsBlockedIPv6(IPAddress address, AshlarSecurityEventWebhookDestinationPolicy destinationPolicy)
+    private static bool IsBlockedIPv6(
+        IPAddress address,
+        AshlarSecurityEventWebhookDestinationPolicy destinationPolicy,
+        IEnumerable<IPNetwork>? nat64Prefixes)
     {
         if (IPAddress.IPv6Loopback.Equals(address) || IPAddress.IPv6None.Equals(address))
         {
@@ -239,10 +269,22 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
         }
 
         var bytes = address.GetAddressBytes();
-        if (bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0x00, 0x64, 0xff, 0x9b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]))
+        var isBuiltInNat64 = WellKnownNat64Prefix.Contains(address) || LocalUseNat64Prefix.Contains(address);
+        if (isBuiltInNat64 && destinationPolicy == AshlarSecurityEventWebhookDestinationPolicy.PublicInternetOnly)
         {
-            return destinationPolicy == AshlarSecurityEventWebhookDestinationPolicy.PublicInternetOnly
-                || IsBlockedIPv4(bytes[12..16], destinationPolicy);
+            return true;
+        }
+
+        var nat64Prefix = (nat64Prefixes ?? [])
+            .Append(WellKnownNat64Prefix)
+            .Append(LocalUseNat64Prefix)
+            .Where(prefix => prefix.Contains(address))
+            .OrderByDescending(prefix => prefix.PrefixLength)
+            .Cast<IPNetwork?>()
+            .FirstOrDefault();
+        if (nat64Prefix.HasValue)
+        {
+            return IsBlockedIPv4(ExtractNat64IPv4(bytes, nat64Prefix.Value.PrefixLength), destinationPolicy);
         }
 
         return bytes[0] == 0xff
@@ -251,6 +293,14 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
                 && ((bytes[0] & 0xfe) == 0xfc
                     || bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0
                     || bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0x00, 0x64, 0xff, 0x9b, 0x00, 0x01]));
+    }
+
+    private static byte[] ExtractNat64IPv4(byte[] bytes, int prefixLength)
+    {
+        var prefixBytes = prefixLength / 8;
+        return prefixLength == 96
+            ? bytes[12..16]
+            : [.. bytes[prefixBytes..8], .. bytes[9..(prefixBytes + 5)]];
     }
 }
 
