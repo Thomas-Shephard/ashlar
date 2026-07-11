@@ -191,6 +191,7 @@ public static class AshlarPostgresServiceCollectionExtensions
     {
         services.TryAddScoped<PostgresTransactionManager>();
         services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
+        services.Replace(ServiceDescriptor.Scoped<IAshlarDurableTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
         services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
     }
 

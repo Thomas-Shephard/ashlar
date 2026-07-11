@@ -1,6 +1,6 @@
 namespace Ashlar.Tests.Support;
 
-internal sealed class RecordingTransactionProvider : IAshlarTransactionProvider
+internal sealed class RecordingTransactionProvider : IAshlarDurableTransactionProvider
 {
     public RecordingTransaction Transaction { get; } = new();
 

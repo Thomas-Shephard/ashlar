@@ -677,7 +677,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
-    public void AddAshlarAuthorizationResolvesGrantServiceWhenRequiredDependenciesArePresent()
+    public void AddAshlarAuthorizationFailsClosedWithoutDurableTransactions()
     {
         var services = new ServiceCollection();
         services.AddSingleton(Mock.Of<IAuthorizationGrantRepository>());
@@ -687,7 +687,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
 
-        Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantService>(), Is.TypeOf<AuthorizationGrantService>());
+        Assert.Throws<InvalidOperationException>(() => scope.ServiceProvider.GetRequiredService<IAuthorizationGrantService>());
     }
 
     [Test]

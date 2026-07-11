@@ -14,6 +14,7 @@ internal sealed class AuthorizationGrantServiceTests
     private FakeUserRepository _userRepository;
     private AuthorizationGrantService _service;
     private AuditContext _audit;
+    private RecordingTransactionProvider _transactions;
 
     [SetUp]
     public void SetUp()
@@ -21,7 +22,8 @@ internal sealed class AuthorizationGrantServiceTests
         _timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
         _repository = new FakeRepository();
         _userRepository = new FakeUserRepository();
-        _service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider);
+        _transactions = new RecordingTransactionProvider();
+        _service = CreateService();
         _audit = new AuditContext(ActorUserId: Guid.NewGuid(), IpAddress: "203.0.113.10", UserAgent: "unit-test", CorrelationId: "grant-test");
     }
 
@@ -47,7 +49,7 @@ internal sealed class AuthorizationGrantServiceTests
     public async Task CreateGrantAsyncShouldAuditPermissionGrantProperties()
     {
         var auditSink = new RecordingSecurityEventSink();
-        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var service = CreateService(auditSink);
         var userId = AddGlobalUser();
 
         await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "posts.edit"));
@@ -68,7 +70,7 @@ internal sealed class AuthorizationGrantServiceTests
     public async Task CreateGrantAsyncShouldCommitWhenTransactionProviderIsConfigured()
     {
         var transactionProvider = new RecordingTransactionProvider();
-        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, transactionProvider: transactionProvider);
+        var service = CreateService(transactionProvider: transactionProvider);
         var userId = AddGlobalUser();
 
         var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "posts.read"));
@@ -76,8 +78,8 @@ internal sealed class AuthorizationGrantServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(transactionProvider.Transaction.BeginCount, Is.EqualTo(1));
-            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(1));
+            Assert.That(transactionProvider.Transaction.BeginCount, Is.EqualTo(2));
+            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(2));
         }
     }
 
@@ -85,7 +87,7 @@ internal sealed class AuthorizationGrantServiceTests
     public async Task CreateGrantAsyncShouldRejectMissingAuditBeforeRepositoryCreation()
     {
         var auditSink = new RecordingSecurityEventSink();
-        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var service = CreateService(auditSink);
         var userId = AddGlobalUser();
 
         var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, null!, Permission: "read"));
@@ -214,7 +216,7 @@ internal sealed class AuthorizationGrantServiceTests
     public async Task CreateGrantAsyncShouldAuditTenantMismatchWithoutLeakingOtherTenantDetails()
     {
         var auditSink = new RecordingSecurityEventSink();
-        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var service = CreateService(auditSink);
         var userId = Guid.NewGuid();
         var userTenantId = Guid.NewGuid();
         var requestedTenantId = Guid.NewGuid();
@@ -235,14 +237,15 @@ internal sealed class AuthorizationGrantServiceTests
     [Test]
     public void ConstructorShouldRequireUserRepositoryForTenantValidation()
     {
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthorizationGrantService(_repository, null!, timeProvider: _timeProvider));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthorizationGrantService(_repository, null!,
+            new SecurityEventFanOutSink(new RecordingSecurityEventSink(), transactionProvider: _transactions), _transactions));
     }
 
     [Test]
     public async Task CreateGrantAsyncShouldRejectMissingUserBeforeRepositoryCreation()
     {
         var auditSink = new RecordingSecurityEventSink();
-        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var service = CreateService(auditSink);
         var userId = Guid.NewGuid();
 
         var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "read"));
@@ -282,14 +285,14 @@ internal sealed class AuthorizationGrantServiceTests
     [Test]
     public async Task CreateGrantAsyncShouldRejectOversizedValues()
     {
-        var service = new AuthorizationGrantService(_repository, _userRepository, new AuthorizationGrantOptions
+        var service = CreateService(options: new AuthorizationGrantOptions
         {
             MaxRoleLength = 1,
             MaxPermissionLength = 1,
             MaxScopeTypeLength = 1,
             MaxScopeIdLength = 1,
             MaxMetadataLength = 1
-        }, timeProvider: null, securityEventSink: null);
+        });
         var userId = Guid.NewGuid();
 
         var role = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Role: "xx"));
@@ -336,15 +339,15 @@ internal sealed class AuthorizationGrantServiceTests
         var userId = AddGlobalUser();
         var create = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "posts.read"));
         var transactionProvider = new RecordingTransactionProvider();
-        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, transactionProvider: transactionProvider);
+        var service = CreateService(transactionProvider: transactionProvider);
 
         var revoked = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(create.Value!.Id, _audit));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.Revoked));
-            Assert.That(transactionProvider.Transaction.BeginCount, Is.EqualTo(1));
-            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(1));
+            Assert.That(transactionProvider.Transaction.BeginCount, Is.EqualTo(2));
+            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(2));
         }
     }
 
@@ -352,7 +355,7 @@ internal sealed class AuthorizationGrantServiceTests
     public async Task RevokeGrantAsyncShouldRejectMissingAuditBeforeStorageLookup()
     {
         var auditSink = new RecordingSecurityEventSink();
-        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var service = CreateService(auditSink);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         _userRepository.Add(userId, tenantId);
@@ -494,7 +497,7 @@ internal sealed class AuthorizationGrantServiceTests
     public async Task RevokeGrantAsyncShouldAuditVerifiedGrantDetailsWhenRepositoryDoesNotRevoke()
     {
         var auditSink = new RecordingSecurityEventSink();
-        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var service = CreateService(auditSink);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         _userRepository.Add(userId, tenantId);
@@ -523,7 +526,7 @@ internal sealed class AuthorizationGrantServiceTests
     public async Task RevokeGrantAsyncShouldIncludeUserIdInAuditEvent()
     {
         var auditSink = new RecordingSecurityEventSink();
-        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var service = CreateService(auditSink);
         var userId = AddGlobalUser();
         var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "read"));
         var grant = result.Value!;
@@ -547,7 +550,7 @@ internal sealed class AuthorizationGrantServiceTests
     public async Task CreateGrantAsyncShouldIncludeGrantActionInAuditEvent()
     {
         var auditSink = new RecordingSecurityEventSink();
-        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var service = CreateService(auditSink);
         var userId = AddGlobalUser();
 
         var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Role: "Reviewer"));
@@ -566,7 +569,7 @@ internal sealed class AuthorizationGrantServiceTests
     public async Task RevokeGrantAsyncShouldReturnNotFoundAndAuditWhenGrantContextIsUnavailable()
     {
         var auditSink = new RecordingSecurityEventSink();
-        var service = new AuthorizationGrantService(new RevokesMissingGrantRepository(), _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var service = CreateService(auditSink, repository: new RevokesMissingGrantRepository());
         var grantId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
 
@@ -589,7 +592,7 @@ internal sealed class AuthorizationGrantServiceTests
     public async Task RevokeGrantAsyncShouldAuditOutOfScopeRevocationWithoutGrantDetails()
     {
         var auditSink = new RecordingSecurityEventSink();
-        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var service = CreateService(auditSink);
         var grantTenantId = Guid.NewGuid();
         var requestedTenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
@@ -619,7 +622,7 @@ internal sealed class AuthorizationGrantServiceTests
     public async Task RevokeGrantAsyncShouldAuditGrantIdWhenGrantHasNoRoleOrPermission()
     {
         var auditSink = new RecordingSecurityEventSink();
-        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var service = CreateService(auditSink);
         var grant = new AuthorizationGrant
         {
             Id = Guid.NewGuid(),
@@ -643,10 +646,12 @@ internal sealed class AuthorizationGrantServiceTests
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void ConstructorsShouldRejectInvalidDependenciesAndOptions()
     {
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthorizationGrantService(null!, _userRepository));
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthorizationGrantService(_repository, null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthorizationGrantService(null!, _userRepository,
+            new SecurityEventFanOutSink(new RecordingSecurityEventSink(), transactionProvider: _transactions), _transactions));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthorizationGrantService(_repository, null!,
+            new SecurityEventFanOutSink(new RecordingSecurityEventSink(), transactionProvider: _transactions), _transactions));
         Assert.Throws<ArgumentNullException>(() => AuthorizationGrantOptions.Validate(null!));
-        Assert.Throws<ArgumentException>(() => _ = new AuthorizationGrantService(_repository, _userRepository, new AuthorizationGrantOptions { MaxRoleLength = 0 }));
+        Assert.Throws<ArgumentException>(() => _ = CreateService(options: new AuthorizationGrantOptions { MaxRoleLength = 0 }));
         Assert.Throws<ArgumentException>(() => _ = new AuthorizationEvaluator(_repository, new AuthorizationGrantOptions { MaxMetadataLength = 0 }));
     }
 
@@ -654,16 +659,21 @@ internal sealed class AuthorizationGrantServiceTests
     public void ConstructorRequiresDurableTransactionsForPersistentAudit()
     {
         var persistent = Moq.Mock.Of<IPersistentSecurityEventSink>();
+        var auditlessFanOut = new SecurityEventFanOutSink();
         var fanOut = new SecurityEventFanOutSink(persistent);
         var transactionProvider = Moq.Mock.Of<IAshlarDurableTransactionProvider>();
         var boundFanOut = new SecurityEventFanOutSink(persistent, transactionProvider: transactionProvider);
+        var durableHandlerFanOut = new SecurityEventFanOutSink(transactionProvider: transactionProvider,
+            durableHandlers: [Moq.Mock.Of<IDurableSecurityEventFanOutHandler>()]);
 
-        Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository, securityEventSink: persistent));
-        Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository, securityEventSink: fanOut));
-        Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository, securityEventSink: boundFanOut,
-            transactionProvider: Moq.Mock.Of<IAshlarDurableTransactionProvider>()));
-        Assert.DoesNotThrow(() => new AuthorizationGrantService(_repository, _userRepository, securityEventSink: boundFanOut,
-            transactionProvider: transactionProvider));
+        Assert.Throws<ArgumentNullException>(() => new AuthorizationGrantService(_repository, _userRepository, null!, transactionProvider));
+        Assert.Throws<ArgumentNullException>(() => new AuthorizationGrantService(_repository, _userRepository, boundFanOut, null!));
+        Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository, auditlessFanOut, transactionProvider));
+        Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository, fanOut, transactionProvider));
+        Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository, boundFanOut,
+            Moq.Mock.Of<IAshlarDurableTransactionProvider>()));
+        Assert.DoesNotThrow(() => new AuthorizationGrantService(_repository, _userRepository, boundFanOut, transactionProvider));
+        Assert.DoesNotThrow(() => new AuthorizationGrantService(_repository, _userRepository, durableHandlerFanOut, transactionProvider));
     }
 
     private Guid AddGlobalUser()
@@ -671,6 +681,18 @@ internal sealed class AuthorizationGrantServiceTests
         var userId = Guid.NewGuid();
         _userRepository.Add(userId, null);
         return userId;
+    }
+
+    private AuthorizationGrantService CreateService(
+        RecordingSecurityEventSink? audit = null,
+        RecordingTransactionProvider? transactionProvider = null,
+        IAuthorizationGrantRepository? repository = null,
+        AuthorizationGrantOptions? options = null)
+    {
+        transactionProvider ??= _transactions;
+        var fanOut = new SecurityEventFanOutSink(audit ?? new RecordingSecurityEventSink(), transactionProvider: transactionProvider);
+        return new AuthorizationGrantService(repository ?? _repository, _userRepository, fanOut, transactionProvider,
+            options, _timeProvider);
     }
 
     private sealed class FakeRepository : IAuthorizationGrantRepository
@@ -735,7 +757,7 @@ internal sealed class AuthorizationGrantServiceTests
         }
     }
 
-    private sealed class RecordingSecurityEventSink : ISecurityEventSink
+    private sealed class RecordingSecurityEventSink : IPersistentSecurityEventSink
     {
         public List<AshlarSecurityEvent> Events { get; } = [];
 

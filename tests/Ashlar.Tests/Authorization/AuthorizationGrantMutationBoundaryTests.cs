@@ -424,13 +424,15 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
         return new AccountSecurityActorContext(userId, tenant, sessionId, proof, audit);
     }
 
-    private AuthorizationGrantService Service(Repository repository, ISecurityEventSink? sink = null,
+    private AuthorizationGrantService Service(Repository repository, IPersistentSecurityEventSink? sink = null,
         IAccountSecurityOperationAuthorizer? authorizer = null, bool includeSessionRepository = true, bool includeAuthorizer = true)
     {
         var sessions = new Mock<IAuthenticationSessionRepository>();
         sessions.Setup(x => x.GetSessionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid id, CancellationToken _) => _sessions.GetValueOrDefault(id));
-        return new(repository, repository, timeProvider: _clock, securityEventSink: sink,
+        var transactions = new RecordingTransactionProvider();
+        var fanOut = new SecurityEventFanOutSink(sink ?? new Sink(), transactionProvider: transactions);
+        return new(repository, repository, fanOut, transactions, timeProvider: _clock,
             mutationContext: new AuthorizationGrantMutationContext(
                 includeAuthorizer ? authorizer ?? new AllowAuthorizer() : null,
                 includeSessionRepository ? sessions.Object : null));
@@ -468,7 +470,7 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
         }
     }
 
-    private sealed class Sink : ISecurityEventSink
+    private sealed class Sink : IPersistentSecurityEventSink
     {
         public List<AshlarSecurityEvent> Events { get; } = [];
         public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default) { Events.Add(securityEvent); return Task.CompletedTask; }

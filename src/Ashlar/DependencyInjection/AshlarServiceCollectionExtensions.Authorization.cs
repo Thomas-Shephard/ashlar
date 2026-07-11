@@ -45,10 +45,11 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped(provider => new AuthorizationGrantService(
             provider.GetRequiredService<IAuthorizationGrantRepository>(),
             provider.GetRequiredService<IUserRepository>(),
+            provider.GetRequiredService<ISecurityEventSink>() as SecurityEventFanOutSink
+                ?? throw new InvalidOperationException("Authorization grant mutations require SecurityEventFanOutSink."),
+            provider.GetRequiredService<IAshlarDurableTransactionProvider>(),
             provider.GetService<AuthorizationGrantOptions>(),
             provider.GetService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>(),
-            provider.GetService<IAshlarTransactionProvider>(),
             new AuthorizationGrantMutationContext(
                 provider.GetService<IAccountSecurityOperationAuthorizer>(),
                 provider.GetService<IAuthenticationSessionRepository>())));
