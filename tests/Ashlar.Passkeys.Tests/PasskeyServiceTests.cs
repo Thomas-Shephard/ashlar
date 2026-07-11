@@ -365,24 +365,35 @@ internal sealed class PasskeyServiceTests
             null!,
             new Mock<IAuthenticationHandshakeService>().Object,
             new TestTokenHasher(),
-            AllowRateLimiter.Instance));
+            AllowRateLimiter.Instance,
+            ActiveSessionRepository()));
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
             Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
             new Mock<IAuthenticationOrchestrator>().Object,
             null!,
             new TestTokenHasher(),
-            AllowRateLimiter.Instance));
+            AllowRateLimiter.Instance,
+            ActiveSessionRepository()));
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
             Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
             new Mock<IAuthenticationOrchestrator>().Object,
             new Mock<IAuthenticationHandshakeService>().Object,
             null!,
-            AllowRateLimiter.Instance));
+            AllowRateLimiter.Instance,
+            ActiveSessionRepository()));
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
             Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
             new Mock<IAuthenticationOrchestrator>().Object,
             new Mock<IAuthenticationHandshakeService>().Object,
             new TestTokenHasher(),
+            null!,
+            ActiveSessionRepository()));
+        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
+            Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
+            new Mock<IAuthenticationOrchestrator>().Object,
+            new Mock<IAuthenticationHandshakeService>().Object,
+            new TestTokenHasher(),
+            AllowRateLimiter.Instance,
             null!));
     }
 
@@ -457,7 +468,7 @@ internal sealed class PasskeyServiceTests
             credentials.Object,
             new Mock<IPasskeyChallengeRepository>().Object,
             new Mock<IPasskeyCeremonyValidator>().Object,
-            CreateDependencies(new FakeTimeProvider(now), events, transactionProvider: transactionProvider));
+            CreateDependencies(new FakeTimeProvider(now), events, sessionRepository: ActiveSessionRepository(userId), transactionProvider: transactionProvider));
 
         var result = await service.RevokeAsync(CreateRevokeRequest(userId, credential.Id, now));
 
@@ -2755,7 +2766,7 @@ internal sealed class PasskeyServiceTests
         credentials.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), "v1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
         repo.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new TestUser(userId, "test@example.com"));
         var now = DateTimeOffset.UtcNow;
-        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), sessionRepository: ActiveSessionRepository(userId)));
 
         var result = await service.RenameAsync(CreateRenameRequest(userId, credentialId, "", now));
 
@@ -2787,7 +2798,7 @@ internal sealed class PasskeyServiceTests
             ]);
         repo.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new TestUser(userId, "test@example.com"));
         var now = DateTimeOffset.UtcNow;
-        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), sessionRepository: ActiveSessionRepository(userId)));
 
         var result = await service.RenameAsync(CreateRenameRequest(userId, credentialId, "Name", now));
 
@@ -2826,7 +2837,7 @@ internal sealed class PasskeyServiceTests
             .ReturnsAsync(true)
             .ReturnsAsync(false)
             .ReturnsAsync(true);
-        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), sessionRepository: ActiveSessionRepository(userId)));
 
         var list = await service.ListAsync(new ListPasskeysRequest(userId, TenantContext.Global));
         var renameMissing = await service.RenameAsync(CreateRenameRequest(userId, Guid.NewGuid(), "Name", now));
@@ -2860,7 +2871,7 @@ internal sealed class PasskeyServiceTests
         repo.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new TestUser(userId, "test@example.com", TenantId: tenantId));
         credentials.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
         credentials.Setup(r => r.UpdateCredentialAsync(credential, credential.Version, It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), sessionRepository: ActiveSessionRepository(userId, tenantId)));
 
         var wrongActor = await service.RenameAsync(CreateRenameRequest(Guid.NewGuid(), credential.Id, "Name", now, tenantId: tenantId));
         var wrongTenant = await service.RenameAsync(CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: Guid.NewGuid()));
@@ -3201,6 +3212,7 @@ internal sealed class PasskeyServiceTests
         IAuthenticationHandshakeService? handshakeService = null,
         ISecureTokenHasher? tokenHasher = null,
         IAuthenticationRateLimiter? rateLimiter = null,
+        IAuthenticationSessionRepository? sessionRepository = null,
         PasskeyOptions? options = null,
         IAshlarTransactionProvider? transactionProvider = null)
     {
@@ -3210,7 +3222,103 @@ internal sealed class PasskeyServiceTests
             handshakeService ?? new Mock<IAuthenticationHandshakeService>().Object,
             tokenHasher ?? new TestTokenHasher(),
             rateLimiter ?? AllowRateLimiter.Instance,
+            sessionRepository ?? ActiveSessionRepository(),
             new PasskeyServiceInfrastructure(timeProvider, securityEventSink, transactionProvider));
+    }
+
+    [Test]
+    public async Task RenameAndRevokeShouldRejectRevokedSourceSession()
+    {
+        var userId = Guid.NewGuid();
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var sessions = new Mock<IAuthenticationSessionRepository>();
+        sessions.Setup(x => x.GetSessionAsync(RegistrationSessionId, It.IsAny<CancellationToken>())).ReturnsAsync(new AuthenticationSession
+        {
+            Id = RegistrationSessionId,
+            UserId = userId,
+            TokenHash = "hash",
+            CreatedAt = now.AddMinutes(-1),
+            ExpiresAt = now.AddHours(1),
+            RevokedAt = now
+        });
+        var credentials = new Mock<ICredentialRepository>();
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, credentials.Object,
+            new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object,
+            CreateDependencies(new FakeTimeProvider(now), sessionRepository: sessions.Object));
+
+        var rename = await service.RenameAsync(CreateRenameRequest(userId, Guid.NewGuid(), "Name", now));
+        var revoke = await service.RevokeAsync(CreateRevokeRequest(userId, Guid.NewGuid(), now));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rename.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(revoke.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+        }
+        credentials.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public async Task RenameShouldRejectSourceSessionOwnedByAnotherUser()
+    {
+        var userId = Guid.NewGuid();
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var credentials = new Mock<ICredentialRepository>();
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, credentials.Object,
+            new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object,
+            CreateDependencies(new FakeTimeProvider(now), sessionRepository: ActiveSessionRepository(Guid.NewGuid())));
+
+        var result = await service.RenameAsync(CreateRenameRequest(userId, Guid.NewGuid(), "Name", now));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+        credentials.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public async Task RenameShouldRejectSourceSessionWithoutActorTenant()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var credentials = new Mock<ICredentialRepository>();
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, credentials.Object,
+            new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object,
+            CreateDependencies(new FakeTimeProvider(now), sessionRepository: ActiveSessionRepository(userId)));
+
+        var result = await service.RenameAsync(CreateRenameRequest(userId, Guid.NewGuid(), "Name", now, tenantId: tenantId));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+        credentials.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public async Task RenameShouldRejectUnavailableActorAfterSessionValidation()
+    {
+        var userId = Guid.NewGuid();
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var credentials = new Mock<ICredentialRepository>();
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, credentials.Object,
+            new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object,
+            CreateDependencies(new FakeTimeProvider(now), sessionRepository: ActiveSessionRepository(userId)));
+
+        var result = await service.RenameAsync(CreateRenameRequest(userId, Guid.NewGuid(), "Name", now));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
+        credentials.VerifyNoOtherCalls();
+    }
+
+    private static IAuthenticationSessionRepository ActiveSessionRepository(Guid userId = default, Guid? tenantId = null)
+    {
+        var repository = new Mock<IAuthenticationSessionRepository>();
+        repository.Setup(x => x.GetSessionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync((Guid id, CancellationToken _) => new AuthenticationSession
+        {
+            Id = id,
+            UserId = userId,
+            TenantId = tenantId,
+            TokenHash = "hash",
+            CreatedAt = DateTimeOffset.MinValue,
+            ExpiresAt = DateTimeOffset.MaxValue
+        });
+        return repository.Object;
     }
 }
 

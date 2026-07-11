@@ -1,7 +1,8 @@
 namespace Ashlar.Identity.Abstractions.Services;
 
 /// <summary>
-/// Performs destructive account-security operations after validating actor context, fresh proof, and host authorization.
+/// Performs destructive account-security operations after validating actor context, fresh proof, its active source session, and host authorization.
+/// Fresh proofs are rejected when their source session is missing, expired, or revoked.
 /// </summary>
 public interface IAccountSecurityAdministrationService
 {
