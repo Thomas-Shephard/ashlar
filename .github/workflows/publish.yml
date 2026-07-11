@@ -33,7 +33,7 @@ jobs:
       - name: Build
         run: dotnet build Ashlar.slnx --configuration Release
       - name: Test
-        run: dotnet test Ashlar.slnx --configuration Release --no-build --settings .runsettings
+        run: dotnet test Ashlar.slnx --configuration Release --no-build
       - name: Pack
         run: dotnet pack Ashlar.slnx --configuration Release --no-build --output artifacts/package
       - name: Authenticate with NuGet

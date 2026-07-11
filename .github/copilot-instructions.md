@@ -30,7 +30,7 @@ Use the following **exact** CLI commands to build, test, and validate the projec
 
 *   **Test (with Coverage):**
     ```bash
-    dotnet test Ashlar.slnx --configuration Release --no-build --settings .runsettings --results-directory ./coverage
+    dotnet test Ashlar.slnx --configuration Release --no-build --coverlet --results-directory ./coverage
     ```
 
 *   **Linting & Quality:**
@@ -38,7 +38,7 @@ Use the following **exact** CLI commands to build, test, and validate the projec
     *   **Strict Coverage:** 100% line and branch coverage is enforced.
     *   **Coverage Check Command:**
         ```bash
-        dotnet coveragechecker --format Cobertura --glob-patterns 'coverage/**/coverage.cobertura.xml' --line-threshold 100 --branch-threshold 100
+        dotnet coveragechecker --format Cobertura --glob-patterns 'coverage/**/coverage.cobertura.*.xml' --line-threshold 100 --branch-threshold 100
         ```
 
 ## 3. Project Layout

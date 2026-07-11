@@ -32,3 +32,5 @@ global using Ashlar.ProviderContractTests.Identity;
 
 global using Ashlar.Auditing;
 global using Ashlar.Webhooks.SecurityEvents;
+
+[assembly: Parallelizable(ParallelScope.Fixtures)]
