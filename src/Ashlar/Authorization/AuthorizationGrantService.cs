@@ -133,9 +133,8 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
             return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.InvalidScopeShape);
         }
 
-        var metadata = string.IsNullOrWhiteSpace(request.Metadata) ? null : request.Metadata;
-
-        if (metadata is { Length: > 0 } && metadata.Length > _options.MaxMetadataLength)
+        var (metadata, metadataFailure) = ValidateMetadata(request.Metadata);
+        if (metadataFailure is not null)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -144,30 +143,9 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
                 UserId = request.UserId,
                 TenantId = request.TenantId,
                 Audit = request.Audit,
-                FailureReason = AshlarFailureCodes.MetadataTooLong.Value
+                FailureReason = metadataFailure.Value.Value
             }, cancellationToken);
-            return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.MetadataTooLong);
-        }
-
-        if (metadata != null)
-        {
-            try
-            {
-                using var _ = JsonDocument.Parse(metadata);
-            }
-            catch (JsonException)
-            {
-                await _securityEvents.RecordAsync(new SecurityEventDescriptor
-                {
-                    EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
-                    Outcome = SecurityEventOutcomes.Failure,
-                    UserId = request.UserId,
-                    TenantId = request.TenantId,
-                    Audit = request.Audit,
-                    FailureReason = AshlarFailureCodes.InvalidMetadataJson.Value
-                }, cancellationToken);
-                return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.InvalidMetadataJson);
-            }
+            return Result.Failure<AuthorizationGrant>(metadataFailure.Value);
         }
 
         var tenantValidation = await ValidateUserTenantAsync(request.UserId, request.TenantId, request.Audit, cancellationToken);
@@ -416,6 +394,24 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
 
     private static bool HasValidGrantShape(string? role, string? permission) =>
         string.IsNullOrWhiteSpace(role) != string.IsNullOrWhiteSpace(permission);
+
+    private (string? Metadata, AshlarFailureCode? Failure) ValidateMetadata(string? value)
+    {
+        var metadata = string.IsNullOrWhiteSpace(value) ? null : value;
+        if (metadata?.Length > _options.MaxMetadataLength)
+            return (metadata, AshlarFailureCodes.MetadataTooLong);
+
+        try
+        {
+            if (metadata is not null)
+                using (JsonDocument.Parse(metadata)) { }
+            return (metadata, null);
+        }
+        catch (JsonException)
+        {
+            return (metadata, AshlarFailureCodes.InvalidMetadataJson);
+        }
+    }
 
     private async ValueTask<AshlarFailureCode?> ValidateActorAsync(AccountSecurityActorContext? actor, AuditContext audit,
         bool includeAllTenants, bool infrastructureMutation, CancellationToken cancellationToken)

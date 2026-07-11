@@ -98,6 +98,54 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
         }
     }
 
+    [TestCase("missing")]
+    [TestCase("user")]
+    [TestCase("tenant")]
+    public async Task CreateRejectsMissingOrMismatchedActiveSession(string mismatch)
+    {
+        var repository = new Repository();
+        var actor = Actor();
+        var session = _sessions[actor.CurrentSessionId];
+        if (mismatch == "missing")
+        {
+            _sessions.Remove(actor.CurrentSessionId);
+        }
+        else
+        {
+            _sessions[actor.CurrentSessionId] = new AuthenticationSession
+            {
+                Id = session.Id,
+                UserId = mismatch == "user" ? Guid.NewGuid() : session.UserId,
+                TenantId = mismatch == "tenant" ? Guid.NewGuid() : session.TenantId,
+                TokenHash = session.TokenHash,
+                CreatedAt = session.CreatedAt,
+                ExpiresAt = session.ExpiresAt
+            };
+        }
+
+        var result = await Service(repository).CreateGrantAsync(new CreateAuthorizationGrantRequest(
+            Guid.NewGuid(), actor, actor.Audit, TenantContext.Global, permission: "read"));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+    }
+
+    [Test]
+    public async Task CreateRejectsMissingSessionRepositoryOrAuthorizer()
+    {
+        var repository = new Repository();
+        var actor = Actor();
+        var request = new CreateAuthorizationGrantRequest(Guid.NewGuid(), actor, actor.Audit, TenantContext.Global, permission: "read");
+
+        var missingSessions = await Service(repository, includeSessionRepository: false).CreateGrantAsync(request);
+        var missingAuthorizer = await Service(repository, includeAuthorizer: false).CreateGrantAsync(request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missingSessions.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(missingAuthorizer.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+        }
+    }
+
     [Test]
     public async Task CreateAndRevokeRejectAllTenantScope()
     {
@@ -181,13 +229,16 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
         return new AccountSecurityActorContext(userId, tenant, sessionId, proof, audit);
     }
 
-    private AuthorizationGrantService Service(Repository repository, ISecurityEventSink? sink = null, IAccountSecurityOperationAuthorizer? authorizer = null)
+    private AuthorizationGrantService Service(Repository repository, ISecurityEventSink? sink = null,
+        IAccountSecurityOperationAuthorizer? authorizer = null, bool includeSessionRepository = true, bool includeAuthorizer = true)
     {
         var sessions = new Mock<IAuthenticationSessionRepository>();
         sessions.Setup(x => x.GetSessionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid id, CancellationToken _) => _sessions.GetValueOrDefault(id));
         return new(repository, repository, timeProvider: _clock, securityEventSink: sink,
-            mutationContext: new AuthorizationGrantMutationContext(authorizer ?? new AllowAuthorizer(), sessions.Object));
+            mutationContext: new AuthorizationGrantMutationContext(
+                includeAuthorizer ? authorizer ?? new AllowAuthorizer() : null,
+                includeSessionRepository ? sessions.Object : null));
     }
 
     private sealed class AllowAuthorizer : IAccountSecurityOperationAuthorizer
