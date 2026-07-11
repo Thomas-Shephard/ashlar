@@ -20,6 +20,7 @@ internal sealed class TotpTests
     private Mock<IAshlarTransactionProvider> _transactionProvider = null!;
     private Mock<IAshlarTransaction> _transaction = null!;
     private Mock<ISecurityEventSink> _securityEvents = null!;
+    private Mock<IAuthenticationSessionRepository> _sessionRepository = null!;
     private FakeTimeProvider _timeProvider = null!;
     private TotpOptions _options = null!;
 
@@ -33,6 +34,7 @@ internal sealed class TotpTests
         _transaction = new Mock<IAshlarTransaction>();
         var onCommitted = new List<Func<CancellationToken, Task>>();
         _securityEvents = new Mock<ISecurityEventSink>();
+        _sessionRepository = new Mock<IAuthenticationSessionRepository>();
         _timeProvider = new FakeTimeProvider();
         _options = new TotpOptions();
 
@@ -63,7 +65,7 @@ internal sealed class TotpTests
             _transactionProvider.Object,
             [CreateProvider()],
             authorizer ?? CreateAuthorizer(),
-            new TotpServiceDependencies(Options.Create(_options), _timeProvider, _securityEvents.Object));
+            new TotpServiceDependencies(Options.Create(_options), ProofValidator(), _timeProvider, _securityEvents.Object));
     }
 
     private TotpAuthenticationProvider CreateProvider()
@@ -83,7 +85,7 @@ internal sealed class TotpTests
             _transactionProvider.Object,
             [CreateProvider(), CreateSecondaryProvider(recoveryProvider)],
             CreateAuthorizer(),
-            new TotpServiceDependencies(Options.Create(_options), _timeProvider, _securityEvents.Object));
+            new TotpServiceDependencies(Options.Create(_options), ProofValidator(), _timeProvider, _securityEvents.Object));
     }
 
     private static ISecondaryAuthenticationFactorProvider CreateSecondaryProvider(AuthenticationProviderKey providerKey)
@@ -101,31 +103,100 @@ internal sealed class TotpTests
         return authorizer.Object;
     }
 
-    private static FreshMfaVerificationProof CreateProof(Guid userId, TenantContext? tenant = null, DateTimeOffset? expiresAt = null)
+    private FreshMfaVerificationProof CreateProof(Guid userId, TenantContext? tenant = null, DateTimeOffset? expiresAt = null)
     {
         var verifiedAt = DateTimeOffset.UtcNow;
         if (expiresAt.HasValue)
         {
-            return new FreshMfaVerificationProof(userId, tenant?.TenantId, Guid.NewGuid(), verifiedAt, expiresAt.Value, TotpService.ProofPurpose);
+            var proof = new FreshMfaVerificationProof(userId, tenant?.TenantId, Guid.NewGuid(), verifiedAt, expiresAt.Value, TotpService.ProofPurpose);
+            RegisterSession(proof.SessionId, userId, tenant, verifiedAt);
+            return proof;
         }
 
         var session = CreateFreshSession(userId, tenant, verifiedAt);
-        return new StepUpAuthenticationService(new FakeTimeProvider(verifiedAt))
+        var result = new StepUpAuthenticationService(new FakeTimeProvider(verifiedAt))
             .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(10), Purpose: TotpService.ProofPurpose)).Value!;
+        RegisterSession(result.SessionId, userId, tenant, verifiedAt);
+        return result;
     }
 
-    private static FreshPrimaryAuthenticationProof CreatePrimaryProof(Guid userId, TenantContext? tenant = null, DateTimeOffset? expiresAt = null)
+    private FreshPrimaryAuthenticationProof CreatePrimaryProof(Guid userId, TenantContext? tenant = null, DateTimeOffset? expiresAt = null)
     {
         var authenticatedAt = DateTimeOffset.UtcNow;
         if (expiresAt.HasValue)
         {
-            return new FreshPrimaryAuthenticationProof(userId, tenant?.TenantId, Guid.NewGuid(), authenticatedAt, expiresAt.Value, TotpService.ProofPurpose);
+            var proof = new FreshPrimaryAuthenticationProof(userId, tenant?.TenantId, Guid.NewGuid(), authenticatedAt, expiresAt.Value, TotpService.ProofPurpose);
+            RegisterSession(proof.SessionId, userId, tenant, authenticatedAt);
+            return proof;
         }
 
         var session = CreateFreshSession(userId, tenant, authenticatedAt);
-        return new StepUpAuthenticationService(new FakeTimeProvider(authenticatedAt))
+        var result = new StepUpAuthenticationService(new FakeTimeProvider(authenticatedAt))
             .CreateFreshPrimaryAuthenticationProof(new ValidatedAuthenticationSession(session), TimeSpan.FromMinutes(10), TotpService.ProofPurpose).Value!;
+        RegisterSession(result.SessionId, userId, tenant, authenticatedAt);
+        return result;
     }
+
+    private ActiveSessionFreshProofValidator ProofValidator() => new(_sessionRepository.Object, _timeProvider);
+
+    private void RegisterSession(Guid sessionId, Guid userId, TenantContext? tenant, DateTimeOffset now) =>
+        _sessionRepository.Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>())).ReturnsAsync(new AuthenticationSession
+        {
+            Id = sessionId,
+            UserId = userId,
+            TenantId = tenant?.TenantId,
+            TokenHash = "hash",
+            CreatedAt = now,
+            AuthenticatedAt = now,
+            ExpiresAt = now.AddHours(1)
+        });
+
+    [Test]
+    public async Task ManagementShouldRejectProofsAfterSourceSessionRevocation()
+    {
+        var userId = Guid.NewGuid();
+        var primary = CreatePrimaryProof(userId);
+        var mfa = CreateProof(userId);
+        RevokeSession(primary.SessionId, userId);
+        RevokeSession(mfa.SessionId, userId);
+        var service = CreateService();
+
+        var start = Assert.ThrowsAsync<AshlarOperationException>(() => service.StartEnrollmentAsync(
+            new StartTotpEnrollmentRequest(userId, "issuer", "account")
+            {
+                FreshPrimaryAuthenticationProof = primary,
+                CurrentSessionId = primary.SessionId,
+                Audit = new AuditContext(userId)
+            }));
+        var complete = await service.CompleteEnrollmentAsync(new VerifyTotpEnrollmentRequest(userId, "secret", "123456")
+        {
+            FreshPrimaryAuthenticationProof = primary,
+            CurrentSessionId = primary.SessionId,
+            Audit = new AuditContext(userId)
+        });
+        var disabled = await service.DisableAsync(new DisableTotpRequest(userId, TenantContext.Global, mfa.SessionId, mfa, new AuditContext(userId)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(start!.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(complete.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(disabled, Is.False);
+        }
+        _credentialRepository.Verify(r => r.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.That(_credentialService.LinkCalls, Is.Empty);
+    }
+
+    private void RevokeSession(Guid sessionId, Guid userId) =>
+        _sessionRepository.Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>())).ReturnsAsync(new AuthenticationSession
+        {
+            Id = sessionId,
+            UserId = userId,
+            TokenHash = "hash",
+            CreatedAt = _timeProvider.GetUtcNow().AddMinutes(-1),
+            AuthenticatedAt = _timeProvider.GetUtcNow(),
+            ExpiresAt = _timeProvider.GetUtcNow().AddHours(1),
+            RevokedAt = _timeProvider.GetUtcNow()
+        });
 
     private static AuthenticationSession CreateFreshSession(Guid userId, TenantContext? tenant, DateTimeOffset now) => new()
     {
@@ -291,7 +362,7 @@ internal sealed class TotpTests
     public void TotpServiceConstructorWithNullDependenciesShouldThrow()
     {
         var provider = CreateProvider();
-        var deps = new TotpServiceDependencies(Options.Create(_options));
+        var deps = new TotpServiceDependencies(Options.Create(_options), ProofValidator());
         var authorizer = CreateAuthorizer();
 
         using (Assert.EnterMultipleScope())
@@ -316,7 +387,7 @@ internal sealed class TotpTests
             _transactionProvider.Object,
             [CreateProvider()],
             CreateAuthorizer(),
-            new TotpServiceDependencies(Options.Create(_options))));
+            new TotpServiceDependencies(Options.Create(_options), ProofValidator())));
     }
 
     [Test]
@@ -924,7 +995,7 @@ internal sealed class TotpTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exception?.ParamName, Is.EqualTo("request.audit"));
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpServiceDependencies(null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpServiceDependencies(null!, ProofValidator()));
         }
     }
 

@@ -42,6 +42,7 @@ public sealed record StepUpEvaluationResult(bool Succeeded, AshlarFailureCode? F
 /// using session state produced by Ashlar's successful bearer-token validation path.
 /// It proves recent MFA by the user that owns the tenant-bound session. Services must separately authorize
 /// whether that actor may mutate their own account or a different target account.
+/// Revoking or expiring the source session immediately invalidates every outstanding proof minted from it.
 /// </remarks>
 public sealed class FreshMfaVerificationProof
 {
@@ -82,6 +83,7 @@ public sealed class FreshMfaVerificationProof
 /// using session state produced by Ashlar's successful bearer-token validation path. It is intended for bootstrapping the first additional-verification
 /// factor, such as initial TOTP enrollment when no usable MFA factor exists yet. It is not accepted for replacing or
 /// disabling existing MFA factors or managing recovery codes.
+/// Revoking or expiring the source session immediately invalidates every outstanding proof minted from it.
 /// </remarks>
 public sealed class FreshPrimaryAuthenticationProof
 {

@@ -18,6 +18,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
     private readonly SecurityEventEmitter _securityEvents;
     private readonly SecurityNotificationEmitter _notifications;
     private readonly IAccountSecurityOperationAuthorizer _authorizer;
+    private readonly ActiveSessionFreshProofValidator _proofValidator;
 
     public RecoveryCodeService(
         IUserRepository userRepository,
@@ -37,6 +38,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
         _credentialRepository = credentialRepository;
         _transactionProvider = transactionProvider;
         _hasherSelector = hasherSelector;
+        _proofValidator = dependencies.ProofValidator;
         _options = dependencies.Options.Value;
         _timeProvider = dependencies.TimeProvider;
         _securityEvents = new SecurityEventEmitter(dependencies.SecurityEventSink, _timeProvider);
@@ -260,8 +262,8 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
             return AshlarFailureCodes.ValidationError;
         }
 
-        var failure = FreshVerificationProofValidator.ValidateMfaProof(request.ActorUserId, request.ActorTenant,
-            request.FreshMfaProof, request.CurrentSessionId, _timeProvider.GetUtcNow(), ProofPurpose);
+        var failure = await _proofValidator.ValidateAsync(request.ActorUserId, request.ActorTenant,
+            request.FreshMfaProof, request.CurrentSessionId, ProofPurpose, cancellationToken);
         if (failure != null)
             await RecordPublicFailureAsync(request, eventType, failure.Value, request.Audit, cancellationToken);
         return failure;
@@ -384,12 +386,14 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
 
 internal sealed class RecoveryCodeServiceDependencies(
     IOptions<RecoveryCodeOptions> options,
+    ActiveSessionFreshProofValidator proofValidator,
     TimeProvider? timeProvider = null,
     ISecurityEventSink? securityEventSink = null,
     ISecurityNotificationService? notificationService = null,
     IAccountSecurityOperationAuthorizer? authorizer = null)
 {
     public IOptions<RecoveryCodeOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
+    public ActiveSessionFreshProofValidator ProofValidator { get; } = proofValidator ?? throw new ArgumentNullException(nameof(proofValidator));
     public TimeProvider TimeProvider { get; } = timeProvider ?? TimeProvider.System;
     public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
     public ISecurityNotificationService? NotificationService { get; } = notificationService;

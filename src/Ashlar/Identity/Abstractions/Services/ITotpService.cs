@@ -5,6 +5,7 @@ namespace Ashlar.Identity.Abstractions.Services;
 /// <summary>
 /// Defines services for managing TOTP (Time-based One-Time Password) enrollment and verification.
 /// </summary>
+/// <remarks>Revoking or expiring a proof's source session immediately invalidates the proof for every TOTP mutation.</remarks>
 public interface ITotpService
 {
     /// <summary>

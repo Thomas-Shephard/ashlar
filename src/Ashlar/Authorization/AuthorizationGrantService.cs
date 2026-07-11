@@ -19,7 +19,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
     private readonly IUserRepository _userRepository;
     private readonly IAshlarTransactionProvider? _transactionProvider;
     private readonly IAccountSecurityOperationAuthorizer? _authorizer;
-    private readonly IAuthenticationSessionRepository? _sessionRepository;
+    private readonly ActiveSessionFreshProofValidator? _proofValidator;
 
     /// <summary>Initializes the grant service with storage, validation, and audit dependencies.</summary>
     /// <param name="repository">Grant storage used for authorization assignments.</param>
@@ -50,7 +50,9 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
         _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
         _transactionProvider = transactionProvider;
         _authorizer = mutationContext?.Authorizer;
-        _sessionRepository = mutationContext?.SessionRepository;
+        _proofValidator = mutationContext?.SessionRepository is { } sessions
+            ? new ActiveSessionFreshProofValidator(sessions, _timeProvider)
+            : null;
     }
 
     /// <summary>
@@ -422,14 +424,10 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
         ArgumentNullException.ThrowIfNull(actor);
         if (audit.ActorUserId != actor.ActorUserId || includeAllTenants) return AshlarFailureCodes.ValidationError;
 
-        var proofFailure = FreshVerificationProofValidator.ValidateMfaProof(actor.ActorUserId, actor.ActorTenant,
-            actor.FreshMfaProof, actor.CurrentSessionId, _timeProvider.GetUtcNow(), AdministrationProofPurpose);
-        if (proofFailure is not null) return proofFailure;
-        if (_sessionRepository is null) return AshlarFailureCodes.ValidationError;
-
-        var session = await _sessionRepository.GetSessionAsync(actor.CurrentSessionId, cancellationToken);
-        return session is null || session.UserId != actor.ActorUserId || session.TenantId != actor.ActorTenant.TenantId
-            || !session.IsActive(_timeProvider.GetUtcNow()) ? AshlarFailureCodes.StepUpRequired : null;
+        return _proofValidator is null
+            ? AshlarFailureCodes.ValidationError
+            : await _proofValidator.ValidateAsync(actor.ActorUserId, actor.ActorTenant, actor.FreshMfaProof,
+                actor.CurrentSessionId, AdministrationProofPurpose, cancellationToken);
     }
 
     private async ValueTask<AshlarFailureCode?> AuthorizeActorAsync(AccountSecurityActorContext? actor,

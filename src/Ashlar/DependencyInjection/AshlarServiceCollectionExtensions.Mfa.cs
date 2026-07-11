@@ -40,6 +40,7 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, RecoveryCodeAuthenticationProvider>());
         services.TryAddScoped(provider => new RecoveryCodeServiceDependencies(
             provider.GetRequiredService<IOptions<RecoveryCodeOptions>>(),
+            provider.GetRequiredService<ActiveSessionFreshProofValidator>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),
             provider.GetService<ISecurityNotificationService>(),
@@ -76,6 +77,7 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, TotpAuthenticationProvider>());
         services.TryAddScoped(provider => new TotpServiceDependencies(
             provider.GetRequiredService<IOptions<TotpOptions>>(),
+            provider.GetRequiredService<ActiveSessionFreshProofValidator>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),
             provider.GetService<ISecurityNotificationService>()));

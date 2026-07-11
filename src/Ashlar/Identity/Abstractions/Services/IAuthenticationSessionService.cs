@@ -59,6 +59,7 @@ public interface IAuthenticationSessionService
     /// <param name="request">Actor, current session, fresh proof, target session, tenant scope, and audit context.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns><see langword="true" /> when the target session was revoked.</returns>
+    /// <remarks>Revoking or expiring the fresh proof's source session immediately invalidates the proof.</remarks>
     Task<bool> RevokeSessionForCurrentUserAsync(RevokeOwnAuthenticationSessionRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -67,6 +68,7 @@ public interface IAuthenticationSessionService
     /// <param name="request">Actor, current session, fresh proof, tenant scope, and audit context.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns>The number of other sessions revoked.</returns>
+    /// <remarks>Revoking or expiring the fresh proof's source session immediately invalidates the proof.</remarks>
     Task<int> RevokeOtherSessionsForCurrentUserAsync(RevokeOwnOtherAuthenticationSessionsRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>Revokes the session identified by a currently presented raw session token.</summary>

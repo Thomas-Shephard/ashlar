@@ -10,8 +10,7 @@ internal sealed class AccountSecurityAdministrationService(
     ISecurityEventSink? securityEventSink) : IAccountSecurityAdministrationService
 {
     internal const string ProofPurpose = "account-security-administration";
-    private readonly IAuthenticationSessionRepository _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
-    private readonly TimeProvider _timeProvider = timeProvider;
+    private readonly ActiveSessionFreshProofValidator _proofValidator = new(sessionRepository, timeProvider);
     private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider);
 
     public Task<Result<AccountSecurityOperationResult>> SetUserAccountStateAsync(SetUserAccountStateAdministrationRequest request, CancellationToken cancellationToken = default) =>
@@ -44,15 +43,10 @@ internal sealed class AccountSecurityAdministrationService(
             return await RejectAsync(request, eventType, AshlarFailureCodes.ValidationError,
                 "Audit actor must match the authenticated actor.", cancellationToken);
 
-        var proofFailure = FreshVerificationProofValidator.ValidateMfaProof(request.ActorUserId, request.ActorTenant, request.FreshMfaProof,
-            request.CurrentSessionId, _timeProvider.GetUtcNow(), ProofPurpose);
+        var proofFailure = await _proofValidator.ValidateAsync(request.ActorUserId, request.ActorTenant, request.FreshMfaProof,
+            request.CurrentSessionId, ProofPurpose, cancellationToken);
         if (proofFailure is { } failure)
             return await RejectAsync(request, eventType, failure, cancellationToken: cancellationToken);
-
-        var session = await _sessionRepository.GetSessionAsync(request.CurrentSessionId, cancellationToken);
-        if (session is null || session.UserId != request.ActorUserId || session.TenantId != request.ActorTenant.TenantId
-            || !session.IsActive(_timeProvider.GetUtcNow()))
-            return await RejectAsync(request, eventType, AshlarFailureCodes.StepUpRequired, cancellationToken: cancellationToken);
 
         var authorized = await authorizer.AuthorizeAsync(CreateAuthorizationContext(request, operation), cancellationToken);
         if (!authorized)

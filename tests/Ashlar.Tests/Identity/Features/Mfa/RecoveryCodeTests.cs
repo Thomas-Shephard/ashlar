@@ -102,7 +102,7 @@ internal sealed class RecoveryCodeTests
         var optionsMock = new Mock<IOptions<RecoveryCodeOptions>>();
         optionsMock.SetupGet(o => o.Value).Returns((RecoveryCodeOptions)null!);
         Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeService(repo, credentialRepo, trans, hasher, CreateDependencies(optionsMock.Object)));
-        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeServiceDependencies(options, authorizer: null));
+        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeServiceDependencies(options, ProofValidator(null), authorizer: null));
     }
 
     [Test]
@@ -805,6 +805,7 @@ internal sealed class RecoveryCodeTests
         services.AddSingleton(new Mock<IUserRepository>().Object);
         services.AddSingleton(new Mock<ICredentialRepository>().Object);
         services.AddSingleton(new Mock<IAshlarTransactionProvider>().Object);
+        services.AddSingleton(new Mock<IAuthenticationSessionRepository>().Object);
         services.AddSingleton<IAccountSecurityOperationAuthorizer, AllowAllAccountSecurityOperationAuthorizer>();
         services.AddAshlarRecoveryCodes(opts =>
         {
@@ -1072,7 +1073,7 @@ internal sealed class RecoveryCodeTests
         };
     }
 
-    private static RecoveryCodeService CreateServiceForGenerationValidation(
+    private RecoveryCodeService CreateServiceForGenerationValidation(
         RecoveryCodeOptions options,
         Guid? userTenantId = null,
         IAccountSecurityOperationAuthorizer? authorizer = null,
@@ -1092,15 +1093,25 @@ internal sealed class RecoveryCodeTests
         return new RecoveryCodeService(repository.Object, credentials, transactionProvider.Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(options), securityEventSink: securityEventSink, authorizer: authorizer));
     }
 
-    private static RecoveryCodeServiceDependencies CreateDependencies(
+    private RecoveryCodeServiceDependencies CreateDependencies(
         IOptions<RecoveryCodeOptions> options,
         TimeProvider? timeProvider = null,
         ISecurityEventSink? securityEventSink = null,
         ISecurityNotificationService? notificationService = null,
         IAccountSecurityOperationAuthorizer? authorizer = null)
     {
-        return new RecoveryCodeServiceDependencies(options, timeProvider, securityEventSink, notificationService,
+        return new RecoveryCodeServiceDependencies(options, ProofValidator(timeProvider), timeProvider, securityEventSink, notificationService,
             authorizer ?? new AllowAllAccountSecurityOperationAuthorizer());
+    }
+
+    private readonly Dictionary<Guid, AuthenticationSession> _proofSessions = [];
+
+    private ActiveSessionFreshProofValidator ProofValidator(TimeProvider? timeProvider)
+    {
+        var sessions = new Mock<IAuthenticationSessionRepository>();
+        sessions.Setup(r => r.GetSessionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) => _proofSessions.GetValueOrDefault(id));
+        return new(sessions.Object, timeProvider ?? TimeProvider.System);
     }
 
     private static RecoveryCodeGenerationRequest CreateGenerationRequest(
@@ -1143,7 +1154,7 @@ internal sealed class RecoveryCodeTests
     private static RevokeRecoveryCodesExecutionRequest RevocationExecution(AuditContext audit, string? reason = null) =>
         new(audit, TenantContext.Global, false, reason);
 
-    private static RecoveryCodeService CreateService(
+    private RecoveryCodeService CreateService(
         IUserRepository repository,
         RecoveryCodeOptions options,
         ICredentialRepository? credentials = null,
@@ -1158,10 +1169,43 @@ internal sealed class RecoveryCodeTests
             CreateDependencies(Options.Create(options), securityEventSink: securityEvents, authorizer: authorizer));
     }
 
-    private static FreshMfaVerificationProof CreateProof(Guid userId, TenantContext? tenant = null, DateTimeOffset? expiresAt = null)
+    private FreshMfaVerificationProof CreateProof(Guid userId, TenantContext? tenant = null, DateTimeOffset? expiresAt = null)
     {
         var verifiedAt = DateTimeOffset.UtcNow;
-        return new FreshMfaVerificationProof(userId, tenant?.TenantId, Guid.NewGuid(), verifiedAt, expiresAt ?? verifiedAt.AddMinutes(10), RecoveryCodeService.ProofPurpose);
+        var proof = new FreshMfaVerificationProof(userId, tenant?.TenantId, Guid.NewGuid(), verifiedAt, expiresAt ?? verifiedAt.AddMinutes(10), RecoveryCodeService.ProofPurpose);
+        _proofSessions[proof.SessionId] = new AuthenticationSession
+        {
+            Id = proof.SessionId,
+            UserId = userId,
+            TenantId = tenant?.TenantId,
+            TokenHash = "hash",
+            CreatedAt = verifiedAt,
+            AuthenticatedAt = verifiedAt,
+            ExpiresAt = verifiedAt.AddHours(1)
+        };
+        return proof;
+    }
+
+    [Test]
+    public async Task ManagementShouldRejectProofAfterSourceSessionRevocation()
+    {
+        var userId = Guid.NewGuid();
+        var proof = CreateProof(userId);
+        _proofSessions[proof.SessionId].RevokedAt = DateTimeOffset.UtcNow;
+        var credentials = new Mock<ICredentialRepository>();
+        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 }, credentialRepository: credentials.Object);
+
+        var generated = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(userId, proof));
+        var revoked = await service.RevokeRecoveryCodesAsync(CreateRevocationRequest(userId, proof));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generated.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(revoked.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+        }
+        credentials.Verify(r => r.AcquireUserMutationLockAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        credentials.Verify(r => r.CreateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
+        credentials.Verify(r => r.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private sealed class DefaultResolveCredentialProvider : IAuthenticationProvider

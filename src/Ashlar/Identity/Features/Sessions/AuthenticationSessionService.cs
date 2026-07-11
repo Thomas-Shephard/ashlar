@@ -36,6 +36,7 @@ internal sealed class AuthenticationSessionService(
     private const string StepUpFactorPropertyName = "factor";
     private const string UserIdCannotBeEmptyMessage = "User ID cannot be empty.";
     private readonly IAuthenticationSessionRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+    private readonly ActiveSessionFreshProofValidator _proofValidator = new(repository, dependencies.TimeProvider ?? TimeProvider.System);
     private readonly ISecureTokenHasher _tokenHasher = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
     private readonly ISecureTokenGenerator _tokenGenerator = tokenGenerator ?? throw new ArgumentNullException(nameof(tokenGenerator));
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
@@ -574,7 +575,7 @@ internal sealed class AuthenticationSessionService(
                 eventType, targetSessionId, AshlarFailureCodes.ValidationError, cancellationToken);
             throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Audit actor must match the authenticated actor.");
         }
-        var failure = FreshVerificationProofValidator.ValidateMfaProof(actorUserId, actorTenant, proof, currentSessionId, _timeProvider.GetUtcNow(), SelfServiceProofPurpose);
+        var failure = await _proofValidator.ValidateAsync(actorUserId, actorTenant, proof, currentSessionId, SelfServiceProofPurpose, cancellationToken);
         if (failure is { } code)
         {
             await RecordSelfServiceRevocationFailureAsync(actorUserId, actorTenant, audit, eventType, targetSessionId, code, cancellationToken);
