@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace Ashlar.Authorization;
 
 /// <summary>
-/// Creates, revokes, and lists authorization grants for users.
+/// Creates and revokes authorization grants for users.
 /// </summary>
 public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAuthorizationGrantBootstrapService
 {
@@ -26,9 +26,10 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
     /// <param name="userRepository">User repository used to verify tenant ownership.</param>
     /// <param name="options">Validation limits for grant fields.</param>
     /// <param name="timeProvider">Clock used for timestamps and expiration checks.</param>
-    /// <param name="securityEventSink">Optional sink that receives grant creation and revocation audit events.</param>
-    /// <param name="transactionProvider">Optional transaction provider used to commit grant mutations with required audit writes.</param>
+    /// <param name="securityEventSink">Optional best-effort sink, or a fan-out sink for persistent/durable audit.</param>
+    /// <param name="transactionProvider">Transaction provider used by mutations. Durable fan-out requires this exact instance and it must implement <see cref="IAshlarDurableTransactionProvider" />.</param>
     /// <param name="mutationContext">Host authorization and active-session dependencies for app-facing grant mutations.</param>
+    /// <exception cref="ArgumentException">Persistent audit is supplied directly, or durable fan-out does not share this service's durable transaction provider.</exception>
     public AuthorizationGrantService(
         IAuthorizationGrantRepository repository,
         IUserRepository userRepository,
@@ -47,6 +48,12 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
         }
 
         _timeProvider = timeProvider ?? TimeProvider.System;
+        if (securityEventSink is IPersistentSecurityEventSink)
+            throw new ArgumentException("Persistent grant audit must use SecurityEventFanOutSink.", nameof(securityEventSink));
+        if (securityEventSink is SecurityEventFanOutSink { RequiresDurableTransaction: true } fanOut
+            && (transactionProvider is not IAshlarDurableTransactionProvider
+                || !ReferenceEquals(transactionProvider, fanOut.TransactionProvider)))
+            throw new ArgumentException("Authorization grant audit requires the fan-out sink's durable transaction provider.", nameof(transactionProvider));
         _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
         _transactionProvider = transactionProvider;
         _authorizer = mutationContext?.Authorizer;
@@ -334,32 +341,6 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
 
         var status = revoked ? AuthorizationGrantRevocationStatus.Revoked : AuthorizationGrantRevocationStatus.NotRevoked;
         return new RevokeAuthorizationGrantResult(status, request.GrantId, request.TenantId, grant.UserId);
-    }
-
-    /// <summary>
-    /// Lists grants for a user, optionally narrowed to a tenant and resource scope.
-    /// </summary>
-    /// <param name="request">User, tenant, and optional scope filters for the query.</param>
-    /// <param name="cancellationToken">A token that can cancel the list operation.</param>
-    /// <returns>Grants visible for the supplied filters.</returns>
-    public Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        ValidateUserId(request.UserId);
-        string? scopeType;
-        string? scopeId;
-        try
-        {
-            scopeType = NormalizeOptional(request.ScopeType, nameof(request.ScopeType), _options.MaxScopeTypeLength);
-            scopeId = NormalizeOptional(request.ScopeId, nameof(request.ScopeId), _options.MaxScopeIdLength);
-            ValidateScopeShape(scopeType, scopeId);
-        }
-        catch (ArgumentException)
-        {
-            return Task.FromResult<IReadOnlyList<AuthorizationGrant>>([]);
-        }
-
-        return _repository.ListGrantsAsync(request with { ScopeType = scopeType, ScopeId = scopeId }, cancellationToken);
     }
 
     internal static void ValidateUserId(Guid userId)

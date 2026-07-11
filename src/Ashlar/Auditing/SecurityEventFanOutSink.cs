@@ -12,6 +12,8 @@ namespace Ashlar.Auditing;
 /// </remarks>
 public sealed class SecurityEventFanOutSink : ISecurityEventSink
 {
+    internal bool RequiresDurableTransaction => _persistentSink is not null || _durableHandlers.Length != 0;
+    internal IAshlarTransactionProvider? TransactionProvider => _transactionProvider;
     private static readonly Action<ILogger, string, Guid?, Guid?, string?, string?, Exception?> SecurityEventHandlerFailed =
         LoggerMessage.Define<string, Guid?, Guid?, string?, string?>(
             LogLevel.Warning,

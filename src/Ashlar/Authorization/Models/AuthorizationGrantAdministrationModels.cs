@@ -1,3 +1,5 @@
+using Ashlar.Auditing;
+
 namespace Ashlar.Authorization.Models;
 
 /// <summary>
@@ -20,6 +22,12 @@ public enum AuthorizationGrantAdministrationStatus
 /// </summary>
 public sealed record SearchAuthorizationGrantsRequest
 {
+    /// <summary>Verified actor, active session, purpose-bound proof, and audit context.</summary>
+    public AccountSecurityActorContext? Actor { get; init; }
+
+    /// <summary>Audit context; when supplied it must identify the actor.</summary>
+    public AuditContext? Audit { get; init; }
+
     /// <summary>Tenant scope to search. Use <see cref="TenantContext.Global" /> for global grants; leave <see langword="null" /> only when <see cref="IncludeAllTenants" /> is enabled.</summary>
     public TenantContext? Tenant { get; init; }
 
@@ -130,10 +138,14 @@ public sealed record AuthorizationGrantSearchResult(
 /// <param name="GrantId">Grant to load.</param>
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global grants; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
 /// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
+/// <param name="Actor">Verified actor, active session, purpose-bound proof, and security-event context.</param>
+/// <param name="Audit">Audit context which must identify <paramref name="Actor" />.</param>
 public sealed record AuthorizationGrantAdministrationLookupRequest(
     Guid GrantId,
     TenantContext? Tenant = null,
-    bool IncludeAllTenants = false)
+    bool IncludeAllTenants = false,
+    AccountSecurityActorContext? Actor = null,
+    AuditContext? Audit = null)
 {
     /// <summary>
     /// Throws when the authorization grant lookup request is not safe to execute.

@@ -34,7 +34,11 @@ public enum AccountSecurityOperation
     /// <summary>Authorizes assignment of a role or permission grant to a target user and exact scope.</summary>
     CreateAuthorizationGrant,
     /// <summary>Authorizes removal of an authorization grant from a target user and requested scope.</summary>
-    RevokeAuthorizationGrant
+    RevokeAuthorizationGrant,
+    /// <summary>Searches authorization grants in an explicit scope.</summary>
+    SearchAuthorizationGrants,
+    /// <summary>Reads one authorization grant in an explicit scope.</summary>
+    ReadAuthorizationGrant
 }
 
 /// <summary>Context supplied to the required host authorizer.</summary>

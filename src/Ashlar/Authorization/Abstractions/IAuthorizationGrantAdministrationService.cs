@@ -6,8 +6,8 @@ namespace Ashlar.Authorization.Abstractions;
 /// Provides read-only administrator authorization grant browsing operations.
 /// </summary>
 /// <remarks>
-/// These operations are intended for administrative and operations tooling and do not authorize the caller.
-/// Host applications must protect usage of this service with appropriate admin authorization and fresh step-up policy.
+/// Every operation requires an explicit tenant, global, or all-tenant scope, an Ashlar-issued purpose-bound fresh MFA proof,
+/// its active source session, matching audit identity, and approval from the configured host authorizer.
 /// Raw grant metadata is not returned because metadata is application-defined and may not be safe for broad display.
 /// </remarks>
 public interface IAuthorizationGrantAdministrationService
@@ -15,7 +15,7 @@ public interface IAuthorizationGrantAdministrationService
     /// <summary>
     /// Searches authorization grants using provider-neutral display fields.
     /// </summary>
-    /// <param name="request">Tenant scope, filters, and paging options for the search.</param>
+    /// <param name="request">Actor-bound tenant scope, filters, and paging options for the search.</param>
     /// <param name="cancellationToken">A token that can cancel the search.</param>
     /// <returns>Provider-neutral grant summaries without raw metadata.</returns>
     Task<Result<AuthorizationGrantSearchResult>> SearchAuthorizationGrantsAsync(SearchAuthorizationGrantsRequest request, CancellationToken cancellationToken = default);
@@ -23,7 +23,7 @@ public interface IAuthorizationGrantAdministrationService
     /// <summary>
     /// Gets an authorization grant by id.
     /// </summary>
-    /// <param name="request">Tenant scope and grant identifier for the lookup.</param>
+    /// <param name="request">Actor-bound tenant scope and grant identifier for the lookup.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
     /// <returns>The same provider-neutral grant projection used by search when found, without raw metadata.</returns>
     Task<Result<AuthorizationGrantAdministrationSummary>> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationLookupRequest request, CancellationToken cancellationToken = default);
