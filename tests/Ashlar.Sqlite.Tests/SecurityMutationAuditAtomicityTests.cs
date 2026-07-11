@@ -284,9 +284,9 @@ internal sealed class SecurityMutationAuditAtomicityTests
     {
         public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
         {
-            return securityEvent.EventType is AshlarSecurityEventTypes.AuthorizationGrantCreated or AshlarSecurityEventTypes.AuthorizationGrantRevoked
-                ? Task.FromException(new InvalidOperationException("required audit failed"))
-                : Task.CompletedTask;
+            return securityEvent.EventType == AshlarSecurityEventTypes.SessionValidated
+                ? Task.CompletedTask
+                : Task.FromException(new InvalidOperationException("required audit failed"));
         }
     }
 

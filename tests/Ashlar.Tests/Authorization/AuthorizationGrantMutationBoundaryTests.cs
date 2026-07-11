@@ -187,7 +187,7 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
         sessions.Setup(x => x.GetSessionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid id, CancellationToken _) => _sessions.GetValueOrDefault(id));
         return new(repository, repository, timeProvider: _clock, securityEventSink: sink,
-            authorizer: authorizer ?? new AllowAuthorizer(), sessionRepository: sessions.Object);
+            mutationContext: new AuthorizationGrantMutationContext(authorizer ?? new AllowAuthorizer(), sessions.Object));
     }
 
     private sealed class AllowAuthorizer : IAccountSecurityOperationAuthorizer

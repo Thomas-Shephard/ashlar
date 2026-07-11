@@ -254,8 +254,12 @@ internal static partial class AdminEndpoints
             httpContext.ToAuditContext());
 
         var result = await grants.CreateGrantAsync(new CreateAuthorizationGrantRequest(
-            request.UserId, actor, actor.Audit, tenant, scopeType: "project", scopeId: projectId,
-            permission: "project.manage"), cancellationToken);
+            request.UserId, actor, actor.Audit, tenant, new AuthorizationGrantSpecification
+            {
+                ScopeType = "project",
+                ScopeId = projectId,
+                Permission = "project.manage"
+            }), cancellationToken);
 
         return !result.Succeeded || result.Value == null
             ? Results.BadRequest(SampleResultErrors.From(result, "Failed to create grant"))

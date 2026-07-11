@@ -28,8 +28,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
     /// <param name="timeProvider">Clock used for timestamps and expiration checks.</param>
     /// <param name="securityEventSink">Optional sink that receives grant creation and revocation audit events.</param>
     /// <param name="transactionProvider">Optional transaction provider used to commit grant mutations with required audit writes.</param>
-    /// <param name="authorizer">Host policy required for app-facing grant mutations.</param>
-    /// <param name="sessionRepository">Session storage used to require a currently active Ashlar session for app-facing mutations.</param>
+    /// <param name="mutationContext">Host authorization and active-session dependencies for app-facing grant mutations.</param>
     public AuthorizationGrantService(
         IAuthorizationGrantRepository repository,
         IUserRepository userRepository,
@@ -37,8 +36,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
         TimeProvider? timeProvider = null,
         ISecurityEventSink? securityEventSink = null,
         IAshlarTransactionProvider? transactionProvider = null,
-        IAccountSecurityOperationAuthorizer? authorizer = null,
-        IAuthenticationSessionRepository? sessionRepository = null)
+        AuthorizationGrantMutationContext? mutationContext = null)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
@@ -51,8 +49,8 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
         _timeProvider = timeProvider ?? TimeProvider.System;
         _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
         _transactionProvider = transactionProvider;
-        _authorizer = authorizer;
-        _sessionRepository = sessionRepository;
+        _authorizer = mutationContext?.Authorizer;
+        _sessionRepository = mutationContext?.SessionRepository;
     }
 
     /// <summary>
@@ -81,7 +79,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
             throw new ArgumentException("User id must not be empty.", nameof(request));
         }
 
-        if (string.IsNullOrWhiteSpace(request.Role) == string.IsNullOrWhiteSpace(request.Permission))
+        if (!HasValidGrantShape(request.Role, request.Permission))
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -415,6 +413,9 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
             Properties = CreateAuditProperties(request.GrantId, null)
         }, cancellationToken);
     }
+
+    private static bool HasValidGrantShape(string? role, string? permission) =>
+        string.IsNullOrWhiteSpace(role) != string.IsNullOrWhiteSpace(permission);
 
     private async ValueTask<AshlarFailureCode?> ValidateActorAsync(AccountSecurityActorContext? actor, AuditContext audit,
         bool includeAllTenants, bool infrastructureMutation, CancellationToken cancellationToken)

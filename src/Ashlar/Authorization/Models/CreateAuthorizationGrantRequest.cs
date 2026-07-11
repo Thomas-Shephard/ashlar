@@ -8,29 +8,53 @@ public sealed record CreateAuthorizationGrantRequest
 {
     /// <summary>Creates an app-facing grant request bound to an authenticated actor and explicit target scope.</summary>
     /// <param name="userId">User receiving the grant.</param><param name="actor">Authenticated actor, current session, and fresh proof.</param><param name="audit">Required audit metadata whose actor must match <paramref name="actor"/>.</param>
-    /// <param name="tenant">Explicit tenant or global target scope.</param><param name="includeAllTenants">Whether every tenant is targeted; grant creation rejects this because one grant has one scope.</param>
-    /// <param name="scopeType">Optional resource type.</param><param name="scopeId">Optional resource identifier.</param><param name="role">Role to grant.</param>
-    /// <param name="permission">Permission to grant.</param><param name="expiresAt">Optional expiry time.</param><param name="metadata">Optional provider-neutral JSON metadata.</param>
-    public CreateAuthorizationGrantRequest(Guid userId, AccountSecurityActorContext actor, AuditContext audit, TenantContext? tenant = null,
-        bool includeAllTenants = false, string? scopeType = null, string? scopeId = null, string? role = null,
-        string? permission = null, DateTimeOffset? expiresAt = null, string? metadata = null)
+    /// <param name="tenant">Explicit tenant or global target scope.</param>
+    /// <param name="grant">Role or permission and optional resource constraints.</param>
+    /// <param name="includeAllTenants">Whether every tenant is targeted; grant creation rejects this because one grant has one scope.</param>
+    public CreateAuthorizationGrantRequest(Guid userId, AccountSecurityActorContext actor, AuditContext audit,
+        TenantContext? tenant, AuthorizationGrantSpecification grant, bool includeAllTenants = false)
     {
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(audit);
+        ArgumentNullException.ThrowIfNull(grant);
         AdministrationScopeValidation.ThrowIfInvalidScope(tenant, includeAllTenants);
         UserId = userId; Actor = actor; TenantId = tenant?.TenantId; IncludeAllTenants = includeAllTenants;
-        Audit = audit; ScopeType = scopeType; ScopeId = scopeId; Role = role; Permission = permission;
-        ExpiresAt = expiresAt; Metadata = metadata;
+        Audit = audit; ScopeType = grant.ScopeType; ScopeId = grant.ScopeId; Role = grant.Role; Permission = grant.Permission;
+        ExpiresAt = grant.ExpiresAt; Metadata = grant.Metadata;
+    }
+
+    /// <summary>Creates an actor-bound permission grant without resource constraints.</summary>
+    /// <param name="userId">User receiving the permission.</param>
+    /// <param name="actor">Authenticated actor, current session, and fresh proof.</param>
+    /// <param name="audit">Required audit metadata whose actor must match <paramref name="actor"/>.</param>
+    /// <param name="tenant">Explicit tenant or global target scope.</param>
+    /// <param name="includeAllTenants">Whether every tenant is targeted; grant creation rejects this because one grant has one scope.</param>
+    /// <param name="permission">Permission to grant.</param>
+    public CreateAuthorizationGrantRequest(Guid userId, AccountSecurityActorContext actor, AuditContext audit,
+        TenantContext? tenant = null, bool includeAllTenants = false, string? permission = null)
+        : this(userId, actor, audit, tenant, new AuthorizationGrantSpecification { Permission = permission }, includeAllTenants)
+    { }
+
+    internal CreateAuthorizationGrantRequest(Guid userId, AuditContext audit, Guid? tenantId, AuthorizationGrantSpecification grant)
+    {
+        UserId = userId; Audit = audit; TenantId = tenantId; ScopeType = grant.ScopeType;
+        ScopeId = grant.ScopeId; Role = grant.Role; Permission = grant.Permission; ExpiresAt = grant.ExpiresAt;
+        Metadata = grant.Metadata; IsInfrastructureMutation = true;
     }
 
     internal CreateAuthorizationGrantRequest(Guid UserId, AuditContext Audit, Guid? TenantId = null,
-        string? ScopeType = null, string? ScopeId = null, string? Role = null, string? Permission = null,
-        DateTimeOffset? ExpiresAt = null, string? Metadata = null)
-    {
-        this.UserId = UserId; this.Audit = Audit; this.TenantId = TenantId; this.ScopeType = ScopeType;
-        this.ScopeId = ScopeId; this.Role = Role; this.Permission = Permission; this.ExpiresAt = ExpiresAt;
-        this.Metadata = Metadata; IsInfrastructureMutation = true;
-    }
+        string? ScopeType = null, string? ScopeId = null, string? Role = null, string? Permission = null)
+        : this(UserId, Audit, TenantId, new AuthorizationGrantSpecification
+        {
+            ScopeType = ScopeType,
+            ScopeId = ScopeId,
+            Role = Role,
+            Permission = Permission
+        })
+    { }
+
+    internal CreateAuthorizationGrantRequest(Guid UserId, AuditContext Audit, string? Permission, string? Metadata)
+        : this(UserId, Audit, null, new AuthorizationGrantSpecification { Permission = Permission, Metadata = Metadata }) { }
 
     /// <summary>Gets the user receiving the grant.</summary>
     public Guid UserId { get; }
