@@ -208,6 +208,39 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
         }
     }
 
+    [TestCase("127.0.0.1", false)]
+    [TestCase("10.0.0.1", false)]
+    [TestCase("172.16.0.1", false)]
+    [TestCase("192.168.0.1", false)]
+    [TestCase("169.254.1.1", false)]
+    [TestCase("224.0.0.1", false)]
+    [TestCase("0.0.0.0", false)]
+    [TestCase("93.184.216.34", true)]
+    public async Task IPv4TranslatableAddressAppliesIPv4PolicyAcrossLiteralDnsAndConnectedPeer(string embeddedAddress, bool expected)
+    {
+        var ipv4 = IPAddress.Parse(embeddedAddress).GetAddressBytes();
+        var address = IPAddress.Parse($"::ffff:0:{ipv4[0]:x2}{ipv4[1]:x2}:{ipv4[2]:x2}{ipv4[3]:x2}");
+        var validator = new AshlarSecurityEventWebhookDestinationValidator(new StaticResolver(address));
+
+        var literal = await validator.ValidateAsync(new Uri($"https://[{address}]/security-events"));
+        var dns = await validator.ValidateAsync(new Uri("https://receiver.test/security-events"));
+        var connectedPeer = validator.ValidateAddress(address);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(literal.IsValid, Is.EqualTo(expected));
+            Assert.That(dns.IsValid, Is.EqualTo(expected));
+            Assert.That(connectedPeer.IsValid, Is.EqualTo(expected));
+        }
+    }
+
+    [TestCase("::fffe:0:7f00:1")]
+    [TestCase("::ffff:0:1:7f00:1")]
+    public void IPv4TranslatablePrefixRequiresExactFirst96Bits(string address)
+    {
+        Assert.That(AshlarSecurityEventWebhookDestinationValidator.IsBlockedAddress(IPAddress.Parse(address)), Is.False);
+    }
+
     [Test]
     public async Task ConfiguredNat64UsesLongestMatchingPrefix()
     {

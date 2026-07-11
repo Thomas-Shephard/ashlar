@@ -53,10 +53,11 @@ public static class AshlarOAuthServiceCollectionExtensions
         services.TryAddScoped(provider => new AshlarOidcInvitationRegistrationService(
             provider.GetRequiredService<IInvitationService>(),
             provider.GetRequiredService<ICredentialRepository>(),
-            provider.GetRequiredService<IAshlarTransactionProvider>(),
+            provider.GetRequiredService<IAshlarDurableTransactionProvider>(),
             provider.GetRequiredService<global::Microsoft.Extensions.Options.IOptionsMonitor<AshlarOAuthOptions>>(),
             provider.GetRequiredService<IOidcInvitationEmailMatchPolicy>(),
-            provider.GetService<ISecurityEventSink>(),
+            provider.GetRequiredService<ISecurityEventSink>() as SecurityEventFanOutSink
+                ?? throw new InvalidOperationException("OIDC invitation registration requires SecurityEventFanOutSink."),
             provider.GetService<TimeProvider>()));
         services.TryAddScoped<IOidcInvitationEmailMatchPolicy>(_ =>
         {

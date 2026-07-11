@@ -269,6 +269,11 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
         }
 
         var bytes = address.GetAddressBytes();
+        if (bytes.AsSpan(0, 12).SequenceEqual((ReadOnlySpan<byte>)[0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0, 0]))
+        {
+            return IsBlockedIPv4(bytes[12..16], destinationPolicy);
+        }
+
         var isBuiltInNat64 = WellKnownNat64Prefix.Contains(address) || LocalUseNat64Prefix.Contains(address);
         if (isBuiltInNat64 && destinationPolicy == AshlarSecurityEventWebhookDestinationPolicy.PublicInternetOnly)
         {
