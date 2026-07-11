@@ -184,6 +184,33 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     }
 
     [Test]
+    public async Task DispatcherDoesNotSendLaterBatchEntryAfterLeaseExpires()
+    {
+        await EnqueueAsync(CreateDelivery());
+        await EnqueueAsync(CreateDelivery());
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted)
+        {
+            OnRequestAsync = () =>
+            {
+                _timeProvider.Advance(TimeSpan.FromMinutes(2));
+                return Task.CompletedTask;
+            }
+        };
+
+        var count = await CreateDispatcher(transport, new SqliteSecurityEventWebhookOutboxOptions
+        {
+            BatchSize = 2,
+            LockDuration = TimeSpan.FromMinutes(1)
+        }).ProcessBatchAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(2));
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task DispatcherDoesNotMarkSentWhenWebhookRowBecomesTerminalAfterSuccessfulSend()
     {
         await EnqueueAsync(CreateDelivery());
@@ -288,6 +315,25 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.That(row.AttemptCount, Is.EqualTo(1));
             Assert.That(row.LockedBy, Is.Null);
         }
+    }
+
+    [Test]
+    public async Task DispatcherKeepsLeaseForInFlightSendTimeout()
+    {
+        await EnqueueAsync(CreateDelivery(timeout: TimeSpan.FromMinutes(5)));
+        var firstSendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstSend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new BlockingFirstHttpMessageHandler(firstSendStarted, releaseFirstSend);
+        var options = new SqliteSecurityEventWebhookOutboxOptions { LockDuration = TimeSpan.FromMinutes(1) };
+        var first = CreateDispatcher(transport, options).ProcessBatchAsync();
+        await firstSendStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        _timeProvider.Advance(TimeSpan.FromMinutes(2));
+        var second = await CreateDispatcher(transport, options).ProcessBatchAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        releaseFirstSend.SetResult();
+        await first.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(second, Is.Zero);
     }
 
     [Test]
