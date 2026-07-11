@@ -245,6 +245,9 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
                 && ((bytes[0] & 0xfe) == 0xfc
                     || bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0
                     || bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xff && bytes[3] == 0x9b
+                        && bytes[4] == 0x00 && bytes[5] == 0x00 && bytes[6] == 0x00 && bytes[7] == 0x00
+                        && bytes[8] == 0x00 && bytes[9] == 0x00 && bytes[10] == 0x00 && bytes[11] == 0x00
+                    || bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xff && bytes[3] == 0x9b
                         && bytes[4] == 0x00 && bytes[5] == 0x01);
     }
 }

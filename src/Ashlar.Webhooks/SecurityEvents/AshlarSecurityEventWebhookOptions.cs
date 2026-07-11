@@ -6,7 +6,7 @@ namespace Ashlar.Webhooks.SecurityEvents;
 public enum AshlarSecurityEventWebhookDestinationPolicy
 {
     /// <summary>
-    /// Allows only public internet destinations.
+    /// Allows only public internet destinations and blocks the NAT64 translation prefixes <c>64:ff9b::/96</c> and <c>64:ff9b:1::/48</c>.
     /// </summary>
     PublicInternetOnly = 0,
 
