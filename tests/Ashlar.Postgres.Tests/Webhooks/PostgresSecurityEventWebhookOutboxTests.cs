@@ -323,7 +323,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         var first = CreateDispatcher(transport, options).ProcessBatchAsync();
         await firstSendStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        _timeProvider.Advance(TimeSpan.FromMinutes(2));
+        _timeProvider.Advance(TimeSpan.FromMinutes(5.5));
         var second = await CreateDispatcher(transport, options).ProcessBatchAsync().WaitAsync(TimeSpan.FromSeconds(5));
         releaseFirstSend.SetResult();
         await first.WaitAsync(TimeSpan.FromSeconds(5));

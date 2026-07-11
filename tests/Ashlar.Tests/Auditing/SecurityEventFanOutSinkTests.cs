@@ -9,11 +9,19 @@ internal sealed class SecurityEventFanOutSinkTests
     private static readonly string[] PersistentThenDurable = ["persistent", "durable"];
 
     [Test]
+    public void ConstructorRejectsDurableComponentsWithoutDurableTransactionProvider()
+    {
+        Assert.Throws<InvalidOperationException>(() => new SecurityEventFanOutSink(new RecordingPersistentSink()));
+        Assert.Throws<InvalidOperationException>(() => new SecurityEventFanOutSink(durableHandlers: [new RecordingDurableHandler()]));
+        Assert.Throws<InvalidOperationException>(() => new SecurityEventFanOutSink(new RecordingPersistentSink(), transactionProvider: new NonDurableTransactionProvider()));
+    }
+
+    [Test]
     public async Task RecordAsyncRecordsToPersistentSinkWhenConfigured()
     {
         var persistentSink = new RecordingPersistentSink();
         var securityEvent = CreateEvent();
-        var sink = new SecurityEventFanOutSink(persistentSink);
+        var sink = new SecurityEventFanOutSink(persistentSink, transactionProvider: new RecordingTransactionProvider());
 
         await sink.RecordAsync(securityEvent);
 
@@ -43,7 +51,7 @@ internal sealed class SecurityEventFanOutSinkTests
         List<string> calls = [];
         var persistentSink = new RecordingPersistentSink(calls, "persistent");
         var handler = new RecordingHandler(calls, "handler");
-        var sink = new SecurityEventFanOutSink(persistentSink, [handler], durableHandlers: [new RecordingDurableHandler(calls, "durable")]);
+        var sink = new SecurityEventFanOutSink(persistentSink, [handler], transactionProvider: new RecordingTransactionProvider(), durableHandlers: [new RecordingDurableHandler(calls, "durable")]);
 
         await sink.RecordAsync(CreateEvent());
 
@@ -58,6 +66,7 @@ internal sealed class SecurityEventFanOutSinkTests
         var sink = new SecurityEventFanOutSink(
             new RecordingPersistentSink(),
             [handler],
+            transactionProvider: new RecordingTransactionProvider(),
             durableHandlers: [new ThrowingDurableHandler(expected)]);
 
         var exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await sink.RecordAsync(CreateEvent()));
@@ -298,7 +307,8 @@ internal sealed class SecurityEventFanOutSinkTests
         var sink = new SecurityEventFanOutSink(
             new ThrowingPersistentSink(expected),
             [handler],
-            logger: logger);
+            logger: logger,
+            transactionProvider: new RecordingTransactionProvider());
 
         var exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await sink.RecordAsync(securityEvent));
 
@@ -330,7 +340,8 @@ internal sealed class SecurityEventFanOutSinkTests
         var expected = new InvalidOperationException("persistent failed");
         var sink = new SecurityEventFanOutSink(
             new ThrowingPersistentSink(expected),
-            logger: logger);
+            logger: logger,
+            transactionProvider: new RecordingTransactionProvider());
 
         var exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await sink.RecordAsync(securityEvent));
 
@@ -345,7 +356,7 @@ internal sealed class SecurityEventFanOutSinkTests
     public void RecordAsyncRethrowsPersistentSinkCallerCancellation()
     {
         using var cancellation = new CancellationTokenSource();
-        var sink = new SecurityEventFanOutSink(new CancelingPersistentSink(cancellation));
+        var sink = new SecurityEventFanOutSink(new CancelingPersistentSink(cancellation), transactionProvider: new RecordingTransactionProvider());
 
         Assert.ThrowsAsync<OperationCanceledException>(async () => await sink.RecordAsync(CreateEvent(), cancellation.Token));
     }
@@ -356,7 +367,7 @@ internal sealed class SecurityEventFanOutSinkTests
         var persistentSink = new RecordingPersistentSink();
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        var sink = new SecurityEventFanOutSink(persistentSink);
+        var sink = new SecurityEventFanOutSink(persistentSink, transactionProvider: new RecordingTransactionProvider());
 
         Assert.ThrowsAsync<OperationCanceledException>(async () => await sink.RecordAsync(CreateEvent(), cancellation.Token));
         Assert.That(persistentSink.Events, Is.Empty);
@@ -500,7 +511,7 @@ internal sealed class SecurityEventFanOutSinkTests
         }
     }
 
-    private sealed class RecordingTransactionProvider : IAshlarTransactionProvider, IAsyncDisposable
+    private sealed class RecordingTransactionProvider : IAshlarDurableTransactionProvider, IAsyncDisposable
     {
         private RecordingTransaction? _activeTransaction;
 
@@ -607,7 +618,7 @@ internal sealed class SecurityEventFanOutSinkTests
         }
     }
 
-    private sealed class ThrowingTransactionProvider(Exception exception) : IAshlarTransactionProvider
+    private sealed class ThrowingTransactionProvider(Exception exception) : IAshlarDurableTransactionProvider
     {
         public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
         {
@@ -615,7 +626,12 @@ internal sealed class SecurityEventFanOutSinkTests
         }
     }
 
-    private sealed class CancelingTransactionProvider(CancellationTokenSource cancellation) : IAshlarTransactionProvider
+    private sealed class NonDurableTransactionProvider : IAshlarTransactionProvider
+    {
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class CancelingTransactionProvider(CancellationTokenSource cancellation) : IAshlarDurableTransactionProvider
     {
         public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
         {

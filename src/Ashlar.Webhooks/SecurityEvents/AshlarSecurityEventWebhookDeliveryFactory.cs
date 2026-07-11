@@ -233,7 +233,7 @@ public sealed class AshlarSecurityEventWebhookDeliveryFactory
         };
     }
 
-    private static bool ShouldSend(AshlarSecurityEventWebhookEndpointOptions endpoint, string eventType, string outcome)
+    internal static bool ShouldSend(AshlarSecurityEventWebhookEndpointOptions endpoint, string eventType, string outcome)
     {
         return endpoint.Enabled
             && (endpoint.EventTypes.Count == 0 || endpoint.EventTypes.Contains(eventType))

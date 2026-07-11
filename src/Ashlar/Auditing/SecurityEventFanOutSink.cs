@@ -7,7 +7,7 @@ namespace Ashlar.Auditing;
 /// Records security events to durable storage, runs required durable continuations, and notifies best-effort handlers.
 /// </summary>
 /// <remarks>
-/// When transaction support is configured, persistent audit and durable fan-out handlers commit or roll back
+/// Persistent audit and durable fan-out handlers require a durable transaction provider and commit or roll back
 /// together. Best-effort handlers run after the durable transaction commits.
 /// </remarks>
 public sealed class SecurityEventFanOutSink : ISecurityEventSink
@@ -32,7 +32,7 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
     /// <param name="persistentSink">The optional durable audit sink.</param>
     /// <param name="handlers">The registered security event handlers.</param>
     /// <param name="logger">Logger used when persistence or handler delivery fails.</param>
-    /// <param name="transactionProvider">Optional transaction provider used to commit durable audit and fan-out atomically.</param>
+    /// <param name="transactionProvider">Transaction provider used to commit durable audit and fan-out atomically. A durable provider is required when <paramref name="persistentSink" /> or <paramref name="durableHandlers" /> are configured.</param>
     /// <param name="durableHandlers">Required transaction-bound security event continuations.</param>
     public SecurityEventFanOutSink(
         IPersistentSecurityEventSink? persistentSink = null,
@@ -46,6 +46,11 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
         _handlers = handlers?.ToArray() ?? [];
         _transactionProvider = transactionProvider;
         _logger = logger ?? NullLogger<SecurityEventFanOutSink>.Instance;
+
+        if (RequiresDurableTransaction && transactionProvider is not IAshlarDurableTransactionProvider)
+        {
+            throw new InvalidOperationException("Persistent security event storage and durable fan-out handlers require an IAshlarDurableTransactionProvider.");
+        }
     }
 
     /// <inheritdoc />

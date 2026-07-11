@@ -120,7 +120,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxDispatcher(
         var now = _timeProvider.GetUtcNow();
         var connectionProvider = provider.GetRequiredService<IPostgresConnectionProvider>();
         await using var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken).ConfigureAwait(false);
-        var command = new CommandDefinition(sql, new { Id = id, LockedBy = lockId, Now = now, LockedUntil = now.Add(_options.LockDuration > sendTimeout ? _options.LockDuration : sendTimeout) }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+        var command = new CommandDefinition(sql, new { Id = id, LockedBy = lockId, Now = now, LockedUntil = now.Add(sendTimeout).Add(_options.LockDuration) }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
         return await connectionHandle.Connection.ExecuteAsync(command).ConfigureAwait(false) > 0;
     }
 

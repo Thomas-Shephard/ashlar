@@ -660,7 +660,6 @@ internal sealed class AuthorizationGrantServiceTests
     {
         var persistent = Moq.Mock.Of<IPersistentSecurityEventSink>();
         var auditlessFanOut = new SecurityEventFanOutSink();
-        var fanOut = new SecurityEventFanOutSink(persistent);
         var transactionProvider = Moq.Mock.Of<IAshlarDurableTransactionProvider>();
         var boundFanOut = new SecurityEventFanOutSink(persistent, transactionProvider: transactionProvider);
         var durableHandlerFanOut = new SecurityEventFanOutSink(transactionProvider: transactionProvider,
@@ -668,8 +667,8 @@ internal sealed class AuthorizationGrantServiceTests
 
         Assert.Throws<ArgumentNullException>(() => new AuthorizationGrantService(_repository, _userRepository, null!, transactionProvider));
         Assert.Throws<ArgumentNullException>(() => new AuthorizationGrantService(_repository, _userRepository, boundFanOut, null!));
+        Assert.Throws<InvalidOperationException>(() => new SecurityEventFanOutSink(persistent));
         Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository, auditlessFanOut, transactionProvider));
-        Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository, fanOut, transactionProvider));
         Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository, boundFanOut,
             Moq.Mock.Of<IAshlarDurableTransactionProvider>()));
         Assert.DoesNotThrow(() => new AuthorizationGrantService(_repository, _userRepository, boundFanOut, transactionProvider));
