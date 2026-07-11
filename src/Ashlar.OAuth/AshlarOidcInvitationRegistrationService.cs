@@ -16,10 +16,10 @@ public sealed class AshlarOidcInvitationRegistrationService
 {
     private readonly IInvitationService _invitationService;
     private readonly ICredentialRepository _credentialRepository;
-    private readonly IAshlarTransactionProvider _transactionProvider;
+    private readonly IAshlarDurableTransactionProvider _transactionProvider;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _oauthOptions;
     private readonly IOidcInvitationEmailMatchPolicy _emailMatchPolicy;
-    private readonly ISecurityEventSink? _securityEventSink;
+    private readonly SecurityEventFanOutSink _securityEventSink;
     private readonly TimeProvider _timeProvider;
 
     /// <summary>
@@ -27,18 +27,18 @@ public sealed class AshlarOidcInvitationRegistrationService
     /// </summary>
     /// <param name="invitationService">The invitation service.</param>
     /// <param name="credentialRepository">Credential repository used inside the invitation acceptance transaction.</param>
-    /// <param name="transactionProvider">The transaction provider.</param>
+    /// <param name="transactionProvider">Durable transaction provider shared with <paramref name="securityEventSink" />.</param>
     /// <param name="oauthOptions">The OAuth options monitor.</param>
     /// <param name="emailMatchPolicy">The invitation email match policy.</param>
-    /// <param name="securityEventSink">Security event sink used to audit the credential linked by the invitation flow.</param>
+    /// <param name="securityEventSink">Durable, transaction-bound security event sink used to audit the credential linked by the invitation flow.</param>
     /// <param name="timeProvider">Clock used for emitted security events.</param>
     internal AshlarOidcInvitationRegistrationService(
         IInvitationService invitationService,
         ICredentialRepository credentialRepository,
-        IAshlarTransactionProvider transactionProvider,
+        IAshlarDurableTransactionProvider transactionProvider,
         IOptionsMonitor<AshlarOAuthOptions> oauthOptions,
         IOidcInvitationEmailMatchPolicy emailMatchPolicy,
-        ISecurityEventSink? securityEventSink = null,
+        SecurityEventFanOutSink securityEventSink,
         TimeProvider? timeProvider = null)
     {
         _invitationService = invitationService ?? throw new ArgumentNullException(nameof(invitationService));
@@ -46,7 +46,11 @@ public sealed class AshlarOidcInvitationRegistrationService
         _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
         _oauthOptions = oauthOptions ?? throw new ArgumentNullException(nameof(oauthOptions));
         _emailMatchPolicy = emailMatchPolicy ?? throw new ArgumentNullException(nameof(emailMatchPolicy));
-        _securityEventSink = securityEventSink;
+        _securityEventSink = securityEventSink ?? throw new ArgumentNullException(nameof(securityEventSink));
+        if (!securityEventSink.RequiresDurableTransaction || !ReferenceEquals(transactionProvider, securityEventSink.TransactionProvider))
+        {
+            throw new ArgumentException("The security event sink must use the invitation registration transaction provider.", nameof(securityEventSink));
+        }
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -253,11 +257,6 @@ public sealed class AshlarOidcInvitationRegistrationService
             return new AshlarOidcInvitationRegistrationResult(emailMatch.Status ?? AshlarOidcInvitationRegistrationStatus.Failed, Assertion: assertion);
         }
 
-        if (_transactionProvider is not IAshlarDurableTransactionProvider)
-        {
-            return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.Failed, Assertion: assertion);
-        }
-
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         var acceptance = await _invitationService.AcceptInvitationAsync(
@@ -341,11 +340,6 @@ public sealed class AshlarOidcInvitationRegistrationService
 
     private async Task RecordCredentialLinkedAsync(OidcCredentialLinkedAudit audit, CancellationToken cancellationToken)
     {
-        if (_securityEventSink == null)
-        {
-            return;
-        }
-
         await _securityEventSink.RecordAsync(new AshlarSecurityEvent
         {
             Id = Guid.NewGuid(),
