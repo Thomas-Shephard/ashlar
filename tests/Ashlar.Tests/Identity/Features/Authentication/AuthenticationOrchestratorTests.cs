@@ -112,6 +112,13 @@ internal sealed class AuthenticationOrchestratorTests
             Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationOrchestrator(_pipelineMock.Object, _factorPipelineMock.Object, _handshakeServiceMock.Object, null!, _policyEvaluatorMock.Object, _providerRegistry));
             Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationOrchestrator(_pipelineMock.Object, _factorPipelineMock.Object, _handshakeServiceMock.Object, _handshakeCompletionService, null!, _providerRegistry));
             Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationOrchestrator(_pipelineMock.Object, _factorPipelineMock.Object, _handshakeServiceMock.Object, _handshakeCompletionService, _policyEvaluatorMock.Object, null!));
+            Assert.Throws<ArgumentException>(() => _ = new AuthenticationOrchestrator(
+                _pipelineMock.Object,
+                _factorPipelineMock.Object,
+                Mock.Of<IAuthenticationHandshakeService>(),
+                _handshakeCompletionService,
+                _policyEvaluatorMock.Object,
+                _providerRegistry));
         }
     }
 
