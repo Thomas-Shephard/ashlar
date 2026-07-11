@@ -722,6 +722,21 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
+    public async Task CompleteExternalLinkShouldNotLinkWhenClearingSuccessfulTicketThrows()
+    {
+        var authService = new TestAuthenticationService(
+            AuthenticateResult.Success(new AuthenticationTicket(CreatePrincipal("sub"), CreateProperties("Google", "Google"), "Ashlar.OAuth.External")),
+            signOutException: new InvalidOperationException("clear failed"));
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
+        var service = CreateService(credentialService.Object);
+
+        var result = await service.CompleteWithFreshProofAsync(CreateHttpContext(authService), Guid.NewGuid(), "Google", TenantContext.Global);
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.AuthenticationFailed));
+        credentialService.Verify(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public async Task CompleteExternalLinkShouldReturnProviderMismatchForOidcTicketWithoutProviderType()
     {
         var authService = new TestAuthenticationService(AuthenticateResult.Success(new AuthenticationTicket(
@@ -1487,7 +1502,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         public IDisposable? OnChange(Action<AshlarOAuthOptions, string?> listener) => null;
     }
 
-    private sealed class TestAuthenticationService(AuthenticateResult result, Exception? authenticateException = null) : IAuthenticationService
+    private sealed class TestAuthenticationService(AuthenticateResult result, Exception? authenticateException = null, Exception? signOutException = null) : IAuthenticationService
     {
         public int AuthenticateCount { get; private set; }
         public int SignOutCount { get; private set; }
@@ -1507,6 +1522,11 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         public Task SignOutAsync(HttpContext context, string? scheme, AuthenticationProperties? properties)
         {
             SignOutCount++;
+            if (signOutException != null)
+            {
+                throw signOutException;
+            }
+
             return Task.CompletedTask;
         }
     }

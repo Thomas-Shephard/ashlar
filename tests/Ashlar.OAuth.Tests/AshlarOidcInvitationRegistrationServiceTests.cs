@@ -970,6 +970,21 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     }
 
     [Test]
+    public async Task CompleteShouldNotRegisterWhenClearingSuccessfulTicketThrows()
+    {
+        var invitations = CreateInvitations(acceptance: AcceptResult(Guid.NewGuid()));
+        var credentials = new Mock<ICredentialRepository>();
+        var auth = new TestAuthenticationService(CreateTicket("Google", "Google", "subject"), signOutException: new InvalidOperationException("clear failed"));
+        var service = CreateService(invitations.Object, credentials.Object);
+
+        var result = await service.CompleteOidcInvitationRegistrationAsync(CreateHttpContext(auth), "token", "Google");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.AuthenticationFailed));
+        invitations.Verify(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()), Times.Never);
+        credentials.Verify(s => s.CreateOrReplaceCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public async Task CompleteFromPropertiesShouldUseTicketState()
     {
         var userId = Guid.NewGuid();
@@ -1222,7 +1237,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         }
     }
 
-    private sealed class TestAuthenticationService(AuthenticateResult result, Exception? authenticateException = null) : IAuthenticationService
+    private sealed class TestAuthenticationService(AuthenticateResult result, Exception? authenticateException = null, Exception? signOutException = null) : IAuthenticationService
     {
         public int SignOutCount { get; private set; }
         public Task<AuthenticateResult> AuthenticateAsync(HttpContext context, string? scheme)
@@ -1240,6 +1255,11 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         public Task SignOutAsync(HttpContext context, string? scheme, AuthenticationProperties? properties)
         {
             SignOutCount++;
+            if (signOutException != null)
+            {
+                throw signOutException;
+            }
+
             return Task.CompletedTask;
         }
     }
