@@ -32,3 +32,5 @@ global using Ashlar.Identity.Features.Transactions;
 global using Ashlar.Tests.Identity.Features.Providers;
 global using Ashlar.Tests.Identity.Features.TestDoubles;
 global using Ashlar.Tests.Support;
+
+[assembly: Parallelizable(ParallelScope.Fixtures)]
