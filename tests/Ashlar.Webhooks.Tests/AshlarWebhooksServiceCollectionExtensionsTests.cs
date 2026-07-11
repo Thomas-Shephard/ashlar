@@ -230,6 +230,20 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarSecurityEventWebhookDeliveryObserverComposesWithFactoryObserver()
+    {
+        var existingObserver = new RecordingDeliveryObserver();
+        var services = new ServiceCollection();
+        services.AddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(_ => existingObserver);
+        services.AddAshlarSecurityEventWebhookDeliveryObserver<RecordingDeliveryObserver>();
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>().RecordDeliveryAttempt(CreateTelemetry());
+
+        Assert.That(existingObserver.Telemetry, Has.Count.EqualTo(1));
+    }
+
+    [Test]
     public void AddAshlarSecurityEventWebhookDeliveryObserverIsIdempotent()
     {
         var services = new ServiceCollection();

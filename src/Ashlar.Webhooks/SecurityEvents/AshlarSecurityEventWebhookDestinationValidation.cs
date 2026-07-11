@@ -244,8 +244,8 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
             || destinationPolicy != AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks
                 && ((bytes[0] & 0xfe) == 0xfc
                     || bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0
-                    || bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xff && bytes[3] == 0x9b
-                        && bytes[4] == 0x00 && bytes[5] == 0x01);
+                    || bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0x00, 0x64, 0xff, 0x9b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+                    || bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0x00, 0x64, 0xff, 0x9b, 0x00, 0x01]));
     }
 }
 

@@ -43,6 +43,7 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
     [TestCase("https://[fd00::1]/security-events")]
     [TestCase("https://[fec0::1]/security-events")]
     [TestCase("https://[64:ff9b:1::1]/security-events")]
+    [TestCase("https://[64:ff9b::7f00:1]/security-events")]
     [TestCase("https://[::ffff:10.0.0.1]/security-events")]
     [TestCase("https://user@example.test/security-events")]
     [TestCase("https://example.test/security-events#fragment")]
@@ -70,6 +71,7 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
     [TestCase("10.0.0.5")]
     [TestCase("fec0::1")]
     [TestCase("64:ff9b:1::1")]
+    [TestCase("64:ff9b::a00:1")]
     public async Task ValidateAsyncRejectsDnsResolvedUnsafeAddress(string address)
     {
         var validator = new AshlarSecurityEventWebhookDestinationValidator(new StaticResolver(IPAddress.Parse(address)));
@@ -101,6 +103,7 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
     [TestCase("https://[fd00::1]/security-events")]
     [TestCase("https://[fec0::1]/security-events")]
     [TestCase("https://[64:ff9b:1::1]/security-events")]
+    [TestCase("https://[64:ff9b::a00:1]/security-events")]
     public void AllowPrivateNetworksAcceptsPrivateIpLiterals(string uri)
     {
         var result = AshlarSecurityEventWebhookDestinationValidator.ValidateUri(
@@ -306,6 +309,7 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
     [TestCase("10.0.0.5")]
     [TestCase("fec0::1")]
     [TestCase("64:ff9b:1::1")]
+    [TestCase("64:ff9b::a9fe:1")]
     public async Task HandlerConnectCallbackDisposesStreamWhenConnectedAddressIsUnsafe(string address)
     {
         using var stream = new TrackingStream();
@@ -406,6 +410,14 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
     [TestCase("feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", true)]
     [TestCase("fd00::1", true)]
     [TestCase("64:ff9b:0:ffff:ffff:ffff:ffff:ffff", false)]
+    [TestCase("64:ff9a:ffff:ffff:ffff:ffff:ffff:ffff", false)]
+    [TestCase("64:ff9b::7f00:1", true)]
+    [TestCase("64:ff9b::a00:1", true)]
+    [TestCase("64:ff9b::a9fe:1", true)]
+    [TestCase("64:ff9b::c000:201", true)]
+    [TestCase("64:ff9b::e000:1", true)]
+    [TestCase("64:ff9b::5db8:d822", true)]
+    [TestCase("64:ff9b:0:0:1::", false)]
     [TestCase("64:ff9b:1::", true)]
     [TestCase("64:ff9b:1::1", true)]
     [TestCase("64:ff9b:1:ffff:ffff:ffff:ffff:ffff", true)]
