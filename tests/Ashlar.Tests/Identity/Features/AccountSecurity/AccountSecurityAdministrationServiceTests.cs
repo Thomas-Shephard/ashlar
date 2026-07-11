@@ -89,6 +89,26 @@ internal sealed class AccountSecurityAdministrationServiceTests
         Assert.That(_executor.CallCount, Is.Zero);
     }
 
+    [TestCase(SourceSessionProblem.Missing)]
+    [TestCase(SourceSessionProblem.WrongActor)]
+    [TestCase(SourceSessionProblem.WrongTenant)]
+    [TestCase(SourceSessionProblem.MissingTenant)]
+    public async Task InvalidSourceSessionFailsBeforeAuthorizationOrMutation(SourceSessionProblem problem)
+    {
+        var session = CreateSession(
+            problem == SourceSessionProblem.WrongActor ? Guid.NewGuid() : _actorId,
+            problem == SourceSessionProblem.MissingTenant ? null : problem == SourceSessionProblem.WrongTenant ? Guid.NewGuid() : _tenant.TenantId,
+            useDefaultTenant: problem != SourceSessionProblem.MissingTenant);
+        _sessions.Setup(x => x.GetSessionAsync(_sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(problem == SourceSessionProblem.Missing ? null : session);
+
+        var result = await _service.RevokeSessionsAsync(CreateRequest());
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+        _authorizer.VerifyNoOtherCalls();
+        Assert.That(_executor.CallCount, Is.Zero);
+    }
+
     [Test]
     public async Task DeniedAuthorizationFailsBeforeMutationAndCarriesExactScope()
     {
@@ -197,6 +217,33 @@ internal sealed class AccountSecurityAdministrationServiceTests
     }
 
     [Test]
+    public async Task AuthorizedGlobalActorWithGlobalSessionDelegates()
+    {
+        var now = _time.GetUtcNow();
+        var session = new AuthenticationSession
+        {
+            Id = _sessionId,
+            UserId = _actorId,
+            TokenHash = "hash",
+            CreatedAt = now.AddMinutes(-1),
+            AdditionalVerificationAt = now.AddMinutes(-1),
+            ExpiresAt = now.AddHours(1)
+        };
+        var proof = new StepUpAuthenticationService(_time)
+            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session),
+                new StepUpRequirement(TimeSpan.FromMinutes(5), Purpose: AccountSecurityAdministrationService.ProofPurpose)).Value!;
+        var request = new AccountSecurityAdministrationRequest(_targetId,
+            new AccountSecurityActorContext(_actorId, TenantContext.Global, _sessionId, proof, new AuditContext(_actorId)), TenantContext.Global);
+        _sessions.Setup(x => x.GetSessionAsync(_sessionId, It.IsAny<CancellationToken>())).ReturnsAsync(session);
+        _authorizer.Setup(x => x.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _executor.Result = Result.Success(new AccountSecurityOperationResult(_targetId));
+
+        var result = await _service.RevokeSessionsAsync(request);
+
+        Assert.That(result.Succeeded, Is.True);
+    }
+
+    [Test]
     public async Task AuthorizedOperationsDelegateCompleteRequests()
     {
         var request = CreateRequest();
@@ -281,6 +328,10 @@ internal sealed class AccountSecurityAdministrationServiceTests
     }
 
     [Test]
+    public void AdministrationServiceRequiresSessionRepository() =>
+        Assert.Throws<ArgumentNullException>(() => new AccountSecurityAdministrationService(_executor, _authorizer.Object, null!, _time, _events));
+
+    [Test]
     public void PublicReadAndAdministrationSurfacesDoNotExposeRawTargetMutationMethods()
     {
         using (Assert.EnterMultipleScope())
@@ -318,11 +369,11 @@ internal sealed class AccountSecurityAdministrationServiceTests
             .CreateFreshMfaProof(new ValidatedAuthenticationSession(CreateSession()), new StepUpRequirement(TimeSpan.FromMinutes(5), Purpose: AccountSecurityAdministrationService.ProofPurpose)).Value!;
     }
 
-    private AuthenticationSession CreateSession() => new()
+    private AuthenticationSession CreateSession(Guid? userId = null, Guid? tenantId = null, bool useDefaultTenant = true) => new()
     {
         Id = _sessionId,
-        UserId = _actorId,
-        TenantId = _tenant.TenantId,
+        UserId = userId ?? _actorId,
+        TenantId = useDefaultTenant ? tenantId ?? _tenant.TenantId : null,
         TokenHash = "hash",
         CreatedAt = _time.GetUtcNow().AddMinutes(-1),
         AdditionalVerificationAt = _time.GetUtcNow().AddMinutes(-1),
@@ -340,6 +391,14 @@ internal sealed class AccountSecurityAdministrationServiceTests
         WrongTenant,
         Stale,
         WrongPurpose
+    }
+
+    public enum SourceSessionProblem
+    {
+        Missing,
+        WrongActor,
+        WrongTenant,
+        MissingTenant
     }
 
     private sealed class FakeExecutor : IAccountSecurityMutationExecutor

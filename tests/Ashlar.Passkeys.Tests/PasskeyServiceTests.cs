@@ -3273,6 +3273,39 @@ internal sealed class PasskeyServiceTests
         credentials.VerifyNoOtherCalls();
     }
 
+    [Test]
+    public async Task RenameShouldRejectSourceSessionWithoutActorTenant()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var credentials = new Mock<ICredentialRepository>();
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, credentials.Object,
+            new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object,
+            CreateDependencies(new FakeTimeProvider(now), sessionRepository: ActiveSessionRepository(userId)));
+
+        var result = await service.RenameAsync(CreateRenameRequest(userId, Guid.NewGuid(), "Name", now, tenantId: tenantId));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+        credentials.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public async Task RenameShouldRejectUnavailableActorAfterSessionValidation()
+    {
+        var userId = Guid.NewGuid();
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var credentials = new Mock<ICredentialRepository>();
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, credentials.Object,
+            new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object,
+            CreateDependencies(new FakeTimeProvider(now), sessionRepository: ActiveSessionRepository(userId)));
+
+        var result = await service.RenameAsync(CreateRenameRequest(userId, Guid.NewGuid(), "Name", now));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
+        credentials.VerifyNoOtherCalls();
+    }
+
     private static IAuthenticationSessionRepository ActiveSessionRepository(Guid userId = default, Guid? tenantId = null)
     {
         var repository = new Mock<IAuthenticationSessionRepository>();
