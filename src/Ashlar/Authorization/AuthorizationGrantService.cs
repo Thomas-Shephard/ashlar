@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace Ashlar.Authorization;
 
 /// <summary>
-/// Creates and revokes authorization grants for users.
+/// Creates and revokes authorization grants with durable audit in the same Ashlar transaction.
 /// </summary>
 public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAuthorizationGrantBootstrapService
 {
@@ -17,26 +17,26 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly IUserRepository _userRepository;
-    private readonly IAshlarTransactionProvider? _transactionProvider;
+    private readonly IAshlarDurableTransactionProvider _transactionProvider;
     private readonly IAccountSecurityOperationAuthorizer? _authorizer;
     private readonly ActiveSessionFreshProofValidator? _proofValidator;
 
     /// <summary>Initializes the grant service with storage, validation, and audit dependencies.</summary>
     /// <param name="repository">Grant storage used for authorization assignments.</param>
     /// <param name="userRepository">User repository used to verify tenant ownership.</param>
+    /// <param name="securityEventSink">Transaction-bound fan-out sink that durably records every grant mutation.</param>
+    /// <param name="transactionProvider">Durable transaction provider shared with <paramref name="securityEventSink" />.</param>
     /// <param name="options">Validation limits for grant fields.</param>
     /// <param name="timeProvider">Clock used for timestamps and expiration checks.</param>
-    /// <param name="securityEventSink">Optional best-effort sink, or a fan-out sink for persistent/durable audit.</param>
-    /// <param name="transactionProvider">Transaction provider used by mutations. Durable fan-out requires this exact instance and it must implement <see cref="IAshlarDurableTransactionProvider" />.</param>
     /// <param name="mutationContext">Host authorization and active-session dependencies for app-facing grant mutations.</param>
-    /// <exception cref="ArgumentException">Persistent audit is supplied directly, or durable fan-out does not share this service's durable transaction provider.</exception>
+    /// <exception cref="ArgumentException">The fan-out has no durable audit path or does not share this transaction provider.</exception>
     public AuthorizationGrantService(
         IAuthorizationGrantRepository repository,
         IUserRepository userRepository,
+        SecurityEventFanOutSink securityEventSink,
+        IAshlarDurableTransactionProvider transactionProvider,
         AuthorizationGrantOptions? options = null,
         TimeProvider? timeProvider = null,
-        ISecurityEventSink? securityEventSink = null,
-        IAshlarTransactionProvider? transactionProvider = null,
         AuthorizationGrantMutationContext? mutationContext = null)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
@@ -48,11 +48,11 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
         }
 
         _timeProvider = timeProvider ?? TimeProvider.System;
-        if (securityEventSink is IPersistentSecurityEventSink)
-            throw new ArgumentException("Persistent grant audit must use SecurityEventFanOutSink.", nameof(securityEventSink));
-        if (securityEventSink is SecurityEventFanOutSink { RequiresDurableTransaction: true } fanOut
-            && (transactionProvider is not IAshlarDurableTransactionProvider
-                || !ReferenceEquals(transactionProvider, fanOut.TransactionProvider)))
+        ArgumentNullException.ThrowIfNull(securityEventSink);
+        ArgumentNullException.ThrowIfNull(transactionProvider);
+        if (!securityEventSink.RequiresDurableTransaction)
+            throw new ArgumentException("Authorization grant audit requires durable fan-out.", nameof(securityEventSink));
+        if (!ReferenceEquals(transactionProvider, securityEventSink.TransactionProvider))
             throw new ArgumentException("Authorization grant audit requires the fan-out sink's durable transaction provider.", nameof(transactionProvider));
         _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
         _transactionProvider = transactionProvider;
@@ -207,9 +207,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
             Metadata = metadata
         };
 
-        await using var transaction = _transactionProvider == null
-            ? null
-            : await _transactionProvider.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         await _repository.CreateGrantAsync(grant, cancellationToken);
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
@@ -220,10 +218,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
             Audit = request.Audit,
             Properties = CreateAuditProperties(grant)
         }, cancellationToken);
-        if (transaction != null)
-        {
-            await transaction.CommitAsync(cancellationToken);
-        }
+        await transaction.CommitAsync(cancellationToken);
 
         return Result<AuthorizationGrant>.Success(grant);
     }
@@ -320,9 +315,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
             return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.NotFound, request.GrantId, request.TenantId);
         }
 
-        await using var transaction = _transactionProvider == null
-            ? null
-            : await _transactionProvider.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         var revoked = await _repository.RevokeGrantAsync(request.GrantId, request.TenantId, _timeProvider.GetUtcNow(), cancellationToken);
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
@@ -334,10 +327,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
             FailureReason = revoked ? null : "grant_not_revoked",
             Properties = CreateAuditProperties(grant)
         }, cancellationToken);
-        if (transaction != null)
-        {
-            await transaction.CommitAsync(cancellationToken);
-        }
+        await transaction.CommitAsync(cancellationToken);
 
         var status = revoked ? AuthorizationGrantRevocationStatus.Revoked : AuthorizationGrantRevocationStatus.NotRevoked;
         return new RevokeAuthorizationGrantResult(status, request.GrantId, request.TenantId, grant.UserId);

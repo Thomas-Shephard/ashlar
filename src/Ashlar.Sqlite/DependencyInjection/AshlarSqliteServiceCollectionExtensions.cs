@@ -35,6 +35,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Singleton(new SqliteConnectionFactory(connectionString)));
         services.TryAddScoped<SqliteTransactionManager>();
         services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<SqliteTransactionManager>()));
+        services.Replace(ServiceDescriptor.Scoped<IAshlarDurableTransactionProvider>(provider => provider.GetRequiredService<SqliteTransactionManager>()));
         services.TryAddScoped<ISqliteConnectionProvider>(provider => provider.GetRequiredService<SqliteTransactionManager>());
         services.TryAddScoped<IUserRepository, SqliteUserRepository>();
         services.TryAddScoped<ICredentialRepository, SqliteCredentialRepository>();
