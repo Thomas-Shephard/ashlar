@@ -8,7 +8,17 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Features.Handshakes;
 
-internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeService, IAuthenticationHandshakeCompletionService
+internal interface IAuthenticationHandshakeOrchestrationService : IAuthenticationHandshakeService
+{
+    /// <summary>
+    /// Creates a handshake after trusted authentication orchestration verifies a primary factor.
+    /// The user must exist and its tenant ownership must exactly match the request context;
+    /// a <see langword="null" /> tenant context is valid only for a global user.
+    /// </summary>
+    Task<Result<AuthenticationHandshakeCreated>> CreateHandshakeAsync(CreateAuthenticationHandshakeRequest request, CancellationToken cancellationToken = default);
+}
+
+internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeOrchestrationService, IAuthenticationHandshakeCompletionService
 {
     private const string HandshakeIdProperty = "handshake_id";
     private const string LookupRateLimitPurpose = "handshake-lookup";
@@ -97,6 +107,19 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
         }
 
         var metadata = NormalizeMetadata(request.Metadata);
+
+        var tenant = request.Context?.TenantId is { } tenantId ? new TenantContext(tenantId) : null;
+        var userResult = _userRepository == null
+            ? Result.Failure<IUser>(AshlarFailureCodes.UserNotFound)
+            : await UserTenantValidator.GetUserInTenantAsync(
+                _userRepository,
+                request.UserId,
+                tenant,
+                cancellationToken);
+        if (!userResult.TryGetValue(out _))
+        {
+            return Result.Failure<AuthenticationHandshakeCreated>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFound));
+        }
 
         var token = _tokenGenerator.GenerateToken();
         var tokenHash = _tokenHasher.HashToken(token);

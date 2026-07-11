@@ -14,7 +14,7 @@ internal sealed class AuthenticationOrchestratorTests
 {
     private Mock<IAuthenticationPipeline> _pipelineMock;
     private Mock<IAuthenticationFactorPipeline> _factorPipelineMock;
-    private Mock<IAuthenticationHandshakeService> _handshakeServiceMock;
+    private Mock<TestAuthenticationHandshakeOrchestrationService> _handshakeServiceMock;
     private TestAuthenticationHandshakeCompletionService _handshakeCompletionService;
     private Mock<IMfaPolicyEvaluator> _policyEvaluatorMock;
     private IAuthenticationProviderRegistry _providerRegistry;
@@ -28,7 +28,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         _pipelineMock = new Mock<IAuthenticationPipeline>();
         _factorPipelineMock = new Mock<IAuthenticationFactorPipeline>();
-        _handshakeServiceMock = new Mock<IAuthenticationHandshakeService>();
+        _handshakeServiceMock = new Mock<TestAuthenticationHandshakeOrchestrationService>();
         _handshakeCompletionService = new TestAuthenticationHandshakeCompletionService();
         _policyEvaluatorMock = new Mock<IMfaPolicyEvaluator>();
         _providerRegistry = CreateProviderRegistry();
@@ -112,6 +112,13 @@ internal sealed class AuthenticationOrchestratorTests
             Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationOrchestrator(_pipelineMock.Object, _factorPipelineMock.Object, _handshakeServiceMock.Object, null!, _policyEvaluatorMock.Object, _providerRegistry));
             Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationOrchestrator(_pipelineMock.Object, _factorPipelineMock.Object, _handshakeServiceMock.Object, _handshakeCompletionService, null!, _providerRegistry));
             Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationOrchestrator(_pipelineMock.Object, _factorPipelineMock.Object, _handshakeServiceMock.Object, _handshakeCompletionService, _policyEvaluatorMock.Object, null!));
+            Assert.Throws<ArgumentException>(() => _ = new AuthenticationOrchestrator(
+                _pipelineMock.Object,
+                _factorPipelineMock.Object,
+                Mock.Of<IAuthenticationHandshakeService>(),
+                _handshakeCompletionService,
+                _policyEvaluatorMock.Object,
+                _providerRegistry));
         }
     }
 
@@ -741,7 +748,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var pipeline = new Mock<IAuthenticationPipeline>(MockBehavior.Strict);
         var factorPipeline = new Mock<IAuthenticationFactorPipeline>(MockBehavior.Strict);
-        var handshakeService = new Mock<IAuthenticationHandshakeService>(MockBehavior.Strict);
+        var handshakeService = new Mock<TestAuthenticationHandshakeOrchestrationService>(MockBehavior.Strict);
         var handshakeCompletionService = new TestAuthenticationHandshakeCompletionService();
         var policyEvaluator = new Mock<IMfaPolicyEvaluator>(MockBehavior.Strict);
         var orchestrator = new AuthenticationOrchestrator(pipeline.Object, factorPipeline.Object, handshakeService.Object, handshakeCompletionService, policyEvaluator.Object, _providerRegistry);

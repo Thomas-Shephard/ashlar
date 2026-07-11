@@ -6,14 +6,6 @@ namespace Ashlar.Identity.Abstractions.Services;
 public interface IAuthenticationHandshakeService
 {
     /// <summary>
-    /// Creates a handshake token for the factors that must be verified before authentication can complete.
-    /// </summary>
-    /// <param name="request">The handshake creation details.</param>
-    /// <param name="cancellationToken">A token that can cancel handshake creation.</param>
-    /// <returns>Public handshake details and one-time raw token. Return the token to the client once; do not log or persist this value. Token hashes are not returned.</returns>
-    Task<Result<AuthenticationHandshakeCreated>> CreateHandshakeAsync(CreateAuthenticationHandshakeRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Validates that a factor challenge may be issued without consuming a factor verification attempt.
     /// </summary>
     /// <param name="request">The factor verification details.</param>

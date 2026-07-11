@@ -45,6 +45,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
     private readonly IAuthenticationPipeline _pipeline;
     private readonly IAuthenticationFactorPipeline _factorPipeline;
     private readonly IAuthenticationHandshakeService _handshakeService;
+    private readonly IAuthenticationHandshakeOrchestrationService _handshakeCreationService;
     private readonly IAuthenticationHandshakeCompletionService _handshakeCompletionService;
     private readonly IMfaPolicyEvaluator _policyEvaluator;
     private readonly IAuthenticationProviderRegistry _providerRegistry;
@@ -69,6 +70,9 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
         _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
 
         var validatedDependencies = ValidateDependencies(dependencies);
+        _handshakeCreationService = validatedDependencies.HandshakeCreationService
+            ?? handshakeService as IAuthenticationHandshakeOrchestrationService
+            ?? throw new ArgumentException("Handshake creation service is required.", nameof(dependencies));
         _globalOptions = validatedDependencies.GlobalOptions?.Value ?? new MfaOrchestrationOptions();
         _serviceProvider = validatedDependencies.ServiceProvider;
         _logger = validatedDependencies.Logger ?? NullLogger<AuthenticationOrchestrator>.Instance;
@@ -271,7 +275,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             };
         }
 
-        var result = await _handshakeService.CreateHandshakeAsync(
+        var result = await _handshakeCreationService.CreateHandshakeAsync(
             new CreateAuthenticationHandshakeRequest(user.Id, requiredFactors, BuildClaimMetadata(response.Claims, primaryAssertion), context with { UserId = user.Id }),
             cancellationToken);
 
@@ -475,7 +479,9 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
 /// <param name="GlobalOptions">The global orchestration options.</param>
 /// <param name="ServiceProvider">The service provider used for opt-in remembered MFA device support.</param>
 /// <param name="Logger">Optional logger for authentication orchestration diagnostics.</param>
+/// <param name="HandshakeCreationService">Internal service used to create handshakes after primary authentication.</param>
 internal sealed record AuthenticationOrchestratorDependencies(
     IOptions<MfaOrchestrationOptions>? GlobalOptions = null,
     IServiceProvider? ServiceProvider = null,
-    ILogger<AuthenticationOrchestrator>? Logger = null);
+    ILogger<AuthenticationOrchestrator>? Logger = null,
+    IAuthenticationHandshakeOrchestrationService? HandshakeCreationService = null);

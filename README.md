@@ -781,22 +781,9 @@ services.AddAshlarMfaHandshakes(options =>
 
 `AddAshlarMfaHandshakes()` registers the service layer only. Applications must also register an `IAuthenticationHandshakeRepository` implementation, such as by calling `AddAshlarPostgres(connectionString)`, or provide their own repository.
 
-When a user's primary authentication succeeds but MFA is required, initiate a handshake:
-
-```csharp
-var handshakeService = httpContext.RequestServices.GetRequiredService<IAuthenticationHandshakeService>();
-
-var createResult = await handshakeService.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(
-    userId,
-    RequiredFactors: ["totp"]));
-
-if (!createResult.Succeeded || createResult.Value == null)
-{
-    return Results.BadRequest(new { error = createResult.FailureCode?.Value });
-}
-
-// Return createResult.Value.Token to the client. It will be needed to verify factors.
-```
+When primary authentication succeeds and MFA is required, `IAuthenticationOrchestrator.AuthenticateAsync`
+creates the handshake internally and returns its one-time token and required factors. Applications cannot mint
+handshakes directly.
 
 Verify a factor to continue or complete the handshake through `IAuthenticationOrchestrator.VerifyFactorAsync`. The orchestrator validates the pending handshake, verifies the submitted factor proof through the provider pipeline, then completes the satisfied factor internally:
 

@@ -1578,7 +1578,7 @@ internal sealed class TotpTests
         // This test proves that the orchestrator uses the pipeline (and thus our provider) for verification.
         var pipeline = new Mock<IAuthenticationPipeline>();
         var factorPipeline = new Mock<IAuthenticationFactorPipeline>();
-        var handshakeService = new Mock<IAuthenticationHandshakeService>();
+        var handshakeService = new Mock<TestAuthenticationHandshakeOrchestrationService>();
         var handshakeCompletionService = new TestAuthenticationHandshakeCompletionService();
         var policyEvaluator = new Mock<IMfaPolicyEvaluator>();
         var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
