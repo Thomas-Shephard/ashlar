@@ -148,8 +148,33 @@ internal sealed class SqliteSecurityEventWebhookOutboxDispatcher(
                 _destinationValidator,
                 _webhookOptions,
                 _timeProvider,
-                _deliveryObserver),
+                _deliveryObserver,
+                (id, token) => RenewLockAsync(id, TimeSpan.FromMilliseconds(entry.TimeoutMs), provider, lockId, token)),
             cancellationToken);
+    }
+
+    private async Task<bool> RenewLockAsync(Guid id, TimeSpan sendTimeout, IServiceProvider provider, string lockId, CancellationToken cancellationToken)
+    {
+        var now = _timeProvider.GetUtcNow();
+        var connectionProvider = provider.GetRequiredService<ISqliteConnectionProvider>();
+        await using var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken);
+        await using var command = connectionHandle.Connection.CreateCommand();
+        command.Transaction = connectionHandle.Transaction;
+        command.CommandText = """
+            UPDATE ashlar_security_event_webhook_outbox
+            SET locked_until = $lockedUntil
+            WHERE id = $id
+              AND locked_by = $lockedBy
+              AND locked_until > $now
+              AND sent_at IS NULL
+              AND failed_at IS NULL
+              AND discarded_at IS NULL
+            """;
+        command.AddParameter("$id", id.ToString("D"));
+        command.AddParameter(LockedByParameter, lockId);
+        command.AddDateTimeOffsetParameter("$now", now);
+        command.AddDateTimeOffsetParameter("$lockedUntil", now.Add(_options.LockDuration > sendTimeout ? _options.LockDuration : sendTimeout));
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
     private async Task<bool> MarkAsSentAsync(Guid id, IServiceProvider provider, string lockId, CancellationToken cancellationToken)

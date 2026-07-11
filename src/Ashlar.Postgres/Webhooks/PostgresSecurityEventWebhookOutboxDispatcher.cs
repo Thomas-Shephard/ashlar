@@ -100,8 +100,28 @@ internal sealed class PostgresSecurityEventWebhookOutboxDispatcher(
                 _destinationValidator,
                 _webhookOptions,
                 _timeProvider,
-                _deliveryObserver),
+                _deliveryObserver,
+                (id, token) => RenewLockAsync(id, lockId, TimeSpan.FromMilliseconds(entry.TimeoutMs), provider, token)),
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<bool> RenewLockAsync(Guid id, string lockId, TimeSpan sendTimeout, IServiceProvider provider, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE ashlar_security_event_webhook_outbox
+            SET locked_until = @LockedUntil
+            WHERE id = @Id
+              AND locked_by = @LockedBy
+              AND locked_until > @Now
+              AND sent_at IS NULL
+              AND failed_at IS NULL
+              AND discarded_at IS NULL
+            """;
+        var now = _timeProvider.GetUtcNow();
+        var connectionProvider = provider.GetRequiredService<IPostgresConnectionProvider>();
+        await using var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken).ConfigureAwait(false);
+        var command = new CommandDefinition(sql, new { Id = id, LockedBy = lockId, Now = now, LockedUntil = now.Add(_options.LockDuration > sendTimeout ? _options.LockDuration : sendTimeout) }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+        return await connectionHandle.Connection.ExecuteAsync(command).ConfigureAwait(false) > 0;
     }
 
     private async Task<bool> MarkAsSentAsync(Guid id, string lockId, IServiceProvider provider, CancellationToken cancellationToken)

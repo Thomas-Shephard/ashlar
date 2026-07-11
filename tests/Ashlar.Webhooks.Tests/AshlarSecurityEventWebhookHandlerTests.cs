@@ -1402,6 +1402,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         };
     }
 
+    private static Task<bool> OwnsLockAsync(Guid _, CancellationToken __) => Task.FromResult(true);
+
     private static AshlarSecurityEventWebhookOutboxDispatchContext CreateOutboxDispatchContext(
         HttpMessageHandler transport,
         IAshlarSecurityEventWebhookDeliveryObserver? observer,
@@ -1421,7 +1423,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             CreateDestinationValidator(),
             CreateOptions(CreateEndpoint()),
             TimeProvider.System,
-            observer);
+            observer,
+            OwnsLockAsync);
     }
 
     private static AshlarSecurityEventWebhookDestinationValidator CreateDestinationValidator()
@@ -1642,7 +1645,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             CreateDestinationValidator(),
             CreateOptions(CreateEndpoint()),
             TimeProvider.System,
-            observer);
+            observer,
+            OwnsLockAsync);
         var entry = CreateOutboxEntry();
 
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, context, CancellationToken.None);
@@ -1685,7 +1689,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             CreateDestinationValidator(),
             CreateOptions(CreateEndpoint()),
             TimeProvider.System,
-            new ThrowingDeliveryObserver());
+            new ThrowingDeliveryObserver(),
+            OwnsLockAsync);
 
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
@@ -1717,7 +1722,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             CreateDestinationValidator(),
             CreateOptions(CreateEndpoint()),
             TimeProvider.System,
-            observer);
+            observer,
+            OwnsLockAsync);
 
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
 
@@ -1750,7 +1756,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             CreateDestinationValidator(),
             CreateOptions(CreateEndpoint()),
             TimeProvider.System,
-            observer);
+            observer,
+            OwnsLockAsync);
 
         var exception = Assert.ThrowsAsync<InvalidOperationException>(() =>
             AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None));
@@ -1801,7 +1808,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             CreateDestinationValidator(),
             CreateOptions(CreateEndpoint()),
             TimeProvider.System,
-            observer);
+            observer,
+            OwnsLockAsync);
 
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
@@ -1834,7 +1842,9 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             (_, _, _, _) => { },
             CreateDestinationValidator(),
             CreateOptions(endpoint),
-            TimeProvider.System);
+            TimeProvider.System,
+            DeliveryObserver: null,
+            RenewLockAsync: OwnsLockAsync);
 
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
             CreateOutboxEntry(uri: "https://127.0.0.1/security-events"),
@@ -1925,6 +1935,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, valid with { DestinationValidator = null! }, CancellationToken.None));
             Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, valid with { WebhookOptions = null! }, CancellationToken.None));
             Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, valid with { TimeProvider = null! }, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, valid with { RenewLockAsync = null! }, CancellationToken.None));
         }
     }
 
@@ -2008,7 +2019,9 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             (_, _, _, _) => { },
             CreateDestinationValidator(),
             CreateOptions(endpoint),
-            TimeProvider.System);
+            TimeProvider.System,
+            DeliveryObserver: null,
+            RenewLockAsync: OwnsLockAsync);
         var entry = CreateOutboxEntry();
         var staleHeaders = JsonSerializer.Deserialize<Dictionary<string, string>>(entry.Headers)!;
         staleHeaders[AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName.ToLowerInvariant()] = "1";
@@ -2076,7 +2089,9 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             (_, _, finalFailure, _) => loggedAsFinal = finalFailure,
             CreateDestinationValidator(),
             CreateOptions(endpoint),
-            TimeProvider.System);
+            TimeProvider.System,
+            DeliveryObserver: null,
+            RenewLockAsync: OwnsLockAsync);
 
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
             CreateOutboxEntry(headers: disabled ? "{" : null, uri: disabled ? "not a uri" : null),
@@ -2182,7 +2197,9 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             (_, _, _, _) => { },
             CreateDestinationValidator(),
             options,
-            TimeProvider.System);
+            TimeProvider.System,
+            DeliveryObserver: null,
+            RenewLockAsync: OwnsLockAsync);
 
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
 
@@ -2217,7 +2234,9 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             (_, _, _, _) => { },
             CreateDestinationValidator(),
             CreateOptions(endpoint),
-            TimeProvider.System);
+            TimeProvider.System,
+            DeliveryObserver: null,
+            RenewLockAsync: OwnsLockAsync);
 
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
 

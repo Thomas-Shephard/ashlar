@@ -78,6 +78,7 @@ public sealed class AshlarSecurityEventWebhookOutboxEntry
 /// <param name="WebhookOptions">The current webhook endpoint configuration.</param>
 /// <param name="TimeProvider">The time provider used for dispatch-time signing.</param>
 /// <param name="DeliveryObserver">The provider-neutral delivery observer.</param>
+/// <param name="RenewLockAsync">The callback that renews lock ownership immediately before sending and returns whether the row remains owned.</param>
 public sealed record AshlarSecurityEventWebhookOutboxDispatchContext(
     IHttpClientFactory HttpClientFactory,
     string HttpClientName,
@@ -88,7 +89,8 @@ public sealed record AshlarSecurityEventWebhookOutboxDispatchContext(
     AshlarSecurityEventWebhookDestinationValidator DestinationValidator,
     AshlarSecurityEventWebhookOptions WebhookOptions,
     TimeProvider TimeProvider,
-    IAshlarSecurityEventWebhookDeliveryObserver? DeliveryObserver = null);
+    IAshlarSecurityEventWebhookDeliveryObserver? DeliveryObserver,
+    Func<Guid, CancellationToken, Task<bool>> RenewLockAsync);
 
 /// <summary>
 /// Provides shared helpers for dispatching durable security event webhook outbox entries.
@@ -154,6 +156,7 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         ArgumentNullException.ThrowIfNull(context.DestinationValidator);
         ArgumentNullException.ThrowIfNull(context.WebhookOptions);
         ArgumentNullException.ThrowIfNull(context.TimeProvider);
+        ArgumentNullException.ThrowIfNull(context.RenewLockAsync);
 
         var start = Stopwatch.GetTimestamp();
         try
@@ -190,6 +193,11 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
 
             headers = RegenerateSigningHeaders(entry, context, endpoint, headers, uri);
             using var request = MapToHttpRequest(entry, headers);
+            if (!await context.RenewLockAsync(entry.Id, timeout.Token).ConfigureAwait(false))
+            {
+                return;
+            }
+
             var client = context.HttpClientFactory.CreateClient(context.HttpClientName);
             using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
