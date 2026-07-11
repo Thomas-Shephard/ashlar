@@ -239,12 +239,17 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
         }
 
         var bytes = address.GetAddressBytes();
+        if (bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0x00, 0x64, 0xff, 0x9b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]))
+        {
+            return destinationPolicy == AshlarSecurityEventWebhookDestinationPolicy.PublicInternetOnly
+                || IsBlockedIPv4(bytes[12..16], destinationPolicy);
+        }
+
         return bytes[0] == 0xff
             || bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80
             || destinationPolicy != AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks
                 && ((bytes[0] & 0xfe) == 0xfc
                     || bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0
-                    || bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0x00, 0x64, 0xff, 0x9b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
                     || bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0x00, 0x64, 0xff, 0x9b, 0x00, 0x01]));
     }
 }
