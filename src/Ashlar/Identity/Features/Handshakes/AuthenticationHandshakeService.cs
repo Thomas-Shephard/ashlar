@@ -18,7 +18,7 @@ internal interface IAuthenticationHandshakeOrchestrationService : IAuthenticatio
     Task<Result<AuthenticationHandshakeCreated>> CreateHandshakeAsync(CreateAuthenticationHandshakeRequest request, CancellationToken cancellationToken = default);
 }
 
-internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeService, IAuthenticationHandshakeOrchestrationService, IAuthenticationHandshakeCompletionService
+internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeOrchestrationService, IAuthenticationHandshakeCompletionService
 {
     private const string HandshakeIdProperty = "handshake_id";
     private const string LookupRateLimitPurpose = "handshake-lookup";
@@ -108,12 +108,13 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
 
         var metadata = NormalizeMetadata(request.Metadata);
 
+        var tenant = request.Context?.TenantId is { } tenantId ? new TenantContext(tenantId) : null;
         var userResult = _userRepository == null
             ? Result.Failure<IUser>(AshlarFailureCodes.UserNotFound)
             : await UserTenantValidator.GetUserInTenantAsync(
                 _userRepository,
                 request.UserId,
-                request.Context?.TenantId is { } tenantId ? new TenantContext(tenantId) : null,
+                tenant,
                 cancellationToken);
         if (!userResult.TryGetValue(out _))
         {

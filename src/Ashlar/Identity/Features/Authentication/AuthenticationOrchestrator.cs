@@ -56,20 +56,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
     internal AuthenticationOrchestrator(
         IAuthenticationPipeline pipeline,
         IAuthenticationFactorPipeline factorPipeline,
-        IAuthenticationHandshakeOrchestrationService handshakeService,
-        IAuthenticationHandshakeCompletionService handshakeCompletionService,
-        IMfaPolicyEvaluator policyEvaluator,
-        IAuthenticationProviderRegistry providerRegistry,
-        AuthenticationOrchestratorDependencies? dependencies = null)
-        : this(pipeline, factorPipeline, handshakeService, handshakeService, handshakeCompletionService, policyEvaluator, providerRegistry, dependencies)
-    {
-    }
-
-    internal AuthenticationOrchestrator(
-        IAuthenticationPipeline pipeline,
-        IAuthenticationFactorPipeline factorPipeline,
         IAuthenticationHandshakeService handshakeService,
-        IAuthenticationHandshakeOrchestrationService handshakeCreationService,
         IAuthenticationHandshakeCompletionService handshakeCompletionService,
         IMfaPolicyEvaluator policyEvaluator,
         IAuthenticationProviderRegistry providerRegistry,
@@ -78,12 +65,14 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
         _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
         _factorPipeline = factorPipeline ?? throw new ArgumentNullException(nameof(factorPipeline));
         _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
-        _handshakeCreationService = handshakeCreationService ?? throw new ArgumentNullException(nameof(handshakeCreationService));
         _handshakeCompletionService = handshakeCompletionService ?? throw new ArgumentNullException(nameof(handshakeCompletionService));
         _policyEvaluator = policyEvaluator ?? throw new ArgumentNullException(nameof(policyEvaluator));
         _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
 
         var validatedDependencies = ValidateDependencies(dependencies);
+        _handshakeCreationService = validatedDependencies.HandshakeCreationService
+            ?? handshakeService as IAuthenticationHandshakeOrchestrationService
+            ?? throw new ArgumentException("Handshake creation service is required.", nameof(dependencies));
         _globalOptions = validatedDependencies.GlobalOptions?.Value ?? new MfaOrchestrationOptions();
         _serviceProvider = validatedDependencies.ServiceProvider;
         _logger = validatedDependencies.Logger ?? NullLogger<AuthenticationOrchestrator>.Instance;
@@ -490,7 +479,9 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
 /// <param name="GlobalOptions">The global orchestration options.</param>
 /// <param name="ServiceProvider">The service provider used for opt-in remembered MFA device support.</param>
 /// <param name="Logger">Optional logger for authentication orchestration diagnostics.</param>
+/// <param name="HandshakeCreationService">Internal service used to create handshakes after primary authentication.</param>
 internal sealed record AuthenticationOrchestratorDependencies(
     IOptions<MfaOrchestrationOptions>? GlobalOptions = null,
     IServiceProvider? ServiceProvider = null,
-    ILogger<AuthenticationOrchestrator>? Logger = null);
+    ILogger<AuthenticationOrchestrator>? Logger = null,
+    IAuthenticationHandshakeOrchestrationService? HandshakeCreationService = null);
