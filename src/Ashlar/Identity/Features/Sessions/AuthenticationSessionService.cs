@@ -16,7 +16,6 @@ internal sealed class AuthenticationSessionService(
     ILogger<AuthenticationSessionService>? logger = null)
     : IAuthenticationSessionService, IAuthenticationSessionMutationExecutor
 {
-    private readonly ActiveSessionFreshProofValidator _proofValidator = new(repository, dependencies.TimeProvider ?? TimeProvider.System);
     internal const string SelfServiceProofPurpose = "session-management";
     private static readonly Action<ILogger, Guid, Guid, Exception?> SessionLastSeenUpdateNotPersisted =
         LoggerMessage.Define<Guid, Guid>(
@@ -37,6 +36,7 @@ internal sealed class AuthenticationSessionService(
     private const string StepUpFactorPropertyName = "factor";
     private const string UserIdCannotBeEmptyMessage = "User ID cannot be empty.";
     private readonly IAuthenticationSessionRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+    private readonly ActiveSessionFreshProofValidator _proofValidator = new(repository, dependencies.TimeProvider ?? TimeProvider.System);
     private readonly ISecureTokenHasher _tokenHasher = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
     private readonly ISecureTokenGenerator _tokenGenerator = tokenGenerator ?? throw new ArgumentNullException(nameof(tokenGenerator));
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));

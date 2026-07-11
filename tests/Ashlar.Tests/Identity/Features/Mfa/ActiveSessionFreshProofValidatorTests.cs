@@ -7,6 +7,18 @@ internal sealed class ActiveSessionFreshProofValidatorTests
 {
     private static readonly DateTimeOffset Now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
+    [Test]
+    public void ConstructorShouldRejectNullDependencies()
+    {
+        var repository = Mock.Of<IAuthenticationSessionRepository>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentNullException>(() => _ = new ActiveSessionFreshProofValidator(null!, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => _ = new ActiveSessionFreshProofValidator(repository, null!));
+        }
+    }
+
     [TestCase("missing")]
     [TestCase("revoked")]
     [TestCase("expired")]
@@ -68,6 +80,31 @@ internal sealed class ActiveSessionFreshProofValidatorTests
         var sessionId = Guid.NewGuid();
         var clock = new FakeTimeProvider(Now);
         var proof = new FreshMfaVerificationProof(userId, null, sessionId, Now, Now.AddSeconds(1), "purpose");
+        var repository = new Mock<IAuthenticationSessionRepository>();
+        repository.Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
+            .Callback(() => clock.Advance(TimeSpan.FromSeconds(2)))
+            .ReturnsAsync(new AuthenticationSession
+            {
+                Id = sessionId,
+                UserId = userId,
+                TokenHash = "hash",
+                CreatedAt = Now.AddHours(-1),
+                ExpiresAt = Now.AddHours(1)
+            });
+
+        var failure = await new ActiveSessionFreshProofValidator(repository.Object, clock)
+            .ValidateAsync(userId, TenantContext.Global, proof, sessionId, "purpose", CancellationToken.None);
+
+        Assert.That(failure, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
+    }
+
+    [Test]
+    public async Task PrimaryValidateAsyncShouldRecheckExpiryAfterSessionLookup()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var clock = new FakeTimeProvider(Now);
+        var proof = new FreshPrimaryAuthenticationProof(userId, null, sessionId, Now, Now.AddSeconds(1), "purpose");
         var repository = new Mock<IAuthenticationSessionRepository>();
         repository.Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
             .Callback(() => clock.Advance(TimeSpan.FromSeconds(2)))
