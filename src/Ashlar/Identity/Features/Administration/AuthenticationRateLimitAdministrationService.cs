@@ -3,20 +3,27 @@ using Ashlar.Identity.RateLimiting.Abstractions;
 
 namespace Ashlar.Identity.Features.Administration;
 
-internal sealed class AuthenticationRateLimitAdministrationService(
-    IAuthenticationRateLimitAdministrationRepository repository,
-    AuthenticationRateLimitAdministrationServiceDependencies dependencies)
-    : IAuthenticationRateLimitAdministrationService
+internal sealed class AuthenticationRateLimitAdministrationService : IAuthenticationRateLimitAdministrationService
 {
     internal const int MaximumLimit = 100;
 
-    private readonly IAuthenticationRateLimitAdministrationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(
-        (dependencies ?? throw new ArgumentNullException(nameof(dependencies))).SecurityEventSink,
-        dependencies.TransactionProvider,
-        "Authentication rate-limit resets"), dependencies.TimeProvider);
-    private readonly IAshlarDurableTransactionProvider _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
-    private readonly bool _failClosedBeforeNonAtomicReset = repository is INonAtomicAuthenticationRateLimitAdministrationRepository;
+    private readonly IAuthenticationRateLimitAdministrationRepository _repository;
+    private readonly SecurityEventEmitter _securityEvents;
+    private readonly IAshlarDurableTransactionProvider _transactionProvider;
+    private readonly bool _failClosedBeforeNonAtomicReset;
+
+    public AuthenticationRateLimitAdministrationService(
+        IAuthenticationRateLimitAdministrationRepository repository,
+        AuthenticationRateLimitAdministrationServiceDependencies dependencies)
+    {
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        ArgumentNullException.ThrowIfNull(dependencies);
+        _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
+        _securityEvents = new SecurityEventEmitter(
+            DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, _transactionProvider, "Authentication rate-limit resets"),
+            dependencies.TimeProvider);
+        _failClosedBeforeNonAtomicReset = repository is INonAtomicAuthenticationRateLimitAdministrationRepository;
+    }
 
     public async Task<Result<AuthenticationRateLimitBucketResetResult>> ResetBucketAsync(ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)
     {

@@ -5,26 +5,33 @@ namespace Ashlar.Identity.Features.Invitations;
 /// <summary>
 /// Implements administrator invitation search, single-item lookup, and revocation operations.
 /// </summary>
-/// <param name="repository">Repository used for safe administrator invitation lookup and mutation.</param>
-/// <param name="dependencies">Optional clock and audit dependencies.</param>
 /// <remarks>
 /// These operations are intended for administrative diagnostics and operations tooling and do not authorize the caller.
 /// Host applications must protect usage of this service with appropriate admin authorization and step-up policy.
 /// </remarks>
-internal sealed class InvitationAdministrationService(
-    IInvitationRepository repository,
-    InvitationAdministrationServiceDependencies dependencies) : IInvitationAdministrationService
+internal sealed class InvitationAdministrationService : IInvitationAdministrationService
 {
     internal const int MaximumLimit = 100;
     internal const int MaximumReasonLength = 512;
 
-    private readonly IInvitationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-    private readonly TimeProvider _timeProvider = (dependencies ?? throw new ArgumentNullException(nameof(dependencies))).TimeProvider ?? TimeProvider.System;
-    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(
-        dependencies.SecurityEventSink,
-        dependencies.TransactionProvider,
-        "Invitation revocation"), dependencies.TimeProvider ?? TimeProvider.System);
-    private readonly IAshlarDurableTransactionProvider _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
+    private readonly IInvitationRepository _repository;
+    private readonly TimeProvider _timeProvider;
+    private readonly SecurityEventEmitter _securityEvents;
+    private readonly IAshlarDurableTransactionProvider _transactionProvider;
+
+    /// <summary>Initializes invitation revocation with durable audit composition.</summary>
+    public InvitationAdministrationService(
+        IInvitationRepository repository,
+        InvitationAdministrationServiceDependencies dependencies)
+    {
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        ArgumentNullException.ThrowIfNull(dependencies);
+        _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
+        _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
+        _securityEvents = new SecurityEventEmitter(
+            DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, _transactionProvider, "Invitation revocation"),
+            _timeProvider);
+    }
 
     /// <inheritdoc />
     public async Task<Result<RevokeInvitationAdministrationResult>> RevokeInvitationAsync(RevokeInvitationAdministrationRequest request, CancellationToken cancellationToken = default)

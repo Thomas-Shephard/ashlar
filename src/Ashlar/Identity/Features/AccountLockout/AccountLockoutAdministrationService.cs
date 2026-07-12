@@ -2,19 +2,26 @@ using Ashlar.Auditing;
 
 namespace Ashlar.Identity.Features.AccountLockout;
 
-internal sealed class AccountLockoutAdministrationService(
-    IAccountLockoutRepository repository,
-    AccountLockoutAdministrationServiceDependencies dependencies) : IAccountLockoutAdministrationService
+internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdministrationService
 {
     internal const int MaximumLimit = 100;
     internal const int MaximumReasonLength = 512;
 
-    private readonly IAccountLockoutRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(
-        (dependencies ?? throw new ArgumentNullException(nameof(dependencies))).SecurityEventSink,
-        dependencies.TransactionProvider,
-        "Account-lockout reset"), dependencies.TimeProvider ?? TimeProvider.System);
-    private readonly IAshlarDurableTransactionProvider _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
+    private readonly IAccountLockoutRepository _repository;
+    private readonly SecurityEventEmitter _securityEvents;
+    private readonly IAshlarDurableTransactionProvider _transactionProvider;
+
+    public AccountLockoutAdministrationService(
+        IAccountLockoutRepository repository,
+        AccountLockoutAdministrationServiceDependencies dependencies)
+    {
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        ArgumentNullException.ThrowIfNull(dependencies);
+        _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
+        _securityEvents = new SecurityEventEmitter(
+            DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, _transactionProvider, "Account-lockout reset"),
+            dependencies.TimeProvider ?? TimeProvider.System);
+    }
 
     public async Task<Result<ResetAccountLockoutResult>> ResetLockoutAsync(
         Guid userId,
