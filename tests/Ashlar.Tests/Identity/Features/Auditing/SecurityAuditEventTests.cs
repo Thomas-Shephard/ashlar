@@ -553,8 +553,29 @@ internal sealed class SecurityAuditEventTests
 
         services.AddAshlarIdentity();
 
-        var descriptor = services.Single(d => d.ServiceType == typeof(ISecurityEventSink));
-        Assert.That(descriptor.ImplementationType, Is.EqualTo(typeof(SecurityEventFanOutSink)));
+        using var provider = services.BuildServiceProvider();
+        Assert.That(provider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
+    }
+
+    [Test]
+    public void AddAshlarIdentityReplacesEarlierConcreteFanOutRegistration()
+    {
+        var custom = new SecurityEventFanOutSink();
+        var transactions = Mock.Of<IAshlarDurableTransactionProvider>();
+        var services = new ServiceCollection();
+        services.AddSingleton(custom);
+        services.AddSingleton<IAshlarTransactionProvider>(transactions);
+        services.AddSingleton(Mock.Of<IPersistentSecurityEventSink>());
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+        var composed = provider.GetRequiredService<SecurityEventFanOutSink>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(composed, Is.Not.SameAs(custom));
+            Assert.That(composed.RequiresDurableTransaction, Is.True);
+            Assert.That(composed.TransactionProvider, Is.SameAs(transactions));
+        }
     }
 
     private static (AuthenticationPipeline Pipeline, Mock<IAuthenticationProviderRegistry> Registry, TestCredentialService CredentialService, Mock<IPrimaryAuthenticationProvider> ProviderMock, IAuthenticationProvider Provider, TestAssertion Assertion, User User, UserCredential Credential) CreatePipeline(ISecurityEventSink sink)

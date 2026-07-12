@@ -33,7 +33,7 @@ internal sealed class AshlarCompositionTests
         services.AddSingleton<IAuthenticationRateLimiter>(rateLimiter);
         services
             .AddAshlarIdentity()
-            .AddAshlarNullTransactions()
+            .AddDurableAuditForTests()
             .AddPermissiveAccountSecurityGuard()
             .AddAuthenticationProvider<LocalPasswordProvider>()
             .AddPasswordHasher<FakePasswordHasher>();
@@ -54,7 +54,7 @@ internal sealed class AshlarCompositionTests
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecretProtector>(), Is.SameAs(secretProtector));
             Assert.That(scope.ServiceProvider.GetRequiredService<IEmailSender>(), Is.SameAs(emailSender));
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiter>(), Is.SameAs(rateLimiter));
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<NullTransactionProvider>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<RecordingTransactionProvider>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarOperationsSummaryService>(), Is.TypeOf<AshlarOperationsSummaryService>());
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);

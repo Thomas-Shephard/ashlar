@@ -69,7 +69,8 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
         services.AddSingleton(Mock.Of<IPasskeyChallengeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddAshlarNullTransactions();
+        services.AddSingleton<IAshlarTransactionProvider>(Mock.Of<IAshlarDurableTransactionProvider>());
+        services.AddSingleton(Mock.Of<IPersistentSecurityEventSink>());
         services.AddPermissiveAccountSecurityGuard();
         services.AddPasswordHasher<PasswordHasherV1>();
         services.AddAshlarPasskeys(options =>

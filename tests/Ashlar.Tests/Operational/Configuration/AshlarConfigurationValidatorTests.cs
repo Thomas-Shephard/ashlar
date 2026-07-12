@@ -1086,6 +1086,19 @@ internal sealed class AshlarConfigurationValidatorTests
     }
 
     [Test]
+    public async Task CoreCheckReportsAuditWarningWhenPersistentSinkIsNotReachableThroughFanOut()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IPersistentSecurityEventSink, CustomPersistentSecurityEventSink>();
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        AssertIssue(result, AshlarConfigurationIssueCodes.NullSecurityEventSink, AshlarConfigurationIssueSeverity.Warning);
+    }
+
+    [Test]
     public async Task ChecksDoNotThrowIfOptionalServicesAreMissing()
     {
         var services = new ServiceCollection();
@@ -1413,7 +1426,7 @@ internal sealed class AshlarConfigurationValidatorTests
         }
     }
 
-    private sealed class CustomTransactionProvider : IAshlarTransactionProvider
+    private sealed class CustomTransactionProvider : IAshlarDurableTransactionProvider
     {
         public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
         {

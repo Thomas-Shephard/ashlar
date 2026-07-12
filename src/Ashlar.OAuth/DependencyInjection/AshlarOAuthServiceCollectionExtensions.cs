@@ -56,8 +56,7 @@ public static class AshlarOAuthServiceCollectionExtensions
             provider.GetRequiredService<IAshlarDurableTransactionProvider>(),
             provider.GetRequiredService<global::Microsoft.Extensions.Options.IOptionsMonitor<AshlarOAuthOptions>>(),
             provider.GetRequiredService<IOidcInvitationEmailMatchPolicy>(),
-            provider.GetRequiredService<ISecurityEventSink>() as SecurityEventFanOutSink
-                ?? throw new InvalidOperationException("OIDC invitation registration requires SecurityEventFanOutSink."),
+            provider.GetRequiredService<SecurityEventFanOutSink>(),
             provider.GetService<TimeProvider>()));
         services.TryAddScoped<IOidcInvitationEmailMatchPolicy>(_ =>
         {

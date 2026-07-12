@@ -55,8 +55,8 @@ internal sealed class PasskeyService : IPasskeyService
     private readonly PasskeyOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ActiveSessionFreshProofValidator _proofValidator;
-    private readonly ISecurityEventSink? _securityEventSink;
-    private readonly IAshlarTransactionProvider? _transactionProvider;
+    private readonly SecurityEventFanOutSink _securityEventSink;
+    private readonly IAshlarDurableTransactionProvider _transactionProvider;
     private readonly IReadOnlyList<ISecondaryAuthenticationFactorProvider> _additionalVerificationProviders;
 
     public PasskeyService(
@@ -83,6 +83,8 @@ internal sealed class PasskeyService : IPasskeyService
         _proofValidator = new(dependencies.SessionRepository, _timeProvider);
         _securityEventSink = dependencies.SecurityEventSink;
         _transactionProvider = dependencies.TransactionProvider;
+        if (!_securityEventSink.RequiresDurableTransaction || !ReferenceEquals(_transactionProvider, _securityEventSink.TransactionProvider))
+            throw new ArgumentException("Passkey mutations require durable audit using the same transaction provider.", nameof(dependencies));
     }
 
     internal PasskeyService(
@@ -946,11 +948,6 @@ internal sealed class PasskeyService : IPasskeyService
 
     private Task RecordAsync(string eventType, string outcome, Guid? userId, string? failureReason, AuditContext? audit, Guid? tenantId, CancellationToken cancellationToken)
     {
-        if (_securityEventSink == null)
-        {
-            return Task.CompletedTask;
-        }
-
         return _securityEventSink.RecordAsync(new AshlarSecurityEvent
         {
             Id = Guid.NewGuid(),
@@ -968,23 +965,15 @@ internal sealed class PasskeyService : IPasskeyService
         }, cancellationToken);
     }
 
-    private async Task<IAshlarTransaction?> BeginTransactionAsync(CancellationToken cancellationToken)
+    private Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken)
     {
-        return _transactionProvider == null ? null : await _transactionProvider.BeginTransactionAsync(cancellationToken);
+        return _transactionProvider.BeginTransactionAsync(cancellationToken);
     }
 
-    private static Task CommitAsync(IAshlarTransaction? transaction, CancellationToken cancellationToken)
-    {
-        return transaction == null ? Task.CompletedTask : transaction.CommitAsync(cancellationToken);
-    }
+    private static Task CommitAsync(IAshlarTransaction transaction, CancellationToken cancellationToken) =>
+        transaction.CommitAsync(cancellationToken);
 
-    private static async Task DisposeTransactionAsync(IAshlarTransaction? transaction)
-    {
-        if (transaction != null)
-        {
-            await transaction.DisposeAsync();
-        }
-    }
+    private static ValueTask DisposeTransactionAsync(IAshlarTransaction transaction) => transaction.DisposeAsync();
 
     private static PasskeyAuthenticationResult FailedAuthentication(AshlarFailureCode failureCode, IUser? user = null)
     {
@@ -1027,7 +1016,7 @@ internal sealed class PasskeyServiceDependencies(
     ISecureTokenHasher tokenHasher,
     IAuthenticationRateLimiter rateLimiter,
     IAuthenticationSessionRepository sessionRepository,
-    PasskeyServiceInfrastructure? infrastructure = null)
+    PasskeyServiceInfrastructure infrastructure)
 {
     public IOptions<PasskeyOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
     public IAuthenticationOrchestrator AuthenticationOrchestrator { get; } = authenticationOrchestrator ?? throw new ArgumentNullException(nameof(authenticationOrchestrator));
@@ -1035,12 +1024,13 @@ internal sealed class PasskeyServiceDependencies(
     public ISecureTokenHasher TokenHasher { get; } = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
     public IAuthenticationRateLimiter RateLimiter { get; } = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
     public IAuthenticationSessionRepository SessionRepository { get; } = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
-    public TimeProvider TimeProvider { get; } = infrastructure?.TimeProvider ?? TimeProvider.System;
-    public ISecurityEventSink? SecurityEventSink { get; } = infrastructure?.SecurityEventSink;
-    public IAshlarTransactionProvider? TransactionProvider { get; } = infrastructure?.TransactionProvider;
+    public TimeProvider TimeProvider { get; } = infrastructure.TimeProvider ?? TimeProvider.System;
+    public SecurityEventFanOutSink SecurityEventSink { get; } = infrastructure.SecurityEventSink;
+    public IAshlarDurableTransactionProvider TransactionProvider { get; } = infrastructure.TransactionProvider
+        ?? throw new ArgumentException("Passkey mutations require a durable transaction provider.", nameof(infrastructure));
 }
 
 internal sealed record PasskeyServiceInfrastructure(
-    TimeProvider? TimeProvider = null,
-    ISecurityEventSink? SecurityEventSink = null,
-    IAshlarTransactionProvider? TransactionProvider = null);
+    TimeProvider? TimeProvider,
+    SecurityEventFanOutSink SecurityEventSink,
+    IAshlarDurableTransactionProvider TransactionProvider);

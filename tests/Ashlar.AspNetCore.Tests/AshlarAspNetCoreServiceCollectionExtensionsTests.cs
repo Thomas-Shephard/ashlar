@@ -2,6 +2,7 @@ using Ashlar.AspNetCore.Security.Encryption;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Auditing;
 using Ashlar.Authorization.Abstractions;
+using Ashlar.Identity.Abstractions.Transactions;
 using Ashlar.Testing.DependencyInjection;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
@@ -289,7 +290,8 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services.AddSingleton<ISecretProtector>(secretProtector);
         services.AddAshlarIdentity();
-        services.AddAshlarNullTransactions();
+        services.AddSingleton<IAshlarTransactionProvider>(Mock.Of<IAshlarDurableTransactionProvider>());
+        services.AddSingleton(Mock.Of<IPersistentSecurityEventSink>());
         services.AddPermissiveAccountSecurityGuard();
         services.AddPasswordHasher<PasswordHasherV1>();
         services.AddAshlarAuthorization();

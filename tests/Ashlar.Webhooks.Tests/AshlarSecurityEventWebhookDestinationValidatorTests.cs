@@ -120,6 +120,7 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
     [TestCase("https://0.0.0.0/security-events")]
     [TestCase("https://localhost/security-events")]
     [TestCase("https://[fe80::1]/security-events")]
+    [TestCase("https://[ff00::1]/security-events")]
     [TestCase("https://[64:ff9b::7f00:1]/security-events")]
     [TestCase("https://[64:ff9b::a9fe:1]/security-events")]
     [TestCase("https://[64:ff9b::e000:1]/security-events")]
@@ -238,7 +239,7 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
     [TestCase("::ffff:0:1:7f00:1")]
     public void IPv4TranslatablePrefixRequiresExactFirst96Bits(string address)
     {
-        Assert.That(AshlarSecurityEventWebhookDestinationValidator.IsBlockedAddress(IPAddress.Parse(address)), Is.False);
+        Assert.That(AshlarSecurityEventWebhookDestinationValidator.IsBlockedAddress(IPAddress.Parse(address)), Is.True);
     }
 
     [Test]
@@ -574,25 +575,36 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
     [TestCase("203.0.113.1", true)]
     [TestCase("203.0.114.1", false)]
     [TestCase("2001:4860:4860::8888", false)]
-    [TestCase("fe00::1", false)]
+    [TestCase("2001:1::1", false)]
+    [TestCase("2001:3::1", false)]
+    [TestCase("2001:4:112::1", false)]
+    [TestCase("2001:20::1", false)]
+    [TestCase("2001:30::1", false)]
+    [TestCase("2001:db8::1", true)]
+    [TestCase("2001:2::1", true)]
+    [TestCase("2002::1", true)]
+    [TestCase("3fff::1", true)]
+    [TestCase("100::1", true)]
+    [TestCase("::192.0.2.1", true)]
+    [TestCase("fe00::1", true)]
     [TestCase("fe80::1", true)]
     [TestCase("fec0::", true)]
     [TestCase("fec0::1", true)]
     [TestCase("feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", true)]
     [TestCase("fd00::1", true)]
-    [TestCase("64:ff9b:0:ffff:ffff:ffff:ffff:ffff", false)]
-    [TestCase("64:ff9a:ffff:ffff:ffff:ffff:ffff:ffff", false)]
+    [TestCase("64:ff9b:0:ffff:ffff:ffff:ffff:ffff", true)]
+    [TestCase("64:ff9a:ffff:ffff:ffff:ffff:ffff:ffff", true)]
     [TestCase("64:ff9b::7f00:1", true)]
     [TestCase("64:ff9b::a00:1", true)]
     [TestCase("64:ff9b::a9fe:1", true)]
     [TestCase("64:ff9b::c000:201", true)]
     [TestCase("64:ff9b::e000:1", true)]
     [TestCase("64:ff9b::5db8:d822", true)]
-    [TestCase("64:ff9b:0:0:1::", false)]
+    [TestCase("64:ff9b:0:0:1::", true)]
     [TestCase("64:ff9b:1::", true)]
     [TestCase("64:ff9b:1::1", true)]
     [TestCase("64:ff9b:1:ffff:ffff:ffff:ffff:ffff", true)]
-    [TestCase("64:ff9b:2::", false)]
+    [TestCase("64:ff9b:2::", true)]
     [TestCase("::ffff:192.168.0.1", true)]
     public void IsBlockedAddressClassifiesBoundaryAddresses(string address, bool expected)
     {

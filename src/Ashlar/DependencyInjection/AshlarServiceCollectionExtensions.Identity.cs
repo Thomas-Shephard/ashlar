@@ -73,7 +73,7 @@ public static partial class AshlarServiceCollectionExtensions
                 provider.GetRequiredService<IAuthenticationPipeline>()),
             ServiceLifetime.Scoped));
         services.TryAddScoped(provider => new AuthenticationPipelineDependencies(
-            provider.GetService<ISecurityEventSink>(),
+            provider.GetRequiredService<SecurityEventFanOutSink>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationPipeline>>(),
             provider.GetService<IAccountLockoutService>(),
@@ -92,11 +92,16 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped<IPrimaryAuthenticationRateLimiter, PrimaryAuthenticationRateLimiter>();
         services.TryAddScoped<IAuthenticationFactorRateLimiter, AuthenticationFactorRateLimiter>();
         services.TryAddScoped<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>();
-        services.TryAddScoped(provider => new CredentialServiceDependencies(
-            provider.GetService<IdentityServiceOptions>(),
-            provider.GetService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>(),
-            provider.GetService<global::Microsoft.Extensions.Logging.ILogger<CredentialService>>()));
+        services.TryAddScoped(provider =>
+        {
+            var sink = provider.GetRequiredService<SecurityEventFanOutSink>();
+            var transactions = provider.GetRequiredService<IAshlarTransactionProvider>() as IAshlarDurableTransactionProvider
+                ?? throw new InvalidOperationException("Credential mutations require a durable transaction provider.");
+            if (!sink.RequiresDurableTransaction || !ReferenceEquals(transactions, sink.TransactionProvider))
+                throw new InvalidOperationException("Credential mutations require durable audit using the same transaction provider.");
+            return new CredentialServiceDependencies(provider.GetService<IdentityServiceOptions>(), provider.GetService<TimeProvider>(), sink,
+                provider.GetService<global::Microsoft.Extensions.Logging.ILogger<CredentialService>>());
+        });
         services.TryAddScoped<CredentialService>();
         services.TryAddScoped<ICredentialService>(provider => provider.GetRequiredService<CredentialService>());
         services.TryAddScoped<ICredentialLinkingInfrastructure>(provider => provider.GetRequiredService<CredentialService>());
@@ -173,7 +178,8 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         services.TryAddSingleton<ISecureTokenHasher, Sha256TokenHasher>();
         services.TryAddSingleton<SecureTokenContext>();
-        services.TryAddScoped<ISecurityEventSink, SecurityEventFanOutSink>();
+        services.Replace(ServiceDescriptor.Scoped<SecurityEventFanOutSink, SecurityEventFanOutSink>());
+        services.Replace(ServiceDescriptor.Scoped<ISecurityEventSink>(provider => provider.GetRequiredService<SecurityEventFanOutSink>()));
         services.TryAddSingleton<InMemoryAuthenticationRateLimiter>();
         services.TryAddSingleton<IAuthenticationRateLimiter>(provider => provider.GetRequiredService<InMemoryAuthenticationRateLimiter>());
         services.TryAddScoped<IAuthenticationRateLimiterDiagnostics>(provider =>

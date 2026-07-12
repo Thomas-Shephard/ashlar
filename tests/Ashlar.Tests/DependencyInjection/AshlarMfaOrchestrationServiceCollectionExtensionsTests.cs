@@ -33,7 +33,7 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddAshlarNullTransactions();
+        services.AddDurableAuditForTests();
         services.AddAshlarNoMfaPolicy();
 
         using var provider = services.BuildServiceProvider();
@@ -57,7 +57,7 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddAshlarNullTransactions();
+        services.AddDurableAuditForTests();
         services.AddAshlarNoMfaPolicy();
 
         using var provider = services.BuildServiceProvider();

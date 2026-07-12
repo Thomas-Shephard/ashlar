@@ -42,6 +42,25 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
     private readonly IReadOnlyCollection<IPNetwork> _nat64Prefixes;
     private static readonly IPNetwork WellKnownNat64Prefix = IPNetwork.Parse("64:ff9b::/96");
     private static readonly IPNetwork LocalUseNat64Prefix = IPNetwork.Parse("64:ff9b:1::/48");
+    private static readonly IPNetwork GlobalUnicast = IPNetwork.Parse("2000::/3");
+    private static readonly IPNetwork[] PublicSpecialPurpose =
+    [
+        IPNetwork.Parse("2001:1::1/128"),
+        IPNetwork.Parse("2001:1::2/128"),
+        IPNetwork.Parse("2001:1::3/128"),
+        IPNetwork.Parse("2001:3::/32"),
+        IPNetwork.Parse("2001:4:112::/48"),
+        IPNetwork.Parse("2001:20::/28"),
+        IPNetwork.Parse("2001:30::/28")
+    ];
+    private static readonly IPNetwork[] NonPublicGlobalUnicast =
+    [
+        IPNetwork.Parse("2001::/23"),
+        IPNetwork.Parse("2001:2::/48"),
+        IPNetwork.Parse("2001:db8::/32"),
+        IPNetwork.Parse("2002::/16"),
+        IPNetwork.Parse("3fff::/20")
+    ];
 
     /// <summary>
     /// Initializes a new instance of the validator.
@@ -292,12 +311,15 @@ public sealed class AshlarSecurityEventWebhookDestinationValidator
             return IsBlockedIPv4(ExtractNat64IPv4(bytes, nat64Prefix.Value.PrefixLength), destinationPolicy);
         }
 
+        if (destinationPolicy == AshlarSecurityEventWebhookDestinationPolicy.PublicInternetOnly)
+        {
+            return !GlobalUnicast.Contains(address)
+                || !PublicSpecialPurpose.Any(prefix => prefix.Contains(address))
+                    && NonPublicGlobalUnicast.Any(prefix => prefix.Contains(address));
+        }
+
         return bytes[0] == 0xff
-            || bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80
-            || destinationPolicy != AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks
-                && ((bytes[0] & 0xfe) == 0xfc
-                    || bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0
-                    || bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0x00, 0x64, 0xff, 0x9b, 0x00, 0x01]));
+            || bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80;
     }
 
     private static byte[] ExtractNat64IPv4(byte[] bytes, int prefixLength)
