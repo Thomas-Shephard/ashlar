@@ -553,7 +553,7 @@ internal sealed class EmailCodeSignInTests
         services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IEmailSender, RecordingEmailSender>();
-        services.AddAshlarNullTransactions();
+        services.AddDurableAuditForTests();
         services.AddAshlarEmailCodeSignIn(options => options.CodeLength = 6);
         services.AddAshlarNoMfaPolicy();
 

@@ -32,6 +32,7 @@ internal sealed class PostgresAspNetCoreAuthenticationIntegrationTests : Postgre
         services.AddSingleton<IEmailSender>(_emailSender);
         services.AddSingleton<IAccountSecurityOperationAuthorizer, PermitAccountSecurityOperationAuthorizer>();
         services.AddAshlarPostgres(GetConnectionString());
+        services.AddAshlarPostgresAuditSink();
         services.AddAshlarDataProtectionSecretProtector();
         services.AddAshlarMagicLinkSignIn();
         services.AddAshlarNoMfaPolicy();

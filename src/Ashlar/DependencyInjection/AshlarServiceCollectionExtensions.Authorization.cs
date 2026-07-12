@@ -41,12 +41,12 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthorizationGrantOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
-        services.TryAddScoped<ISecurityEventSink, SecurityEventFanOutSink>();
+        services.Replace(ServiceDescriptor.Scoped<SecurityEventFanOutSink, SecurityEventFanOutSink>());
+        services.Replace(ServiceDescriptor.Scoped<ISecurityEventSink>(provider => provider.GetRequiredService<SecurityEventFanOutSink>()));
         services.TryAddScoped(provider => new AuthorizationGrantService(
             provider.GetRequiredService<IAuthorizationGrantRepository>(),
             provider.GetRequiredService<IUserRepository>(),
-            provider.GetRequiredService<ISecurityEventSink>() as SecurityEventFanOutSink
-                ?? throw new InvalidOperationException("Authorization grant mutations require SecurityEventFanOutSink."),
+            provider.GetRequiredService<SecurityEventFanOutSink>(),
             provider.GetRequiredService<IAshlarDurableTransactionProvider>(),
             provider.GetService<AuthorizationGrantOptions>(),
             provider.GetService<TimeProvider>(),

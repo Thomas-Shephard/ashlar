@@ -37,7 +37,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
         var user = await CreateUserAsync(provider);
         var actor = await CreateActorAsync(provider);
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        Assert.ThrowsAsync<ArgumentException>(async () =>
             await provider.GetRequiredService<IAuthorizationGrantService>().CreateGrantAsync(
                 new CreateAuthorizationGrantRequest(user.Id, actor, actor.Audit, TenantContext.Global, permission: "posts.read")));
 
@@ -66,7 +66,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
         };
         await provider.GetRequiredService<IAuthorizationGrantRepository>().CreateGrantAsync(grant);
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        Assert.ThrowsAsync<ArgumentException>(async () =>
             await provider.GetRequiredService<IAuthorizationGrantService>().RevokeGrantAsync(
                 new RevokeAuthorizationGrantRequest(grant.Id, actor, actor.Audit, TenantContext.Global)));
 

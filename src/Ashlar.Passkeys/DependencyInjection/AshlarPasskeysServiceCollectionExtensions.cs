@@ -45,17 +45,22 @@ public static class AshlarPasskeysServiceCollectionExtensions
 
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, PasskeyAuthenticationProvider>());
         services.TryAddScoped<IPasskeyCeremonyValidator, Fido2PasskeyCeremonyValidator>();
-        services.TryAddScoped(provider => new PasskeyServiceDependencies(
-            provider.GetRequiredService<IOptions<PasskeyOptions>>(),
-            provider.GetRequiredService<IAuthenticationOrchestrator>(),
-            provider.GetRequiredService<IAuthenticationHandshakeService>(),
-            provider.GetRequiredService<ISecureTokenHasher>(),
-            provider.GetRequiredService<IAuthenticationRateLimiter>(),
-            provider.GetRequiredService<IAuthenticationSessionRepository>(),
-            new PasskeyServiceInfrastructure(
-                provider.GetService<TimeProvider>(),
-                provider.GetService<ISecurityEventSink>(),
-                provider.GetService<IAshlarTransactionProvider>())));
+        services.TryAddScoped(provider =>
+        {
+            var sink = provider.GetRequiredService<SecurityEventFanOutSink>();
+            var transactions = provider.GetRequiredService<IAshlarTransactionProvider>() as IAshlarDurableTransactionProvider
+                ?? throw new InvalidOperationException("Passkey mutations require a durable transaction provider.");
+            if (!sink.RequiresDurableTransaction || !ReferenceEquals(transactions, sink.TransactionProvider))
+                throw new InvalidOperationException("Passkey mutations require durable audit using the same transaction provider.");
+            return new PasskeyServiceDependencies(
+                provider.GetRequiredService<IOptions<PasskeyOptions>>(),
+                provider.GetRequiredService<IAuthenticationOrchestrator>(),
+                provider.GetRequiredService<IAuthenticationHandshakeService>(),
+                provider.GetRequiredService<ISecureTokenHasher>(),
+                provider.GetRequiredService<IAuthenticationRateLimiter>(),
+                provider.GetRequiredService<IAuthenticationSessionRepository>(),
+                new PasskeyServiceInfrastructure(provider.GetService<TimeProvider>(), sink, transactions));
+        });
         services.TryAddScoped<IPasskeyService, PasskeyService>();
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<PasskeyOptions>>().Value);
         services.AddAshlarConfigurationValidation();

@@ -398,7 +398,8 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
 
     private static void AddNullSecurityEventSinkIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
     {
-        if (serviceProvider.GetService<IPersistentSecurityEventSink>() is null)
+        if (serviceProvider.GetService<IPersistentSecurityEventSink>() is null
+            || serviceProvider.GetService<SecurityEventFanOutSink>() is not { RequiresDurableTransaction: true })
         {
             issues.Add(new AshlarConfigurationIssue(
                 AshlarConfigurationIssueCodes.NullSecurityEventSink,

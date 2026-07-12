@@ -56,7 +56,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<ISecureTokenGenerator, SecureTokenGenerator>(services, ServiceLifetime.Singleton);
             AssertDescriptor<ISecureTokenHasher, Sha256TokenHasher>(services, ServiceLifetime.Singleton);
             AssertDescriptor<SecureTokenContext>(services, ServiceLifetime.Singleton);
-            AssertDescriptor<ISecurityEventSink, SecurityEventFanOutSink>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<ISecurityEventSink>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<SecurityEventFanOutSink>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IEmailSender, NullEmailSender>(services, ServiceLifetime.Singleton);
             AssertDescriptor<IdentityServiceOptions>(services, ServiceLifetime.Singleton);
             AssertDescriptor<AuthenticationSessionOptions>(services, ServiceLifetime.Singleton);
@@ -388,7 +389,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
+        services.AddDurableAuditForTests();
         services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services
             .AddAshlarIdentity()
@@ -480,7 +481,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
+        services.AddDurableAuditForTests();
 
         services.AddAshlarPasswordReset();
 
@@ -578,7 +579,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             .ReturnsAsync(true);
         var services = new ServiceCollection();
         services.AddSingleton(repository.Object);
-        services.AddSingleton<ISecurityEventSink>(events);
+        services.AddSingleton<ISecurityEventHandler>(events);
         services.AddAshlarIdentity();
 
         using var provider = services.BuildServiceProvider();
@@ -760,7 +761,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
         services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
+        services.AddDurableAuditForTests();
         services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services.AddAshlarIdentity();
 
@@ -934,7 +935,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionService>());
-        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
+        services.AddDurableAuditForTests();
         services.AddAshlarIdentity();
 
         using var provider = services.BuildServiceProvider();
@@ -975,11 +976,11 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         public Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
-    private sealed class RecordingSecurityEventSink : ISecurityEventSink
+    private sealed class RecordingSecurityEventSink : ISecurityEventHandler
     {
         public List<AshlarSecurityEvent> Events { get; } = [];
 
-        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        public Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
         {
             Events.Add(securityEvent);
             return Task.CompletedTask;
@@ -1063,7 +1064,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
+        services.AddDurableAuditForTests();
         services.AddAshlarEmailVerification();
 
         using var provider = services.BuildServiceProvider();
@@ -1116,7 +1117,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
-        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
+        services.AddDurableAuditForTests();
         services.AddAshlarEmailChange();
 
         using var provider = services.BuildServiceProvider();
