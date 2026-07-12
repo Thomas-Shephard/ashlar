@@ -11,10 +11,11 @@ internal sealed class AuthenticationRateLimitAdministrationService(
     internal const int MaximumLimit = 100;
 
     private readonly IAuthenticationRateLimitAdministrationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-    private readonly AuthenticationRateLimitAdministrationServiceDependencies _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
-    private readonly TimeProvider _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
+    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(
+        (dependencies ?? throw new ArgumentNullException(nameof(dependencies))).SecurityEventSink,
+        dependencies.TransactionProvider,
+        "Authentication rate-limit resets"), dependencies.TimeProvider);
     private readonly IAshlarDurableTransactionProvider _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
-    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, dependencies.TransactionProvider, "Authentication rate-limit resets"), dependencies.TimeProvider);
     private readonly bool _failClosedBeforeNonAtomicReset = repository is INonAtomicAuthenticationRateLimitAdministrationRepository;
 
     public async Task<Result<AuthenticationRateLimitBucketResetResult>> ResetBucketAsync(ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)

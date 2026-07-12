@@ -19,10 +19,12 @@ internal sealed class InvitationAdministrationService(
     internal const int MaximumReasonLength = 512;
 
     private readonly IInvitationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-    private readonly InvitationAdministrationServiceDependencies _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
-    private readonly TimeProvider _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
+    private readonly TimeProvider _timeProvider = (dependencies ?? throw new ArgumentNullException(nameof(dependencies))).TimeProvider ?? TimeProvider.System;
+    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(
+        dependencies.SecurityEventSink,
+        dependencies.TransactionProvider,
+        "Invitation revocation"), dependencies.TimeProvider ?? TimeProvider.System);
     private readonly IAshlarDurableTransactionProvider _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
-    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, dependencies.TransactionProvider, "Invitation revocation"), dependencies.TimeProvider ?? TimeProvider.System);
 
     /// <inheritdoc />
     public async Task<Result<RevokeInvitationAdministrationResult>> RevokeInvitationAsync(RevokeInvitationAdministrationRequest request, CancellationToken cancellationToken = default)

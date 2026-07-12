@@ -2257,6 +2257,6 @@ internal sealed class IdentityServiceTests
             DurableSecurityMutationTestComposition.SharedTransactions,
             new CredentialServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents));
 
-        return credentialService.LinkCredentialAsync(userId, assertion, provider, credentialValue, null, new AuditContext(userId));
+        return credentialService.LinkCredentialAsync(new CredentialLinkRequest(userId, assertion, provider, credentialValue, null, new AuditContext(userId)));
     }
 }

@@ -104,7 +104,7 @@ internal sealed class CredentialServiceTests
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "new-key", It.IsAny<CancellationToken>())).ReturnsAsync((IUser?)null);
 
-        await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object, null, null, new AuditContext(userId));
+        await _service.LinkCredentialAsync(LinkRequest(userId, assertionMock.Object, providerMock.Object));
 
         _credentialRepositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.CreatedAt == testTime), It.IsAny<CancellationToken>()), Times.Once);
@@ -1319,7 +1319,7 @@ internal sealed class CredentialServiceTests
 
         const string credentialMetadata = "{\"LastUsedStep\":123}";
         var beforeLink = _timeProvider.GetUtcNow();
-        await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object, "raw", credentialMetadata, new AuditContext(userId));
+        await _service.LinkCredentialAsync(LinkRequest(userId, assertionMock.Object, providerMock.Object, "raw", credentialMetadata));
         var afterLink = _timeProvider.GetUtcNow();
 
         _credentialRepositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
@@ -1494,7 +1494,7 @@ internal sealed class CredentialServiceTests
     [Test]
     public void LinkCredentialAsyncWithEmptyUserIdShouldThrow()
     {
-        Assert.ThrowsAsync<ArgumentException>(() => _service.LinkCredentialAsync(Guid.Empty, new Mock<IAuthenticationAssertion>().Object, new Mock<IAuthenticationProvider>().Object, null, null, new AuditContext(Guid.NewGuid())));
+        Assert.ThrowsAsync<ArgumentException>(() => _service.LinkCredentialAsync(LinkRequest(Guid.Empty, new Mock<IAuthenticationAssertion>().Object, new Mock<IAuthenticationProvider>().Object)));
     }
 
     [Test]
@@ -1502,7 +1502,7 @@ internal sealed class CredentialServiceTests
     {
         var userId = Guid.NewGuid();
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync((IUser?)null);
-        var result = await _service.LinkCredentialAsync(userId, new Mock<IAuthenticationAssertion>().Object, new Mock<IAuthenticationProvider>().Object, null, null, new AuditContext(userId));
+        var result = await _service.LinkCredentialAsync(LinkRequest(userId, new Mock<IAuthenticationAssertion>().Object, new Mock<IAuthenticationProvider>().Object));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1523,7 +1523,7 @@ internal sealed class CredentialServiceTests
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
 
-        var result = await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object, null, null, new AuditContext(userId));
+        var result = await _service.LinkCredentialAsync(LinkRequest(userId, assertionMock.Object, providerMock.Object));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1548,7 +1548,7 @@ internal sealed class CredentialServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "key", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = otherUserId, DisplayEmail = "other@example.com" });
 
-        var result = await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object, null, null, new AuditContext(userId));
+        var result = await _service.LinkCredentialAsync(LinkRequest(userId, assertionMock.Object, providerMock.Object));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1572,7 +1572,7 @@ internal sealed class CredentialServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "key", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object, null, null, new AuditContext(userId));
+        var result = await _service.LinkCredentialAsync(LinkRequest(userId, assertionMock.Object, providerMock.Object));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1596,7 +1596,7 @@ internal sealed class CredentialServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Local, AuthenticationProviderKey.Local.Name, "key", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object, null, null, new AuditContext(userId));
+        var result = await _service.LinkCredentialAsync(LinkRequest(userId, assertionMock.Object, providerMock.Object));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1658,26 +1658,21 @@ internal sealed class CredentialServiceTests
     public void LinkCredentialAsyncWithNullAssertionShouldThrow()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _service.LinkCredentialAsync(Guid.NewGuid(), null!, new Mock<IAuthenticationProvider>().Object, null, null, new AuditContext(Guid.NewGuid())));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.LinkCredentialAsync(LinkRequest(Guid.NewGuid(), null!, new Mock<IAuthenticationProvider>().Object)));
     }
 
     [Test]
     public void LinkCredentialAsyncWithNullProviderShouldThrow()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _service.LinkCredentialAsync(Guid.NewGuid(), new Mock<IAuthenticationAssertion>().Object, null!, null, null, new AuditContext(Guid.NewGuid())));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.LinkCredentialAsync(LinkRequest(Guid.NewGuid(), new Mock<IAuthenticationAssertion>().Object, null!)));
     }
 
     [Test]
     public void LinkCredentialAsyncWithNullAuditShouldThrow()
     {
-        Assert.ThrowsAsync<ArgumentNullException>(() => _service.LinkCredentialAsync(
-            Guid.NewGuid(),
-            new Mock<IAuthenticationAssertion>().Object,
-            new Mock<IAuthenticationProvider>().Object,
-            null,
-            null,
-            null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.LinkCredentialAsync(new CredentialLinkRequest(
+            Guid.NewGuid(), new Mock<IAuthenticationAssertion>().Object, new Mock<IAuthenticationProvider>().Object, null, null, null!)));
     }
 
     [Test]
@@ -1713,6 +1708,16 @@ internal sealed class CredentialServiceTests
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.Throws<ArgumentNullException>(() => _ = new CredentialService(_repositoryMock.Object, _credentialRepositoryMock.Object, _secretProtectorMock.Object, _composition.Transactions, null!));
+    }
+
+    private static CredentialLinkRequest LinkRequest(
+        Guid userId,
+        IAuthenticationAssertion assertion,
+        IAuthenticationProvider provider,
+        string? credentialValue = null,
+        string? credentialMetadata = null)
+    {
+        return new CredentialLinkRequest(userId, assertion, provider, credentialValue, credentialMetadata, new AuditContext(userId));
     }
 
     private async Task<UserCredential?> ResolveCredentialAsync(UserCredential credential)

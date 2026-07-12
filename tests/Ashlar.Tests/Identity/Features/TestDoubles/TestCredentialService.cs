@@ -1,5 +1,3 @@
-using Ashlar.Auditing;
-
 namespace Ashlar.Tests.Identity.Features.TestDoubles;
 
 internal sealed class TestCredentialService : ICredentialService
@@ -35,17 +33,10 @@ internal sealed class TestCredentialService : ICredentialService
         return Task.FromResult(UserResolveResult);
     }
 
-    public Task<Result> LinkCredentialAsync(
-        Guid userId,
-        IAuthenticationAssertion assertion,
-        IAuthenticationProvider provider,
-        string? credentialValue,
-        string? credentialMetadata,
-        AuditContext audit,
-        Guid? tenantId = null,
-        CancellationToken cancellationToken = default)
+    public Task<Result> LinkCredentialAsync(CredentialLinkRequest request, CancellationToken cancellationToken = default)
     {
-        LinkCalls.Add(new LinkCredentialCall(userId, assertion, provider, credentialValue, credentialMetadata, tenantId));
+        ArgumentNullException.ThrowIfNull(request);
+        LinkCalls.Add(new LinkCredentialCall(request.UserId, request.Assertion, request.Provider, request.CredentialValue, request.CredentialMetadata, request.TenantId));
         return Task.FromResult(LinkResult);
     }
 

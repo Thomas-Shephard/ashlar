@@ -38,16 +38,10 @@ internal interface ICredentialService
     /// <summary>
     /// Infrastructure hook for provider-owned account-security flows to persist a provider-derived credential for an existing user.
     /// </summary>
-    /// <param name="userId">The verified user that will own the credential.</param>
-    /// <param name="assertion">Authentication assertion used to derive the provider key.</param>
-    /// <param name="provider">Authenticator implementation that owns the credential.</param>
-    /// <param name="credentialValue">Optional credential material to store. Treat as sensitive unless documented otherwise.</param>
-    /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the credential. Callers must not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
-    /// <param name="audit">Required audit context for the credential-link mutation.</param>
-    /// <param name="tenantId">Tenant scope for the linked credential's audit event, when the caller has an explicit tenant scope.</param>
+    /// <param name="request">The provider-owned credential mutation and its required audit context.</param>
     /// <param name="cancellationToken">A token that can cancel linking.</param>
     /// <returns>Success when the credential is linked; otherwise, a stable failure describing why linking was rejected.</returns>
-    Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue, string? credentialMetadata, AuditContext audit, Guid? tenantId = null, CancellationToken cancellationToken = default);
+    Task<Result> LinkCredentialAsync(CredentialLinkRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates the usage information, consumes, or potentially changes the secret value of a credential after a successful authentication attempt.
@@ -60,6 +54,16 @@ internal interface ICredentialService
     /// <returns>A result that states whether authentication may continue and whether an update was persisted.</returns>
     Task<CredentialUsageUpdateResult> UpdateCredentialUsageAsync(UserCredential unprotectedCredential, UserCredential? originalCredential, AuthenticationResult result, IAuthenticationProvider provider, CancellationToken cancellationToken = default);
 }
+
+/// <summary>Provider-owned credential mutation with required audit context.</summary>
+internal sealed record CredentialLinkRequest(
+    Guid UserId,
+    IAuthenticationAssertion Assertion,
+    IAuthenticationProvider Provider,
+    string? CredentialValue,
+    string? CredentialMetadata,
+    AuditContext Audit,
+    Guid? TenantId = null);
 
 /// <summary>
 /// Result of persisting credential usage, consumption, or replacement after provider authentication.

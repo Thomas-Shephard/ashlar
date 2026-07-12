@@ -10,10 +10,11 @@ internal sealed class AccountLockoutAdministrationService(
     internal const int MaximumReasonLength = 512;
 
     private readonly IAccountLockoutRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-    private readonly AccountLockoutAdministrationServiceDependencies _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
-    private readonly TimeProvider _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
+    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(
+        (dependencies ?? throw new ArgumentNullException(nameof(dependencies))).SecurityEventSink,
+        dependencies.TransactionProvider,
+        "Account-lockout reset"), dependencies.TimeProvider ?? TimeProvider.System);
     private readonly IAshlarDurableTransactionProvider _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
-    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, dependencies.TransactionProvider, "Account-lockout reset"), dependencies.TimeProvider ?? TimeProvider.System);
 
     public async Task<Result<ResetAccountLockoutResult>> ResetLockoutAsync(
         Guid userId,

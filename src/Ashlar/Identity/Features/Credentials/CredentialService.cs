@@ -509,10 +509,10 @@ internal sealed class CredentialService(
         return originalCredential?.Version ?? unprotectedCredential.Version;
     }
 
-    public async Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue, string? credentialMetadata, AuditContext audit, Guid? tenantId = null, CancellationToken cancellationToken = default)
+    public async Task<Result> LinkCredentialAsync(CredentialLinkRequest request, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(audit);
-        return await LinkCredentialCoreAsync(new CredentialLinkRequest(userId, assertion, provider, credentialValue, credentialMetadata, audit, tenantId), cancellationToken);
+        ArgumentNullException.ThrowIfNull(request);
+        return await LinkCredentialCoreAsync(request, cancellationToken);
     }
 
     private async Task<Result> LinkCredentialCoreAsync(CredentialLinkRequest request, CancellationToken cancellationToken)
@@ -640,12 +640,3 @@ internal sealed record CredentialServiceDependencies(
     TimeProvider? TimeProvider = null,
     SecurityEventFanOutSink? SecurityEventSink = null,
     ILogger<CredentialService>? Logger = null);
-
-internal sealed record CredentialLinkRequest(
-    Guid UserId,
-    IAuthenticationAssertion Assertion,
-    IAuthenticationProvider Provider,
-    string? CredentialValue,
-    string? CredentialMetadata,
-    AuditContext? Audit,
-    Guid? TenantId);
