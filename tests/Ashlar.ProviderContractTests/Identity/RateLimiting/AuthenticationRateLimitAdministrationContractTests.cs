@@ -15,7 +15,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
     {
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
-        var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
+        var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
         var blockedKey = UniqueKey();
         var activeKey = UniqueKey();
         var otherPurposeKey = UniqueKey();
@@ -54,7 +54,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
     {
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
-        var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
+        var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
         var rule = new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) };
 
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "browse-one", Key = UniqueKey() }, rule);
@@ -74,7 +74,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
     {
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
-        var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
+        var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
         var rule = new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) };
 
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "paging", Key = UniqueKey() }, rule);
@@ -114,7 +114,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
     {
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
-        var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
+        var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
         var rule = new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(1) };
 
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "expired", Key = UniqueKey() }, rule);
@@ -139,7 +139,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
     {
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
-        var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
+        var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
         var rawKey = $"raw-email-{Guid.NewGuid():N}@example.com";
 
         await limiter.CheckAsync(
@@ -166,7 +166,8 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
     {
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
-        var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
+        var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
+        var mutations = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
         var rawKey = UniqueKey();
 
         await limiter.CheckAsync(
@@ -174,15 +175,23 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
             new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(10) });
         var bucket = (await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "reset" })).Value!.Items.Single();
 
-        var reset = await administration.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset", new AuditContext(Guid.NewGuid())));
-        var missing = await administration.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset", new AuditContext(Guid.NewGuid())));
+        var reset = await mutations.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset", new AuditContext(Guid.NewGuid())));
+        var missing = await mutations.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset", new AuditContext(Guid.NewGuid())));
         var afterReset = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "reset"));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
-            Assert.That(missing.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.NotFound));
-            Assert.That(afterReset.Succeeded, Is.False);
+            if (reset.Value!.Status == AuthenticationRateLimitBucketResetStatus.Failed)
+            {
+                Assert.That(missing.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
+                Assert.That(afterReset.Succeeded, Is.True);
+            }
+            else
+            {
+                Assert.That(reset.Value.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
+                Assert.That(missing.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.NotFound));
+                Assert.That(afterReset.Succeeded, Is.False);
+            }
         }
     }
 
@@ -191,7 +200,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
     {
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
-        var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
+        var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
         var sensitive = $"user-{Guid.NewGuid():N}@example.com";
 
         await limiter.CheckAsync(

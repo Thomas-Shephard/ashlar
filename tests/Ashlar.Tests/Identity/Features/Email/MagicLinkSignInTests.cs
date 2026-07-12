@@ -689,9 +689,9 @@ internal sealed class MagicLinkSignInTests
         services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IEmailSender, RecordingEmailSender>();
-        services.AddDurableAuditForTests();
         services.AddAshlarMagicLinkSignIn(options => options.EmailSubject = "Modified");
         services.AddAshlarNoMfaPolicy();
+        services.AddDurableAuditForTests();
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -772,12 +772,13 @@ internal sealed class MagicLinkSignInTests
         var provider = new MagicLinkAuthenticationProvider(tokenHasher);
         var registry = new AuthenticationProviderRegistry([provider]);
         var transactionProvider = new RecordingTransactionProvider(events);
+        var credentialEvents = DurableSecurityMutationTestComposition.EventsFor(audit, transactionProvider);
         var credentialService = new CredentialService(
             repository,
             repository,
             Mock.Of<ISecretProtector>(),
             transactionProvider,
-            new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: audit));
+            new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: credentialEvents));
         var pipeline = new AuthenticationPipeline(
             registry,
             credentialService,
@@ -907,7 +908,7 @@ internal sealed class MagicLinkSignInTests
 
     private sealed class RecordingTransactionalEmailSender(List<string> events) : RecordingEmailSender(events), ITransactionalEmailOutboxSender;
 
-    private sealed class RecordingTransactionProvider(List<string> events) : IAshlarTransactionProvider
+    private sealed class RecordingTransactionProvider(List<string> events) : IAshlarDurableTransactionProvider
     {
         public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
         {

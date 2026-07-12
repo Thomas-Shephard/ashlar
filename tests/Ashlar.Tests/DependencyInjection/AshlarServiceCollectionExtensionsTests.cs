@@ -42,7 +42,6 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>(services, ServiceLifetime.Scoped);
             AssertDescriptor<CredentialService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialService>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<IExternalAccountCredentialLinker, ExternalAccountCredentialLinker>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialAdministrationService, CredentialAdministrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAccountRecoveryAdministrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAccountSecurityAdministrationService>(services, ServiceLifetime.Scoped);
@@ -389,12 +388,12 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddDurableAuditForTests();
         services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services
             .AddAshlarIdentity()
             .AddAuthenticationProvider<LocalPasswordProvider>()
             .AddPasswordHasher<FakePasswordHasher>();
+        services.AddDurableAuditForTests();
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -481,9 +480,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddDurableAuditForTests();
-
         services.AddAshlarPasswordReset();
+        services.AddDurableAuditForTests();
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -581,6 +579,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(repository.Object);
         services.AddSingleton<ISecurityEventHandler>(events);
         services.AddAshlarIdentity();
+        services.AddDurableAuditForTests();
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -761,9 +760,9 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
         services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddDurableAuditForTests();
         services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services.AddAshlarIdentity();
+        services.AddDurableAuditForTests();
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -935,8 +934,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionService>());
-        services.AddDurableAuditForTests();
         services.AddAshlarIdentity();
+        services.AddDurableAuditForTests();
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -1064,8 +1063,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddDurableAuditForTests();
         services.AddAshlarEmailVerification();
+        services.AddDurableAuditForTests();
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -1117,8 +1116,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
-        services.AddDurableAuditForTests();
         services.AddAshlarEmailChange();
+        services.AddDurableAuditForTests();
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();

@@ -10,9 +10,9 @@ internal sealed class CredentialService(
     IUserRepository userRepository,
     ICredentialRepository credentialRepository,
     ISecretProtector secretProtector,
-    IAshlarTransactionProvider transactionProvider,
+    IAshlarDurableTransactionProvider transactionProvider,
     CredentialServiceDependencies dependencies)
-    : ICredentialService, ICredentialLinkingInfrastructure
+    : ICredentialService
 {
     private static readonly Action<ILogger, Guid, Guid, string, string, Exception?> CredentialProtectionFailedRequired =
         LoggerMessage.Define<Guid, Guid, string, string>(
@@ -60,23 +60,14 @@ internal sealed class CredentialService(
     private readonly IUserRepository _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
     private readonly ICredentialRepository _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
     private readonly ISecretProtector _secretProtector = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
-    private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
+    private readonly IAshlarDurableTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly IdentityServiceOptions _options = ValidateDependencies(dependencies).Options ?? new IdentityServiceOptions();
     private readonly TimeProvider _timeProvider = ValidateDependencies(dependencies).TimeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(
-        ValidateDependencies(dependencies).SecurityEventSink,
+        DurableSecurityMutationComposition.Require(ValidateDependencies(dependencies).SecurityEventSink, transactionProvider, "Credential mutations"),
         ValidateDependencies(dependencies).TimeProvider ?? TimeProvider.System);
     private readonly ILogger<CredentialService> _logger = ValidateDependencies(dependencies).Logger ?? NullLogger<CredentialService>.Instance;
     private readonly ConcurrentDictionary<int, string> _dummyValues = new();
-
-    public CredentialService(
-        IUserRepository userRepository,
-        ICredentialRepository credentialRepository,
-        ISecretProtector secretProtector,
-        IAshlarTransactionProvider transactionProvider)
-        : this(userRepository, credentialRepository, secretProtector, transactionProvider, new CredentialServiceDependencies())
-    {
-    }
 
     private static CredentialServiceDependencies ValidateDependencies(CredentialServiceDependencies? dependencies)
     {
@@ -518,23 +509,18 @@ internal sealed class CredentialService(
         return originalCredential?.Version ?? unprotectedCredential.Version;
     }
 
-    public async Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue = null, string? credentialMetadata = null, CancellationToken cancellationToken = default)
+    public async Task<Result> LinkCredentialAsync(CredentialLinkRequest request, CancellationToken cancellationToken = default)
     {
-        return await LinkCredentialCoreAsync(new CredentialLinkInfrastructureRequest(userId, assertion, provider, credentialValue, credentialMetadata, Audit: null, TenantId: null), cancellationToken);
-    }
-
-    async Task<Result> ICredentialLinkingInfrastructure.LinkCredentialAsync(
-        CredentialLinkInfrastructureRequest request,
-        CancellationToken cancellationToken)
-    {
+        ArgumentNullException.ThrowIfNull(request);
         return await LinkCredentialCoreAsync(request, cancellationToken);
     }
 
-    private async Task<Result> LinkCredentialCoreAsync(CredentialLinkInfrastructureRequest request, CancellationToken cancellationToken)
+    private async Task<Result> LinkCredentialCoreAsync(CredentialLinkRequest request, CancellationToken cancellationToken)
     {
         var (userId, assertion, provider, credentialValue, credentialMetadata, audit, tenantId) = request;
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
+        ArgumentNullException.ThrowIfNull(audit);
 
         if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(request));
 
@@ -547,33 +533,13 @@ internal sealed class CredentialService(
         var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
         if (user == null)
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.CredentialLinked,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                TenantId = tenantId,
-                Audit = audit,
-                Provider = providerKeyIdentity,
-                FailureReason = AshlarFailureCodes.UserNotFound.Value
-            }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.UserNotFound);
+            return await FailAsync(AshlarFailureCodes.UserNotFound);
         }
 
         var providerKey = provider.GetProviderKey(assertion, userId);
         if (string.IsNullOrWhiteSpace(providerKey))
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.CredentialLinked,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                TenantId = tenantId,
-                Audit = audit,
-                Provider = providerKeyIdentity,
-                FailureReason = AshlarFailureCodes.InvalidProviderKey.Value
-            }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.InvalidProviderKey);
+            return await FailAsync(AshlarFailureCodes.InvalidProviderKey);
         }
 
         var linkedUser = await _userRepository.GetUserByProviderKeyAsync(providerKeyIdentity.Type, providerName, providerKey, cancellationToken);
@@ -581,17 +547,7 @@ internal sealed class CredentialService(
         if (linkedUser != null)
         {
             var code = linkedUser.Id != userId ? AshlarFailureCodes.AlreadyLinkedToOther : AshlarFailureCodes.AlreadyLinkedToSelf;
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.CredentialLinked,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                TenantId = tenantId,
-                Audit = audit,
-                Provider = providerKeyIdentity,
-                FailureReason = code.Value
-            }, cancellationToken);
-            return Result.Failure(code);
+            return await FailAsync(code);
         }
 
         credentialValue = provider.PrepareCredentialValue(assertion, credentialValue);
@@ -624,17 +580,7 @@ internal sealed class CredentialService(
         }
         catch (CredentialProviderKeyConflictException)
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.CredentialLinked,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                TenantId = tenantId,
-                Audit = audit,
-                Provider = providerKeyIdentity,
-                FailureReason = AshlarFailureCodes.AlreadyLinkedToOther.Value
-            }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.AlreadyLinkedToOther);
+            return await FailAsync(AshlarFailureCodes.AlreadyLinkedToOther);
         }
 
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -653,6 +599,22 @@ internal sealed class CredentialService(
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success();
+
+        async Task<Result> FailAsync(AshlarFailureCode failure)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.CredentialLinked,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                TenantId = tenantId,
+                Audit = audit,
+                Provider = providerKeyIdentity,
+                FailureReason = failure.Value
+            }, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return Result.Failure(failure);
+        }
     }
 
     private Task RecordCredentialUpdateFailedAsync(UserCredential credential, string reason, CancellationToken cancellationToken)
@@ -676,5 +638,5 @@ internal sealed class CredentialService(
 internal sealed record CredentialServiceDependencies(
     IdentityServiceOptions? Options = null,
     TimeProvider? TimeProvider = null,
-    ISecurityEventSink? SecurityEventSink = null,
+    SecurityEventFanOutSink? SecurityEventSink = null,
     ILogger<CredentialService>? Logger = null);

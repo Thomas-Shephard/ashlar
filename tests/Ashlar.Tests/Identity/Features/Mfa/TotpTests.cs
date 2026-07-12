@@ -17,7 +17,7 @@ internal sealed class TotpTests
     private Mock<IUserRepository> _repository = null!;
     private Mock<ICredentialRepository> _credentialRepository = null!;
     private TestCredentialService _credentialService = null!;
-    private Mock<IAshlarTransactionProvider> _transactionProvider = null!;
+    private Mock<IAshlarDurableTransactionProvider> _transactionProvider = null!;
     private Mock<IAshlarTransaction> _transaction = null!;
     private Mock<ISecurityEventSink> _securityEvents = null!;
     private Mock<IAuthenticationSessionRepository> _sessionRepository = null!;
@@ -30,7 +30,7 @@ internal sealed class TotpTests
         _repository = new Mock<IUserRepository>();
         _credentialRepository = new Mock<ICredentialRepository>();
         _credentialService = new TestCredentialService();
-        _transactionProvider = new Mock<IAshlarTransactionProvider>();
+        _transactionProvider = new Mock<IAshlarDurableTransactionProvider>();
         _transaction = new Mock<IAshlarTransaction>();
         var onCommitted = new List<Func<CancellationToken, Task>>();
         _securityEvents = new Mock<ISecurityEventSink>();
@@ -65,7 +65,8 @@ internal sealed class TotpTests
             _transactionProvider.Object,
             [CreateProvider()],
             authorizer ?? CreateAuthorizer(),
-            new TotpServiceDependencies(Options.Create(_options), ProofValidator(), _timeProvider, _securityEvents.Object));
+            new TotpServiceDependencies(Options.Create(_options), ProofValidator(), _timeProvider,
+                DurableSecurityMutationTestComposition.EventsFor(_securityEvents.Object, _transactionProvider.Object)));
     }
 
     private TotpAuthenticationProvider CreateProvider()
@@ -85,7 +86,8 @@ internal sealed class TotpTests
             _transactionProvider.Object,
             [CreateProvider(), CreateSecondaryProvider(recoveryProvider)],
             CreateAuthorizer(),
-            new TotpServiceDependencies(Options.Create(_options), ProofValidator(), _timeProvider, _securityEvents.Object));
+            new TotpServiceDependencies(Options.Create(_options), ProofValidator(), _timeProvider,
+                DurableSecurityMutationTestComposition.EventsFor(_securityEvents.Object, _transactionProvider.Object)));
     }
 
     private static ISecondaryAuthenticationFactorProvider CreateSecondaryProvider(AuthenticationProviderKey providerKey)
@@ -362,7 +364,8 @@ internal sealed class TotpTests
     public void TotpServiceConstructorWithNullDependenciesShouldThrow()
     {
         var provider = CreateProvider();
-        var deps = new TotpServiceDependencies(Options.Create(_options), ProofValidator());
+        var deps = new TotpServiceDependencies(Options.Create(_options), ProofValidator(), securityEventSink:
+            DurableSecurityMutationTestComposition.EventsFor(new NullSecurityEventSink(), _transactionProvider.Object));
         var authorizer = CreateAuthorizer();
 
         using (Assert.EnterMultipleScope())
@@ -387,7 +390,8 @@ internal sealed class TotpTests
             _transactionProvider.Object,
             [CreateProvider()],
             CreateAuthorizer(),
-            new TotpServiceDependencies(Options.Create(_options), ProofValidator())));
+            new TotpServiceDependencies(Options.Create(_options), ProofValidator(), securityEventSink:
+                DurableSecurityMutationTestComposition.EventsFor(new NullSecurityEventSink(), _transactionProvider.Object))));
     }
 
     [Test]
@@ -649,6 +653,7 @@ internal sealed class TotpTests
     {
         var service = CreateService();
         var userId = Guid.NewGuid();
+        var tenant = new TenantContext(Guid.NewGuid());
         var secretBytes = new byte[20];
         System.Security.Cryptography.RandomNumberGenerator.Fill(secretBytes);
         var secret = Base32.Encode(secretBytes);
@@ -656,16 +661,20 @@ internal sealed class TotpTests
 
         _credentialRepository.Setup(x => x.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, It.IsAny<CancellationToken>()))
             .ReturnsAsync(0);
-        var proof = CreateProof(userId);
+        var proof = CreateProof(userId, tenant);
+        _repository.Setup(x => x.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com", TenantId = tenant.TenantId });
         SetupExistingTotp(userId);
 
         var result = await service.CompleteEnrollmentAsync(new VerifyTotpEnrollmentRequest(userId, secret, code)
         {
             FreshMfaProof = proof,
-            CurrentSessionId = proof.SessionId
+            CurrentSessionId = proof.SessionId,
+            Tenant = tenant,
+            Audit = new AuditContext(userId)
         });
 
-        Assert.That(result.Succeeded, Is.True);
+        Assert.That(result.Succeeded && _credentialService.LinkCalls.Single().TenantId == tenant.TenantId, Is.True);
         _credentialRepository.Verify(x => x.AcquireUserMutationLockAsync(userId, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
     }
 

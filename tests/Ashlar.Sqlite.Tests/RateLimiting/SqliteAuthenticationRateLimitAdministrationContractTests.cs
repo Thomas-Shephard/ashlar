@@ -17,6 +17,7 @@ internal sealed class SqliteAuthenticationRateLimitAdministrationContractTests :
         _database = await SqliteContractDatabase.CreateAsync(services =>
         {
             services.AddAshlarIdentity();
+            services.AddAshlarSqliteAuditSink();
             services.AddAshlarSqliteRateLimiting();
             services.AddSingleton<TimeProvider>(_timeProvider);
         });

@@ -215,8 +215,8 @@ internal sealed class SecurityAuditEventTests
             repository.Object,
             credentialRepository.Object,
             protector.Object,
-            new NullTransactionProvider(),
-            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: sink));
+            DurableSecurityMutationTestComposition.SharedTransactions,
+            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink)));
         var userId = Guid.NewGuid();
         var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
         var provider = new Mock<IPrimaryAuthenticationProvider>();
@@ -230,7 +230,7 @@ internal sealed class SecurityAuditEventTests
         repository.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "provider-key", It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
 
-        await service.LinkCredentialAsync(userId, assertion, provider.Object, "raw-secret");
+        await service.LinkCredentialAsync(new CredentialLinkRequest(userId, assertion, provider.Object, "raw-secret", null, new AuditContext(userId)));
 
         var securityEvent = sink.Events.Single();
         using (Assert.EnterMultipleScope())
@@ -253,8 +253,8 @@ internal sealed class SecurityAuditEventTests
             repository.Object,
             credentialRepository.Object,
             Mock.Of<ISecretProtector>(),
-            new NullTransactionProvider(),
-            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: sink));
+            DurableSecurityMutationTestComposition.SharedTransactions,
+            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink)));
         var credential = CreateCredential(Guid.NewGuid());
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
         credentialRepository.Setup(r => r.ConsumeCredentialAsync(credential.Id, credential.Version, It.IsAny<CancellationToken>()))
@@ -284,8 +284,8 @@ internal sealed class SecurityAuditEventTests
             repository.Object,
             credentialRepository.Object,
             protector.Object,
-            new NullTransactionProvider(),
-            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: sink));
+            DurableSecurityMutationTestComposition.SharedTransactions,
+            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink)));
         var userId = Guid.NewGuid();
         var provider = new Mock<IPrimaryAuthenticationProvider>();
         provider.SetupGet(p => p.Key).Returns(AuthenticationProviderKey.Local);
@@ -628,10 +628,10 @@ internal sealed class SecurityAuditEventTests
             repository.Object,
             hasher.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            new NullTransactionProvider(),
+            DurableSecurityMutationTestComposition.SharedTransactions,
             new AuthenticationSessionServiceDependencies(
                 TimeProvider: timeProvider,
-                SecurityEventSink: sink,
+                SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink),
                 UserRepository: users.Object));
     }
 

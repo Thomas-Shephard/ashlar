@@ -266,7 +266,7 @@ internal sealed class AshlarSignInManagerTests
         var proof = CreateFreshProof(userId, currentSessionId);
         var service = new Mock<IAuthenticationSessionService>();
         service.Setup(s => s.RevokeSessionForCurrentUserAsync(It.IsAny<RevokeOwnAuthenticationSessionRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        var manager = new AshlarSignInManager(service.Object, CreateOptionsMonitor(), new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var manager = new AshlarSignInManager(service.Object, Mock.Of<IAuthenticationSessionReader>(), CreateOptionsMonitor(), new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
         var context = CreateAuthenticatedContext(userId, currentSessionId);
 
         Assert.That(await manager.RevokeSessionForCurrentUserAsync(context, targetSessionId, proof, "cleanup"), Is.True);
@@ -281,7 +281,7 @@ internal sealed class AshlarSignInManagerTests
     public async Task SignOutAsyncShouldAcceptGlobalPrincipalWithoutCookie()
     {
         var service = new Mock<IAuthenticationSessionService>();
-        var manager = new AshlarSignInManager(service.Object, CreateOptionsMonitor(),
+        var manager = new AshlarSignInManager(service.Object, Mock.Of<IAuthenticationSessionReader>(), CreateOptionsMonitor(),
             new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
         var context = CreateAuthenticatedContext(Guid.NewGuid(), Guid.NewGuid());
 
@@ -295,7 +295,7 @@ internal sealed class AshlarSignInManagerTests
     {
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
-        var manager = new AshlarSignInManager(Mock.Of<IAuthenticationSessionService>(), CreateOptionsMonitor(),
+        var manager = new AshlarSignInManager(Mock.Of<IAuthenticationSessionService>(), Mock.Of<IAuthenticationSessionReader>(), CreateOptionsMonitor(),
             new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
         var context = CreateAuthenticatedContext(userId, sessionId);
         ((ClaimsIdentity)context.User.Identity!).AddClaim(new Claim(AshlarClaimTypes.TenantId, "not-a-guid"));
@@ -307,7 +307,7 @@ internal sealed class AshlarSignInManagerTests
     [Test]
     public void CurrentUserRevocationOperationsShouldRejectMissingContext()
     {
-        var manager = new AshlarSignInManager(Mock.Of<IAuthenticationSessionService>(), CreateOptionsMonitor(),
+        var manager = new AshlarSignInManager(Mock.Of<IAuthenticationSessionService>(), Mock.Of<IAuthenticationSessionReader>(), CreateOptionsMonitor(),
             new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
         var context = new DefaultHttpContext();
 
@@ -337,7 +337,7 @@ internal sealed class AshlarSignInManagerTests
     public async Task SignOutAsyncShouldIgnoreInvalidTenantPrincipalWithoutCookie()
     {
         var service = new Mock<IAuthenticationSessionService>();
-        var manager = new AshlarSignInManager(service.Object, CreateOptionsMonitor(),
+        var manager = new AshlarSignInManager(service.Object, Mock.Of<IAuthenticationSessionReader>(), CreateOptionsMonitor(),
             new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
         var context = CreateAuthenticatedContext(Guid.NewGuid(), Guid.NewGuid());
         ((ClaimsIdentity)context.User.Identity!).AddClaim(new Claim(AshlarClaimTypes.TenantId, "invalid"));
@@ -355,7 +355,7 @@ internal sealed class AshlarSignInManagerTests
         var proof = CreateFreshProof(userId, currentSessionId);
         var service = new Mock<IAuthenticationSessionService>();
         service.Setup(s => s.RevokeOtherSessionsForCurrentUserAsync(It.IsAny<RevokeOwnOtherAuthenticationSessionsRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(2);
-        var manager = new AshlarSignInManager(service.Object, CreateOptionsMonitor(), new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var manager = new AshlarSignInManager(service.Object, Mock.Of<IAuthenticationSessionReader>(), CreateOptionsMonitor(), new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
         var context = CreateAuthenticatedContext(userId, currentSessionId);
 
         Assert.That(await manager.RevokeOtherSessionsForCurrentUserAsync(context, proof, "cleanup"), Is.EqualTo(2));
@@ -369,7 +369,17 @@ internal sealed class AshlarSignInManagerTests
     public void ConstructorShouldThrowOnNullSessionService()
     {
         Assert.Throws<ArgumentNullException>(() => _ = new AshlarSignInManager(
-            // ReSharper disable once NullableWarningSuppressionIsUsed
+            null!,
+            Mock.Of<IAuthenticationSessionReader>(),
+            CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme }));
+    }
+
+    [Test]
+    public void ConstructorShouldThrowOnNullSessionReader()
+    {
+        Assert.Throws<ArgumentNullException>(() => _ = new AshlarSignInManager(
+            Mock.Of<IAuthenticationSessionService>(),
             null!,
             CreateOptionsMonitor(),
             new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme }));
@@ -380,7 +390,7 @@ internal sealed class AshlarSignInManagerTests
     {
         Assert.Throws<ArgumentNullException>(() => _ = new AshlarSignInManager(
             Mock.Of<IAuthenticationSessionService>(),
-            // ReSharper disable once NullableWarningSuppressionIsUsed
+            Mock.Of<IAuthenticationSessionReader>(),
             null!,
             new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme }));
     }
@@ -390,8 +400,8 @@ internal sealed class AshlarSignInManagerTests
     {
         Assert.Throws<ArgumentNullException>(() => _ = new AshlarSignInManager(
             Mock.Of<IAuthenticationSessionService>(),
+            Mock.Of<IAuthenticationSessionReader>(),
             CreateOptionsMonitor(),
-            // ReSharper disable once NullableWarningSuppressionIsUsed
             null!));
     }
 

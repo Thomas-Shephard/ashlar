@@ -13,6 +13,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
     private readonly IUserRepository _userRepository;
     private readonly ICredentialRepository _credentialRepository;
     private readonly IAuthenticationSessionMutationExecutor _sessionService;
+    private readonly IAuthenticationSessionReader _sessionReader;
     private readonly IAshlarTransactionProvider _transactionProvider;
     private readonly IAccountSecurityGuard _accountSecurityGuard;
     private readonly TimeProvider _timeProvider;
@@ -28,6 +29,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         IUserRepository userRepository,
         ICredentialRepository credentialRepository,
         IAuthenticationSessionMutationExecutor sessionService,
+        IAuthenticationSessionReader sessionReader,
         IAshlarTransactionProvider transactionProvider,
         IAccountSecurityGuard accountSecurityGuard,
         AccountSecurityServiceDependencies dependencies)
@@ -37,6 +39,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
         _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
         _sessionService = sessionService ?? throw new ArgumentNullException(nameof(sessionService));
+        _sessionReader = sessionReader ?? throw new ArgumentNullException(nameof(sessionReader));
         _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
         _accountSecurityGuard = accountSecurityGuard ?? throw new ArgumentNullException(nameof(accountSecurityGuard));
         _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
@@ -284,7 +287,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         }
 
         var credentials = await _credentialRepository.ListCredentialsForUserAsync(userId, activeOnly: false, cancellationToken);
-        var sessions = await _sessionService.ListSessionsForUserAsync(userId, new ListAuthenticationSessionsRequest { ActiveOnly = true }, cancellationToken);
+        var sessions = await _sessionReader.ListSessionsForUserAsync(userId, new ListAuthenticationSessionsRequest { ActiveOnly = true }, cancellationToken);
         int? eventCount = null;
         if (_securityEventSummaryRepository != null && request.RecentSecurityEventWindow is { } window)
         {

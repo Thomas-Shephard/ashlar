@@ -42,18 +42,6 @@ public interface IAuthenticationSessionService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Lists authentication sessions for a user.
-    /// </summary>
-    /// <param name="userId">The user whose sessions will be listed.</param>
-    /// <param name="request">Active-session filtering and current-session marker options for the list operation.</param>
-    /// <param name="cancellationToken">A token that can cancel the query.</param>
-    /// <returns>Session summaries for the requested user. Raw session tokens are never returned.</returns>
-    Task<IReadOnlyList<AuthenticationSessionSummary>> ListSessionsForUserAsync(
-        Guid userId,
-        ListAuthenticationSessionsRequest request,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Revokes one authentication session owned by the authenticated actor.
     /// </summary>
     /// <param name="request">Actor, current session, fresh proof, target session, tenant scope, and audit context.</param>

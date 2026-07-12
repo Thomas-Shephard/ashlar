@@ -1,31 +1,16 @@
 namespace Ashlar.Identity.Abstractions.Services;
 
 /// <summary>
-/// Provides administrator invitation search, single-item lookup, and revocation operations.
+/// Provides administrator invitation revocation operations.
 /// </summary>
 /// <remarks>
 /// These operations are intended for administrative and operations tooling and do not authorize the caller.
 /// Host applications must protect usage of this service with appropriate admin authorization and step-up policy.
 /// Requests require an explicit tenant scope or an intentional all-tenant scope, and raw invitation tokens and token hashes are never returned.
+/// Use <see cref="IInvitationAdministrationReader" /> for search and lookup.
 /// </remarks>
 public interface IInvitationAdministrationService
 {
-    /// <summary>
-    /// Searches invitations for administrator and operations interfaces.
-    /// </summary>
-    /// <param name="request">Explicit tenant scope, filters, and paging options for the read-only search.</param>
-    /// <param name="cancellationToken">A token that can cancel the search.</param>
-    /// <returns>Provider-neutral invitation summaries that do not include raw tokens or token hashes.</returns>
-    Task<Result<InvitationSearchResult>> SearchInvitationsAsync(SearchInvitationsRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets a display-safe invitation projection by identifier.
-    /// </summary>
-    /// <param name="request">Explicit tenant scope and invitation identifier for the read-only lookup.</param>
-    /// <param name="cancellationToken">A token that can cancel the lookup.</param>
-    /// <returns>The same provider-neutral invitation projection used by search when found, without raw token, token hash, or provider version metadata.</returns>
-    Task<Result<InvitationAdministrationSummary>> GetInvitationAsync(InvitationAdministrationLookupRequest request, CancellationToken cancellationToken = default);
-
     /// <summary>
     /// Revokes a pending invitation by identifier.
     /// </summary>
