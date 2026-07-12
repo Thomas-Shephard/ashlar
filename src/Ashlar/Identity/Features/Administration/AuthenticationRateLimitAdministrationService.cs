@@ -5,59 +5,17 @@ namespace Ashlar.Identity.Features.Administration;
 
 internal sealed class AuthenticationRateLimitAdministrationService(
     IAuthenticationRateLimitAdministrationRepository repository,
-    AuthenticationRateLimitAdministrationServiceDependencies? dependencies = null)
+    AuthenticationRateLimitAdministrationServiceDependencies dependencies)
     : IAuthenticationRateLimitAdministrationService
 {
     internal const int MaximumLimit = 100;
 
     private readonly IAuthenticationRateLimitAdministrationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-    private readonly TimeProvider _timeProvider = dependencies?.TimeProvider ?? TimeProvider.System;
-    private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider);
-    private readonly IAshlarTransactionProvider? _transactionProvider = dependencies?.TransactionProvider;
-    private readonly bool _failClosedBeforeNonAtomicReset = repository is INonAtomicAuthenticationRateLimitAdministrationRepository && dependencies?.PersistentAuditConfigured == true;
-
-    public async Task<Result<AuthenticationRateLimitBucketSearchResult>> SearchBucketsAsync(SearchAuthenticationRateLimitBucketsRequest request, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-
-        if (!TryValidateSearchRequest(request, out var validationFailure))
-        {
-            return validationFailure;
-        }
-
-        if (request.Offset < 0)
-        {
-            return Result.Failure<AuthenticationRateLimitBucketSearchResult>(AshlarFailureCodes.ValidationError, "Offset cannot be negative.");
-        }
-
-        if (request.Limit < 1)
-        {
-            return Result.Failure<AuthenticationRateLimitBucketSearchResult>(AshlarFailureCodes.ValidationError, "Limit must be greater than zero.");
-        }
-
-        var limit = Math.Min(request.Limit, MaximumLimit);
-        var repositoryRequest = request with { Limit = limit + 1 };
-        var buckets = await _repository.SearchBucketsAsync(repositoryRequest, _timeProvider.GetUtcNow(), cancellationToken);
-        var hasMore = buckets.Count > limit;
-        var page = buckets.Take(limit).ToList().AsReadOnly();
-
-        return Result.Success(new AuthenticationRateLimitBucketSearchResult(page, limit, request.Offset, hasMore));
-    }
-
-    public async Task<Result<AuthenticationRateLimitBucketSummary>> GetBucketAsync(AuthenticationRateLimitBucketLookupRequest request, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-
-        if (!TryValidateLookupRequest(request, out var validationFailure))
-        {
-            return validationFailure;
-        }
-
-        var bucket = await _repository.GetBucketAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
-        return bucket == null
-            ? Result.Failure<AuthenticationRateLimitBucketSummary>(AshlarFailureCodes.RateLimitBucketNotFound, "Rate-limit bucket was not found.")
-            : Result.Success(bucket);
-    }
+    private readonly AuthenticationRateLimitAdministrationServiceDependencies _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
+    private readonly TimeProvider _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
+    private readonly IAshlarDurableTransactionProvider _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
+    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, dependencies.TransactionProvider, "Authentication rate-limit resets"), dependencies.TimeProvider);
+    private readonly bool _failClosedBeforeNonAtomicReset = repository is INonAtomicAuthenticationRateLimitAdministrationRepository;
 
     public async Task<Result<AuthenticationRateLimitBucketResetResult>> ResetBucketAsync(ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)
     {
@@ -78,9 +36,7 @@ internal sealed class AuthenticationRateLimitAdministrationService(
             return Result.Success(failedResult);
         }
 
-        await using var transaction = _transactionProvider == null
-            ? null
-            : await _transactionProvider.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         AuthenticationRateLimitBucketResetResult result;
         try
@@ -98,10 +54,7 @@ internal sealed class AuthenticationRateLimitAdministrationService(
         }
 
         await RecordResetAttemptAsync(request, result.Status, cancellationToken);
-        if (transaction != null)
-        {
-            await transaction.CommitAsync(cancellationToken);
-        }
+        await transaction.CommitAsync(cancellationToken);
 
         return Result.Success(result);
     }
@@ -138,7 +91,7 @@ internal sealed class AuthenticationRateLimitAdministrationService(
         };
     }
 
-    private static bool TryValidateSearchRequest(SearchAuthenticationRateLimitBucketsRequest request, out Result<AuthenticationRateLimitBucketSearchResult> failure)
+    internal static bool TryValidateSearchRequest(SearchAuthenticationRateLimitBucketsRequest request, out Result<AuthenticationRateLimitBucketSearchResult> failure)
     {
         try
         {
@@ -153,7 +106,7 @@ internal sealed class AuthenticationRateLimitAdministrationService(
         }
     }
 
-    private static bool TryValidateLookupRequest(AuthenticationRateLimitBucketLookupRequest request, out Result<AuthenticationRateLimitBucketSummary> failure)
+    internal static bool TryValidateLookupRequest(AuthenticationRateLimitBucketLookupRequest request, out Result<AuthenticationRateLimitBucketSummary> failure)
     {
         try
         {
@@ -186,6 +139,5 @@ internal sealed class AuthenticationRateLimitAdministrationService(
 
 internal sealed record AuthenticationRateLimitAdministrationServiceDependencies(
     TimeProvider? TimeProvider = null,
-    ISecurityEventSink? SecurityEventSink = null,
-    IAshlarTransactionProvider? TransactionProvider = null,
-    bool PersistentAuditConfigured = false);
+    SecurityEventFanOutSink? SecurityEventSink = null,
+    IAshlarDurableTransactionProvider? TransactionProvider = null);

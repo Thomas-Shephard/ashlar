@@ -481,7 +481,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
         }
     }
 
-    private sealed class RecordingRememberedMfaDeviceService : IRememberedMfaDeviceService
+    private sealed class RecordingRememberedMfaDeviceService : IRememberedMfaDeviceReader
     {
         public IReadOnlyList<RememberedMfaDeviceSummary> Devices { get; init; } = [];
         public Guid LastUserId { get; private set; }

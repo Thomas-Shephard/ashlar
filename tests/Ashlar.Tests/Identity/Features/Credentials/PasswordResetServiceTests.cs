@@ -627,6 +627,7 @@ internal sealed class PasswordResetServiceTests
             fixture.Store,
             fixture.Store,
             sessionService,
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(fixture.Time, fixture.Audit, ProviderRegistry: providerRegistry));
@@ -1182,10 +1183,14 @@ internal sealed class PasswordResetServiceTests
 
     private sealed class TestAuthenticationSessionMutationExecutor : IAuthenticationSessionMutationExecutor
     {
-        public Task<IReadOnlyList<AuthenticationSessionSummary>> ListSessionsForUserAsync(Guid userId, ListAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<AuthenticationSessionSummary>>([]);
         public Task<int> RevokeSessionsForUserAsync(Guid userId, RevokeAuthenticationSessionsForUserRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
         public Task<bool> RevokeSessionForUserAsync(Guid userId, RevokeAuthenticationSessionRequest request, CancellationToken cancellationToken = default) => Task.FromResult(false);
         public Task<int> RevokeOtherSessionsAsync(Guid userId, RevokeOtherAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
+    }
+
+    private sealed class TestAuthenticationSessionReader : IAuthenticationSessionReader
+    {
+        public Task<IReadOnlyList<AuthenticationSessionSummary>> ListSessionsForUserAsync(Guid userId, ListAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<AuthenticationSessionSummary>>([]);
     }
 
     private sealed class NonTenantUser : IUser

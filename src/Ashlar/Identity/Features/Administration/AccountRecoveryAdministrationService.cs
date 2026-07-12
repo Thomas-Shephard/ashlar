@@ -6,16 +6,16 @@ namespace Ashlar.Identity.Features.Administration;
 /// Implements read-only administrator account recovery option summaries.
 /// </summary>
 /// <param name="userAdministrationService">Service used to retrieve safe user and security posture details.</param>
-/// <param name="rememberedMfaDeviceService">Optional remembered MFA device service used to preview MFA reset impact.</param>
+/// <param name="rememberedMfaDeviceReader">Optional remembered MFA device reader used to preview MFA reset impact.</param>
 public sealed class AccountRecoveryAdministrationService(
     IUserAdministrationService userAdministrationService,
-    IRememberedMfaDeviceService? rememberedMfaDeviceService = null)
+    IRememberedMfaDeviceReader? rememberedMfaDeviceReader = null)
     : IAccountRecoveryAdministrationService
 {
     internal const string LastPrimarySignInMethodWarningCode = "last_primary_sign_in_method";
 
     private readonly IUserAdministrationService _userAdministrationService = userAdministrationService ?? throw new ArgumentNullException(nameof(userAdministrationService));
-    private readonly IRememberedMfaDeviceService? _rememberedMfaDeviceService = rememberedMfaDeviceService;
+    private readonly IRememberedMfaDeviceReader? _rememberedMfaDeviceReader = rememberedMfaDeviceReader;
 
     /// <inheritdoc />
     public async Task<Result<AccountRecoveryOptions>> GetAccountRecoveryOptionsAsync(
@@ -76,12 +76,12 @@ public sealed class AccountRecoveryAdministrationService(
 
     private async Task<int> CountRememberedMfaDevicesAsync(AccountRecoveryOptionsRequest request, CancellationToken cancellationToken)
     {
-        if (_rememberedMfaDeviceService == null)
+        if (_rememberedMfaDeviceReader == null)
         {
             return 0;
         }
 
-        var devices = await _rememberedMfaDeviceService.ListAsync(
+        var devices = await _rememberedMfaDeviceReader.ListAsync(
             request.UserId,
             new ListRememberedMfaDevicesRequest
             {

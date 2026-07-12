@@ -276,6 +276,7 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
     public void CoreAspNetCoreSessionAndAuthorizationCompositionBuildsWithStrictValidation()
     {
         var secretProtector = new Mock<ISecretProtector>().Object;
+        var transactions = Mock.Of<IAshlarDurableTransactionProvider>();
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddRouting();
@@ -290,7 +291,8 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services.AddSingleton<ISecretProtector>(secretProtector);
         services.AddAshlarIdentity();
-        services.AddSingleton<IAshlarTransactionProvider>(Mock.Of<IAshlarDurableTransactionProvider>());
+        services.AddSingleton<IAshlarTransactionProvider>(transactions);
+        services.AddSingleton<IAshlarDurableTransactionProvider>(transactions);
         services.AddSingleton(Mock.Of<IPersistentSecurityEventSink>());
         services.AddPermissiveAccountSecurityGuard();
         services.AddPasswordHasher<PasswordHasherV1>();

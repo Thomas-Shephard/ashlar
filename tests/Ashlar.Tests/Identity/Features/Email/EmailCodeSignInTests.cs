@@ -553,9 +553,9 @@ internal sealed class EmailCodeSignInTests
         services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IEmailSender, RecordingEmailSender>();
-        services.AddDurableAuditForTests();
         services.AddAshlarEmailCodeSignIn(options => options.CodeLength = 6);
         services.AddAshlarNoMfaPolicy();
+        services.AddDurableAuditForTests();
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -595,6 +595,7 @@ internal sealed class EmailCodeSignInTests
     {
         var repository = new InMemoryUserCredentialStore(user);
         var audit = new RecordingSecurityEventSink();
+        var credentialComposition = new DurableSecurityMutationTestComposition(audit);
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 5, 3, 12, 0, 0, TimeSpan.Zero));
         var emailSender = new RecordingEmailSender();
         var provider = CreateProvider();
@@ -604,8 +605,8 @@ internal sealed class EmailCodeSignInTests
             repository,
             repository,
             Mock.Of<ISecretProtector>(),
-            new NullTransactionProvider(),
-            new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: audit));
+            credentialComposition.Transactions,
+            new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: credentialComposition.Events));
         IPrimaryAuthenticationRateLimiter primaryRateLimiter = usePrimaryAuthenticationRateLimiter
             ? new PrimaryAuthenticationRateLimiter(rateLimiter)
             : AllowPrimaryAuthenticationRateLimiter.Instance;

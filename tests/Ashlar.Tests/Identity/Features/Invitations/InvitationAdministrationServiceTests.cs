@@ -1,4 +1,5 @@
 using Ashlar.Auditing;
+using Moq;
 
 namespace Ashlar.Tests.Identity.Features.Invitations;
 
@@ -9,7 +10,37 @@ internal sealed class InvitationAdministrationServiceTests
     [Test]
     public void ConstructorRejectsNullRepository()
     {
-        Assert.Throws<ArgumentNullException>(() => new InvitationAdministrationService(null!));
+        Assert.Throws<ArgumentNullException>(() => new InvitationAdministrationService(null!, null!));
+    }
+
+    [Test]
+    public void ConstructorRequiresDurableAuditComposition()
+    {
+        var repository = new RecordingInvitationRepository();
+        var transactions = new RecordingTransactionProvider();
+        var composition = DurableSecurityMutationTestComposition.Create(transactions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentNullException>(() => _ = new InvitationAdministrationService(repository, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new InvitationAdministrationService(repository,
+                new InvitationAdministrationServiceDependencies(TransactionProvider: transactions)));
+            Assert.Throws<ArgumentNullException>(() => _ = new InvitationAdministrationService(repository,
+                new InvitationAdministrationServiceDependencies(SecurityEventSink: composition.Events)));
+            Assert.Throws<ArgumentException>(() => _ = new InvitationAdministrationService(repository,
+                new InvitationAdministrationServiceDependencies(SecurityEventSink: new SecurityEventFanOutSink(), TransactionProvider: transactions)));
+            Assert.Throws<ArgumentException>(() => _ = new InvitationAdministrationService(repository,
+                new InvitationAdministrationServiceDependencies(SecurityEventSink: new SecurityEventFanOutSink(Mock.Of<IPersistentSecurityEventSink>(), transactionProvider: new RecordingTransactionProvider()), TransactionProvider: transactions)));
+            Assert.DoesNotThrow(() => _ = new InvitationAdministrationService(repository,
+                new InvitationAdministrationServiceDependencies(SecurityEventSink: composition.Events, TransactionProvider: transactions)));
+        }
+    }
+
+    [Test]
+    public void ReaderConstructorValidatesRepositoryAndDefaultsClock()
+    {
+        Assert.Throws<ArgumentNullException>(() => _ = new InvitationAdministrationReader(null!));
+        Assert.DoesNotThrow(() => _ = new InvitationAdministrationReader(new RecordingInvitationRepository(), null));
     }
 
     [Test]
@@ -17,7 +48,7 @@ internal sealed class InvitationAdministrationServiceTests
     {
         var repository = new RecordingInvitationRepository();
         var before = TimeProvider.System.GetUtcNow();
-        var result = await new InvitationAdministrationService(repository).SearchInvitationsAsync(new SearchInvitationsRequest { IncludeAllTenants = true });
+        var result = await new InvitationAdministrationReader(repository).SearchInvitationsAsync(new SearchInvitationsRequest { IncludeAllTenants = true });
         var after = TimeProvider.System.GetUtcNow();
 
         using (Assert.EnterMultipleScope())
@@ -31,7 +62,7 @@ internal sealed class InvitationAdministrationServiceTests
     [Test]
     public async Task SearchInvitationsAsyncValidatesScopeAndPaging()
     {
-        var service = CreateService();
+        var service = CreateReader();
 
         var missingScope = await service.SearchInvitationsAsync(new SearchInvitationsRequest());
         var conflictingScope = await service.SearchInvitationsAsync(new SearchInvitationsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true });
@@ -74,7 +105,7 @@ internal sealed class InvitationAdministrationServiceTests
             Offset = 7
         };
 
-        var result = await CreateService(repository).SearchInvitationsAsync(request);
+        var result = await CreateReader(repository).SearchInvitationsAsync(request);
 
         using (Assert.EnterMultipleScope())
         {
@@ -94,7 +125,7 @@ internal sealed class InvitationAdministrationServiceTests
     [Test]
     public async Task GetInvitationAsyncValidatesScopeAndId()
     {
-        var service = CreateService();
+        var service = CreateReader();
 
         var missingScope = await service.GetInvitationAsync(new InvitationAdministrationLookupRequest(Guid.NewGuid()));
         var conflictingScope = await service.GetInvitationAsync(new InvitationAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global, IncludeAllTenants: true));
@@ -113,9 +144,9 @@ internal sealed class InvitationAdministrationServiceTests
     {
         var tenantId = Guid.NewGuid();
         var repository = new RecordingInvitationRepository { SingleResult = CreateSingleResult() with { TenantId = tenantId } };
-        var service = CreateService(repository);
+        var service = CreateReader(repository);
 
-        var missing = await CreateService().GetInvitationAsync(new InvitationAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
+        var missing = await CreateReader().GetInvitationAsync(new InvitationAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
         var crossTenant = await service.GetInvitationAsync(new InvitationAdministrationLookupRequest(repository.SingleResult.Id, TenantContext.Global));
         var allTenants = await service.GetInvitationAsync(new InvitationAdministrationLookupRequest(repository.SingleResult.Id, IncludeAllTenants: true));
 
@@ -275,14 +306,20 @@ internal sealed class InvitationAdministrationServiceTests
         }
     }
 
+    private static InvitationAdministrationReader CreateReader(RecordingInvitationRepository? repository = null) =>
+        new(repository ?? new RecordingInvitationRepository(), new StaticTimeProvider(Now));
+
     private static InvitationAdministrationService CreateService(
         RecordingInvitationRepository? repository = null,
         ISecurityEventSink? events = null,
-        IAshlarTransactionProvider? transactionProvider = null)
+        RecordingTransactionProvider? transactionProvider = null)
     {
+        var composition = transactionProvider is null
+            ? new DurableSecurityMutationTestComposition(events)
+            : DurableSecurityMutationTestComposition.Create(transactionProvider, events);
         return new InvitationAdministrationService(
             repository ?? new RecordingInvitationRepository(),
-            new InvitationAdministrationServiceDependencies(new StaticTimeProvider(Now), events, transactionProvider));
+            new InvitationAdministrationServiceDependencies(new StaticTimeProvider(Now), composition.Events, composition.Transactions));
     }
 
     private static InvitationAdministrationSummary CreateSummary()

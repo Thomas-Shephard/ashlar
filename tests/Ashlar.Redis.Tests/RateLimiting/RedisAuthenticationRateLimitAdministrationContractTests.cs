@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using StackExchange.Redis;
+using Ashlar.Auditing;
+using Ashlar.Identity.Abstractions.Transactions;
 
 namespace Ashlar.Redis.Tests.RateLimiting;
 
@@ -24,9 +26,13 @@ internal sealed class RedisAuthenticationRateLimitAdministrationContractTests : 
 
         _timeProvider = new FakeTimeProvider(Start);
         var services = new ServiceCollection();
+        var transactions = new TestDurableTransactionProvider();
         services.AddAshlarIdentity();
         services.AddAshlarRedisRateLimiting(_redis.Connection, options => options.KeyPrefix = $"ashlar:test:{Guid.NewGuid():N}");
         services.AddSingleton<TimeProvider>(_timeProvider);
+        services.AddSingleton<IAshlarTransactionProvider>(transactions);
+        services.AddSingleton<IAshlarDurableTransactionProvider>(transactions);
+        services.AddSingleton<IPersistentSecurityEventSink, NoOpPersistentSecurityEventSink>();
         return services.BuildServiceProvider();
     }
 
@@ -43,5 +49,24 @@ internal sealed class RedisAuthenticationRateLimitAdministrationContractTests : 
         {
             await OneTimeSetUp();
         }
+    }
+
+    private sealed class TestDurableTransactionProvider : IAshlarDurableTransactionProvider
+    {
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IAshlarTransaction>(new TestTransaction());
+    }
+
+    private sealed class TestTransaction : IAshlarTransaction
+    {
+        public Task CommitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task RollbackAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void OnCommitted(Func<CancellationToken, Task> action) => ArgumentNullException.ThrowIfNull(action);
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class NoOpPersistentSecurityEventSink : IPersistentSecurityEventSink
+    {
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }

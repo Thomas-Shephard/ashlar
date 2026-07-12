@@ -2,6 +2,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Models.Administration;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
+using Ashlar.Identity.Abstractions.Transactions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -26,6 +27,7 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
         services.AddAshlarIdentity();
         services.AddAshlarRedisRateLimiting(GetConnection(), options => options.KeyPrefix = _keyPrefix);
         services.AddSingleton<TimeProvider>(_timeProvider);
+        ConfigureDurableSecurityComposition(services, new NoOpPersistentSecurityEventSink());
         _provider = services.BuildServiceProvider();
     }
 
@@ -49,7 +51,7 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     public async Task SearchBucketsAsyncFiltersByPurposeStatusAndDatesWithoutPhysicalRedisKey()
     {
         var limiter = _provider.GetRequiredService<IAuthenticationRateLimiter>();
-        var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
+        var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
         var blockedKey = UniqueKey();
         var activeKey = UniqueKey();
         var rule = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(10), BlockDuration = TimeSpan.FromMinutes(30) };
@@ -89,7 +91,8 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     public async Task GetBucketAsyncAndResetBucketAsyncRequirePurposeMatch()
     {
         var limiter = _provider.GetRequiredService<IAuthenticationRateLimiter>();
-        var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
+        var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
+        var mutations = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
         var rawKey = $"raw-{Guid.NewGuid():N}@example.com";
 
         await limiter.CheckAsync(
@@ -98,28 +101,28 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
         var bucket = (await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" })).Value!.Items.Single();
 
         var wrongPurposeLookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "other"));
-        var wrongPurposeReset = await administration.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "other", new AuditContext(Guid.NewGuid())));
+        var wrongPurposeReset = await mutations.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "other", new AuditContext(Guid.NewGuid())));
         var lookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "detail"));
-        var reset = await administration.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "detail", new AuditContext(Guid.NewGuid())));
-        var missing = await administration.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "detail", new AuditContext(Guid.NewGuid())));
+        var reset = await mutations.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "detail", new AuditContext(Guid.NewGuid())));
+        var missing = await mutations.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "detail", new AuditContext(Guid.NewGuid())));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(wrongPurposeLookup.Succeeded, Is.False);
-            Assert.That(wrongPurposeReset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.NotFound));
+            Assert.That(wrongPurposeReset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
             Assert.That(lookup.Value!.BucketId, Is.EqualTo(bucket.BucketId));
             Assert.That(lookup.Value.BucketId, Does.Not.Contain(rawKey));
-            Assert.That(reset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
-            Assert.That(missing.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.NotFound));
+            Assert.That(reset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
+            Assert.That(missing.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
         }
     }
 
     [Test]
-    public void PersistentAuditCompositionRejectsRedisWithoutDurableTransactions()
+    public void PersistentAuditCompositionBuildsWithDurableTransactions()
     {
         using var provider = CreateProviderWithPersistentAudit(Moq.Mock.Of<IPersistentSecurityEventSink>());
 
-        Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>());
+        Assert.DoesNotThrow(() => provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>());
     }
 
     [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde")]
@@ -129,7 +132,7 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     [TestCase("0123456789abcdef0123456789abcdef:../../0123456789abcdef01234567a")]
     public async Task GetBucketAsyncReturnsNotFoundForMalformedRedisBucketId(string bucketId)
     {
-        var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
+        var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
 
         var lookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucketId, "detail"));
 
@@ -144,19 +147,43 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     public async Task ResetBucketAsyncReturnsNotFoundForMalformedRedisBucketIdAndDoesNotDeleteExistingBucket(string bucketId)
     {
         var limiter = _provider.GetRequiredService<IAuthenticationRateLimiter>();
-        var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
+        var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
+        var mutations = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
         await limiter.CheckAsync(
             new RateLimitAttempt { Purpose = "detail", Key = UniqueKey() },
             new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
         var existing = (await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" })).Value!.Items.Single();
 
-        var reset = await administration.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucketId, "detail", new AuditContext(Guid.NewGuid())));
+        var reset = await mutations.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucketId, "detail", new AuditContext(Guid.NewGuid())));
         var existingLookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(existing.BucketId, "detail"));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.NotFound));
+            Assert.That(reset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
             Assert.That(existingLookup.Value!.BucketId, Is.EqualTo(existing.BucketId));
+        }
+    }
+
+    [Test]
+    public async Task RepositoryResetBucketAsyncValidatesPurposeAndDeletesMatchingBucket()
+    {
+        var limiter = _provider.GetRequiredService<IAuthenticationRateLimiter>();
+        var reader = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
+        var repository = new RedisAuthenticationRateLimitAdministrationRepository(
+            GetConnection(), Options.Create(new RedisAuthenticationRateLimiterOptions { KeyPrefix = _keyPrefix }));
+        await limiter.CheckAsync(new RateLimitAttempt { Purpose = "direct-reset", Key = UniqueKey() },
+            new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
+        var bucket = (await reader.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "direct-reset" })).Value!.Items.Single();
+
+        var malformed = await repository.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("invalid", "direct-reset", new AuditContext(Guid.NewGuid())));
+        var wrongPurpose = await repository.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "other", new AuditContext(Guid.NewGuid())));
+        var deleted = await repository.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "direct-reset", new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(malformed, Is.False);
+            Assert.That(wrongPurpose, Is.False);
+            Assert.That(deleted, Is.True);
         }
     }
 
@@ -204,7 +231,7 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     public async Task SearchBucketsAsyncAppliesNegativeRangeFilters()
     {
         var limiter = _provider.GetRequiredService<IAuthenticationRateLimiter>();
-        var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
+        var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
         await limiter.CheckAsync(
             new RateLimitAttempt { Purpose = "range", Key = UniqueKey() },
             new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
@@ -258,8 +285,35 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
         services.AddAshlarIdentity();
         services.AddAshlarRedisRateLimiting(GetConnection(), options => options.KeyPrefix = $"{_keyPrefix}:durable:{Guid.NewGuid():N}");
         services.AddSingleton<TimeProvider>(_timeProvider);
-        services.Replace(ServiceDescriptor.Singleton(sink));
-        services.Replace(ServiceDescriptor.Singleton<ISecurityEventSink, SecurityEventFanOutSink>());
+        ConfigureDurableSecurityComposition(services, sink);
         return services.BuildServiceProvider();
+    }
+
+    private static void ConfigureDurableSecurityComposition(IServiceCollection services, IPersistentSecurityEventSink sink)
+    {
+        var transactions = new TestDurableTransactionProvider();
+        services.Replace(ServiceDescriptor.Singleton<IAshlarTransactionProvider>(transactions));
+        services.Replace(ServiceDescriptor.Singleton<IAshlarDurableTransactionProvider>(transactions));
+        services.Replace(ServiceDescriptor.Singleton(new SecurityEventFanOutSink(sink, transactionProvider: transactions)));
+        services.Replace(ServiceDescriptor.Singleton<ISecurityEventSink>(provider => provider.GetRequiredService<SecurityEventFanOutSink>()));
+    }
+
+    private sealed class TestDurableTransactionProvider : IAshlarDurableTransactionProvider
+    {
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IAshlarTransaction>(new TestTransaction());
+    }
+
+    private sealed class TestTransaction : IAshlarTransaction
+    {
+        public Task CommitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task RollbackAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void OnCommitted(Func<CancellationToken, Task> action) => ArgumentNullException.ThrowIfNull(action);
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class NoOpPersistentSecurityEventSink : IPersistentSecurityEventSink
+    {
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }

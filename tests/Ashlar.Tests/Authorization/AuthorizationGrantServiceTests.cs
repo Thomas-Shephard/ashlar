@@ -78,8 +78,8 @@ internal sealed class AuthorizationGrantServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(transactionProvider.Transaction.BeginCount, Is.EqualTo(2));
-            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(2));
+            Assert.That(transactionProvider.Transaction.BeginCount, Is.EqualTo(1));
+            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(1));
         }
     }
 
@@ -346,8 +346,8 @@ internal sealed class AuthorizationGrantServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.Revoked));
-            Assert.That(transactionProvider.Transaction.BeginCount, Is.EqualTo(2));
-            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(2));
+            Assert.That(transactionProvider.Transaction.BeginCount, Is.EqualTo(1));
+            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(1));
         }
     }
 

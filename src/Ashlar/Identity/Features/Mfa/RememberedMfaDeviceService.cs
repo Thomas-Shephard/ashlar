@@ -25,7 +25,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
     private readonly IUserRepository _userRepository;
     private readonly ISecureTokenGenerator _tokenGenerator;
     private readonly ISecureTokenHasher _tokenHasher;
-    private readonly IAshlarTransactionProvider _transactionProvider;
+    private readonly IAshlarDurableTransactionProvider _transactionProvider;
     private readonly RememberedMfaDeviceOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
@@ -36,7 +36,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
         IUserRepository userRepository,
         ISecureTokenGenerator tokenGenerator,
         ISecureTokenHasher tokenHasher,
-        IAshlarTransactionProvider transactionProvider,
+        IAshlarDurableTransactionProvider transactionProvider,
         RememberedMfaDeviceServiceDependencies dependencies,
         ILogger<RememberedMfaDeviceService>? logger = null)
     {
@@ -48,7 +48,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
         _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
         _options = ValidateOptions(dependencies.Options?.Value ?? new RememberedMfaDeviceOptions());
         _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
-        _securityEvents = new SecurityEventEmitter(dependencies.SecurityEventSink, _timeProvider);
+        _securityEvents = new SecurityEventEmitter(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, transactionProvider, "Remembered MFA device mutations"), _timeProvider);
         _logger = logger ?? NullLogger<RememberedMfaDeviceService>.Instance;
     }
 
@@ -213,21 +213,6 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
 
         await transaction.CommitAsync(cancellationToken);
         return new ValidateRememberedMfaDeviceResult(true, ToSummary(device, now), RememberedMfaDeviceValidationStatus.Succeeded);
-    }
-
-    public async Task<IReadOnlyList<RememberedMfaDeviceSummary>> ListAsync(Guid userId, ListRememberedMfaDevicesRequest request, CancellationToken cancellationToken = default)
-    {
-        if (userId == Guid.Empty) throw new ArgumentException(UserIdEmptyMessage, nameof(userId));
-        ArgumentNullException.ThrowIfNull(request);
-        if (request.Tenant != null && request.IncludeAllTenants)
-        {
-            throw new ArgumentException("Tenant scope cannot be combined with IncludeAllTenants = true.", nameof(request));
-        }
-
-        var tenant = request.IncludeAllTenants ? null : request.Tenant ?? TenantContext.Global;
-        var now = _timeProvider.GetUtcNow();
-        var devices = await _repository.ListForUserAsync(userId, tenant, request.ActiveOnly, now, cancellationToken);
-        return devices.Select(device => ToSummary(device, now)).ToList().AsReadOnly();
     }
 
     public async Task<bool> RevokeCurrentAsync(RevokeCurrentRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
@@ -526,4 +511,4 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
 internal sealed record RememberedMfaDeviceServiceDependencies(
     IOptions<RememberedMfaDeviceOptions>? Options = null,
     TimeProvider? TimeProvider = null,
-    ISecurityEventSink? SecurityEventSink = null);
+    SecurityEventFanOutSink? SecurityEventSink = null);

@@ -37,7 +37,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
         var user = await CreateUserAsync(provider);
         var actor = await CreateActorAsync(provider);
 
-        Assert.ThrowsAsync<ArgumentException>(async () =>
+        Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IAuthorizationGrantService>().CreateGrantAsync(
                 new CreateAuthorizationGrantRequest(user.Id, actor, actor.Audit, TenantContext.Global, permission: "posts.read")));
 
@@ -66,7 +66,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
         };
         await provider.GetRequiredService<IAuthorizationGrantRepository>().CreateGrantAsync(grant);
 
-        Assert.ThrowsAsync<ArgumentException>(async () =>
+        Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IAuthorizationGrantService>().RevokeGrantAsync(
                 new RevokeAuthorizationGrantRequest(grant.Id, actor, actor.Audit, TenantContext.Global)));
 
@@ -222,7 +222,11 @@ internal sealed class SecurityMutationAuditAtomicityTests
         return await SqliteContractDatabase.CreateAsync(services =>
         {
             configure?.Invoke(services);
-            services.Replace(ServiceDescriptor.Scoped<ISecurityEventSink, ThrowingSecurityEventSink>());
+            services.Replace(ServiceDescriptor.Scoped<ThrowingSecurityEventSink, ThrowingSecurityEventSink>());
+            services.Replace(ServiceDescriptor.Scoped<SecurityEventFanOutSink>(provider => new SecurityEventFanOutSink(
+                provider.GetRequiredService<ThrowingSecurityEventSink>(),
+                transactionProvider: provider.GetRequiredService<IAshlarDurableTransactionProvider>())));
+            services.Replace(ServiceDescriptor.Scoped<ISecurityEventSink>(provider => provider.GetRequiredService<SecurityEventFanOutSink>()));
         });
     }
 
@@ -280,7 +284,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
         return new AccountSecurityActorContext(actor.Id, TenantContext.Global, session.Id, proof, audit);
     }
 
-    private sealed class ThrowingSecurityEventSink : ISecurityEventSink
+    private sealed class ThrowingSecurityEventSink : IPersistentSecurityEventSink
     {
         public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
         {

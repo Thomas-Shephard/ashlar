@@ -16,7 +16,7 @@ internal sealed class TotpService : ITotpService
     private readonly IUserRepository _userRepository;
     private readonly ICredentialRepository _credentialRepository;
     private readonly ICredentialService _credentialService;
-    private readonly IAshlarTransactionProvider _transactionProvider;
+    private readonly IAshlarDurableTransactionProvider _transactionProvider;
     private readonly IAuthenticationProvider _provider;
     private readonly TotpOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -30,7 +30,7 @@ internal sealed class TotpService : ITotpService
         IUserRepository userRepository,
         ICredentialRepository credentialRepository,
         ICredentialService credentialService,
-        IAshlarTransactionProvider transactionProvider,
+        IAshlarDurableTransactionProvider transactionProvider,
         IEnumerable<IAuthenticationProvider> providers,
         IAccountSecurityOperationAuthorizer authorizer,
         TotpServiceDependencies dependencies)
@@ -45,7 +45,7 @@ internal sealed class TotpService : ITotpService
         _options = dependencies.Options.Value;
         TotpOptions.ThrowIfInvalid(_options);
         _timeProvider = dependencies.TimeProvider;
-        _securityEvents = new SecurityEventEmitter(dependencies.SecurityEventSink, _timeProvider);
+        _securityEvents = new SecurityEventEmitter(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, transactionProvider, "TOTP mutations"), _timeProvider);
         _notifications = new SecurityNotificationEmitter(dependencies.NotificationService);
         var providerList = providers.ToArray();
         _provider = providerList.OfType<TotpAuthenticationProvider>().FirstOrDefault()
@@ -180,7 +180,7 @@ internal sealed class TotpService : ITotpService
 
         var assertion = new TotpAssertion(context.Code);
         var totpCredentialMetadata = System.Text.Json.JsonSerializer.Serialize(new { LastUsedStep = verifiedStep });
-        var linkResult = await _credentialService.LinkCredentialAsync(context.UserId, assertion, _provider, context.SharedSecret, totpCredentialMetadata, cancellationToken);
+        var linkResult = await _credentialService.LinkCredentialAsync(context.UserId, assertion, _provider, context.SharedSecret, totpCredentialMetadata, context.Audit, context.Tenant.TenantId, cancellationToken);
 
         if (!linkResult.Succeeded)
             return Result.Failure<TotpEnrollmentCompletionResult>(linkResult.GetFailureOr(AshlarFailureCodes.LinkFailed));
@@ -525,12 +525,12 @@ internal sealed class TotpServiceDependencies(
     IOptions<TotpOptions> options,
     ActiveSessionFreshProofValidator proofValidator,
     TimeProvider? timeProvider = null,
-    ISecurityEventSink? securityEventSink = null,
+    SecurityEventFanOutSink? securityEventSink = null,
     ISecurityNotificationService? notificationService = null)
 {
     public IOptions<TotpOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
     public ActiveSessionFreshProofValidator ProofValidator { get; } = proofValidator ?? throw new ArgumentNullException(nameof(proofValidator));
     public TimeProvider TimeProvider { get; } = timeProvider ?? TimeProvider.System;
-    public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
+    public SecurityEventFanOutSink? SecurityEventSink { get; } = securityEventSink;
     public ISecurityNotificationService? NotificationService { get; } = notificationService;
 }

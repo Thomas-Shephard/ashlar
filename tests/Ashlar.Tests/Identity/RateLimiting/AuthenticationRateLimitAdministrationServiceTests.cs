@@ -2,6 +2,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using Moq;
 
 namespace Ashlar.Tests.Identity.RateLimiting;
 
@@ -14,9 +15,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     public async Task SearchBucketsAsyncValidatesRequestAndCapsLimit()
     {
         var repository = new RecordingRepository();
-        var service = new AuthenticationRateLimitAdministrationService(
-            repository,
-            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now)));
+        var service = CreateReader(repository);
 
         var result = await service.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "", Limit = 500 });
         var valid = await service.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Limit = 500 });
@@ -34,7 +33,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     [Test]
     public async Task SearchBucketsAsyncRejectsInvalidPaging()
     {
-        var service = new AuthenticationRateLimitAdministrationService(new RecordingRepository());
+        var service = CreateReader(new RecordingRepository());
 
         var negativeOffset = await service.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Offset = -1 });
         var zeroLimit = await service.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Limit = 0 });
@@ -49,9 +48,10 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     [Test]
     public async Task LookupAndResetValidateRequests()
     {
-        var service = new AuthenticationRateLimitAdministrationService(new RecordingRepository());
+        var reader = CreateReader(new RecordingRepository());
+        var service = CreateMutation(new RecordingRepository());
 
-        var invalidLookup = await service.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest("", "login"));
+        var invalidLookup = await reader.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest("", "login"));
         var invalidReset = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "", new AuditContext(Guid.NewGuid())));
 
         using (Assert.EnterMultipleScope())
@@ -64,9 +64,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     [Test]
     public async Task GetBucketAsyncReturnsNotFoundForMissingBucket()
     {
-        var service = new AuthenticationRateLimitAdministrationService(
-            new RecordingRepository(),
-            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now)));
+        var service = CreateReader(new RecordingRepository());
 
         var result = await service.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest("bucket", "login"));
 
@@ -82,9 +80,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     {
         var repository = new RecordingRepository { ResetResult = true };
         var sink = new CapturingSecurityEventSink();
-        var service = new AuthenticationRateLimitAdministrationService(
-            repository,
-            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), sink));
+        var service = CreateMutation(repository, sink);
         var actorUserId = Guid.NewGuid();
         var audit = new AuditContext(actorUserId, "127.0.0.1", "tests", "correlation");
 
@@ -112,12 +108,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     {
         var repository = new RecordingRepository { ResetResult = true };
         var transactionProvider = new RecordingTransactionProvider();
-        var service = new AuthenticationRateLimitAdministrationService(
-            repository,
-            new AuthenticationRateLimitAdministrationServiceDependencies(
-                new FakeTimeProvider(Now),
-                new CapturingSecurityEventSink(),
-                transactionProvider));
+        var service = CreateMutation(repository, new CapturingSecurityEventSink(), transactionProvider);
 
         var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
 
@@ -130,47 +121,25 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     }
 
     [Test]
-    public async Task ResetBucketAsyncShouldAllowNonAtomicRepositoryWhenPersistentAuditIsNotConfigured()
+    public async Task ResetBucketAsyncShouldFailClosedForNonAtomicRepository()
     {
         var repository = new NonAtomicRecordingRepository { ResetResult = true };
-        var service = new AuthenticationRateLimitAdministrationService(
-            repository,
-            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), new CapturingSecurityEventSink()));
+        var service = CreateMutation(repository, new CapturingSecurityEventSink());
 
         var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
-            Assert.That(repository.ResetCalls, Is.EqualTo(1));
+            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
+            Assert.That(repository.ResetCalls, Is.Zero);
         }
     }
 
     [Test]
-    public async Task ResetBucketAsyncShouldAllowNonAtomicRepositoryWhenDependenciesAreNotConfigured()
-    {
-        var repository = new NonAtomicRecordingRepository { ResetResult = true };
-        var service = new AuthenticationRateLimitAdministrationService(repository);
-
-        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
-            Assert.That(repository.ResetCalls, Is.EqualTo(1));
-        }
-    }
-
-    [Test]
-    public async Task ResetBucketAsyncShouldAllowAtomicRepositoryWhenPersistentAuditIsConfigured()
+    public async Task ResetBucketAsyncShouldAllowAtomicRepository()
     {
         var repository = new RecordingRepository { ResetResult = true };
-        var service = new AuthenticationRateLimitAdministrationService(
-            repository,
-            new AuthenticationRateLimitAdministrationServiceDependencies(
-                new FakeTimeProvider(Now),
-                new CapturingSecurityEventSink(),
-                PersistentAuditConfigured: true));
+        var service = CreateMutation(repository, new CapturingSecurityEventSink());
 
         var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
 
@@ -182,16 +151,11 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     }
 
     [Test]
-    public async Task ResetBucketAsyncShouldFailClosedForNonAtomicRepositoryWhenPersistentAuditIsConfigured()
+    public async Task ResetBucketAsyncShouldEmitFailureAuditForNonAtomicRepository()
     {
         var repository = new NonAtomicRecordingRepository { ResetResult = true };
         var sink = new CapturingSecurityEventSink();
-        var service = new AuthenticationRateLimitAdministrationService(
-            repository,
-            new AuthenticationRateLimitAdministrationServiceDependencies(
-                new FakeTimeProvider(Now),
-                sink,
-                PersistentAuditConfigured: true));
+        var service = CreateMutation(repository, sink);
 
         var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
 
@@ -209,9 +173,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     {
         var repository = new RecordingRepository { ResetResult = false };
         var sink = new CapturingSecurityEventSink();
-        var service = new AuthenticationRateLimitAdministrationService(
-            repository,
-            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), sink));
+        var service = CreateMutation(repository, sink);
         var audit = new AuditContext(Guid.NewGuid(), "127.0.0.1", "tests", "correlation");
 
         var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("missing", "login", audit));
@@ -232,9 +194,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     {
         var repository = new RecordingRepository { ThrowOnReset = true };
         var sink = new CapturingSecurityEventSink();
-        var service = new AuthenticationRateLimitAdministrationService(
-            repository,
-            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), sink));
+        var service = CreateMutation(repository, sink);
 
         var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
 
@@ -253,9 +213,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     public async Task ResetBucketAsyncDoesNotAuditInvalidRequest()
     {
         var sink = new CapturingSecurityEventSink();
-        var service = new AuthenticationRateLimitAdministrationService(
-            new RecordingRepository(),
-            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), sink));
+        var service = CreateMutation(new RecordingRepository(), sink);
 
         var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "", new AuditContext(Guid.NewGuid())));
 
@@ -271,9 +229,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     {
         var repository = new RecordingRepository { ResetResult = true };
         var sink = new ThrowingSecurityEventSink(new InvalidOperationException("sink failed"));
-        var service = new AuthenticationRateLimitAdministrationService(
-            repository,
-            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), sink));
+        var service = CreateMutation(repository, sink);
         var audit = new AuditContext(Guid.NewGuid(), "127.0.0.1", "tests", "correlation");
 
         var exception = Assert.ThrowsAsync<InvalidOperationException>(
@@ -291,9 +247,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     {
         var repository = new RecordingRepository { ResetResult = false };
         var sink = new ThrowingSecurityEventSink(new OperationCanceledException("sink canceled"));
-        var service = new AuthenticationRateLimitAdministrationService(
-            repository,
-            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), sink));
+        var service = CreateMutation(repository, sink);
 
         var exception = Assert.ThrowsAsync<OperationCanceledException>(
             async () => await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("missing", "login", new AuditContext(Guid.NewGuid()))));
@@ -306,20 +260,55 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     }
 
     [Test]
-    public async Task ResetBucketAsyncSucceedsWithoutAuditSink()
+    public void ConstructorValidatesRepository()
     {
-        var repository = new RecordingRepository { ResetResult = true };
-        var service = new AuthenticationRateLimitAdministrationService(repository, new AuthenticationRateLimitAdministrationServiceDependencies());
-
-        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
-
-        Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationRateLimitAdministrationService(null!, null!));
     }
 
     [Test]
-    public void ConstructorValidatesRepository()
+    public void ConstructorRequiresDurableAuditComposition()
     {
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationRateLimitAdministrationService(null!));
+        var repository = new RecordingRepository();
+        var transactions = new RecordingTransactionProvider();
+        var composition = DurableSecurityMutationTestComposition.Create(transactions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationRateLimitAdministrationService(repository, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationRateLimitAdministrationService(repository,
+                new AuthenticationRateLimitAdministrationServiceDependencies(TransactionProvider: transactions)));
+            Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationRateLimitAdministrationService(repository,
+                new AuthenticationRateLimitAdministrationServiceDependencies(SecurityEventSink: composition.Events)));
+            Assert.Throws<ArgumentException>(() => _ = new AuthenticationRateLimitAdministrationService(repository,
+                new AuthenticationRateLimitAdministrationServiceDependencies(SecurityEventSink: new SecurityEventFanOutSink(), TransactionProvider: transactions)));
+            Assert.Throws<ArgumentException>(() => _ = new AuthenticationRateLimitAdministrationService(repository,
+                new AuthenticationRateLimitAdministrationServiceDependencies(SecurityEventSink: new SecurityEventFanOutSink(Mock.Of<IPersistentSecurityEventSink>(), transactionProvider: new RecordingTransactionProvider()), TransactionProvider: transactions)));
+            Assert.DoesNotThrow(() => _ = new AuthenticationRateLimitAdministrationService(repository,
+                new AuthenticationRateLimitAdministrationServiceDependencies(SecurityEventSink: composition.Events, TransactionProvider: transactions)));
+        }
+    }
+
+    [Test]
+    public void ReaderConstructorValidatesRepositoryAndDefaultsClock()
+    {
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationRateLimitAdministrationReader(null!));
+        Assert.DoesNotThrow(() => _ = new AuthenticationRateLimitAdministrationReader(new RecordingRepository(), null));
+    }
+
+    private static AuthenticationRateLimitAdministrationReader CreateReader(IAuthenticationRateLimitAdministrationRepository repository) =>
+        new(repository, new FakeTimeProvider(Now));
+
+    private static AuthenticationRateLimitAdministrationService CreateMutation(
+        IAuthenticationRateLimitAdministrationRepository repository,
+        ISecurityEventSink? sink = null,
+        RecordingTransactionProvider? transactions = null)
+    {
+        var composition = transactions is null
+            ? new DurableSecurityMutationTestComposition(sink)
+            : DurableSecurityMutationTestComposition.Create(transactions, sink);
+        return new AuthenticationRateLimitAdministrationService(
+            repository,
+            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), composition.Events, composition.Transactions));
     }
 
     [Test]

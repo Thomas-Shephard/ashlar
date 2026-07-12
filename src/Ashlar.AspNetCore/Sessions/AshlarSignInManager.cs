@@ -8,16 +8,19 @@ namespace Ashlar.AspNetCore.Sessions;
 /// <summary>
 /// Provides ashlar sign in manager behavior.
 /// </summary>
-/// <param name="sessionService">The session service value.</param>
+/// <param name="sessionService">The session mutation service.</param>
+/// <param name="sessionReader">The session reader.</param>
 /// <param name="options">The options value.</param>
 /// <param name="registration">The registration value.</param>
 public sealed class AshlarSignInManager(
     IAuthenticationSessionService sessionService,
+    IAuthenticationSessionReader sessionReader,
     IOptionsMonitor<AshlarSessionAuthenticationOptions> options,
     AshlarSessionRegistration registration)
     : IAshlarSignInManager
 {
     private readonly IAuthenticationSessionService _sessionService = sessionService ?? throw new ArgumentNullException(nameof(sessionService));
+    private readonly IAuthenticationSessionReader _sessionReader = sessionReader ?? throw new ArgumentNullException(nameof(sessionReader));
     private readonly IOptionsMonitor<AshlarSessionAuthenticationOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
     private readonly AshlarSessionRegistration _registration = registration ?? throw new ArgumentNullException(nameof(registration));
 
@@ -77,7 +80,7 @@ public sealed class AshlarSignInManager(
         var userId = TryGetUserId(httpContext.User) ?? throw new InvalidOperationException("User is not authenticated.");
         var currentSessionId = TryGetSessionId(httpContext.User);
 
-        return await _sessionService.ListSessionsForUserAsync(
+        return await _sessionReader.ListSessionsForUserAsync(
             userId,
             new ListAuthenticationSessionsRequest { ActiveOnly = activeOnly, CurrentSessionId = currentSessionId },
             cancellationToken);

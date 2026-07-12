@@ -1,3 +1,5 @@
+using Ashlar.Auditing;
+
 namespace Ashlar.Identity.Abstractions.Services;
 
 /// <summary>
@@ -41,9 +43,11 @@ internal interface ICredentialService
     /// <param name="provider">Authenticator implementation that owns the credential.</param>
     /// <param name="credentialValue">Optional credential material to store. Treat as sensitive unless documented otherwise.</param>
     /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the credential. Callers must not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
+    /// <param name="audit">Required audit context for the credential-link mutation.</param>
+    /// <param name="tenantId">Tenant scope for the linked credential's audit event, when the caller has an explicit tenant scope.</param>
     /// <param name="cancellationToken">A token that can cancel linking.</param>
     /// <returns>Success when the credential is linked; otherwise, a stable failure describing why linking was rejected.</returns>
-    Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue = null, string? credentialMetadata = null, CancellationToken cancellationToken = default);
+    Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue, string? credentialMetadata, AuditContext audit, Guid? tenantId = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates the usage information, consumes, or potentially changes the secret value of a credential after a successful authentication attempt.

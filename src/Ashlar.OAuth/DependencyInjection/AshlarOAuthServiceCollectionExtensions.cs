@@ -43,6 +43,7 @@ public static class AshlarOAuthServiceCollectionExtensions
 
         services.Configure(configure);
         services.TryAddScoped<AshlarExternalCredentialAuthenticationService>();
+        services.TryAddScoped<IExternalAccountCredentialLinker, ExternalAccountCredentialLinker>();
         services.TryAddScoped(provider => new AshlarExternalAccountLinkService(
             provider.GetRequiredService<IExternalAccountCredentialLinker>(),
             provider.GetRequiredService<IAccountSecurityAdministrationService>(),

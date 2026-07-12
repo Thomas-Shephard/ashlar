@@ -20,6 +20,7 @@ internal sealed class AccountSecurityServiceTests
     private InMemoryUserCredentialStore _userRepository;
     private InMemorySessionRepository _sessionRepository;
     private RecordingSecurityEventSink _events;
+    private DurableSecurityMutationTestComposition _sessionComposition;
     private AccountSecurityService _service;
 
     [SetUp]
@@ -29,16 +30,18 @@ internal sealed class AccountSecurityServiceTests
         _userRepository = new InMemoryUserCredentialStore();
         _sessionRepository = new InMemorySessionRepository();
         _events = new RecordingSecurityEventSink();
+        _sessionComposition = new DurableSecurityMutationTestComposition(_events);
         var sessionService = new AuthenticationSessionService(
             _sessionRepository,
             Mock.Of<Ashlar.Security.Tokens.ISecureTokenHasher>(h => h.HashToken(It.IsAny<string>()) == "hash"),
             Mock.Of<Ashlar.Security.Tokens.ISecureTokenGenerator>(g => g.GenerateToken(It.IsAny<int>()) == "token"),
-            new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _events, UserRepository: _userRepository));
+            _sessionComposition.Transactions,
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _sessionComposition.Events, UserRepository: _userRepository));
         _service = new AccountSecurityService(
             _userRepository,
             _userRepository,
             sessionService,
+            new AuthenticationSessionReader(_sessionRepository, _timeProvider),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events, ProviderRegistry: CreateDefaultProviderRegistry()));
@@ -79,6 +82,7 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices));
@@ -199,6 +203,7 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             _userRepository,
             sessionService,
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices));
@@ -246,16 +251,17 @@ internal sealed class AccountSecurityServiceTests
             _sessionRepository,
             Mock.Of<Ashlar.Security.Tokens.ISecureTokenHasher>(h => h.HashToken(It.IsAny<string>()) == "hash"),
             Mock.Of<Ashlar.Security.Tokens.ISecureTokenGenerator>(g => g.GenerateToken(It.IsAny<int>()) == "token"),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new AuthenticationSessionServiceDependencies(
                 TimeProvider: _timeProvider,
-                SecurityEventSink: _events,
+                SecurityEventSink: _sessionComposition.Events,
                 UserRepository: _userRepository,
                 NotificationService: notifications.Object));
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
             sessionService,
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
@@ -283,6 +289,7 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new RejectingAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
@@ -403,6 +410,7 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             _userRepository,
             sessionService,
+            new AuthenticationSessionReader(_sessionRepository, _timeProvider),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices));
@@ -432,6 +440,7 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new EmptyFailureAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
@@ -740,6 +749,7 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices));
@@ -821,6 +831,7 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(
@@ -846,6 +857,7 @@ internal sealed class AccountSecurityServiceTests
             repository.Object,
             Mock.Of<ICredentialRepository>(),
             new TestAuthenticationSessionMutationExecutor(),
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies());
@@ -870,6 +882,7 @@ internal sealed class AccountSecurityServiceTests
             repository.Object,
             Mock.Of<ICredentialRepository>(),
             new TestAuthenticationSessionMutationExecutor(),
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
@@ -1247,6 +1260,7 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
@@ -1386,6 +1400,7 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(
@@ -1479,6 +1494,7 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             _userRepository,
             sessionService,
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, ProviderRegistry: CreateDefaultProviderRegistry()));
@@ -1498,12 +1514,13 @@ internal sealed class AccountSecurityServiceTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(null!, _userRepository, new TestAuthenticationSessionMutationExecutor(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
-            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, null!, new TestAuthenticationSessionMutationExecutor(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
-            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, null!, new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
-            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), null!, new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
-            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), new NullTransactionProvider(), null!, new AccountSecurityServiceDependencies()));
-            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(null!, _userRepository, new TestAuthenticationSessionMutationExecutor(), new TestAuthenticationSessionReader(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
+            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, null!, new TestAuthenticationSessionMutationExecutor(), new TestAuthenticationSessionReader(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
+            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, null!, new TestAuthenticationSessionReader(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
+            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), null!, new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
+            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), new TestAuthenticationSessionReader(), null!, new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
+            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), new TestAuthenticationSessionReader(), new NullTransactionProvider(), null!, new AccountSecurityServiceDependencies()));
+            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), new TestAuthenticationSessionReader(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), null!));
         }
     }
 
@@ -1594,6 +1611,7 @@ internal sealed class AccountSecurityServiceTests
             userRepository.Object,
             Mock.Of<ICredentialRepository>(),
             new TestAuthenticationSessionMutationExecutor(),
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
@@ -1616,6 +1634,7 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new RejectingAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
@@ -1693,6 +1712,7 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
+            new TestAuthenticationSessionReader(),
             new NullTransactionProvider(),
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(
@@ -1957,12 +1977,16 @@ internal sealed class AccountSecurityServiceTests
     {
         public int RevokeCalls { get; private set; }
         public int RevokeResult { get; set; }
-        public IReadOnlyList<AuthenticationSessionSummary> Sessions { get; set; } = [];
 
-        public Task<IReadOnlyList<AuthenticationSessionSummary>> ListSessionsForUserAsync(Guid userId, ListAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) => Task.FromResult(Sessions);
         public Task<int> RevokeSessionsForUserAsync(Guid userId, RevokeAuthenticationSessionsForUserRequest request, CancellationToken cancellationToken = default) { RevokeCalls++; return Task.FromResult(RevokeResult); }
         public Task<bool> RevokeSessionForUserAsync(Guid userId, RevokeAuthenticationSessionRequest request, CancellationToken cancellationToken = default) => Task.FromResult(false);
         public Task<int> RevokeOtherSessionsAsync(Guid userId, RevokeOtherAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
+    }
+
+    private sealed class TestAuthenticationSessionReader : IAuthenticationSessionReader
+    {
+        public Task<IReadOnlyList<AuthenticationSessionSummary>> ListSessionsForUserAsync(Guid userId, ListAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AuthenticationSessionSummary>>([]);
     }
 
     [Test]

@@ -11,7 +11,7 @@ internal sealed class AuthenticationSessionService(
     IAuthenticationSessionRepository repository,
     ISecureTokenHasher tokenHasher,
     ISecureTokenGenerator tokenGenerator,
-    IAshlarTransactionProvider transactionProvider,
+    IAshlarDurableTransactionProvider transactionProvider,
     AuthenticationSessionServiceDependencies dependencies,
     ILogger<AuthenticationSessionService>? logger = null)
     : IAuthenticationSessionService, IAuthenticationSessionMutationExecutor
@@ -39,10 +39,10 @@ internal sealed class AuthenticationSessionService(
     private readonly ActiveSessionFreshProofValidator _proofValidator = new(repository, dependencies.TimeProvider ?? TimeProvider.System);
     private readonly ISecureTokenHasher _tokenHasher = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
     private readonly ISecureTokenGenerator _tokenGenerator = tokenGenerator ?? throw new ArgumentNullException(nameof(tokenGenerator));
-    private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
+    private readonly IAshlarDurableTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly AuthenticationSessionOptions _options = ValidateOptions(dependencies.Options ?? new AuthenticationSessionOptions());
     private readonly TimeProvider _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
-    private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider ?? TimeProvider.System);
+    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, transactionProvider, "Authentication-session mutations"), dependencies.TimeProvider ?? TimeProvider.System);
     private readonly ILogger<AuthenticationSessionService> _logger = logger ?? dependencies.Logger ?? NullLogger<AuthenticationSessionService>.Instance;
     private readonly IUserRepository _userRepository = dependencies.UserRepository ?? throw new ArgumentNullException($"{nameof(dependencies)}.{nameof(dependencies.UserRepository)}");
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
@@ -665,33 +665,6 @@ internal sealed class AuthenticationSessionService(
         return revoked;
     }
 
-    public async Task<IReadOnlyList<AuthenticationSessionSummary>> ListSessionsForUserAsync(
-        Guid userId,
-        ListAuthenticationSessionsRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        if (userId == Guid.Empty) throw new ArgumentException(UserIdCannotBeEmptyMessage, nameof(userId));
-        ArgumentNullException.ThrowIfNull(request);
-
-        var now = _timeProvider.GetUtcNow();
-        var sessions = await _repository.ListSessionsForUserAsync(userId, request.ActiveOnly, now, cancellationToken);
-
-        return sessions.Select(s => new AuthenticationSessionSummary
-        {
-            Id = s.Id,
-            CreatedAt = s.CreatedAt,
-            ExpiresAt = s.ExpiresAt,
-            LastSeenAt = s.LastSeenAt,
-            RevokedAt = s.RevokedAt,
-            RevocationReason = s.RevocationReason,
-            IpAddress = s.IpAddress,
-            UserAgent = s.UserAgent,
-            Metadata = s.Metadata,
-            IsCurrent = request.CurrentSessionId.HasValue && s.Id == request.CurrentSessionId.Value,
-            IsActive = s.IsActive(now)
-        }).ToList().AsReadOnly();
-    }
-
     public async Task<bool> RevokeSessionForUserAsync(
         Guid userId,
         RevokeAuthenticationSessionRequest request,
@@ -979,7 +952,7 @@ internal sealed record AuthenticationSessionServiceDependencies(
     IUserRepository UserRepository,
     AuthenticationSessionOptions? Options = null,
     TimeProvider? TimeProvider = null,
-    ISecurityEventSink? SecurityEventSink = null,
+    SecurityEventFanOutSink? SecurityEventSink = null,
     ISecurityNotificationService? NotificationService = null,
     ILogger<AuthenticationSessionService>? Logger = null,
     IAccountSecurityOperationAuthorizer? OperationAuthorizer = null);
