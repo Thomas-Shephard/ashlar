@@ -431,8 +431,10 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
         sessions.Setup(x => x.GetSessionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid id, CancellationToken _) => _sessions.GetValueOrDefault(id));
         var transactions = new RecordingTransactionProvider();
-        var fanOut = new SecurityEventFanOutSink(sink ?? new Sink(), transactionProvider: transactions);
-        return new(repository, repository, fanOut, transactions, timeProvider: _clock,
+        var persistent = sink ?? new Sink();
+        var composition = transactions.Compose(persistent, repository);
+        var fanOut = new SecurityEventFanOutSink(persistent, transactionProvider: composition);
+        return new(repository, repository, fanOut, composition, timeProvider: _clock,
             mutationContext: new AuthorizationGrantMutationContext(
                 includeAuthorizer ? authorizer ?? new AllowAuthorizer() : null,
                 includeSessionRepository ? sessions.Object : null));

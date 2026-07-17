@@ -27,7 +27,7 @@ internal sealed class IdentityServiceTests
         _credentialRepositoryMock = new Mock<ICredentialRepository>();
         _secretProtectorMock = new Mock<ISecretProtector>();
         _timeProvider = new FakeTimeProvider();
-        _composition = new DurableSecurityMutationTestComposition();
+        _composition = new DurableSecurityMutationTestComposition(participants: [_repositoryMock.Object, _credentialRepositoryMock.Object]);
 
         // Default behavior: return as-is for simplicity in existing tests,
         // unless we specifically want to test protection.
@@ -2254,8 +2254,8 @@ internal sealed class IdentityServiceTests
             _repositoryMock.Object,
             _credentialRepositoryMock.Object,
             _secretProtectorMock.Object,
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new CredentialServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents));
+            _composition.Transactions,
+            new CredentialServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events));
 
         return credentialService.LinkCredentialAsync(new CredentialLinkRequest(userId, assertion, provider, credentialValue, null, new AuditContext(userId)));
     }

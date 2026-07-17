@@ -8,6 +8,8 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
 {
     protected abstract DateTimeOffset Now { get; }
 
+    protected virtual bool SupportsReset => true;
+
     protected abstract void AdvanceTime(TimeSpan duration);
 
     [Test]
@@ -164,6 +166,8 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
     [Test]
     public async Task ResetBucketAsyncDeletesExistingBucketAndReportsMissingBucket()
     {
+        if (!SupportsReset) Assert.Ignore("This provider exposes read-only rate-limit administration.");
+
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
         var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();

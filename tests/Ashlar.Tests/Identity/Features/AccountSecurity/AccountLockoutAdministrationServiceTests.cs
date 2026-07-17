@@ -25,7 +25,7 @@ internal sealed class AccountLockoutAdministrationServiceTests
         _timeProvider = new FakeTimeProvider(Now);
         _repository = new InMemoryAccountLockoutRepository();
         _events = new RecordingSecurityEventSink();
-        _composition = new DurableSecurityMutationTestComposition(_events);
+        _composition = new DurableSecurityMutationTestComposition(_events, _repository);
         _service = new AccountLockoutAdministrationService(
             _repository,
             new AccountLockoutAdministrationServiceDependencies(_timeProvider, _composition.Events, _composition.Transactions));
@@ -146,11 +146,11 @@ internal sealed class AccountLockoutAdministrationServiceTests
     public async Task ResetLockoutAsyncShouldCommitWhenTransactionProviderIsConfigured()
     {
         var transactionProvider = new RecordingTransactionProvider();
-        var composition = DurableSecurityMutationTestComposition.Create(transactionProvider, _events);
+        var composition = DurableSecurityMutationTestComposition.Create(transactionProvider, _events, _repository);
         _repository.Seed(CreateRecord(UserId, TenantId, AuthenticationProviderKey.Local, lockedUntil: Now.AddMinutes(5)));
         var service = new AccountLockoutAdministrationService(
             _repository,
-            new AccountLockoutAdministrationServiceDependencies(_timeProvider, composition.Events, transactionProvider));
+            new AccountLockoutAdministrationServiceDependencies(_timeProvider, composition.Events, composition.Transactions));
 
         var result = await service.ResetLockoutAsync(
             UserId,
@@ -277,7 +277,7 @@ internal sealed class AccountLockoutAdministrationServiceTests
     public void ConstructorRequiresDurableAuditComposition()
     {
         var transactions = new RecordingTransactionProvider();
-        var composition = DurableSecurityMutationTestComposition.Create(transactions);
+        var composition = DurableSecurityMutationTestComposition.Create(transactions, participants: [_repository]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -287,10 +287,10 @@ internal sealed class AccountLockoutAdministrationServiceTests
                 new AccountLockoutAdministrationServiceDependencies(SecurityEventSink: composition.Events)));
             Assert.Throws<ArgumentException>(() => _ = new AccountLockoutAdministrationService(_repository,
                 new AccountLockoutAdministrationServiceDependencies(SecurityEventSink: new SecurityEventFanOutSink(), TransactionProvider: transactions)));
-            Assert.Throws<ArgumentException>(() => _ = new AccountLockoutAdministrationService(_repository,
+            Assert.Throws<InvalidOperationException>(() => _ = new AccountLockoutAdministrationService(_repository,
                 new AccountLockoutAdministrationServiceDependencies(SecurityEventSink: new SecurityEventFanOutSink(Mock.Of<IPersistentSecurityEventSink>(), transactionProvider: new RecordingTransactionProvider()), TransactionProvider: transactions)));
             Assert.DoesNotThrow(() => _ = new AccountLockoutAdministrationService(_repository,
-                new AccountLockoutAdministrationServiceDependencies(SecurityEventSink: composition.Events, TransactionProvider: transactions)));
+                new AccountLockoutAdministrationServiceDependencies(SecurityEventSink: composition.Events, TransactionProvider: composition.Transactions)));
         }
     }
 

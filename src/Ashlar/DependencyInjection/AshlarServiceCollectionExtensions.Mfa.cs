@@ -22,7 +22,7 @@ public static partial class AshlarServiceCollectionExtensions
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="configure">Optional recovery code configuration.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
-    /// <remarks>Recovery-code mutations require an <see cref="IAshlarDurableTransactionProvider"/> and a transaction-bound <see cref="SecurityEventFanOutSink"/>.</remarks>
+    /// <remarks>Recovery-code mutations require an <see cref="AshlarDurableTransactionProvider"/> and a transaction-bound <see cref="SecurityEventFanOutSink"/>.</remarks>
     public static IServiceCollection AddAshlarRecoveryCodes(
         this IServiceCollection services,
         Action<RecoveryCodeOptions>? configure = null)
@@ -49,7 +49,7 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped(provider => new RecoveryCodeService(
             provider.GetRequiredService<IUserRepository>(),
             provider.GetRequiredService<ICredentialRepository>(),
-            provider.GetRequiredService<IAshlarDurableTransactionProvider>(),
+            provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetRequiredService<PasswordHasherSelector>(),
             provider.GetRequiredService<RecoveryCodeServiceDependencies>()));
         services.TryAddScoped<IRecoveryCodeService>(provider => provider.GetRequiredService<RecoveryCodeService>());
@@ -65,7 +65,7 @@ public static partial class AshlarServiceCollectionExtensions
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="configure">Optional TOTP configuration.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
-    /// <remarks>TOTP mutations require an <see cref="IAshlarDurableTransactionProvider"/> and a transaction-bound <see cref="SecurityEventFanOutSink"/>.</remarks>
+    /// <remarks>TOTP mutations require an <see cref="AshlarDurableTransactionProvider"/> and a transaction-bound <see cref="SecurityEventFanOutSink"/>.</remarks>
     public static IServiceCollection AddAshlarTotp(
         this IServiceCollection services,
         Action<TotpOptions>? configure = null)
@@ -92,7 +92,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<IUserRepository>(),
             provider.GetRequiredService<ICredentialRepository>(),
             provider.GetRequiredService<ICredentialService>(),
-            provider.GetRequiredService<IAshlarDurableTransactionProvider>(),
+            provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetRequiredService<IEnumerable<IAuthenticationProvider>>(),
             provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
             provider.GetRequiredService<TotpServiceDependencies>()));
@@ -145,7 +145,7 @@ public static partial class AshlarServiceCollectionExtensions
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="configure">Optional remembered MFA device configuration.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
-    /// <remarks>Remembered-device mutations require an <see cref="IAshlarDurableTransactionProvider"/> and a transaction-bound <see cref="SecurityEventFanOutSink"/>.</remarks>
+    /// <remarks>Remembered-device mutations require an <see cref="AshlarDurableTransactionProvider"/> and a transaction-bound <see cref="SecurityEventFanOutSink"/>.</remarks>
     public static IServiceCollection AddAshlarRememberedMfaDevices(
         this IServiceCollection services,
         Action<RememberedMfaDeviceOptions>? configure = null)
@@ -170,7 +170,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<IUserRepository>(),
             provider.GetRequiredService<ISecureTokenGenerator>(),
             provider.GetRequiredService<ISecureTokenHasher>(),
-            provider.GetRequiredService<IAshlarDurableTransactionProvider>(),
+            provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetRequiredService<RememberedMfaDeviceServiceDependencies>(),
             provider.GetService<global::Microsoft.Extensions.Logging.ILogger<RememberedMfaDeviceService>>()));
         services.TryAddScoped<IRememberedMfaDeviceService>(provider => provider.GetRequiredService<RememberedMfaDeviceService>());

@@ -14,7 +14,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
     private readonly ICredentialRepository _credentialRepository;
     private readonly IAuthenticationSessionMutationExecutor _sessionService;
     private readonly IAuthenticationSessionReader _sessionReader;
-    private readonly IAshlarTransactionProvider _transactionProvider;
+    private readonly AshlarDurableTransactionProvider _transactionProvider;
     private readonly IAccountSecurityGuard _accountSecurityGuard;
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
@@ -40,10 +40,19 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
         _sessionService = sessionService ?? throw new ArgumentNullException(nameof(sessionService));
         _sessionReader = sessionReader ?? throw new ArgumentNullException(nameof(sessionReader));
-        _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
+        ArgumentNullException.ThrowIfNull(transactionProvider);
+        _transactionProvider = transactionProvider as AshlarDurableTransactionProvider
+            ?? throw new ArgumentException("Account-security mutations require an Ashlar durable transaction composition.", nameof(transactionProvider));
         _accountSecurityGuard = accountSecurityGuard ?? throw new ArgumentNullException(nameof(accountSecurityGuard));
         _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
-        _securityEvents = new SecurityEventEmitter(dependencies.SecurityEventSink, _timeProvider);
+        _securityEvents = new SecurityEventEmitter(
+            DurableSecurityMutationComposition.Require(
+                dependencies.SecurityEventSink as SecurityEventFanOutSink,
+                _transactionProvider,
+                "Account-security mutations",
+                userRepository,
+                credentialRepository),
+            _timeProvider);
         _securityEventSummaryRepository = dependencies.SecurityEventSummaryRepository;
         _mfaPolicyEvaluator = dependencies.MfaPolicyEvaluator ?? new NoMfaPolicyEvaluator();
         _providerRegistry = dependencies.ProviderRegistry;

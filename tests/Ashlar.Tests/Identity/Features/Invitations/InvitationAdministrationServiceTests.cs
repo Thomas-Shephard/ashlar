@@ -18,7 +18,7 @@ internal sealed class InvitationAdministrationServiceTests
     {
         var repository = new RecordingInvitationRepository();
         var transactions = new RecordingTransactionProvider();
-        var composition = DurableSecurityMutationTestComposition.Create(transactions);
+        var composition = DurableSecurityMutationTestComposition.Create(transactions, participants: [repository]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -29,10 +29,10 @@ internal sealed class InvitationAdministrationServiceTests
                 new InvitationAdministrationServiceDependencies(SecurityEventSink: composition.Events)));
             Assert.Throws<ArgumentException>(() => _ = new InvitationAdministrationService(repository,
                 new InvitationAdministrationServiceDependencies(SecurityEventSink: new SecurityEventFanOutSink(), TransactionProvider: transactions)));
-            Assert.Throws<ArgumentException>(() => _ = new InvitationAdministrationService(repository,
+            Assert.Throws<InvalidOperationException>(() => _ = new InvitationAdministrationService(repository,
                 new InvitationAdministrationServiceDependencies(SecurityEventSink: new SecurityEventFanOutSink(Mock.Of<IPersistentSecurityEventSink>(), transactionProvider: new RecordingTransactionProvider()), TransactionProvider: transactions)));
             Assert.DoesNotThrow(() => _ = new InvitationAdministrationService(repository,
-                new InvitationAdministrationServiceDependencies(SecurityEventSink: composition.Events, TransactionProvider: transactions)));
+                new InvitationAdministrationServiceDependencies(SecurityEventSink: composition.Events, TransactionProvider: composition.Transactions)));
         }
     }
 
@@ -314,11 +314,12 @@ internal sealed class InvitationAdministrationServiceTests
         ISecurityEventSink? events = null,
         RecordingTransactionProvider? transactionProvider = null)
     {
+        repository ??= new RecordingInvitationRepository();
         var composition = transactionProvider is null
-            ? new DurableSecurityMutationTestComposition(events)
-            : DurableSecurityMutationTestComposition.Create(transactionProvider, events);
+            ? new DurableSecurityMutationTestComposition(events, repository)
+            : DurableSecurityMutationTestComposition.Create(transactionProvider, events, repository);
         return new InvitationAdministrationService(
-            repository ?? new RecordingInvitationRepository(),
+            repository,
             new InvitationAdministrationServiceDependencies(new StaticTimeProvider(Now), composition.Events, composition.Transactions));
     }
 

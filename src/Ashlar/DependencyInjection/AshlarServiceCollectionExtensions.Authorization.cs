@@ -47,7 +47,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<IAuthorizationGrantRepository>(),
             provider.GetRequiredService<IUserRepository>(),
             provider.GetRequiredService<SecurityEventFanOutSink>(),
-            provider.GetRequiredService<IAshlarDurableTransactionProvider>(),
+            provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetService<AuthorizationGrantOptions>(),
             provider.GetService<TimeProvider>(),
             new AuthorizationGrantMutationContext(

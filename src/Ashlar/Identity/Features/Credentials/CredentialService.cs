@@ -10,7 +10,7 @@ internal sealed class CredentialService(
     IUserRepository userRepository,
     ICredentialRepository credentialRepository,
     ISecretProtector secretProtector,
-    IAshlarDurableTransactionProvider transactionProvider,
+    AshlarDurableTransactionProvider transactionProvider,
     CredentialServiceDependencies dependencies)
     : ICredentialService
 {
@@ -60,11 +60,11 @@ internal sealed class CredentialService(
     private readonly IUserRepository _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
     private readonly ICredentialRepository _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
     private readonly ISecretProtector _secretProtector = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
-    private readonly IAshlarDurableTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
+    private readonly AshlarDurableTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly IdentityServiceOptions _options = ValidateDependencies(dependencies).Options ?? new IdentityServiceOptions();
     private readonly TimeProvider _timeProvider = ValidateDependencies(dependencies).TimeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(
-        DurableSecurityMutationComposition.Require(ValidateDependencies(dependencies).SecurityEventSink, transactionProvider, "Credential mutations"),
+        DurableSecurityMutationComposition.Require(ValidateDependencies(dependencies).SecurityEventSink, transactionProvider, "Credential mutations", userRepository, credentialRepository),
         ValidateDependencies(dependencies).TimeProvider ?? TimeProvider.System);
     private readonly ILogger<CredentialService> _logger = ValidateDependencies(dependencies).Logger ?? NullLogger<CredentialService>.Instance;
     private readonly ConcurrentDictionary<int, string> _dummyValues = new();

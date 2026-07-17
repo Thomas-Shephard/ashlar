@@ -223,9 +223,12 @@ internal sealed class SecurityMutationAuditAtomicityTests
         {
             configure?.Invoke(services);
             services.Replace(ServiceDescriptor.Scoped<ThrowingSecurityEventSink, ThrowingSecurityEventSink>());
+            services.RemoveAll<IPersistentSecurityEventSink>();
+            services.AddScoped<IPersistentSecurityEventSink>(provider => provider.GetRequiredService<ThrowingSecurityEventSink>());
+            services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
             services.Replace(ServiceDescriptor.Scoped<SecurityEventFanOutSink>(provider => new SecurityEventFanOutSink(
-                provider.GetRequiredService<ThrowingSecurityEventSink>(),
-                transactionProvider: provider.GetRequiredService<IAshlarDurableTransactionProvider>())));
+                provider.GetRequiredService<IPersistentSecurityEventSink>(),
+                transactionProvider: provider.GetRequiredService<AshlarDurableTransactionProvider>())));
             services.Replace(ServiceDescriptor.Scoped<ISecurityEventSink>(provider => provider.GetRequiredService<SecurityEventFanOutSink>()));
         });
     }

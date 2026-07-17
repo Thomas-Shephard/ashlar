@@ -1,3 +1,4 @@
+using Ashlar.Testing;
 using Ashlar.Auditing;
 using Ashlar.Identity.Models.Administration;
 using Ashlar.Identity.RateLimiting.Abstractions;
@@ -88,11 +89,10 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     }
 
     [Test]
-    public async Task GetBucketAsyncAndResetBucketAsyncRequirePurposeMatch()
+    public async Task GetBucketAsyncRequiresPurposeMatch()
     {
         var limiter = _provider.GetRequiredService<IAuthenticationRateLimiter>();
         var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
-        var mutations = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
         var rawKey = $"raw-{Guid.NewGuid():N}@example.com";
 
         await limiter.CheckAsync(
@@ -101,28 +101,20 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
         var bucket = (await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" })).Value!.Items.Single();
 
         var wrongPurposeLookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "other"));
-        var wrongPurposeReset = await mutations.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "other", new AuditContext(Guid.NewGuid())));
         var lookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "detail"));
-        var reset = await mutations.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "detail", new AuditContext(Guid.NewGuid())));
-        var missing = await mutations.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "detail", new AuditContext(Guid.NewGuid())));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(wrongPurposeLookup.Succeeded, Is.False);
-            Assert.That(wrongPurposeReset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
             Assert.That(lookup.Value!.BucketId, Is.EqualTo(bucket.BucketId));
             Assert.That(lookup.Value.BucketId, Does.Not.Contain(rawKey));
-            Assert.That(reset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
-            Assert.That(missing.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
         }
     }
 
     [Test]
-    public void PersistentAuditCompositionBuildsWithDurableTransactions()
+    public void MutationServiceIsNotRegistered()
     {
-        using var provider = CreateProviderWithPersistentAudit(Moq.Mock.Of<IPersistentSecurityEventSink>());
-
-        Assert.DoesNotThrow(() => provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>());
+        Assert.That(_provider.GetService<IAuthenticationRateLimitAdministrationService>(), Is.Null);
     }
 
     [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde")]
@@ -137,54 +129,6 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
         var lookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucketId, "detail"));
 
         Assert.That(lookup.Succeeded, Is.False);
-    }
-
-    [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde")]
-    [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0")]
-    [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg")]
-    [TestCase("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF")]
-    [TestCase("0123456789abcdef0123456789abcdef:../../0123456789abcdef01234567a")]
-    public async Task ResetBucketAsyncReturnsNotFoundForMalformedRedisBucketIdAndDoesNotDeleteExistingBucket(string bucketId)
-    {
-        var limiter = _provider.GetRequiredService<IAuthenticationRateLimiter>();
-        var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
-        var mutations = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
-        await limiter.CheckAsync(
-            new RateLimitAttempt { Purpose = "detail", Key = UniqueKey() },
-            new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
-        var existing = (await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" })).Value!.Items.Single();
-
-        var reset = await mutations.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucketId, "detail", new AuditContext(Guid.NewGuid())));
-        var existingLookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(existing.BucketId, "detail"));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(reset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
-            Assert.That(existingLookup.Value!.BucketId, Is.EqualTo(existing.BucketId));
-        }
-    }
-
-    [Test]
-    public async Task RepositoryResetBucketAsyncValidatesPurposeAndDeletesMatchingBucket()
-    {
-        var limiter = _provider.GetRequiredService<IAuthenticationRateLimiter>();
-        var reader = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
-        var repository = new RedisAuthenticationRateLimitAdministrationRepository(
-            GetConnection(), Options.Create(new RedisAuthenticationRateLimiterOptions { KeyPrefix = _keyPrefix }));
-        await limiter.CheckAsync(new RateLimitAttempt { Purpose = "direct-reset", Key = UniqueKey() },
-            new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
-        var bucket = (await reader.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "direct-reset" })).Value!.Items.Single();
-
-        var malformed = await repository.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("invalid", "direct-reset", new AuditContext(Guid.NewGuid())));
-        var wrongPurpose = await repository.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "other", new AuditContext(Guid.NewGuid())));
-        var deleted = await repository.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "direct-reset", new AuditContext(Guid.NewGuid())));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(malformed, Is.False);
-            Assert.That(wrongPurpose, Is.False);
-            Assert.That(deleted, Is.True);
-        }
     }
 
     [Test]
@@ -292,13 +236,14 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     private static void ConfigureDurableSecurityComposition(IServiceCollection services, IPersistentSecurityEventSink sink)
     {
         var transactions = new TestDurableTransactionProvider();
-        services.Replace(ServiceDescriptor.Singleton<IAshlarTransactionProvider>(transactions));
-        services.Replace(ServiceDescriptor.Singleton<IAshlarDurableTransactionProvider>(transactions));
-        services.Replace(ServiceDescriptor.Singleton(new SecurityEventFanOutSink(sink, transactionProvider: transactions)));
+        var composition = DurableTransactionComposition.Create(transactions, sink);
+        services.Replace(ServiceDescriptor.Singleton<IAshlarTransactionProvider>(composition));
+        services.Replace(ServiceDescriptor.Singleton(composition));
+        services.Replace(ServiceDescriptor.Singleton(new SecurityEventFanOutSink(sink, transactionProvider: composition)));
         services.Replace(ServiceDescriptor.Singleton<ISecurityEventSink>(provider => provider.GetRequiredService<SecurityEventFanOutSink>()));
     }
 
-    private sealed class TestDurableTransactionProvider : IAshlarDurableTransactionProvider
+    private sealed class TestDurableTransactionProvider : IAshlarTransactionProvider
     {
         public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IAshlarTransaction>(new TestTransaction());

@@ -48,7 +48,7 @@ public static class AshlarPasskeysServiceCollectionExtensions
         services.TryAddScoped(provider =>
         {
             var sink = provider.GetRequiredService<SecurityEventFanOutSink>();
-            var transactions = provider.GetRequiredService<IAshlarTransactionProvider>() as IAshlarDurableTransactionProvider
+            var transactions = provider.GetRequiredService<IAshlarTransactionProvider>() as AshlarDurableTransactionProvider
                 ?? throw new InvalidOperationException("Passkey mutations require a durable transaction provider.");
             if (!sink.RequiresDurableTransaction || !ReferenceEquals(transactions, sink.TransactionProvider))
                 throw new InvalidOperationException("Passkey mutations require durable audit using the same transaction provider.");

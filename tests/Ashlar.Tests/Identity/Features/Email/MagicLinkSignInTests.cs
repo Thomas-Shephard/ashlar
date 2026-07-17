@@ -772,17 +772,17 @@ internal sealed class MagicLinkSignInTests
         var provider = new MagicLinkAuthenticationProvider(tokenHasher);
         var registry = new AuthenticationProviderRegistry([provider]);
         var transactionProvider = new RecordingTransactionProvider(events);
-        var credentialEvents = DurableSecurityMutationTestComposition.EventsFor(audit, transactionProvider);
+        var credentialComposition = DurableSecurityMutationTestComposition.Compose(transactionProvider, audit, repository, repository);
         var credentialService = new CredentialService(
             repository,
             repository,
             Mock.Of<ISecretProtector>(),
-            transactionProvider,
-            new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: credentialEvents));
+            credentialComposition.Transactions,
+            new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: credentialComposition.Events));
         var pipeline = new AuthenticationPipeline(
             registry,
             credentialService,
-            transactionProvider,
+            credentialComposition.Transactions,
             AllowPrimaryAuthenticationRateLimiter.Instance,
             AllowAuthenticationFactorRateLimiter.Instance,
             new AuthenticationPipelineDependencies(audit, time));
@@ -908,7 +908,7 @@ internal sealed class MagicLinkSignInTests
 
     private sealed class RecordingTransactionalEmailSender(List<string> events) : RecordingEmailSender(events), ITransactionalEmailOutboxSender;
 
-    private sealed class RecordingTransactionProvider(List<string> events) : IAshlarDurableTransactionProvider
+    private sealed class RecordingTransactionProvider(List<string> events) : IAshlarTransactionProvider
     {
         public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
         {

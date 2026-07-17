@@ -1060,7 +1060,12 @@ internal sealed class AshlarConfigurationValidatorTests
         services.AddSingleton<IEmailSender, CustomEmailSender>();
         services.AddSingleton<IPersistentSecurityEventSink, CustomPersistentSecurityEventSink>();
         services.AddSingleton<IAuthenticationRateLimiter, CustomAuthenticationRateLimiter>();
-        services.AddSingleton<IAshlarTransactionProvider, CustomTransactionProvider>();
+        services.AddSingleton<CustomTransactionProvider>();
+        services.AddAshlarDurableTransactionProvider<CustomTransactionProvider>();
+        services.AddAshlarDurableTransactionParticipant<IUserRepository>();
+        services.AddAshlarDurableTransactionParticipant<ICredentialRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionRepository>();
+        services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
         services.AddScoped<IAccountSecurityGuard, CustomAccountSecurityGuard>();
         services.AddScoped<IAccountSecurityOperationAuthorizer, AllowAccountSecurityOperations>();
         services.AddAshlarIdentity();
@@ -1426,7 +1431,7 @@ internal sealed class AshlarConfigurationValidatorTests
         }
     }
 
-    private sealed class CustomTransactionProvider : IAshlarDurableTransactionProvider
+    private sealed class CustomTransactionProvider : IAshlarTransactionProvider
     {
         public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
         {

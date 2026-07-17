@@ -16,7 +16,7 @@ internal sealed class TotpService : ITotpService
     private readonly IUserRepository _userRepository;
     private readonly ICredentialRepository _credentialRepository;
     private readonly ICredentialService _credentialService;
-    private readonly IAshlarDurableTransactionProvider _transactionProvider;
+    private readonly AshlarDurableTransactionProvider _transactionProvider;
     private readonly IAuthenticationProvider _provider;
     private readonly TotpOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -30,7 +30,7 @@ internal sealed class TotpService : ITotpService
         IUserRepository userRepository,
         ICredentialRepository credentialRepository,
         ICredentialService credentialService,
-        IAshlarDurableTransactionProvider transactionProvider,
+        AshlarDurableTransactionProvider transactionProvider,
         IEnumerable<IAuthenticationProvider> providers,
         IAccountSecurityOperationAuthorizer authorizer,
         TotpServiceDependencies dependencies)
@@ -45,7 +45,7 @@ internal sealed class TotpService : ITotpService
         _options = dependencies.Options.Value;
         TotpOptions.ThrowIfInvalid(_options);
         _timeProvider = dependencies.TimeProvider;
-        _securityEvents = new SecurityEventEmitter(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, transactionProvider, "TOTP mutations"), _timeProvider);
+        _securityEvents = new SecurityEventEmitter(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, transactionProvider, "TOTP mutations", userRepository, credentialRepository), _timeProvider);
         _notifications = new SecurityNotificationEmitter(dependencies.NotificationService);
         var providerList = providers.ToArray();
         _provider = providerList.OfType<TotpAuthenticationProvider>().FirstOrDefault()

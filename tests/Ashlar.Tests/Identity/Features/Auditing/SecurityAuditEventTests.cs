@@ -211,12 +211,13 @@ internal sealed class SecurityAuditEventTests
         var repository = new Mock<IUserRepository>();
         var credentialRepository = new Mock<ICredentialRepository>();
         var protector = new Mock<ISecretProtector>();
+        var composition = new DurableSecurityMutationTestComposition(sink, repository.Object, credentialRepository.Object);
         var service = new CredentialService(
             repository.Object,
             credentialRepository.Object,
             protector.Object,
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink)));
+            composition.Transactions,
+            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: composition.Events));
         var userId = Guid.NewGuid();
         var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
         var provider = new Mock<IPrimaryAuthenticationProvider>();
@@ -249,12 +250,13 @@ internal sealed class SecurityAuditEventTests
         var sink = new RecordingSecurityEventSink();
         var repository = new Mock<IUserRepository>();
         var credentialRepository = new Mock<ICredentialRepository>();
+        var composition = new DurableSecurityMutationTestComposition(sink, repository.Object, credentialRepository.Object);
         var service = new CredentialService(
             repository.Object,
             credentialRepository.Object,
             Mock.Of<ISecretProtector>(),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink)));
+            composition.Transactions,
+            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: composition.Events));
         var credential = CreateCredential(Guid.NewGuid());
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
         credentialRepository.Setup(r => r.ConsumeCredentialAsync(credential.Id, credential.Version, It.IsAny<CancellationToken>()))
@@ -280,12 +282,13 @@ internal sealed class SecurityAuditEventTests
         var protector = new Mock<ISecretProtector>();
         protector.Setup(p => p.Protect(It.IsAny<string>())).Returns<string>(value => $"protected:{value}");
         protector.Setup(p => p.Unprotect(It.IsAny<string>())).Returns<string>(value => value);
+        var composition = new DurableSecurityMutationTestComposition(sink, repository.Object, credentialRepository.Object);
         var service = new CredentialService(
             repository.Object,
             credentialRepository.Object,
             protector.Object,
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink)));
+            composition.Transactions,
+            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: composition.Events));
         var userId = Guid.NewGuid();
         var provider = new Mock<IPrimaryAuthenticationProvider>();
         provider.SetupGet(p => p.Key).Returns(AuthenticationProviderKey.Local);
@@ -561,15 +564,16 @@ internal sealed class SecurityAuditEventTests
     public void AddAshlarIdentityReplacesEarlierConcreteFanOutRegistration()
     {
         var custom = new SecurityEventFanOutSink();
-        var transactions = Mock.Of<IAshlarDurableTransactionProvider>();
         var services = new ServiceCollection();
         services.AddSingleton(custom);
-        services.AddSingleton<IAshlarTransactionProvider>(transactions);
         services.AddSingleton(Mock.Of<IPersistentSecurityEventSink>());
+        services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>();
+        services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
         services.AddAshlarIdentity();
 
         using var provider = services.BuildServiceProvider();
         var composed = provider.GetRequiredService<SecurityEventFanOutSink>();
+        var transactions = provider.GetRequiredService<AshlarDurableTransactionProvider>();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(composed, Is.Not.SameAs(custom));
@@ -623,15 +627,16 @@ internal sealed class SecurityAuditEventTests
         users.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid userId, CancellationToken _) => new User { Id = userId, DisplayEmail = "user@example.com" });
         timeProvider = new FakeTimeProvider(TestTime);
+        var composition = new DurableSecurityMutationTestComposition(sink, repository.Object, users.Object);
 
         return new AuthenticationSessionService(
             repository.Object,
             hasher.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
+            composition.Transactions,
             new AuthenticationSessionServiceDependencies(
                 TimeProvider: timeProvider,
-                SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink),
+                SecurityEventSink: composition.Events,
                 UserRepository: users.Object));
     }
 

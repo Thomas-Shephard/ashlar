@@ -17,6 +17,7 @@ internal sealed class AuthenticationSessionServiceTests
     private FakeTimeProvider _timeProvider;
     private AuthenticationSessionService _service;
     private AuthenticationSessionReader _reader;
+    private DurableSecurityMutationTestComposition _composition;
 
     [SetUp]
     public void SetUp()
@@ -25,6 +26,8 @@ internal sealed class AuthenticationSessionServiceTests
         _tokenHasherMock = new Mock<ISecureTokenHasher>();
         _userRepositoryMock = new Mock<IUserRepository>();
         _timeProvider = new FakeTimeProvider(new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero));
+        _composition = new DurableSecurityMutationTestComposition(
+            participants: [_repositoryMock.Object, _userRepositoryMock.Object]);
 
         _tokenHasherMock.Setup(h => h.HashToken(It.IsAny<string>())).Returns<string>(token => $"hashed:{token}");
         _userRepositoryMock
@@ -35,9 +38,18 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, UserRepository: _userRepositoryMock.Object, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents));
+            _composition.Transactions,
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, UserRepository: _userRepositoryMock.Object, SecurityEventSink: _composition.Events));
         _reader = new AuthenticationSessionReader(_repositoryMock.Object, _timeProvider);
+    }
+
+    private AshlarDurableTransactionProvider ComposeFor(ISecurityEventSink sink)
+    {
+        _composition = new DurableSecurityMutationTestComposition(
+            sink,
+            _repositoryMock.Object,
+            _userRepositoryMock.Object);
+        return _composition.Transactions;
     }
 
     [Test]
@@ -148,8 +160,8 @@ internal sealed class AuthenticationSessionServiceTests
         var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
         authorizer.Setup(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var service = new AuthenticationSessionService(
-            _repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, TimeProvider: _timeProvider, OperationAuthorizer: authorizer.Object, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents));
+            _repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), _composition.Transactions,
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, TimeProvider: _timeProvider, OperationAuthorizer: authorizer.Object, SecurityEventSink: _composition.Events));
         _repositoryMock.Setup(r => r.RevokeSessionByIdAsync(targetSession, actor, _timeProvider.GetUtcNow(), "cleanup", tenant, false, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var revoked = await service.RevokeSessionForCurrentUserAsync(
@@ -244,9 +256,9 @@ internal sealed class AuthenticationSessionServiceTests
         var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
         authorizer.Setup(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
         var service = new AuthenticationSessionService(
-            _repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), DurableSecurityMutationTestComposition.SharedTransactions,
+            _repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), ComposeFor(events.Object),
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, TimeProvider: _timeProvider,
-                SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(events.Object), OperationAuthorizer: authorizer.Object));
+                SecurityEventSink: _composition.Events, OperationAuthorizer: authorizer.Object));
 
         Assert.ThrowsAsync<AshlarOperationException>(() => service.RevokeSessionForCurrentUserAsync(
             new RevokeOwnAuthenticationSessionRequest(actor, TenantContext.Global, currentSession, proof, audit, targetSession)));
@@ -271,9 +283,9 @@ internal sealed class AuthenticationSessionServiceTests
         var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
         authorizer.Setup(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
         var service = new AuthenticationSessionService(
-            _repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), DurableSecurityMutationTestComposition.SharedTransactions,
+            _repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), ComposeFor(events.Object),
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, TimeProvider: _timeProvider,
-                SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(events.Object), OperationAuthorizer: authorizer.Object));
+                SecurityEventSink: _composition.Events, OperationAuthorizer: authorizer.Object));
 
         Assert.ThrowsAsync<AshlarOperationException>(() => service.RevokeOtherSessionsForCurrentUserAsync(
             new RevokeOwnOtherAuthenticationSessionsRequest(actor, TenantContext.Global, currentSession, proof, audit)));
@@ -293,8 +305,8 @@ internal sealed class AuthenticationSessionServiceTests
         var targetSession = Guid.NewGuid();
         var events = new Mock<ISecurityEventSink>();
         var service = new AuthenticationSessionService(
-            _repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(events.Object)));
+            _repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), ComposeFor(events.Object),
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, TimeProvider: _timeProvider, SecurityEventSink: _composition.Events));
         var expiredProof = new FreshMfaVerificationProof(actor, null, currentSession,
             _timeProvider.GetUtcNow().AddMinutes(-10), _timeProvider.GetUtcNow().AddMinutes(-5), AuthenticationSessionService.SelfServiceProofPurpose);
 
@@ -355,13 +367,13 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
+            _composition.Transactions,
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions
             {
                 StoreIpAddress = false,
                 StoreUserAgent = false,
                 StoreMetadata = false
-            }, TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents));
+            }, TimeProvider: _timeProvider, SecurityEventSink: _composition.Events));
         var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" })
         {
             SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance
@@ -683,13 +695,13 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
+            _composition.Transactions,
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions
             {
                 StoreIpAddress = false,
                 StoreUserAgent = false,
                 StoreMetadata = false
-            }, TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents));
+            }, TimeProvider: _timeProvider, SecurityEventSink: _composition.Events));
 
         AuthenticationSession? storedSession = null;
         _repositoryMock
@@ -851,8 +863,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             tokenHasher.Object,
             tokenGenerator,
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, UserRepository: _userRepositoryMock.Object, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents));
+            _composition.Transactions,
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, UserRepository: _userRepositoryMock.Object, SecurityEventSink: _composition.Events));
 
         var exception = Assert.ThrowsAsync<AshlarOperationException>(async () =>
             await service.CreateSessionForAuthenticatedUserAsync(userId, new CreateAuthenticationSessionRequest(TenantId: Guid.NewGuid())));
@@ -883,8 +895,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             tokenHasher.Object,
             tokenGenerator,
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink), UserRepository: _userRepositoryMock.Object));
+            ComposeFor(sink),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events, UserRepository: _userRepositoryMock.Object));
 
         var exception = Assert.ThrowsAsync<AshlarOperationException>(async () =>
             await service.CreateSessionForAuthenticatedUserAsync(userId, new CreateAuthenticationSessionRequest(
@@ -924,8 +936,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink), UserRepository: _userRepositoryMock.Object));
+            ComposeFor(sink),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events, UserRepository: _userRepositoryMock.Object));
 
         Assert.ThrowsAsync<AshlarOperationException>(async () =>
             await service.CreateSessionForAuthenticatedUserAsync(userId, new CreateAuthenticationSessionRequest(TenantId: requestedTenantId)));
@@ -948,7 +960,7 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
+            _composition.Transactions,
             new AuthenticationSessionServiceDependencies(null!, TimeProvider: _timeProvider)));
     }
 
@@ -964,8 +976,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink), UserRepository: _userRepositoryMock.Object));
+            ComposeFor(sink),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events, UserRepository: _userRepositoryMock.Object));
 
         var tenantId = Guid.NewGuid();
         var exception = Assert.ThrowsAsync<AshlarOperationException>(async () =>
@@ -1099,8 +1111,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink), UserRepository: _userRepositoryMock.Object));
+            ComposeFor(sink),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events, UserRepository: _userRepositoryMock.Object));
 
         var result = await service.ValidateSessionAsync("raw-token");
 
@@ -1222,8 +1234,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink), UserRepository: _userRepositoryMock.Object));
+            ComposeFor(sink),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events, UserRepository: _userRepositoryMock.Object));
 
         var result = await service.ValidateSessionAsync("raw-token");
 
@@ -1254,8 +1266,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink), UserRepository: _userRepositoryMock.Object));
+            ComposeFor(sink),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events, UserRepository: _userRepositoryMock.Object));
 
         var result = await service.ValidateSessionAsync("raw-token");
 
@@ -1343,8 +1355,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, UserRepository: _userRepositoryMock.Object, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents),
+            _composition.Transactions,
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, UserRepository: _userRepositoryMock.Object, SecurityEventSink: _composition.Events),
             logger);
 
         _repositoryMock
@@ -1430,8 +1442,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink), UserRepository: _userRepositoryMock.Object));
+            ComposeFor(sink),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events, UserRepository: _userRepositoryMock.Object));
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
@@ -1467,8 +1479,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink), UserRepository: _userRepositoryMock.Object));
+            ComposeFor(sink),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events, UserRepository: _userRepositoryMock.Object));
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
@@ -1554,8 +1566,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink), UserRepository: _userRepositoryMock.Object));
+            ComposeFor(sink),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events, UserRepository: _userRepositoryMock.Object));
         var userId = Guid.NewGuid();
         var requestedTenantId = Guid.NewGuid();
         var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
@@ -1589,8 +1601,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(securityEvents.Object), UserRepository: _userRepositoryMock.Object));
+            ComposeFor(securityEvents.Object),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events, UserRepository: _userRepositoryMock.Object));
         var userId = Guid.NewGuid();
         var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1), userId: userId);
         session.AdditionalVerificationAt = _timeProvider.GetUtcNow();
@@ -1626,8 +1638,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink), UserRepository: _userRepositoryMock.Object));
+            ComposeFor(sink),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events, UserRepository: _userRepositoryMock.Object));
         var userId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
         var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1), userId: userId, tenantId: tenantId);
@@ -1658,8 +1670,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink), UserRepository: _userRepositoryMock.Object));
+            ComposeFor(sink),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events, UserRepository: _userRepositoryMock.Object));
         var userId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
@@ -1707,8 +1719,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents));
+            _composition.Transactions,
+            new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object, SecurityEventSink: _composition.Events));
 
         Assert.That(service, Is.Not.Null);
     }
@@ -1760,16 +1772,18 @@ internal sealed class AuthenticationSessionServiceTests
         var user = new User { Id = userId, DisplayEmail = "user@example.com" };
         var userRepository = new Mock<IUserRepository>();
         var notificationService = new Mock<ISecurityNotificationService>();
+        var composition = new DurableSecurityMutationTestComposition(
+            participants: [_repositoryMock.Object, userRepository.Object]);
         var service = new AuthenticationSessionService(
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
+            composition.Transactions,
             new AuthenticationSessionServiceDependencies(
                 TimeProvider: _timeProvider,
                 UserRepository: userRepository.Object,
                 NotificationService: notificationService.Object,
-                SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents));
+                SecurityEventSink: composition.Events));
 
         _repositoryMock
             .Setup(r => r.RevokeSessionsForUserAsync(userId, now, "password-reset", It.Is<TenantContext?>(t => t != null), false, It.IsAny<CancellationToken>()))
@@ -1891,16 +1905,18 @@ internal sealed class AuthenticationSessionServiceTests
         var user = new User { Id = userId, DisplayEmail = "user@example.com" };
         var userRepository = new Mock<IUserRepository>();
         var notificationService = new Mock<ISecurityNotificationService>();
+        var composition = new DurableSecurityMutationTestComposition(
+            participants: [_repositoryMock.Object, userRepository.Object]);
         var service = new AuthenticationSessionService(
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
+            composition.Transactions,
             new AuthenticationSessionServiceDependencies(
                 TimeProvider: _timeProvider,
                 UserRepository: userRepository.Object,
                 NotificationService: notificationService.Object,
-                SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents));
+                SecurityEventSink: composition.Events));
         var audit = new AuditContext(ActorUserId: userId, IpAddress: "203.0.113.60", UserAgent: "session-agent", CorrelationId: "session-correlation");
 
         _repositoryMock
@@ -1996,8 +2012,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink), UserRepository: _userRepositoryMock.Object));
+            ComposeFor(sink),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events, UserRepository: _userRepositoryMock.Object));
         var userId = Guid.NewGuid();
         var currentSessionId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
@@ -2029,8 +2045,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: DurableSecurityMutationTestComposition.EventsFor(sink), UserRepository: _userRepositoryMock.Object));
+            ComposeFor(sink),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events, UserRepository: _userRepositoryMock.Object));
         var userId = Guid.NewGuid();
         var currentSessionId = Guid.NewGuid();
         _repositoryMock
@@ -2093,21 +2109,21 @@ internal sealed class AuthenticationSessionServiceTests
     public void ConstructorShouldThrowOnNullRepository()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(null!, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), DurableSecurityMutationTestComposition.SharedTransactions, new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents)));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(null!, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), _composition.Transactions, new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object, SecurityEventSink: _composition.Events)));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullTokenHasher()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, null!, new FixedSessionTokenGenerator("raw-token"), DurableSecurityMutationTestComposition.SharedTransactions, new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents)));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, null!, new FixedSessionTokenGenerator("raw-token"), _composition.Transactions, new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object, SecurityEventSink: _composition.Events)));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullTokenGenerator()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, _tokenHasherMock.Object, null!, DurableSecurityMutationTestComposition.SharedTransactions, new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents)));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, _tokenHasherMock.Object, null!, _composition.Transactions, new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object, SecurityEventSink: _composition.Events)));
     }
 
     [Test]
@@ -2124,8 +2140,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(null!, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents)));
+            _composition.Transactions,
+            new AuthenticationSessionServiceDependencies(null!, SecurityEventSink: _composition.Events)));
     }
 
     [Test]
@@ -2135,7 +2151,7 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
+            _composition.Transactions,
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions
             {
                 DefaultLifetime = TimeSpan.FromDays(7),
@@ -2144,7 +2160,7 @@ internal sealed class AuthenticationSessionServiceTests
                 MaxIpAddressLength = 1,
                 MaxUserAgentLength = 1,
                 MaxMetadataLength = 1
-            }, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents));
+            }, SecurityEventSink: _composition.Events));
 
         Assert.That(service, Is.Not.Null);
     }
@@ -2158,8 +2174,8 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
-            new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object, Logger: logger, SecurityEventSink: DurableSecurityMutationTestComposition.SharedEvents),
+            _composition.Transactions,
+            new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object, Logger: logger, SecurityEventSink: _composition.Events),
             logger: null);
 
         Assert.That(service, Is.Not.Null);
@@ -2172,7 +2188,7 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
+            _composition.Transactions,
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { DefaultLifetime = TimeSpan.Zero })));
     }
 
@@ -2183,7 +2199,7 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
+            _composition.Transactions,
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { LastSeenUpdateThreshold = TimeSpan.FromTicks(-1) })));
     }
 
@@ -2194,7 +2210,7 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
+            _composition.Transactions,
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { TokenByteLength = 31 })));
     }
 
@@ -2205,7 +2221,7 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
+            _composition.Transactions,
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { TokenByteLength = 193 })));
     }
 
@@ -2216,7 +2232,7 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
+            _composition.Transactions,
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { MaxIpAddressLength = 0 })));
     }
 
@@ -2227,7 +2243,7 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
+            _composition.Transactions,
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { MaxUserAgentLength = 0 })));
     }
 
@@ -2238,7 +2254,7 @@ internal sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            DurableSecurityMutationTestComposition.SharedTransactions,
+            _composition.Transactions,
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { MaxMetadataLength = 0 })));
     }
 

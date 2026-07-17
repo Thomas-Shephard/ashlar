@@ -17,7 +17,7 @@ internal sealed class InvitationAdministrationService : IInvitationAdministratio
     private readonly IInvitationRepository _repository;
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
-    private readonly IAshlarDurableTransactionProvider _transactionProvider;
+    private readonly AshlarDurableTransactionProvider _transactionProvider;
 
     /// <summary>Initializes invitation revocation with durable audit composition.</summary>
     public InvitationAdministrationService(
@@ -29,7 +29,7 @@ internal sealed class InvitationAdministrationService : IInvitationAdministratio
         _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
         _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
         _securityEvents = new SecurityEventEmitter(
-            DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, _transactionProvider, "Invitation revocation"),
+            DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, _transactionProvider, "Invitation revocation", repository),
             _timeProvider);
     }
 
@@ -166,4 +166,4 @@ internal sealed class InvitationAdministrationService : IInvitationAdministratio
 internal sealed record InvitationAdministrationServiceDependencies(
     TimeProvider? TimeProvider = null,
     SecurityEventFanOutSink? SecurityEventSink = null,
-    IAshlarDurableTransactionProvider? TransactionProvider = null);
+    AshlarDurableTransactionProvider? TransactionProvider = null);

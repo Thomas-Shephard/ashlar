@@ -121,21 +121,6 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     }
 
     [Test]
-    public async Task ResetBucketAsyncShouldFailClosedForNonAtomicRepository()
-    {
-        var repository = new NonAtomicRecordingRepository { ResetResult = true };
-        var service = CreateMutation(repository, new CapturingSecurityEventSink());
-
-        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
-            Assert.That(repository.ResetCalls, Is.Zero);
-        }
-    }
-
-    [Test]
     public async Task ResetBucketAsyncShouldAllowAtomicRepository()
     {
         var repository = new RecordingRepository { ResetResult = true };
@@ -147,24 +132,6 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         {
             Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
             Assert.That(repository.ResetCalls, Is.EqualTo(1));
-        }
-    }
-
-    [Test]
-    public async Task ResetBucketAsyncShouldEmitFailureAuditForNonAtomicRepository()
-    {
-        var repository = new NonAtomicRecordingRepository { ResetResult = true };
-        var sink = new CapturingSecurityEventSink();
-        var service = CreateMutation(repository, sink);
-
-        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
-            Assert.That(repository.ResetCalls, Is.Zero);
-            Assert.That(sink.Events, Has.Count.EqualTo(1));
-            Assert.That(sink.Events[0].Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
         }
     }
 
@@ -270,7 +237,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     {
         var repository = new RecordingRepository();
         var transactions = new RecordingTransactionProvider();
-        var composition = DurableSecurityMutationTestComposition.Create(transactions);
+        var composition = DurableSecurityMutationTestComposition.Create(transactions, participants: [repository]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -281,10 +248,10 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
                 new AuthenticationRateLimitAdministrationServiceDependencies(SecurityEventSink: composition.Events)));
             Assert.Throws<ArgumentException>(() => _ = new AuthenticationRateLimitAdministrationService(repository,
                 new AuthenticationRateLimitAdministrationServiceDependencies(SecurityEventSink: new SecurityEventFanOutSink(), TransactionProvider: transactions)));
-            Assert.Throws<ArgumentException>(() => _ = new AuthenticationRateLimitAdministrationService(repository,
+            Assert.Throws<InvalidOperationException>(() => _ = new AuthenticationRateLimitAdministrationService(repository,
                 new AuthenticationRateLimitAdministrationServiceDependencies(SecurityEventSink: new SecurityEventFanOutSink(Mock.Of<IPersistentSecurityEventSink>(), transactionProvider: new RecordingTransactionProvider()), TransactionProvider: transactions)));
             Assert.DoesNotThrow(() => _ = new AuthenticationRateLimitAdministrationService(repository,
-                new AuthenticationRateLimitAdministrationServiceDependencies(SecurityEventSink: composition.Events, TransactionProvider: transactions)));
+                new AuthenticationRateLimitAdministrationServiceDependencies(SecurityEventSink: composition.Events, TransactionProvider: composition.Transactions)));
         }
     }
 
@@ -304,8 +271,8 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         RecordingTransactionProvider? transactions = null)
     {
         var composition = transactions is null
-            ? new DurableSecurityMutationTestComposition(sink)
-            : DurableSecurityMutationTestComposition.Create(transactions, sink);
+            ? new DurableSecurityMutationTestComposition(sink, repository)
+            : DurableSecurityMutationTestComposition.Create(transactions, sink, repository);
         return new AuthenticationRateLimitAdministrationService(
             repository,
             new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), composition.Events, composition.Transactions));
@@ -345,7 +312,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         }
     }
 
-    private class RecordingRepository : IAuthenticationRateLimitAdministrationRepository
+    private sealed class RecordingRepository : IAuthenticationRateLimitAdministrationRepository
     {
         public SearchAuthenticationRateLimitBucketsRequest? LastSearchRequest { get; private set; }
 
@@ -378,8 +345,6 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
             return Task.FromResult(ResetResult);
         }
     }
-
-    private sealed class NonAtomicRecordingRepository : RecordingRepository, INonAtomicAuthenticationRateLimitAdministrationRepository;
 
     private sealed class CapturingSecurityEventSink : ISecurityEventSink
     {

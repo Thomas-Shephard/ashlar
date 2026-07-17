@@ -237,8 +237,10 @@ internal sealed class AuthorizationGrantServiceTests
     [Test]
     public void ConstructorShouldRequireUserRepositoryForTenantValidation()
     {
+        var persistent = new RecordingSecurityEventSink();
+        var composition = _transactions.Compose(persistent, _repository);
         Assert.Throws<ArgumentNullException>(() => _ = new AuthorizationGrantService(_repository, null!,
-            new SecurityEventFanOutSink(new RecordingSecurityEventSink(), transactionProvider: _transactions), _transactions));
+            new SecurityEventFanOutSink(persistent, transactionProvider: composition), composition));
     }
 
     [Test]
@@ -646,10 +648,13 @@ internal sealed class AuthorizationGrantServiceTests
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void ConstructorsShouldRejectInvalidDependenciesAndOptions()
     {
+        var persistent = new RecordingSecurityEventSink();
+        var composition = _transactions.Compose(persistent, _repository, _userRepository);
+        var fanOut = new SecurityEventFanOutSink(persistent, transactionProvider: composition);
         Assert.Throws<ArgumentNullException>(() => _ = new AuthorizationGrantService(null!, _userRepository,
-            new SecurityEventFanOutSink(new RecordingSecurityEventSink(), transactionProvider: _transactions), _transactions));
+            fanOut, composition));
         Assert.Throws<ArgumentNullException>(() => _ = new AuthorizationGrantService(_repository, null!,
-            new SecurityEventFanOutSink(new RecordingSecurityEventSink(), transactionProvider: _transactions), _transactions));
+            fanOut, composition));
         Assert.Throws<ArgumentNullException>(() => AuthorizationGrantOptions.Validate(null!));
         Assert.Throws<ArgumentException>(() => _ = CreateService(options: new AuthorizationGrantOptions { MaxRoleLength = 0 }));
         Assert.Throws<ArgumentException>(() => _ = new AuthorizationEvaluator(_repository, new AuthorizationGrantOptions { MaxMetadataLength = 0 }));
@@ -660,17 +665,24 @@ internal sealed class AuthorizationGrantServiceTests
     {
         var persistent = Moq.Mock.Of<IPersistentSecurityEventSink>();
         var auditlessFanOut = new SecurityEventFanOutSink();
-        var transactionProvider = Moq.Mock.Of<IAshlarDurableTransactionProvider>();
+        var durableHandler = Moq.Mock.Of<IDurableSecurityEventFanOutHandler>();
+        var transactionProvider = new RecordingTransactionProvider().Compose(persistent, durableHandler, _repository, _userRepository);
         var boundFanOut = new SecurityEventFanOutSink(persistent, transactionProvider: transactionProvider);
         var durableHandlerFanOut = new SecurityEventFanOutSink(transactionProvider: transactionProvider,
-            durableHandlers: [Moq.Mock.Of<IDurableSecurityEventFanOutHandler>()]);
+            durableHandlers: [durableHandler]);
 
         Assert.Throws<ArgumentNullException>(() => new AuthorizationGrantService(_repository, _userRepository, null!, transactionProvider));
         Assert.Throws<ArgumentNullException>(() => new AuthorizationGrantService(_repository, _userRepository, boundFanOut, null!));
         Assert.Throws<InvalidOperationException>(() => new SecurityEventFanOutSink(persistent));
         Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository, auditlessFanOut, transactionProvider));
         Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository, boundFanOut,
-            Moq.Mock.Of<IAshlarDurableTransactionProvider>()));
+            new RecordingTransactionProvider().Compose(persistent, _repository, _userRepository)));
+        var missingRepository = new RecordingTransactionProvider().Compose(persistent, _userRepository);
+        var missingUserRepository = new RecordingTransactionProvider().Compose(persistent, _repository);
+        Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository,
+            new SecurityEventFanOutSink(persistent, transactionProvider: missingRepository), missingRepository));
+        Assert.Throws<ArgumentException>(() => new AuthorizationGrantService(_repository, _userRepository,
+            new SecurityEventFanOutSink(persistent, transactionProvider: missingUserRepository), missingUserRepository));
         Assert.DoesNotThrow(() => new AuthorizationGrantService(_repository, _userRepository, boundFanOut, transactionProvider));
         Assert.DoesNotThrow(() => new AuthorizationGrantService(_repository, _userRepository, durableHandlerFanOut, transactionProvider));
     }
@@ -689,8 +701,11 @@ internal sealed class AuthorizationGrantServiceTests
         AuthorizationGrantOptions? options = null)
     {
         transactionProvider ??= _transactions;
-        var fanOut = new SecurityEventFanOutSink(audit ?? new RecordingSecurityEventSink(), transactionProvider: transactionProvider);
-        return new AuthorizationGrantService(repository ?? _repository, _userRepository, fanOut, transactionProvider,
+        repository ??= _repository;
+        var persistent = audit ?? new RecordingSecurityEventSink();
+        var composition = transactionProvider.Compose(persistent, repository, _userRepository);
+        var fanOut = new SecurityEventFanOutSink(persistent, transactionProvider: composition);
+        return new AuthorizationGrantService(repository, _userRepository, fanOut, composition,
             options, _timeProvider);
     }
 

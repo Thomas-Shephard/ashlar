@@ -1,3 +1,4 @@
+using Ashlar.Testing;
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.Abstractions.Tenancy;
@@ -15,34 +16,58 @@ internal sealed class ExternalAccountCredentialLinkerTests
     [Test]
     public void ConstructorRejectsFanOutBoundToAnotherTransactionProvider()
     {
-        var transactions = Mock.Of<IAshlarDurableTransactionProvider>();
-        var otherTransactions = Mock.Of<IAshlarDurableTransactionProvider>();
+        var persistent = new PersistentSink();
+        var users = Mock.Of<IUserRepository>();
+        var credentials = Mock.Of<ICredentialRepository>();
+        var transactions = Transactions(persistent, users, credentials);
+        var otherTransactions = Transactions(persistent, users, credentials);
 
-        Assert.Throws<ArgumentException>(() => CreateService(transactions, new SecurityEventFanOutSink(new PersistentSink(), transactionProvider: otherTransactions)));
+        Assert.Throws<ArgumentException>(() => CreateService(users, credentials, transactions.Provider, new SecurityEventFanOutSink(persistent, transactionProvider: otherTransactions.Provider)));
     }
 
     [Test]
     public void ConstructorRejectsFanOutWithoutDurableWork()
     {
-        var transactions = Mock.Of<IAshlarDurableTransactionProvider>();
+        var users = Mock.Of<IUserRepository>();
+        var credentials = Mock.Of<ICredentialRepository>();
+        var transactions = Transactions(users, credentials);
 
-        Assert.Throws<ArgumentException>(() => CreateService(transactions, new SecurityEventFanOutSink(transactionProvider: transactions)));
+        Assert.Throws<ArgumentException>(() => CreateService(users, credentials, transactions.Provider, new SecurityEventFanOutSink(transactionProvider: transactions.Provider)));
+    }
+
+    [Test]
+    public void ConstructorRejectsRepositoriesOutsideTheDurableComposition()
+    {
+        var persistent = new PersistentSink();
+        var users = Mock.Of<IUserRepository>();
+        var credentials = Mock.Of<ICredentialRepository>();
+
+        foreach (var transactions in new[]
+        {
+            Transactions(persistent, credentials),
+            Transactions(persistent, users)
+        })
+        {
+            var fanOut = new SecurityEventFanOutSink(persistent, transactionProvider: transactions.Provider);
+            Assert.Throws<ArgumentException>(() => CreateService(users, credentials, transactions.Provider, fanOut));
+        }
     }
 
     [Test]
     public void ConstructorRejectsNullRequiredDependencies()
     {
-        var transactions = TransactionProvider();
-        var events = new SecurityEventFanOutSink(new PersistentSink(), transactionProvider: transactions.Object);
+        var persistent = new PersistentSink();
         var users = Mock.Of<IUserRepository>();
         var credentials = Mock.Of<ICredentialRepository>();
+        var transactions = Transactions(persistent, users, credentials);
+        var events = new SecurityEventFanOutSink(persistent, transactionProvider: transactions.Provider);
         var validator = new ActiveSessionFreshProofValidator(Mock.Of<IAuthenticationSessionRepository>(), TimeProvider.System);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => new ExternalAccountCredentialLinker(null!, credentials, validator, transactions.Object, events));
-            Assert.Throws<ArgumentNullException>(() => new ExternalAccountCredentialLinker(users, null!, validator, transactions.Object, events));
-            Assert.Throws<ArgumentNullException>(() => new ExternalAccountCredentialLinker(users, credentials, null!, transactions.Object, events));
+            Assert.Throws<ArgumentNullException>(() => new ExternalAccountCredentialLinker(null!, credentials, validator, transactions.Provider, events));
+            Assert.Throws<ArgumentNullException>(() => new ExternalAccountCredentialLinker(users, null!, validator, transactions.Provider, events));
+            Assert.Throws<ArgumentNullException>(() => new ExternalAccountCredentialLinker(users, credentials, null!, transactions.Provider, events));
             Assert.Throws<ArgumentNullException>(() => new ExternalAccountCredentialLinker(users, credentials, validator, null!, events));
         }
     }
@@ -50,8 +75,11 @@ internal sealed class ExternalAccountCredentialLinkerTests
     [Test]
     public async Task LinkExternalAccountCredentialAsyncRejectsMissingAuditBeforeMutation()
     {
-        var transactions = new Mock<IAshlarDurableTransactionProvider>();
-        var service = CreateService(transactions.Object, new SecurityEventFanOutSink(new PersistentSink(), transactionProvider: transactions.Object));
+        var persistent = new PersistentSink();
+        var users = Mock.Of<IUserRepository>();
+        var credentials = Mock.Of<ICredentialRepository>();
+        var transactions = Transactions(persistent, users, credentials);
+        var service = CreateService(users, credentials, transactions.Provider, new SecurityEventFanOutSink(persistent, transactionProvider: transactions.Provider));
         var assertion = Mock.Of<IAuthenticationAssertion>();
         var provider = new Mock<IAuthenticationProvider>();
         provider.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey(ProviderType.OAuth, "github"));
@@ -60,14 +88,17 @@ internal sealed class ExternalAccountCredentialLinkerTests
             Guid.NewGuid(), assertion, provider.Object, null, null, TenantContext.Global));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-        transactions.Verify(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
+        transactions.Raw.Verify(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
     public async Task LinkExternalAccountCredentialAsyncRejectsNonExternalProvidersAndInvalidProofsBeforeMutation()
     {
-        var transactions = new Mock<IAshlarDurableTransactionProvider>();
-        var service = CreateService(transactions.Object, new SecurityEventFanOutSink(new PersistentSink(), transactionProvider: transactions.Object));
+        var persistent = new PersistentSink();
+        var users = Mock.Of<IUserRepository>();
+        var credentials = Mock.Of<ICredentialRepository>();
+        var transactions = Transactions(persistent, users, credentials);
+        var service = CreateService(users, credentials, transactions.Provider, new SecurityEventFanOutSink(persistent, transactionProvider: transactions.Provider));
         var assertion = Mock.Of<IAuthenticationAssertion>();
         var localProvider = Provider(ProviderType.Local, "password", "key");
         var oauthProvider = Provider(ProviderType.OAuth, "github", "key");
@@ -86,7 +117,7 @@ internal sealed class ExternalAccountCredentialLinkerTests
             Assert.That(invalidProof.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
             Assert.That(oidcInvalidProof.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
         }
-        transactions.Verify(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
+        transactions.Raw.Verify(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [TestCase("missing", AshlarFailureCodes.UserNotFoundValue)]
@@ -102,10 +133,10 @@ internal sealed class ExternalAccountCredentialLinkerTests
         var users = new Mock<IUserRepository>();
         var credentials = new Mock<ICredentialRepository>();
         var transaction = new Mock<IAshlarTransaction>();
-        var transactions = TransactionProvider();
-        transactions.Setup(provider => provider.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
         var events = new PersistentSink();
-        var service = CreateService(users.Object, credentials.Object, transactions.Object, events, userId, tenantId);
+        var transactions = Transactions(events, users.Object, credentials.Object);
+        transactions.Raw.Setup(provider => provider.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
+        var service = CreateService(users.Object, credentials.Object, transactions.Provider, events, userId, tenantId);
         var provider = Provider(ProviderType.OAuth, "github", scenario == "empty-key" ? " " : "github-subject");
 
         if (scenario != "missing")
@@ -132,7 +163,7 @@ internal sealed class ExternalAccountCredentialLinkerTests
             Assert.That(events.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
             Assert.That(events.Events.Single().FailureReason, Is.EqualTo(expectedFailure));
         }
-        transaction.Verify(value => value.CommitAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
+        transaction.Verify(value => value.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -142,13 +173,13 @@ internal sealed class ExternalAccountCredentialLinkerTests
         var tenantId = Guid.NewGuid();
         var users = new Mock<IUserRepository>();
         var credentials = new Mock<ICredentialRepository>();
-        var transactions = TransactionProvider();
         var events = new PersistentSink();
+        var transactions = Transactions(events, users.Object, credentials.Object);
         var provider = Provider(ProviderType.Oidc, "google", "subject");
         users.Setup(repository => repository.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(UserFor(userId, tenantId));
 
-        var service = CreateService(users.Object, credentials.Object, transactions.Object, events, userId, tenantId);
+        var service = CreateService(users.Object, credentials.Object, transactions.Provider, events, userId, tenantId);
         var result = await service.LinkExternalAccountCredentialAsync(Request(userId, tenantId, provider.Object, "metadata"));
 
         using (Assert.EnterMultipleScope())
@@ -164,8 +195,11 @@ internal sealed class ExternalAccountCredentialLinkerTests
     [Test]
     public void LinkExternalAccountCredentialAsyncRejectsNullRequestAndRequiredMembers()
     {
-        var transactions = TransactionProvider();
-        var service = CreateService(transactions.Object, new SecurityEventFanOutSink(new PersistentSink(), transactionProvider: transactions.Object));
+        var persistent = new PersistentSink();
+        var users = Mock.Of<IUserRepository>();
+        var credentials = Mock.Of<ICredentialRepository>();
+        var transactions = Transactions(persistent, users, credentials);
+        var service = CreateService(users, credentials, transactions.Provider, new SecurityEventFanOutSink(persistent, transactionProvider: transactions.Provider));
         var provider = Provider(ProviderType.OAuth, "github", "subject");
         var request = Request(Guid.NewGuid(), Guid.NewGuid(), provider.Object);
 
@@ -179,16 +213,23 @@ internal sealed class ExternalAccountCredentialLinkerTests
     }
 
     private static ExternalAccountCredentialLinker CreateService(
-        IAshlarDurableTransactionProvider transactions,
+        AshlarDurableTransactionProvider transactions,
         SecurityEventFanOutSink events) =>
-        new(Mock.Of<IUserRepository>(), Mock.Of<ICredentialRepository>(),
+        CreateService(Mock.Of<IUserRepository>(), Mock.Of<ICredentialRepository>(), transactions, events);
+
+    private static ExternalAccountCredentialLinker CreateService(
+        IUserRepository users,
+        ICredentialRepository credentials,
+        AshlarDurableTransactionProvider transactions,
+        SecurityEventFanOutSink events) =>
+        new(users, credentials,
             new ActiveSessionFreshProofValidator(Mock.Of<IAuthenticationSessionRepository>(), TimeProvider.System),
             transactions, events);
 
     private static ExternalAccountCredentialLinker CreateService(
         IUserRepository users,
         ICredentialRepository credentials,
-        IAshlarDurableTransactionProvider transactions,
+        AshlarDurableTransactionProvider transactions,
         PersistentSink events,
         Guid userId,
         Guid tenantId)
@@ -228,13 +269,15 @@ internal sealed class ExternalAccountCredentialLinkerTests
         return provider;
     }
 
-    private static Mock<IAshlarDurableTransactionProvider> TransactionProvider()
+    private static TransactionComposition Transactions(params object[] participants)
     {
         var transaction = new Mock<IAshlarTransaction>();
-        var transactions = new Mock<IAshlarDurableTransactionProvider>();
-        transactions.Setup(provider => provider.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
-        return transactions;
+        var raw = new Mock<IAshlarTransactionProvider>();
+        raw.Setup(provider => provider.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
+        return new(raw, DurableTransactionComposition.Create(raw.Object, participants));
     }
+
+    private sealed record TransactionComposition(Mock<IAshlarTransactionProvider> Raw, AshlarDurableTransactionProvider Provider);
 
     private static ITenantUser UserFor(Guid userId, Guid? tenantId)
     {

@@ -169,6 +169,16 @@ await httpContext.ChallengeAsync("Google", new AuthenticationProperties
 });
 ```
 
+Account linking must use properties bound to the current Ashlar user and session; an ordinary sign-in ticket is intentionally rejected:
+
+```csharp
+var properties = AshlarExternalAccountLinkService.CreateExternalLinkChallengeProperties(
+    currentUserId,
+    currentSessionId,
+    "/account/external/google/link/callback");
+await httpContext.ChallengeAsync("Google", properties);
+```
+
 For MFA-aware applications, complete the callback only to an Ashlar assertion, pass that assertion through `IAuthenticationOrchestrator`, and issue the Ashlar session only after orchestration succeeds:
 
 ```csharp

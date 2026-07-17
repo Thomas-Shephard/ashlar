@@ -276,7 +276,6 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
     public void CoreAspNetCoreSessionAndAuthorizationCompositionBuildsWithStrictValidation()
     {
         var secretProtector = new Mock<ISecretProtector>().Object;
-        var transactions = Mock.Of<IAshlarDurableTransactionProvider>();
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddRouting();
@@ -291,9 +290,13 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services.AddSingleton<ISecretProtector>(secretProtector);
         services.AddAshlarIdentity();
-        services.AddSingleton<IAshlarTransactionProvider>(transactions);
-        services.AddSingleton<IAshlarDurableTransactionProvider>(transactions);
         services.AddSingleton(Mock.Of<IPersistentSecurityEventSink>());
+        services.AddAshlarDurableTransactionProvider<StubTransactionProvider>();
+        services.AddAshlarDurableTransactionParticipant<IUserRepository>();
+        services.AddAshlarDurableTransactionParticipant<ICredentialRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantRepository>();
+        services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
         services.AddPermissiveAccountSecurityGuard();
         services.AddPasswordHasher<PasswordHasherV1>();
         services.AddAshlarAuthorization();
@@ -315,6 +318,12 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
             Assert.That(scope.ServiceProvider.GetRequiredService<IEnumerable<IAuthorizationHandler>>(), Has.Some.TypeOf<AshlarAuthorizationHandler>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IEnumerable<IAuthorizationHandler>>(), Has.Some.TypeOf<AshlarStepUpAuthorizationHandler>());
         }
+    }
+
+    private sealed class StubTransactionProvider : IAshlarTransactionProvider
+    {
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private static void AssertDescriptor<TService, TImplementation>(IServiceCollection services, ServiceLifetime lifetime)

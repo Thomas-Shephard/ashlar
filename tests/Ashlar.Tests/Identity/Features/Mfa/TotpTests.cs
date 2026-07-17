@@ -17,7 +17,9 @@ internal sealed class TotpTests
     private Mock<IUserRepository> _repository = null!;
     private Mock<ICredentialRepository> _credentialRepository = null!;
     private TestCredentialService _credentialService = null!;
-    private Mock<IAshlarDurableTransactionProvider> _transactionProvider = null!;
+    private AshlarDurableTransactionProvider _transactionProvider = null!;
+    private SecurityEventFanOutSink _durableEvents = null!;
+    private Mock<IAshlarTransactionProvider> _rawTransactionProvider = null!;
     private Mock<IAshlarTransaction> _transaction = null!;
     private Mock<ISecurityEventSink> _securityEvents = null!;
     private Mock<IAuthenticationSessionRepository> _sessionRepository = null!;
@@ -30,7 +32,7 @@ internal sealed class TotpTests
         _repository = new Mock<IUserRepository>();
         _credentialRepository = new Mock<ICredentialRepository>();
         _credentialService = new TestCredentialService();
-        _transactionProvider = new Mock<IAshlarDurableTransactionProvider>();
+        _rawTransactionProvider = new Mock<IAshlarTransactionProvider>();
         _transaction = new Mock<IAshlarTransaction>();
         var onCommitted = new List<Func<CancellationToken, Task>>();
         _securityEvents = new Mock<ISecurityEventSink>();
@@ -38,8 +40,15 @@ internal sealed class TotpTests
         _timeProvider = new FakeTimeProvider();
         _options = new TotpOptions();
 
-        _transactionProvider.Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()))
+        _rawTransactionProvider.Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_transaction.Object);
+        var composition = DurableSecurityMutationTestComposition.Compose(
+            _rawTransactionProvider.Object,
+            _securityEvents.Object,
+            _repository.Object,
+            _credentialRepository.Object);
+        _transactionProvider = composition.Transactions;
+        _durableEvents = composition.Events;
         _transaction.Setup(x => x.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()))
             .Callback<Func<CancellationToken, Task>>(onCommitted.Add);
         _transaction.Setup(x => x.CommitAsync(It.IsAny<CancellationToken>()))
@@ -62,11 +71,11 @@ internal sealed class TotpTests
             _repository.Object,
             _credentialRepository.Object,
             _credentialService,
-            _transactionProvider.Object,
+            _transactionProvider,
             [CreateProvider()],
             authorizer ?? CreateAuthorizer(),
             new TotpServiceDependencies(Options.Create(_options), ProofValidator(), _timeProvider,
-                DurableSecurityMutationTestComposition.EventsFor(_securityEvents.Object, _transactionProvider.Object)));
+                _durableEvents));
     }
 
     private TotpAuthenticationProvider CreateProvider()
@@ -83,11 +92,11 @@ internal sealed class TotpTests
             _repository.Object,
             _credentialRepository.Object,
             _credentialService,
-            _transactionProvider.Object,
+            _transactionProvider,
             [CreateProvider(), CreateSecondaryProvider(recoveryProvider)],
             CreateAuthorizer(),
             new TotpServiceDependencies(Options.Create(_options), ProofValidator(), _timeProvider,
-                DurableSecurityMutationTestComposition.EventsFor(_securityEvents.Object, _transactionProvider.Object)));
+                _durableEvents));
     }
 
     private static ISecondaryAuthenticationFactorProvider CreateSecondaryProvider(AuthenticationProviderKey providerKey)
@@ -365,18 +374,18 @@ internal sealed class TotpTests
     {
         var provider = CreateProvider();
         var deps = new TotpServiceDependencies(Options.Create(_options), ProofValidator(), securityEventSink:
-            DurableSecurityMutationTestComposition.EventsFor(new NullSecurityEventSink(), _transactionProvider.Object));
+            _durableEvents);
         var authorizer = CreateAuthorizer();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(null!, _credentialRepository.Object, _credentialService, _transactionProvider.Object, [provider], authorizer, deps));
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, null!, _credentialService, _transactionProvider.Object, [provider], authorizer, deps));
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, null!, _transactionProvider.Object, [provider], authorizer, deps));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(null!, _credentialRepository.Object, _credentialService, _transactionProvider, [provider], authorizer, deps));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, null!, _credentialService, _transactionProvider, [provider], authorizer, deps));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, null!, _transactionProvider, [provider], authorizer, deps));
             Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, _credentialService, null!, [provider], authorizer, deps));
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, _credentialService, _transactionProvider.Object, [provider], null!, deps));
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, _credentialService, _transactionProvider.Object, [provider], authorizer, null!));
-            Assert.Throws<InvalidOperationException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, _credentialService, _transactionProvider.Object, [], authorizer, deps));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, _credentialService, _transactionProvider, [provider], null!, deps));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, _credentialService, _transactionProvider, [provider], authorizer, null!));
+            Assert.Throws<InvalidOperationException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, _credentialService, _transactionProvider, [], authorizer, deps));
         }
     }
 
@@ -387,11 +396,11 @@ internal sealed class TotpTests
             _repository.Object,
             _credentialRepository.Object,
             _credentialService,
-            _transactionProvider.Object,
+            _transactionProvider,
             [CreateProvider()],
             CreateAuthorizer(),
             new TotpServiceDependencies(Options.Create(_options), ProofValidator(), securityEventSink:
-                DurableSecurityMutationTestComposition.EventsFor(new NullSecurityEventSink(), _transactionProvider.Object))));
+                _durableEvents)));
     }
 
     [Test]

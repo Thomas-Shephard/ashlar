@@ -30,7 +30,7 @@ internal sealed class ExternalAccountCredentialLinker : IExternalAccountCredenti
     private readonly IUserRepository _users;
     private readonly ICredentialRepository _credentials;
     private readonly ActiveSessionFreshProofValidator _proofValidator;
-    private readonly IAshlarDurableTransactionProvider _transactions;
+    private readonly AshlarDurableTransactionProvider _transactions;
     private readonly SecurityEventFanOutSink _events;
     private readonly TimeProvider _timeProvider;
 
@@ -38,7 +38,7 @@ internal sealed class ExternalAccountCredentialLinker : IExternalAccountCredenti
         IUserRepository users,
         ICredentialRepository credentials,
         ActiveSessionFreshProofValidator proofValidator,
-        IAshlarDurableTransactionProvider transactions,
+        AshlarDurableTransactionProvider transactions,
         SecurityEventFanOutSink securityEventSink,
         TimeProvider? timeProvider = null)
     {
@@ -49,6 +49,8 @@ internal sealed class ExternalAccountCredentialLinker : IExternalAccountCredenti
         ArgumentNullException.ThrowIfNull(securityEventSink);
         if (!securityEventSink.RequiresDurableTransaction || !ReferenceEquals(transactions, securityEventSink.TransactionProvider))
             throw new ArgumentException("External credential linking requires durable audit using the same transaction provider.", nameof(transactions));
+        if (!transactions.IncludesParticipant(users) || !transactions.IncludesParticipant(credentials))
+            throw new ArgumentException("External credential repositories must be enlisted in the durable transaction composition.", nameof(transactions));
         _timeProvider = timeProvider ?? TimeProvider.System;
         _events = securityEventSink;
     }

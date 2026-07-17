@@ -23,7 +23,7 @@ public static partial class AshlarServiceCollectionExtensions
     /// This method intentionally does not register <see cref="IInvitationRepository"/> or
     /// <see cref="IUserRepository"/> and <see cref="ICredentialRepository"/>. Applications should provide those dependencies explicitly,
     /// such as by using Ashlar.Postgres or custom repository implementations. Invitation revocation also requires an
-    /// <see cref="IAshlarDurableTransactionProvider"/> and a transaction-bound <see cref="SecurityEventFanOutSink"/>.
+    /// <see cref="AshlarDurableTransactionProvider"/> and a transaction-bound <see cref="SecurityEventFanOutSink"/>.
     /// </remarks>
     public static IServiceCollection AddAshlarInvitations(
         this IServiceCollection services,
@@ -46,7 +46,7 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped(provider => new InvitationAdministrationServiceDependencies(
             provider.GetService<TimeProvider>(),
             provider.GetRequiredService<SecurityEventFanOutSink>(),
-            provider.GetRequiredService<IAshlarDurableTransactionProvider>()));
+            provider.GetRequiredService<AshlarDurableTransactionProvider>()));
         services.TryAddScoped<IInvitationAdministrationService>(provider => new InvitationAdministrationService(
             provider.GetRequiredService<IInvitationRepository>(),
             provider.GetRequiredService<InvitationAdministrationServiceDependencies>()));

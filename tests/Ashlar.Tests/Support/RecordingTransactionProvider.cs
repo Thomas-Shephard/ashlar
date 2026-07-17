@@ -1,7 +1,9 @@
 namespace Ashlar.Tests.Support;
 
-internal sealed class RecordingTransactionProvider : IAshlarDurableTransactionProvider
+internal sealed class RecordingTransactionProvider : IAshlarTransactionProvider
 {
+    public AshlarDurableTransactionProvider Compose(params object[] participants) => AshlarDurableTransactionProvider.Create(this, participants);
+    public static implicit operator AshlarDurableTransactionProvider(RecordingTransactionProvider provider) => provider.Compose();
     private readonly AsyncLocal<RecordingTransaction?> _active = new();
 
     public RecordingTransactionProvider()

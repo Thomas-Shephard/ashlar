@@ -16,7 +16,7 @@ public sealed class AshlarOidcInvitationRegistrationService
 {
     private readonly IInvitationService _invitationService;
     private readonly ICredentialRepository _credentialRepository;
-    private readonly IAshlarDurableTransactionProvider _transactionProvider;
+    private readonly AshlarDurableTransactionProvider _transactionProvider;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _oauthOptions;
     private readonly IOidcInvitationEmailMatchPolicy _emailMatchPolicy;
     private readonly SecurityEventFanOutSink _securityEventSink;
@@ -35,7 +35,7 @@ public sealed class AshlarOidcInvitationRegistrationService
     internal AshlarOidcInvitationRegistrationService(
         IInvitationService invitationService,
         ICredentialRepository credentialRepository,
-        IAshlarDurableTransactionProvider transactionProvider,
+        AshlarDurableTransactionProvider transactionProvider,
         IOptionsMonitor<AshlarOAuthOptions> oauthOptions,
         IOidcInvitationEmailMatchPolicy emailMatchPolicy,
         SecurityEventFanOutSink securityEventSink,
@@ -47,9 +47,11 @@ public sealed class AshlarOidcInvitationRegistrationService
         _oauthOptions = oauthOptions ?? throw new ArgumentNullException(nameof(oauthOptions));
         _emailMatchPolicy = emailMatchPolicy ?? throw new ArgumentNullException(nameof(emailMatchPolicy));
         _securityEventSink = securityEventSink ?? throw new ArgumentNullException(nameof(securityEventSink));
-        if (!securityEventSink.RequiresDurableTransaction || !ReferenceEquals(transactionProvider, securityEventSink.TransactionProvider))
+        if (!securityEventSink.RequiresDurableTransaction
+            || !ReferenceEquals(transactionProvider, securityEventSink.TransactionProvider)
+            || !transactionProvider.IncludesParticipant(credentialRepository))
         {
-            throw new ArgumentException("The security event sink must use the invitation registration transaction provider.", nameof(securityEventSink));
+            throw new ArgumentException("Invitation registration requires the credential repository and durable audit to share its transaction provider.", nameof(securityEventSink));
         }
         _timeProvider = timeProvider ?? TimeProvider.System;
     }

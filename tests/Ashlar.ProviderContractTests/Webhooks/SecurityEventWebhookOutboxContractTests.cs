@@ -1,3 +1,4 @@
+using Ashlar.Testing;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -260,12 +261,16 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         var transactionProvider = GetTransactionProvider(scope.ServiceProvider)
             ?? throw new InvalidOperationException("Transaction provider is not registered.");
         var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
+        var persistentSink = GetPersistentSecurityEventSink(scope.ServiceProvider);
+        var durableHandlers = scope.ServiceProvider.GetServices<IDurableSecurityEventFanOutHandler>().ToList();
+        durableHandlers.Add(new ThrowingDurableSecurityEventFanOutHandler());
+        transactionProvider = DurableTransactionComposition.Create(
+            transactionProvider,
+            new object[] { persistentSink }.Concat(durableHandlers.Cast<object>()).ToArray());
         var sink = new SecurityEventFanOutSink(
-            GetPersistentSecurityEventSink(scope.ServiceProvider),
+            persistentSink,
             transactionProvider: transactionProvider,
-            durableHandlers: scope.ServiceProvider
-                .GetServices<IDurableSecurityEventFanOutHandler>()
-                .Append(new ThrowingDurableSecurityEventFanOutHandler()));
+            durableHandlers: durableHandlers);
 
         Assert.That(
             async () => await sink.RecordAsync(CreateTransactionalSecurityEvent(user.Id)),

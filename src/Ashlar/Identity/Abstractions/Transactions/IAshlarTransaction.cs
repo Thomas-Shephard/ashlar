@@ -32,10 +32,10 @@ public interface IAshlarTransaction : IAsyncDisposable
     /// </summary>
     /// <param name="action">Callback to run after a successful commit.</param>
     /// <remarks>
-    /// Registered actions are executed after the transaction commit has completed and receive a cancellation token
-    /// that is not linked to the caller's commit token. Hook failures are isolated from later actions and must not
-    /// make <see cref="CommitAsync"/> report that a durable commit failed. Providers should log or otherwise report
-    /// hook failures. Hooks must not run when the provider transaction rolls back.
+    /// Registered actions are executed after the durable commit has completed and the provider has released its active
+    /// transaction state. They receive a cancellation token that is not linked to the caller's commit token. Hook failures
+    /// are isolated from later actions and must not make <see cref="CommitAsync"/> report that a durable commit failed.
+    /// Providers should log or otherwise report hook failures. Hooks must not run when the transaction rolls back.
     /// </remarks>
     void OnCommitted(Func<CancellationToken, Task> action);
 }

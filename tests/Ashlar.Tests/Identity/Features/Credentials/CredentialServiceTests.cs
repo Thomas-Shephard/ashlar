@@ -24,7 +24,7 @@ internal sealed class CredentialServiceTests
         _credentialRepositoryMock = new Mock<ICredentialRepository>();
         _secretProtectorMock = new Mock<ISecretProtector>();
         _timeProvider = new FakeTimeProvider();
-        _composition = new DurableSecurityMutationTestComposition();
+        _composition = new DurableSecurityMutationTestComposition(participants: [_repositoryMock.Object, _credentialRepositoryMock.Object]);
 
         _secretProtectorMock.Setup(s => s.Protect(It.IsAny<string>())).Returns<string>(s => $"protected({s})");
         _secretProtectorMock.Setup(s => s.Unprotect(It.IsAny<string>())).Returns<string>(s => s.StartsWith("protected(", StringComparison.Ordinal) ? s[10..^1] : s);
@@ -39,7 +39,7 @@ internal sealed class CredentialServiceTests
 
     private CredentialService CreateService(ISecurityEventSink securityEventSink)
     {
-        var composition = new DurableSecurityMutationTestComposition(securityEventSink);
+        var composition = new DurableSecurityMutationTestComposition(securityEventSink, _repositoryMock.Object, _credentialRepositoryMock.Object);
         return new CredentialService(
             _repositoryMock.Object,
             _credentialRepositoryMock.Object,

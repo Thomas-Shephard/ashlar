@@ -5,28 +5,14 @@ using StackExchange.Redis;
 
 namespace Ashlar.Redis.RateLimiting;
 
-/// <summary>
-/// Redis-backed authentication rate-limit administration repository using a bounded key scan.
-/// </summary>
-/// <remarks>
-/// Search uses Redis SCAN over the configured Ashlar rate-limit prefix and returns only opaque hash suffixes, never physical Redis key names.
-/// Exact paging can vary while Redis keys are changing concurrently.
-/// </remarks>
-public sealed class RedisAuthenticationRateLimitAdministrationRepository :
-    IAuthenticationRateLimitAdministrationRepository,
-    INonAtomicAuthenticationRateLimitAdministrationRepository
+internal sealed class RedisAuthenticationRateLimitAdministrationRepository : IAuthenticationRateLimitAdministrationReaderRepository
 {
     internal const int MaximumScanCount = 1000;
 
     private readonly Func<ValueTask<IConnectionMultiplexer>> _getConnectionAsync;
     private readonly RedisAuthenticationRateLimiterOptions _options;
 
-    /// <summary>
-    /// Initializes a Redis-backed authentication rate-limit administration repository.
-    /// </summary>
-    /// <param name="connection">The Redis connection multiplexer.</param>
-    /// <param name="options">The Redis rate limiter options.</param>
-    public RedisAuthenticationRateLimitAdministrationRepository(IConnectionMultiplexer connection, IOptions<RedisAuthenticationRateLimiterOptions> options)
+    internal RedisAuthenticationRateLimitAdministrationRepository(IConnectionMultiplexer connection, IOptions<RedisAuthenticationRateLimiterOptions> options)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(options);
@@ -46,13 +32,6 @@ public sealed class RedisAuthenticationRateLimitAdministrationRepository :
         ValidateOptions(options);
     }
 
-    /// <summary>
-    /// Searches Redis rate-limit buckets without exposing raw key material or configured Redis key prefixes.
-    /// </summary>
-    /// <param name="request">Validated search request.</param>
-    /// <param name="now">Current UTC time used for status projection.</param>
-    /// <param name="cancellationToken">Token for aborting Redis work.</param>
-    /// <returns>A list of safe bucket summaries discovered by the bounded scan.</returns>
     public async Task<IReadOnlyList<AuthenticationRateLimitBucketSummary>> SearchBucketsAsync(SearchAuthenticationRateLimitBucketsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -99,13 +78,6 @@ public sealed class RedisAuthenticationRateLimitAdministrationRepository :
             .AsReadOnly();
     }
 
-    /// <summary>
-    /// Loads a Redis rate-limit bucket by purpose and opaque bucket identifier.
-    /// </summary>
-    /// <param name="request">Validated lookup request.</param>
-    /// <param name="now">Current UTC time used for status projection.</param>
-    /// <param name="cancellationToken">Token for aborting Redis work.</param>
-    /// <returns>The safe bucket summary when found; otherwise <see langword="null" />.</returns>
     public async Task<AuthenticationRateLimitBucketSummary?> GetBucketAsync(AuthenticationRateLimitBucketLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -125,33 +97,6 @@ public sealed class RedisAuthenticationRateLimitAdministrationRepository :
         }
 
         return row;
-    }
-
-    /// <summary>
-    /// Deletes a Redis rate-limit bucket after verifying its stored purpose.
-    /// </summary>
-    /// <param name="request">Validated reset request.</param>
-    /// <param name="cancellationToken">Token for aborting Redis work.</param>
-    /// <returns><see langword="true" /> when a bucket was deleted; otherwise <see langword="false" />.</returns>
-    public async Task<bool> ResetBucketAsync(ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!RedisRateLimitKeyBuilder.IsBucketId(request.BucketId))
-        {
-            return false;
-        }
-
-        var connection = await _getConnectionAsync();
-        var database = connection.GetDatabase(_options.Database ?? -1);
-        var key = BuildPhysicalKey(request.BucketId);
-        var purpose = await database.HashGetAsync(key, "purpose");
-        if (!purpose.HasValue || !string.Equals(purpose.ToString(), request.Purpose, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        return await database.KeyDeleteAsync(key);
     }
 
     private RedisKey BuildPhysicalKey(string bucketId)

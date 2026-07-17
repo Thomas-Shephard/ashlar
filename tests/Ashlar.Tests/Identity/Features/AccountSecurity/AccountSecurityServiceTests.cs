@@ -30,7 +30,7 @@ internal sealed class AccountSecurityServiceTests
         _userRepository = new InMemoryUserCredentialStore();
         _sessionRepository = new InMemorySessionRepository();
         _events = new RecordingSecurityEventSink();
-        _sessionComposition = new DurableSecurityMutationTestComposition(_events);
+        _sessionComposition = new DurableSecurityMutationTestComposition(_events, _sessionRepository, _userRepository);
         var sessionService = new AuthenticationSessionService(
             _sessionRepository,
             Mock.Of<Ashlar.Security.Tokens.ISecureTokenHasher>(h => h.HashToken(It.IsAny<string>()) == "hash"),
@@ -42,9 +42,9 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             sessionService,
             new AuthenticationSessionReader(_sessionRepository, _timeProvider),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, ProviderRegistry: CreateDefaultProviderRegistry()));
+            new AccountSecurityServiceDependencies(_timeProvider, _sessionComposition.Events, _events, ProviderRegistry: CreateDefaultProviderRegistry()));
     }
 
     [Test]
@@ -83,9 +83,9 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices));
+            new AccountSecurityServiceDependencies(_timeProvider, _sessionComposition.Events, _events, RememberedMfaDeviceService: rememberedDevices));
 
         var result = await service.SetUserAccountStateAsync(
             _userId,
@@ -204,9 +204,9 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             sessionService,
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices));
+            new AccountSecurityServiceDependencies(_timeProvider, _sessionComposition.Events, _events, RememberedMfaDeviceService: rememberedDevices));
 
         var result = await service.SetUserAccountStateAsync(_userId, request);
 
@@ -262,9 +262,9 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             sessionService,
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
+            new AccountSecurityServiceDependencies(_timeProvider, _sessionComposition.Events, _events));
 
         var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled, "risk"));
 
@@ -290,9 +290,9 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new RejectingAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
+            new AccountSecurityServiceDependencies(_timeProvider, _sessionComposition.Events, _events));
 
         var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled));
 
@@ -411,9 +411,9 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             sessionService,
             new AuthenticationSessionReader(_sessionRepository, _timeProvider),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices));
+            new AccountSecurityServiceDependencies(_timeProvider, _sessionComposition.Events, _events, RememberedMfaDeviceService: rememberedDevices));
 
         var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled));
 
@@ -441,9 +441,9 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new EmptyFailureAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
+            new AccountSecurityServiceDependencies(_timeProvider, _sessionComposition.Events, _events));
 
         var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled));
 
@@ -750,9 +750,9 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices));
+            new AccountSecurityServiceDependencies(_timeProvider, _sessionComposition.Events, _events, RememberedMfaDeviceService: rememberedDevices));
 
         var result = await service.ResetMfaAsync(_userId, request);
         var resetEvent = _events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserMfaReset);
@@ -832,11 +832,11 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(
                 _timeProvider,
-                _events,
+                _sessionComposition.Events,
                 _events,
                 Options.Create(new TotpOptions { ProviderKey = totpProvider }),
                 Options.Create(new RecoveryCodeOptions { ProviderKey = recoveryProvider })));
@@ -853,14 +853,16 @@ internal sealed class AccountSecurityServiceTests
         repository
             .Setup(r => r.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BasicUser(_userId, "basic@example.com", UserAccountState.Active));
+        var credentials = Mock.Of<ICredentialRepository>();
+        var composition = new DurableSecurityMutationTestComposition(_events, repository.Object, credentials);
         var service = new AccountSecurityService(
             repository.Object,
-            Mock.Of<ICredentialRepository>(),
+            credentials,
             new TestAuthenticationSessionMutationExecutor(),
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            composition.Transactions,
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies());
+            new AccountSecurityServiceDependencies(SecurityEventSink: composition.Events));
 
         var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled));
 
@@ -878,14 +880,16 @@ internal sealed class AccountSecurityServiceTests
         repository
             .Setup(r => r.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BasicUser(_userId, "basic@example.com", UserAccountState.Active));
+        var credentials = Mock.Of<ICredentialRepository>();
+        var composition = new DurableSecurityMutationTestComposition(_events, repository.Object, credentials);
         var service = new AccountSecurityService(
             repository.Object,
-            Mock.Of<ICredentialRepository>(),
+            credentials,
             new TestAuthenticationSessionMutationExecutor(),
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            composition.Transactions,
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
+            new AccountSecurityServiceDependencies(_timeProvider, composition.Events, _events));
 
         var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled, tenantId: Guid.NewGuid()));
 
@@ -1261,9 +1265,9 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
+            new AccountSecurityServiceDependencies(_timeProvider, _sessionComposition.Events, _events));
         _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Passkey));
 
@@ -1401,11 +1405,11 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(
                 _timeProvider,
-                _events,
+                _sessionComposition.Events,
                 _events,
                 Options.Create(new TotpOptions { ProviderKey = configuredTotp }),
                 ProviderRegistry: registry));
@@ -1495,9 +1499,9 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             sessionService,
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, ProviderRegistry: CreateDefaultProviderRegistry()));
+            new AccountSecurityServiceDependencies(_timeProvider, _sessionComposition.Events, ProviderRegistry: CreateDefaultProviderRegistry()));
 
         var result = await service.GetUserSecurityPostureAsync(_userId);
 
@@ -1519,8 +1523,9 @@ internal sealed class AccountSecurityServiceTests
             Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, null!, new TestAuthenticationSessionReader(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
             Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), null!, new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
             Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), new TestAuthenticationSessionReader(), null!, new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
-            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), new TestAuthenticationSessionReader(), new NullTransactionProvider(), null!, new AccountSecurityServiceDependencies()));
+            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), new TestAuthenticationSessionReader(), _sessionComposition.Transactions, null!, new AccountSecurityServiceDependencies(SecurityEventSink: _sessionComposition.Events)));
             Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), new TestAuthenticationSessionReader(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), null!));
+            Assert.Throws<ArgumentException>(() => _ = new AccountSecurityService(_userRepository, _userRepository, new TestAuthenticationSessionMutationExecutor(), new TestAuthenticationSessionReader(), new NullTransactionProvider(), new PermissiveAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
         }
     }
 
@@ -1607,14 +1612,16 @@ internal sealed class AccountSecurityServiceTests
         userRepository
             .Setup(r => r.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BasicUser(_userId, "user@example.com", UserAccountState.Active));
+        var credentials = Mock.Of<ICredentialRepository>();
+        var composition = new DurableSecurityMutationTestComposition(_events, userRepository.Object, credentials);
         var service = new AccountSecurityService(
             userRepository.Object,
-            Mock.Of<ICredentialRepository>(),
+            credentials,
             new TestAuthenticationSessionMutationExecutor(),
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            composition.Transactions,
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
+            new AccountSecurityServiceDependencies(_timeProvider, composition.Events, _events));
 
         var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Active, includeAllTenants: true));
 
@@ -1635,9 +1642,9 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new RejectingAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
+            new AccountSecurityServiceDependencies(_timeProvider, _sessionComposition.Events, _events));
 
         var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled, includeAllTenants: true));
 
@@ -1713,11 +1720,11 @@ internal sealed class AccountSecurityServiceTests
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            _sessionComposition.Transactions,
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(
                 _timeProvider,
-                _events,
+                _sessionComposition.Events,
                 _events,
                 MfaPolicyEvaluator: mfaPolicyEvaluator,
                 ProviderRegistry: providerRegistry ?? (includeDefaultProviderRegistry ? CreateDefaultProviderRegistry() : null),

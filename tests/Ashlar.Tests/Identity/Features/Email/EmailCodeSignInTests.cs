@@ -595,7 +595,7 @@ internal sealed class EmailCodeSignInTests
     {
         var repository = new InMemoryUserCredentialStore(user);
         var audit = new RecordingSecurityEventSink();
-        var credentialComposition = new DurableSecurityMutationTestComposition(audit);
+        var credentialComposition = new DurableSecurityMutationTestComposition(audit, repository, repository);
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 5, 3, 12, 0, 0, TimeSpan.Zero));
         var emailSender = new RecordingEmailSender();
         var provider = CreateProvider();

@@ -11,7 +11,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
 
     private readonly IUserRepository _userRepository;
     private readonly ICredentialRepository _credentialRepository;
-    private readonly IAshlarDurableTransactionProvider _transactionProvider;
+    private readonly AshlarDurableTransactionProvider _transactionProvider;
     private readonly Security.Hashing.PasswordHasherSelector _hasherSelector;
     private readonly RecoveryCodeOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -23,7 +23,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
     public RecoveryCodeService(
         IUserRepository userRepository,
         ICredentialRepository credentialRepository,
-        IAshlarDurableTransactionProvider transactionProvider,
+        AshlarDurableTransactionProvider transactionProvider,
         Security.Hashing.PasswordHasherSelector hasherSelector,
         RecoveryCodeServiceDependencies dependencies)
     {
@@ -41,7 +41,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
         _proofValidator = dependencies.ProofValidator;
         _options = dependencies.Options.Value;
         _timeProvider = dependencies.TimeProvider;
-        _securityEvents = new SecurityEventEmitter(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, transactionProvider, "Recovery-code mutations"), _timeProvider);
+        _securityEvents = new SecurityEventEmitter(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, transactionProvider, "Recovery-code mutations", userRepository, credentialRepository), _timeProvider);
         _notifications = new SecurityNotificationEmitter(dependencies.NotificationService);
         _authorizer = dependencies.Authorizer;
     }

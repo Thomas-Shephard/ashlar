@@ -79,11 +79,10 @@ public static class AshlarRedisServiceCollectionExtensions
                 provider.GetRequiredService<TimeProvider>())));
         services.Replace(ServiceDescriptor.Singleton<IAuthenticationRateLimiterDiagnostics>(provider =>
             ActivatorUtilities.CreateInstance<RedisAuthenticationRateLimiterDiagnostics>(provider)));
-        services.Replace(ServiceDescriptor.Singleton<IAuthenticationRateLimitAdministrationRepository>(provider =>
+        services.AddAshlarAuthenticationRateLimitAdministrationReader(provider =>
             new RedisAuthenticationRateLimitAdministrationRepository(
                 provider.GetRequiredService<RedisAuthenticationRateLimiterConnection>(),
-                provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<RedisAuthenticationRateLimiterOptions>>())));
-        services.AddAshlarAuthenticationRateLimitAdministration();
+                provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<RedisAuthenticationRateLimiterOptions>>()));
 
         return services;
     }
