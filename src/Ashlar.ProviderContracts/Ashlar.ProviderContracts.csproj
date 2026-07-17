@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Provider-authoring contracts and composition APIs for Ashlar persistence implementations.</Description>
+    <PackageTags>ashlar;provider;contracts;persistence</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ashlar\Ashlar.csproj" />
+  </ItemGroup>
+
+</Project>

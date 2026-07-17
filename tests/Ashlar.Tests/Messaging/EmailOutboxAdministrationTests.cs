@@ -315,7 +315,7 @@ internal sealed class EmailOutboxAdministrationProviderTests
     private sealed class TestEmailOutboxAdministrationService(
         ISecurityEventSink sink,
         global::Ashlar.Identity.Abstractions.Transactions.IAshlarTransactionProvider transactionProvider)
-        : EmailOutboxAdministrationServiceBase(TimeProvider.System, sink, transactionProvider)
+        : EmailOutboxAdministrationServiceBase(TimeProvider.System, sink, global::Ashlar.Testing.DurableTransactionComposition.Create(transactionProvider))
     {
         public override Task<EmailOutboxSearchResult> SearchAsync(EmailOutboxSearchRequest request, CancellationToken cancellationToken = default)
         {

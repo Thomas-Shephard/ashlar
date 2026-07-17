@@ -33,25 +33,25 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
         using (Assert.EnterMultipleScope())
         {
             Assert.That(typeof(ISqliteConnectionProvider).IsNotPublic, Is.True);
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>(), Is.TypeOf<SqliteTransactionManager>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>(), Is.SameAs(scope.ServiceProvider.GetRequiredService<SqliteTransactionManager>()));
+            Assert.That(scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>(), Is.TypeOf<SqliteConnectionProvider>());
+            Assert.That(scope.ServiceProvider.GetService<SqliteTransactionManager>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<SqliteSchemaManager>(), Is.Not.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarSchemaDiagnostics>(), Is.TypeOf<SqliteSchemaDiagnostics>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IUserRepository>(), Is.TypeOf<SqliteUserRepository>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<ICredentialRepository>(), Is.TypeOf<SqliteCredentialRepository>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAccountLockoutRepository>(), Is.TypeOf<SqliteAccountLockoutRepository>());
+            Assert.That(scope.ServiceProvider.GetService<IUserRepository>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetService<ICredentialRepository>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetService<IAccountLockoutRepository>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<IUserAdministrationRepository>(), Is.TypeOf<SqliteUserAdministrationRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ICredentialAdministrationRepository>(), Is.TypeOf<SqliteCredentialAdministrationRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventAdministrationRepository>(), Is.TypeOf<SqliteSecurityEventAdministrationRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationSessionAdministrationRepository>(), Is.TypeOf<SqliteAuthenticationSessionAdministrationRepository>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IBootstrapStateRepository>(), Is.TypeOf<SqliteBootstrapStateRepository>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationSessionRepository>(), Is.TypeOf<SqliteAuthenticationSessionRepository>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationHandshakeRepository>(), Is.TypeOf<SqliteAuthenticationHandshakeRepository>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IInvitationRepository>(), Is.TypeOf<SqliteInvitationRepository>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IRememberedMfaDeviceRepository>(), Is.TypeOf<SqliteRememberedMfaDeviceRepository>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IPasskeyChallengeRepository>(), Is.TypeOf<SqlitePasskeyChallengeRepository>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantRepository>(), Is.TypeOf<SqliteAuthorizationGrantRepository>());
+            Assert.That(scope.ServiceProvider.GetService<IBootstrapStateRepository>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetService<IAuthenticationSessionRepository>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetService<IAuthenticationHandshakeRepository>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetService<IInvitationRepository>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetService<IRememberedMfaDeviceRepository>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetService<IPasskeyChallengeRepository>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetService<IAuthorizationGrantRepository>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantAdministrationRepository>(), Is.TypeOf<SqliteAuthorizationGrantAdministrationRepository>());
             Assert.That(provider.GetRequiredService<TimeProvider>(), Is.EqualTo(TimeProvider.System));
         }
@@ -113,11 +113,29 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecretProtector>(), Is.SameAs(secretProtector));
             Assert.That(scope.ServiceProvider.GetRequiredService<IEmailSender>(), Is.TypeOf<SqliteEmailOutboxSender>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiter>(), Is.TypeOf<SqliteAuthenticationRateLimiter>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IPersistentSecurityEventSink>(), Is.TypeOf<SqliteSecurityEventSink>());
+            Assert.That(scope.ServiceProvider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(), Is.TypeOf<SqliteSecurityEventSink>());
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
         }
+    }
+
+    [Test]
+    public async Task AddAshlarSqliteRateLimitingIgnoresOrdinaryTransactionReplacement()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarSqlite(GetConnectionString());
+        services.AddAshlarSqliteRateLimiting();
+        services.AddScoped(_ => Mock.Of<IAshlarTransactionProvider>());
+
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var limiter = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiter>();
+        var transactions = scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>();
+
+        Assert.That(typeof(SqliteAuthenticationRateLimiter)
+            .GetField("_transactionProvider", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(limiter), Is.SameAs(transactions));
     }
 
     [Test]
@@ -195,8 +213,8 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IPersistentSecurityEventSink>(), Is.TypeOf<SqliteSecurityEventSink>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IUserSecurityEventSummaryRepository>(), Is.SameAs(scope.ServiceProvider.GetRequiredService<IPersistentSecurityEventSink>()));
+            Assert.That(scope.ServiceProvider.GetService<IPersistentSecurityEventSink>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetRequiredService<IUserSecurityEventSummaryRepository>(), Is.TypeOf<SqliteUserSecurityEventSummaryRepository>());
             Assert.That(issueCodes, Does.Not.Contain(AshlarConfigurationIssueCodes.NullSecurityEventSink));
         }
     }

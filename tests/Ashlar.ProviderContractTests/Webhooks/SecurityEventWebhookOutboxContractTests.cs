@@ -258,14 +258,14 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
     public async Task SecurityEventFanOutRollsBackAuditAndWebhookOutboxWhenDurableFanOutFailsWithoutAmbientTransaction()
     {
         await using var scope = CreateAsyncScope();
-        var transactionProvider = GetTransactionProvider(scope.ServiceProvider)
+        var rawTransactionProvider = GetTransactionProvider(scope.ServiceProvider)
             ?? throw new InvalidOperationException("Transaction provider is not registered.");
         var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
         var persistentSink = GetPersistentSecurityEventSink(scope.ServiceProvider);
         var durableHandlers = scope.ServiceProvider.GetServices<IDurableSecurityEventFanOutHandler>().ToList();
         durableHandlers.Add(new ThrowingDurableSecurityEventFanOutHandler());
-        transactionProvider = DurableTransactionComposition.Create(
-            transactionProvider,
+        var transactionProvider = DurableTransactionComposition.Create(
+            rawTransactionProvider,
             new object[] { persistentSink }.Concat(durableHandlers.Cast<object>()).ToArray());
         var sink = new SecurityEventFanOutSink(
             persistentSink,

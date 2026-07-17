@@ -6,7 +6,7 @@ namespace Ashlar.Sqlite.Auditing;
 /// <summary>
 /// A SQLite-backed security event sink that persists audit events to the ashlar_security_events table.
 /// </summary>
-internal sealed class SqliteSecurityEventSink : PersistentSecurityEventSink, IUserSecurityEventSummaryRepository
+internal sealed class SqliteSecurityEventSink : PersistentSecurityEventSink
 {
     private const string IdParameter = "$id";
     private const string EventTypeParameter = "$eventType";
@@ -89,4 +89,10 @@ internal sealed class SqliteSecurityEventSink : PersistentSecurityEventSink, IUs
 
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
+}
+
+internal sealed class SqliteUserSecurityEventSummaryRepository(SqliteSecurityEventSink sink) : IUserSecurityEventSummaryRepository
+{
+    public Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default) =>
+        sink.CountSecurityEventsForUserAsync(userId, since, cancellationToken);
 }

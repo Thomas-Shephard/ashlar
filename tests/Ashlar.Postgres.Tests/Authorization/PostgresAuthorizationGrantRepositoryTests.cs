@@ -128,17 +128,18 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
         var services = new ServiceCollection();
 
         services.AddAshlarPostgresAuthorization("Host=localhost;Database=ashlar;Username=ashlar;Password=ashlar");
+        var provider = services.BuildServiceProvider();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
-                descriptor.ServiceType == typeof(Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository)
-                && descriptor.ImplementationType == typeof(PostgresAuthorizationGrantRepository)
-                && descriptor.Lifetime == ServiceLifetime.Scoped));
+            Assert.That(services, Has.None.Matches<ServiceDescriptor>(descriptor =>
+                descriptor.ServiceType == typeof(Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository)));
+            Assert.That(provider.GetRequiredAshlarProviderService<Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository>(), Is.Not.Null);
             Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
                 descriptor.ServiceType == typeof(IPostgresConnectionProvider)
                 && descriptor.Lifetime == ServiceLifetime.Scoped));
         }
+        provider.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
     [Test]
@@ -147,11 +148,15 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
         var services = new ServiceCollection();
 
         services.AddAshlarPostgresAuthorization(GetDataSource());
+        var provider = services.BuildServiceProvider();
 
-        Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
-            descriptor.ServiceType == typeof(Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository)
-            && descriptor.ImplementationType == typeof(PostgresAuthorizationGrantRepository)
-            && descriptor.Lifetime == ServiceLifetime.Scoped));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(services, Has.None.Matches<ServiceDescriptor>(descriptor =>
+                descriptor.ServiceType == typeof(Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository)));
+            Assert.That(provider.GetRequiredAshlarProviderService<Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository>(), Is.Not.Null);
+        }
+        provider.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
     private AuthorizationGrant CreateGrant(

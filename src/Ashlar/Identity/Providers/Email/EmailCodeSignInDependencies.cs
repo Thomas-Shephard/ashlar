@@ -35,7 +35,7 @@ internal sealed class EmailCodeSignInDependencies(
     /// <summary>
     /// Gets the transaction provider used to persist code issuance atomically.
     /// </summary>
-    public IAshlarTransactionProvider TransactionProvider => _identityContext.TransactionProvider;
+    public AshlarDurableTransactionProvider TransactionProvider => _identityContext.TransactionProvider;
     /// <summary>
     /// Gets the sender used for email-code messages.
     /// </summary>

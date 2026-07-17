@@ -16,7 +16,7 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
     public bool RequiresDurableTransaction => _persistentSink is not null || _durableHandlers.Length != 0;
 
     /// <summary>Gets the transaction provider coordinating this sink's durable work.</summary>
-    public IAshlarTransactionProvider? TransactionProvider => _transactionProvider;
+    public AshlarDurableTransactionProvider? TransactionProvider => _transactionProvider;
     private static readonly Action<ILogger, string, Guid?, Guid?, string?, string?, Exception?> SecurityEventHandlerFailed =
         LoggerMessage.Define<string, Guid?, Guid?, string?, string?>(
             LogLevel.Warning,
@@ -26,7 +26,7 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
     private readonly IPersistentSecurityEventSink? _persistentSink;
     private readonly IDurableSecurityEventFanOutHandler[] _durableHandlers;
     private readonly ISecurityEventHandler[] _handlers;
-    private readonly IAshlarTransactionProvider? _transactionProvider;
+    private readonly AshlarDurableTransactionProvider? _transactionProvider;
     private readonly ILogger<SecurityEventFanOutSink> _logger;
 
     /// <summary>
@@ -41,7 +41,7 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
         IPersistentSecurityEventSink? persistentSink = null,
         IEnumerable<ISecurityEventHandler>? handlers = null,
         ILogger<SecurityEventFanOutSink>? logger = null,
-        IAshlarTransactionProvider? transactionProvider = null,
+        AshlarDurableTransactionProvider? transactionProvider = null,
         IEnumerable<IDurableSecurityEventFanOutHandler>? durableHandlers = null)
     {
         _persistentSink = persistentSink;
@@ -50,11 +50,11 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
         _transactionProvider = transactionProvider;
         _logger = logger ?? NullLogger<SecurityEventFanOutSink>.Instance;
 
-        if (RequiresDurableTransaction && transactionProvider is not AshlarDurableTransactionProvider)
+        if (RequiresDurableTransaction && transactionProvider is null)
         {
             throw new InvalidOperationException("Persistent security event storage and durable fan-out handlers require an Ashlar durable transaction provider.");
         }
-        if (transactionProvider is AshlarDurableTransactionProvider composition
+        if (transactionProvider is { } composition
             && ((_persistentSink != null && !composition.IncludesParticipant(_persistentSink)) || _durableHandlers.Any(handler => !composition.IncludesParticipant(handler))))
         {
             throw new InvalidOperationException("Persistent security event storage and durable fan-out handlers must be enlisted in the durable transaction composition.");

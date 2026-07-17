@@ -237,7 +237,6 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     {
         var transactions = new TestDurableTransactionProvider();
         var composition = DurableTransactionComposition.Create(transactions, sink);
-        services.Replace(ServiceDescriptor.Singleton<IAshlarTransactionProvider>(composition));
         services.Replace(ServiceDescriptor.Singleton(composition));
         services.Replace(ServiceDescriptor.Singleton(new SecurityEventFanOutSink(sink, transactionProvider: composition)));
         services.Replace(ServiceDescriptor.Singleton<ISecurityEventSink>(provider => provider.GetRequiredService<SecurityEventFanOutSink>()));

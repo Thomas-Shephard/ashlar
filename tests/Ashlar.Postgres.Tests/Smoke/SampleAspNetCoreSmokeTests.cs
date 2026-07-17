@@ -627,7 +627,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     {
         await using var scope = _factory!.Services.CreateAsyncScope();
         const string secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
-        await scope.ServiceProvider.GetRequiredService<ICredentialRepository>().CreateCredentialAsync(new UserCredential
+        await scope.ServiceProvider.GetRequiredAshlarProviderService<ICredentialRepository>().CreateCredentialAsync(new UserCredential
         {
             Id = Guid.NewGuid(),
             UserId = userId,
@@ -823,7 +823,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     private static async Task<Guid> CreateSampleUserAsync(IServiceProvider services, string email, Guid? tenantId = null)
     {
         await using var scope = services.CreateAsyncScope();
-        var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+        var users = scope.ServiceProvider.GetRequiredAshlarProviderService<IUserRepository>();
         var user = new AshlarUser
         {
             Id = Guid.NewGuid(),
@@ -841,7 +841,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     private static async Task GrantAdminRoleAsync(IServiceProvider services, Guid userId, Guid? tenantId)
     {
         await using var scope = services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<IAuthorizationGrantRepository>().CreateGrantAsync(new AuthorizationGrant
+        await scope.ServiceProvider.GetRequiredAshlarProviderService<IAuthorizationGrantRepository>().CreateGrantAsync(new AuthorizationGrant
         {
             Id = Guid.NewGuid(),
             UserId = userId,
@@ -888,7 +888,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     private static async Task LinkGitHubCredentialAsync(IServiceProvider services, Guid userId)
     {
         await using var scope = services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<ICredentialRepository>().CreateCredentialAsync(new UserCredential
+        await scope.ServiceProvider.GetRequiredAshlarProviderService<ICredentialRepository>().CreateCredentialAsync(new UserCredential
         {
             Id = Guid.NewGuid(),
             UserId = userId,

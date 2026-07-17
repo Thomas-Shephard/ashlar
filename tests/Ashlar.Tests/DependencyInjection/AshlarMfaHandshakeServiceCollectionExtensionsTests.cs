@@ -44,8 +44,11 @@ internal sealed class AshlarMfaHandshakeServiceCollectionExtensionsTests
     public void AddAshlarMfaHandshakesResolvesPublicAndInternalContractsToSameScopedService()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
-        services.AddAshlarNullTransactions();
+        var repository = Mock.Of<IAuthenticationHandshakeRepository>();
+        var composition = new DurableSecurityMutationTestComposition(participants: [repository]);
+        services.AddAshlarProviderScoped(_ => repository);
+        services.AddScoped(_ => composition.Transactions);
+        services.AddScoped(_ => Mock.Of<IAshlarTransactionProvider>());
         services.AddAshlarMfaHandshakes();
 
         using var provider = services.BuildServiceProvider();
@@ -61,6 +64,9 @@ internal sealed class AshlarMfaHandshakeServiceCollectionExtensionsTests
             Assert.That(publicService, Is.SameAs(concrete));
             Assert.That(completionService, Is.SameAs(concrete));
             Assert.That(orchestrationService, Is.SameAs(concrete));
+            Assert.That(typeof(AuthenticationHandshakeService)
+                .GetField("_transactionProvider", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(concrete), Is.SameAs(composition.Transactions));
         }
     }
 

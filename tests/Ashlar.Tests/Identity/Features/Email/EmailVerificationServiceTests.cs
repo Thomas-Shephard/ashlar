@@ -16,7 +16,7 @@ internal sealed class EmailVerificationServiceTests
     public void ConstructorUsesDefaultOptionsWhenOptionsAreNull()
     {
         var repository = new InMemoryUserCredentialStore();
-        var identityContext = new IdentityContext(repository, repository, Mock.Of<IIdentityService>(), new NullTransactionProvider());
+        var identityContext = new IdentityContext(repository, repository, Mock.Of<IIdentityService>(), AshlarDurableTransactionProvider.Create(new NullTransactionProvider()));
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), new Sha256TokenHasher());
         var infrastructure = new IdentityInfrastructureContext(Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), Mock.Of<IUriValidator>());
         var audit = new IdentityAuditContext(new FakeTimeProvider(), new RecordingSecurityEventSink());
@@ -402,7 +402,7 @@ internal sealed class EmailVerificationServiceTests
         var emailSender = new RecordingEmailSender();
         var tokenHasher = new Sha256TokenHasher();
         var tokenGenerator = new SecureTokenGenerator();
-        var transactionProvider = new NullTransactionProvider();
+        var transactionProvider = AshlarDurableTransactionProvider.Create(new NullTransactionProvider());
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed);
         UserCredentialStore.ConsumeSucceeds = consumeSucceeds;
 

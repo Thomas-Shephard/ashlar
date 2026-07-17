@@ -9,7 +9,7 @@ namespace Ashlar.Identity.Features.Bootstrap;
 internal sealed class BootstrapStoreContext(
     IBootstrapStateRepository stateRepository,
     IUserRepository userRepository,
-    IAshlarTransactionProvider transactionProvider)
+    AshlarDurableTransactionProvider transactionProvider)
 {
     /// <summary>
     /// Gets the bootstrap state repository.
@@ -22,5 +22,5 @@ internal sealed class BootstrapStoreContext(
     /// <summary>
     /// Gets the transaction provider.
     /// </summary>
-    public IAshlarTransactionProvider TransactionProvider { get; } = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
+    public AshlarDurableTransactionProvider TransactionProvider { get; } = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
 }

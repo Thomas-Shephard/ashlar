@@ -16,7 +16,7 @@ internal sealed class IdentityServiceAuditingTests
             new OidcAuthenticationProvider("Google")
         };
         var credentialService = new TestCredentialService();
-        var transactionProvider = new NullTransactionProvider();
+        var transactionProvider = AshlarDurableTransactionProvider.Create(new NullTransactionProvider());
         var providerRegistry = new AuthenticationProviderRegistry(providers);
         var pipeline = new AuthenticationPipeline(
             providerRegistry,

@@ -16,7 +16,6 @@ internal sealed class SecurityEventFanOutSinkTests
     {
         Assert.Throws<InvalidOperationException>(() => new SecurityEventFanOutSink(new RecordingPersistentSink()));
         Assert.Throws<InvalidOperationException>(() => new SecurityEventFanOutSink(durableHandlers: [new RecordingDurableHandler()]));
-        Assert.Throws<InvalidOperationException>(() => new SecurityEventFanOutSink(new RecordingPersistentSink(), transactionProvider: new NonDurableTransactionProvider()));
     }
 
     [Test]
@@ -664,11 +663,6 @@ internal sealed class SecurityEventFanOutSinkTests
         {
             return Task.FromException<IAshlarTransaction>(exception);
         }
-    }
-
-    private sealed class NonDurableTransactionProvider : IAshlarTransactionProvider
-    {
-        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class CancelingTransactionProvider(CancellationTokenSource cancellation) : IAshlarTransactionProvider

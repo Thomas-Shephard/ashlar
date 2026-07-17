@@ -149,7 +149,7 @@ internal sealed class PostgresPasskeyChallengeRepositoryTests : PostgresTestBase
         Assert.ThrowsAsync<PostgresException>(async () => await repository.CreateAsync(duplicate));
     }
 
-    private IPasskeyChallengeRepository GetRepository() => _serviceProvider.GetRequiredService<IPasskeyChallengeRepository>();
+    private IPasskeyChallengeRepository GetRepository() => _serviceProvider.GetRequiredAshlarProviderService<IPasskeyChallengeRepository>();
 
     private async Task<Guid> CreateUserAsync()
     {
@@ -160,7 +160,7 @@ internal sealed class PostgresPasskeyChallengeRepositoryTests : PostgresTestBase
             AccountState = UserAccountState.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        await _serviceProvider.GetRequiredService<IUserRepository>().CreateUserAsync(user);
+        await _serviceProvider.GetRequiredAshlarProviderService<IUserRepository>().CreateUserAsync(user);
         return user.Id;
     }
 

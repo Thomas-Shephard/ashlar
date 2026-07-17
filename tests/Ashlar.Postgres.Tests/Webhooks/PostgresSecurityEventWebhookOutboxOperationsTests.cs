@@ -19,7 +19,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
         _audit = new RecordingSecurityEventSink();
         var services = new ServiceCollection();
         services.AddSingleton<TimeProvider>(_timeProvider);
-        services.AddSingleton<ISecurityEventSink>(_audit);
+        services.AddSingleton<ISecurityEventHandler>(_audit);
         services.AddAshlarPostgres(GetConnectionString());
         services.AddAshlarPostgresSecurityEventWebhookOutbox();
         _provider = services.BuildServiceProvider();
@@ -46,7 +46,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
     {
         var connectionProvider = _provider.GetRequiredService<IPostgresConnectionProvider>();
         var audit = _provider.GetRequiredService<ISecurityEventSink>();
-        var transactionProvider = _provider.GetRequiredService<IAshlarTransactionProvider>();
+        var transactionProvider = _provider.GetRequiredService<AshlarDurableTransactionProvider>();
 
         using (Assert.EnterMultipleScope())
         {
@@ -117,7 +117,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
             _provider.GetRequiredService<IPostgresConnectionProvider>(),
             _timeProvider,
             new ThrowingSecurityEventSink(new InvalidOperationException("audit failed")),
-            _provider.GetRequiredService<IAshlarTransactionProvider>());
+            _provider.GetRequiredService<AshlarDurableTransactionProvider>());
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.RetryAsync(Request(id)));
         var row = await QueryStateAsync(id);
@@ -138,7 +138,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
             _provider.GetRequiredService<IPostgresConnectionProvider>(),
             _timeProvider,
             new ThrowingSecurityEventSink(new InvalidOperationException("audit failed")),
-            _provider.GetRequiredService<IAshlarTransactionProvider>());
+            _provider.GetRequiredService<AshlarDurableTransactionProvider>());
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.DiscardAsync(Request(id)));
         var row = await QueryStateAsync(id);
@@ -324,11 +324,11 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
         public string? LastError { get; init; }
     }
 
-    private sealed class RecordingSecurityEventSink : ISecurityEventSink
+    private sealed class RecordingSecurityEventSink : ISecurityEventHandler
     {
         public List<AshlarSecurityEvent> Events { get; } = [];
 
-        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        public Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
         {
             Events.Add(securityEvent);
             return Task.CompletedTask;

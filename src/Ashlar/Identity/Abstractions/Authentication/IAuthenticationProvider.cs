@@ -58,10 +58,10 @@ public interface IAuthenticationUserResolver
 {
     /// <param name="assertion">Provider-supplied assertion used to identify the user. Treat as sensitive unless the provider documents otherwise.</param>
     /// <param name="context">Tenant, audit, and request metadata for the authentication attempt.</param>
-    /// <param name="repository">The user repository.</param>
+    /// <param name="users">Read-only user lookup capability.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
     /// <returns>The matching user, or <see langword="null" /> when the assertion does not identify a user.</returns>
-    Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default);
+    Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserLookup users, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -75,14 +75,14 @@ public interface IAuthenticationCredentialResolver
     /// <param name="userId">The user that must own the credential.</param>
     /// <param name="assertion">Provider-supplied assertion used to locate the credential. Treat as sensitive unless the provider documents otherwise.</param>
     /// <param name="context">Tenant, audit, and request metadata for the authentication attempt, when available.</param>
-    /// <param name="repository">The credential repository.</param>
+    /// <param name="credentials">Read-only credential lookup capability.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
     /// <returns>The matching credential, or <see langword="null" /> when no valid credential is found.</returns>
     Task<UserCredential?> ResolveCredentialAsync(
         Guid userId,
         IAuthenticationAssertion assertion,
         AuthenticationContext? context,
-        ICredentialRepository repository,
+        ICredentialLookup credentials,
         CancellationToken cancellationToken = default);
 }
 

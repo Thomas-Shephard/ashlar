@@ -15,6 +15,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Ashlar.Tests" />
     <InternalsVisibleTo Include="Ashlar.Testing" />
+    <InternalsVisibleTo Include="Ashlar.ProviderContracts" />
   </ItemGroup>
 
 </Project>

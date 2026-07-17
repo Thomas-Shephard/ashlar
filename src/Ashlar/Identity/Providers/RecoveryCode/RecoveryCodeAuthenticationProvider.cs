@@ -110,13 +110,13 @@ public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFa
     /// </summary>
     /// <param name="assertion">Recovery-code assertion supplied to the authentication pipeline.</param>
     /// <param name="context">Authentication context containing the email address and tenant scope used by normalized repository lookup.</param>
-    /// <param name="repository">User repository used to resolve the account.</param>
+    /// <param name="users">Read-only user lookup capability.</param>
     /// <param name="cancellationToken">Token for aborting lookup work.</param>
     /// <returns>The matching user, or <see langword="null" /> when the assertion or email cannot resolve an account.</returns>
-    public Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default)
+    public Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserLookup users, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(users);
 
         if (assertion is not RecoveryCodeAssertion)
         {
@@ -129,7 +129,7 @@ public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFa
             return Task.FromResult<IUser?>(null);
         }
 
-        return repository.GetUserByEmailAsync(email, context.TenantId, cancellationToken);
+        return users.GetUserByEmailAsync(email, context.TenantId, cancellationToken);
     }
 
     /// <summary>
@@ -138,10 +138,10 @@ public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFa
     /// <param name="userId">User whose recovery-code credentials should be searched.</param>
     /// <param name="assertion">Recovery-code assertion containing the raw submitted code.</param>
     /// <param name="context">Authentication context for the current attempt.</param>
-    /// <param name="repository">Credential repository used to load the candidate recovery-code credential.</param>
+    /// <param name="credentials">Read-only credential lookup capability.</param>
     /// <param name="cancellationToken">Token for aborting credential lookup work.</param>
     /// <returns>The matching credential when the code is valid and available; otherwise, <see langword="null" />.</returns>
-    public async Task<UserCredential?> ResolveCredentialAsync(Guid userId, IAuthenticationAssertion assertion, AuthenticationContext? context, ICredentialRepository repository, CancellationToken cancellationToken = default)
+    public async Task<UserCredential?> ResolveCredentialAsync(Guid userId, IAuthenticationAssertion assertion, AuthenticationContext? context, ICredentialLookup credentials, CancellationToken cancellationToken = default)
     {
         if (assertion is not RecoveryCodeAssertion recoveryCodeAssertion)
         {
@@ -159,7 +159,7 @@ public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFa
             return null;
         }
 
-        var credential = await repository.GetCredentialForUserAsync(userId, Key.Type, Key.Name, providerKey, cancellationToken);
+        var credential = await credentials.GetCredentialForUserAsync(userId, Key.Type, Key.Name, providerKey, cancellationToken);
 
         if (credential == null || !credential.IsAvailable(_timeProvider.GetUtcNow()))
         {

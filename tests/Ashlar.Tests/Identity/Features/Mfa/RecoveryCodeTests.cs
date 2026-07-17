@@ -803,9 +803,9 @@ internal sealed class RecoveryCodeTests
     public void DiRegistrationResolvesServices()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(new Mock<IUserRepository>().Object);
-        services.AddSingleton(new Mock<ICredentialRepository>().Object);
-        services.AddSingleton(new Mock<IAuthenticationSessionRepository>().Object);
+        services.AddAshlarProviderScoped(_ => new Mock<IUserRepository>().Object);
+        services.AddAshlarProviderScoped(_ => new Mock<ICredentialRepository>().Object);
+        services.AddAshlarProviderScoped(_ => new Mock<IAuthenticationSessionRepository>().Object);
         services.AddSingleton<IAccountSecurityOperationAuthorizer, AllowAllAccountSecurityOperationAuthorizer>();
         services.AddAshlarRecoveryCodes(opts =>
         {
@@ -1018,7 +1018,7 @@ internal sealed class RecoveryCodeTests
         var pipeline = new AuthenticationPipeline(
             providerRegistry.Object,
             credentialService,
-            transProvider.Object,
+            AshlarDurableTransactionProvider.Create(transProvider.Object),
             AllowPrimaryAuthenticationRateLimiter.Instance,
             AllowAuthenticationFactorRateLimiter.Instance,
             new AuthenticationPipelineDependencies(SecurityEventSink: securityEventSink.Object));

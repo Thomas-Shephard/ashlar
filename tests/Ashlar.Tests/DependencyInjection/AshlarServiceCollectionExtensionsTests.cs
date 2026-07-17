@@ -1,4 +1,3 @@
-using Ashlar.Authorization;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.Auditing;
@@ -95,41 +94,6 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
-    public void AddAshlarNullTransactionsRegistersNullProviderExplicitly()
-    {
-        var services = new ServiceCollection();
-
-        services.AddAshlarNullTransactions();
-
-        using var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
-
-        Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<NullTransactionProvider>());
-    }
-
-    [Test]
-    public void AddAshlarNullTransactionsDoesNotOverrideCustomProvider()
-    {
-        var services = new ServiceCollection();
-        services.AddScoped<IAshlarTransactionProvider, CustomTransactionProvider>();
-
-        services.AddAshlarNullTransactions();
-
-        using var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
-
-        Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<CustomTransactionProvider>());
-    }
-
-    [Test]
-    public void AddAshlarNullTransactionsRejectsNullServices()
-    {
-        var exception = Assert.Throws<ArgumentNullException>(() => AshlarServiceCollectionExtensions.AddAshlarNullTransactions(null!));
-
-        Assert.That(exception.ParamName, Is.EqualTo("services"));
-    }
-
-    [Test]
     public void AddAshlarIdentityAllowsCustomGuardRegisteredAfterIdentity()
     {
         var services = new ServiceCollection();
@@ -183,7 +147,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddScoped(_ => Mock.Of<IAuthenticationProviderRegistry>());
         services.AddScoped<ICredentialService, TestCredentialService>();
-        services.AddAshlarNullTransactions();
+        var composition = new DurableSecurityMutationTestComposition();
+        services.AddScoped(_ => composition.Transactions);
         services.AddAshlarIdentity();
 
         using var provider = services.BuildServiceProvider();
@@ -385,8 +350,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarIdentityResolvesIdentityServiceWhenRequiredDependenciesArePresent()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services
@@ -476,9 +441,9 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarPasswordResetResolvesWhenRequiredRepositoriesArePresent()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
-        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddAshlarPasswordReset();
         services.AddDurableAuditForTests();
@@ -556,7 +521,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarIdentityResolvesRepositoryBackedAccountLockoutServiceWhenRepositoryIsPresent()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IAccountLockoutRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAccountLockoutRepository>());
         services.AddAshlarIdentity();
 
         using var provider = services.BuildServiceProvider();
@@ -576,7 +541,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             .Setup(r => r.ResetAsync(userId, tenantId, AuthenticationProviderKey.Local, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         var services = new ServiceCollection();
-        services.AddSingleton(repository.Object);
+        services.AddAshlarProviderScoped(_ => repository.Object);
         services.AddSingleton<ISecurityEventHandler>(events);
         services.AddAshlarIdentity();
         services.AddDurableAuditForTests();
@@ -662,7 +627,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
                 descriptor.ServiceType == typeof(IAuthorizationGrantService)
                 && descriptor.Lifetime == ServiceLifetime.Scoped));
-            AssertDescriptor<IAuthorizationEvaluator, AuthorizationEvaluator>(services, ServiceLifetime.Scoped);
+            Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
+                descriptor.ServiceType == typeof(IAuthorizationEvaluator) && descriptor.Lifetime == ServiceLifetime.Scoped));
             AssertDescriptor<AuthorizationGrantOptions>(services, ServiceLifetime.Singleton);
             Assert.That(provider.GetRequiredService<AuthorizationGrantOptions>().MaxPermissionLength, Is.EqualTo(42));
             Assert.That(services.Any(d => d.ServiceType == typeof(IAuthorizationGrantRepository)), Is.False);
@@ -680,8 +646,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarAuthorizationFailsClosedWithoutDurableTransactions()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IAuthorizationGrantRepository>());
-        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthorizationGrantRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
         services.AddAshlarAuthorization();
 
         using var provider = services.BuildServiceProvider();
@@ -758,8 +724,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarIdentityResolvesAuthenticationSessionServiceWhenRequiredDependenciesArePresent()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
-        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services.AddAshlarIdentity();
         services.AddDurableAuditForTests();
@@ -778,7 +744,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         var userRepository = Mock.Of<IUserRepository>();
         var notificationService = Mock.Of<ISecurityNotificationService>();
-        services.AddSingleton(userRepository);
+        services.AddAshlarProviderScoped(_ => userRepository);
         services.AddSingleton(notificationService);
 
         services.AddAshlarMfaHandshakes();
@@ -923,7 +889,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exception.Message, Does.Contain(nameof(IUserRepository)));
-            Assert.That(exception.Message, Does.Contain("No service for type"));
+            Assert.That(exception.Message, Does.Contain("AshlarProviderService"));
         }
     }
 
@@ -931,9 +897,11 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void MissingAccountSecurityGuardFailsThroughServiceResolution()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionService>());
+        services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services.AddAshlarIdentity();
         services.AddDurableAuditForTests();
 
@@ -946,7 +914,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exception.Message, Does.Contain(nameof(IAccountSecurityGuard)));
-            Assert.That(exception.Message, Does.Contain("Unable to resolve service for type"));
+            Assert.That(exception.Message, Does.Contain("No service for type"));
         }
     }
 
@@ -1060,8 +1028,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarEmailVerificationRegistersService()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddAshlarEmailVerification();
         services.AddDurableAuditForTests();
@@ -1076,7 +1044,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarEmailVerificationAppliesConfiguration()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
         services.AddAshlarEmailVerification(options => options.Subject = "Verify custom");
 
         using var provider = services.BuildServiceProvider();
@@ -1112,10 +1080,10 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarEmailChangeRegistersService()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
         services.AddAshlarEmailChange();
         services.AddDurableAuditForTests();
 
@@ -1129,9 +1097,9 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarEmailChangeAppliesConfiguration()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
         services.AddAshlarEmailChange(options => options.Subject = "Change custom");
 
         using var provider = services.BuildServiceProvider();

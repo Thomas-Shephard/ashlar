@@ -19,7 +19,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
         _audit = new RecordingSecurityEventSink();
         var services = new ServiceCollection();
         services.AddSingleton<TimeProvider>(_timeProvider);
-        services.AddSingleton<ISecurityEventSink>(_audit);
+        services.AddSingleton<ISecurityEventHandler>(_audit);
         services.AddAshlarSqlite(GetConnectionString());
         services.AddAshlarSqliteSecurityEventWebhookOutbox();
         _provider = services.BuildServiceProvider();
@@ -37,7 +37,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
     {
         var connectionProvider = _provider.GetRequiredService<ISqliteConnectionProvider>();
         var audit = _provider.GetRequiredService<ISecurityEventSink>();
-        var transactionProvider = _provider.GetRequiredService<IAshlarTransactionProvider>();
+        var transactionProvider = _provider.GetRequiredService<AshlarDurableTransactionProvider>();
 
         using (Assert.EnterMultipleScope())
         {
@@ -106,7 +106,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
             _provider.GetRequiredService<ISqliteConnectionProvider>(),
             _timeProvider,
             new ThrowingSecurityEventSink(new InvalidOperationException("audit failed")),
-            _provider.GetRequiredService<IAshlarTransactionProvider>());
+            _provider.GetRequiredService<AshlarDurableTransactionProvider>());
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.RetryAsync(Request(id)));
         var row = await QueryStateAsync(id);
@@ -127,7 +127,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
             _provider.GetRequiredService<ISqliteConnectionProvider>(),
             _timeProvider,
             new ThrowingSecurityEventSink(new InvalidOperationException("audit failed")),
-            _provider.GetRequiredService<IAshlarTransactionProvider>());
+            _provider.GetRequiredService<AshlarDurableTransactionProvider>());
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.DiscardAsync(Request(id)));
         var row = await QueryStateAsync(id);
@@ -319,11 +319,11 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
         int AttemptCount,
         string? LastError);
 
-    private sealed class RecordingSecurityEventSink : ISecurityEventSink
+    private sealed class RecordingSecurityEventSink : ISecurityEventHandler
     {
         public List<AshlarSecurityEvent> Events { get; } = [];
 
-        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        public Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
         {
             Events.Add(securityEvent);
             return Task.CompletedTask;

@@ -1,4 +1,3 @@
-using Ashlar.Authorization;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Microsoft.Data.Sqlite;
@@ -145,6 +144,8 @@ internal sealed class SqliteAuthorizationGrantAdministrationRepository(ISqliteCo
             reader.GetDateTimeOffsetFromText("created_at"),
             expiresAt,
             revokedAt,
-            AuthorizationGrantAdministrationService.DeriveStatus(expiresAt, revokedAt, now));
+            revokedAt != null
+                ? AuthorizationGrantAdministrationStatus.Revoked
+                : expiresAt <= now ? AuthorizationGrantAdministrationStatus.Expired : AuthorizationGrantAdministrationStatus.Active);
     }
 }

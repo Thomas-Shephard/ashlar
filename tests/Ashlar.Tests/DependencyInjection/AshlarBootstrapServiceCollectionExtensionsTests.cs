@@ -14,9 +14,12 @@ internal sealed class AshlarBootstrapServiceCollectionExtensionsTests
         services.AddAshlarBootstrap();
 
         // Dependencies that must be registered by the user or another helper
-        services.AddScoped(_ => new Mock<IUserRepository>().Object);
-        services.AddScoped(_ => new Mock<IAshlarTransactionProvider>().Object);
-        services.AddScoped(_ => new Mock<IBootstrapStateRepository>().Object);
+        var users = new Mock<IUserRepository>().Object;
+        var bootstrap = new Mock<IBootstrapStateRepository>().Object;
+        var composition = new DurableSecurityMutationTestComposition(participants: [users, bootstrap]);
+        services.AddAshlarProviderScoped(_ => users);
+        services.AddScoped(_ => composition.Transactions);
+        services.AddAshlarProviderScoped(_ => bootstrap);
 
         var provider = services.BuildServiceProvider();
 
@@ -39,9 +42,12 @@ internal sealed class AshlarBootstrapServiceCollectionExtensionsTests
             options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
         });
 
-        services.AddScoped(_ => new Mock<IUserRepository>().Object);
-        services.AddScoped(_ => new Mock<IAshlarTransactionProvider>().Object);
-        services.AddScoped(_ => new Mock<IBootstrapStateRepository>().Object);
+        var users = new Mock<IUserRepository>().Object;
+        var bootstrap = new Mock<IBootstrapStateRepository>().Object;
+        var composition = new DurableSecurityMutationTestComposition(participants: [users, bootstrap]);
+        services.AddAshlarProviderScoped(_ => users);
+        services.AddScoped(_ => composition.Transactions);
+        services.AddAshlarProviderScoped(_ => bootstrap);
 
         var provider = services.BuildServiceProvider();
 

@@ -247,7 +247,7 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
         await using (var scope = _serviceProvider.CreateAsyncScope())
         {
             var repo = GetRepository(scope.ServiceProvider);
-            var transactions = scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>();
+            var transactions = scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>();
             userId = Guid.NewGuid();
 
             await using var transaction = await transactions.BeginTransactionAsync();
@@ -264,8 +264,8 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
     private static RepositoryFacade GetRepository(IServiceProvider serviceProvider)
     {
         return new RepositoryFacade(
-            serviceProvider.GetRequiredService<IUserRepository>(),
-            serviceProvider.GetRequiredService<ICredentialRepository>());
+            serviceProvider.GetRequiredAshlarProviderService<IUserRepository>(),
+            serviceProvider.GetRequiredAshlarProviderService<ICredentialRepository>());
     }
 
     private static async Task<AshlarUser> CreateUserAsync(RepositoryFacade repo)

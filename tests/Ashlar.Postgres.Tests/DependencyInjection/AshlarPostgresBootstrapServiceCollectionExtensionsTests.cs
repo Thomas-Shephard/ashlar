@@ -18,16 +18,16 @@ internal sealed class AshlarPostgresBootstrapServiceCollectionExtensionsTests
         services.AddAshlarPostgresBootstrap(connectionString);
 
         // Register other required dependencies for IBootstrapService
-        services.AddScoped(_ => new Mock<IUserRepository>().Object);
-        services.AddScoped(_ => new Mock<IInvitationRepository>().Object);
-        services.AddScoped(_ => new Mock<IAuthorizationGrantRepository>().Object);
+        services.AddAshlarProviderScoped(_ => new Mock<IUserRepository>().Object);
+        services.AddAshlarProviderScoped(_ => new Mock<IInvitationRepository>().Object);
+        services.AddAshlarProviderScoped(_ => new Mock<IAuthorizationGrantRepository>().Object);
 
         await using var provider = services.BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(scope.ServiceProvider.GetService<IBootstrapStateRepository>(), Is.InstanceOf<PostgresBootstrapStateRepository>());
+            Assert.That(scope.ServiceProvider.GetRequiredAshlarProviderService<IBootstrapStateRepository>(), Is.InstanceOf<PostgresBootstrapStateRepository>());
             Assert.That(scope.ServiceProvider.GetService<IBootstrapService>(), Is.Not.Null);
         }
     }
@@ -46,9 +46,9 @@ internal sealed class AshlarPostgresBootstrapServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<NpgsqlDataSource>(), Is.SameAs(dataSource));
-            Assert.That(scope.ServiceProvider.GetRequiredService<IBootstrapStateRepository>(), Is.InstanceOf<PostgresBootstrapStateRepository>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>(), Is.TypeOf<PostgresTransactionManager>());
+            Assert.That(scope.ServiceProvider.GetRequiredAshlarProviderService<IBootstrapStateRepository>(), Is.InstanceOf<PostgresBootstrapStateRepository>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>(), Is.TypeOf<PostgresConnectionProvider>());
         }
     }
 
@@ -69,7 +69,7 @@ internal sealed class AshlarPostgresBootstrapServiceCollectionExtensionsTests
     }
 
     [Test]
-    public async Task AddAshlarPostgresBootstrapReplacesNullTransactionProvider()
+    public async Task AddAshlarPostgresBootstrapRegistersDurableTransactionProvider()
     {
         var services = new ServiceCollection();
         var connectionString = "Host=localhost;Database=test;Username=test;Password=test";
@@ -81,8 +81,8 @@ internal sealed class AshlarPostgresBootstrapServiceCollectionExtensionsTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>(), Is.TypeOf<PostgresTransactionManager>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>(), Is.TypeOf<PostgresConnectionProvider>());
         }
     }
 }

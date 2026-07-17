@@ -30,7 +30,7 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeO
     private readonly IAuthenticationHandshakeRepository _repository;
     private readonly ISecureTokenGenerator _tokenGenerator;
     private readonly ISecureTokenHasher _tokenHasher;
-    private readonly IAshlarTransactionProvider _transactionProvider;
+    private readonly AshlarDurableTransactionProvider _transactionProvider;
     private readonly AuthenticationHandshakeOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
@@ -49,7 +49,7 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeO
         IAuthenticationHandshakeRepository repository,
         ISecureTokenGenerator tokenGenerator,
         ISecureTokenHasher tokenHasher,
-        IAshlarTransactionProvider transactionProvider,
+        AshlarDurableTransactionProvider transactionProvider,
         AuthenticationHandshakeServiceDependencies? dependencies = null)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));

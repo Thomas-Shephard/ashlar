@@ -6,7 +6,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperations(
     IPostgresConnectionProvider connectionProvider,
     TimeProvider timeProvider,
     ISecurityEventSink securityEventSink,
-    IAshlarTransactionProvider transactionProvider) : AshlarSecurityEventWebhookOutboxOperationsBase(timeProvider, securityEventSink, transactionProvider)
+    AshlarDurableTransactionProvider transactionProvider) : AshlarSecurityEventWebhookOutboxOperationsBase(timeProvider, securityEventSink, transactionProvider)
 {
     private const string RetrySql = """
         UPDATE ashlar_security_event_webhook_outbox

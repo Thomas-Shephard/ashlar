@@ -7,23 +7,23 @@ namespace Ashlar.Identity.Features.Mfa;
 /// </summary>
 public sealed class RequireMfaWhenCredentialExistsPolicyEvaluator : IMfaPolicyEvaluator
 {
-    private readonly ICredentialRepository _repository;
+    private readonly ICredentialLookup _credentials;
     private readonly CredentialBackedMfaPolicyOptions _options;
     private readonly TimeProvider _timeProvider;
 
     /// <summary>
     /// Initializes a configured service instance.
     /// </summary>
-    /// <param name="repository">Credential repository used to check factor availability.</param>
+    /// <param name="credentials">Read-only credential lookup used to check factor availability.</param>
     /// <param name="options">Configured credential-backed MFA requirements.</param>
     /// <param name="timeProvider">Clock used for credential availability checks.</param>
     /// <exception cref="OptionsValidationException">Thrown when the configured credential-backed MFA policy options are invalid.</exception>
     public RequireMfaWhenCredentialExistsPolicyEvaluator(
-        ICredentialRepository repository,
+        ICredentialLookup credentials,
         IOptions<CredentialBackedMfaPolicyOptions> options,
         TimeProvider? timeProvider = null)
     {
-        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
         ArgumentNullException.ThrowIfNull(options);
         _options = options.Value;
         if (!CredentialBackedMfaPolicyOptions.Validate(_options))
@@ -57,7 +57,7 @@ public sealed class RequireMfaWhenCredentialExistsPolicyEvaluator : IMfaPolicyEv
         var now = _timeProvider.GetUtcNow();
         foreach (var providerKey in _options.CredentialProviderKeys)
         {
-            var credential = await _repository.GetCredentialForUserAsync(user.Id, providerKey.Type, providerKey.Name, cancellationToken: cancellationToken);
+            var credential = await _credentials.GetCredentialForUserAsync(user.Id, providerKey.Type, providerKey.Name, cancellationToken: cancellationToken);
             if (credential?.IsAvailable(now) == true)
             {
                 return new MfaPolicyEvaluation(true, new MfaRequirement(_options.RequiredFactors));

@@ -1,3 +1,4 @@
+global using Ashlar.ProviderContracts.DependencyInjection;
 global using Ashlar.Identity.Features.AccountSecurity;
 global using Ashlar.Identity.Features.Administration;
 global using Ashlar.Identity.Abstractions.AccountSecurity;
@@ -28,9 +29,8 @@ global using Ashlar.Identity.Models.Tenants;
 global using Ashlar.Identity.Features.Mfa;
 global using Ashlar.Identity.Features.Services;
 global using Ashlar.Identity.Features.Sessions;
-global using Ashlar.Identity.Features.Transactions;
+global using Ashlar.Tests.Support;
 global using Ashlar.Tests.Identity.Features.Providers;
 global using Ashlar.Tests.Identity.Features.TestDoubles;
-global using Ashlar.Tests.Support;
 
 [assembly: Parallelizable(ParallelScope.Fixtures)]

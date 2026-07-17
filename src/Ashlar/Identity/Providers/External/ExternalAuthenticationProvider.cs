@@ -56,20 +56,20 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType,
     /// </summary>
     /// <param name="assertion">External identity assertion supplied by the host application.</param>
     /// <param name="context">Authentication context for the current attempt.</param>
-    /// <param name="repository">User repository used to find a matching stored credential.</param>
+    /// <param name="users">Read-only user lookup capability.</param>
     /// <param name="cancellationToken">Token for aborting lookup work.</param>
     /// <returns>The matched user, or <see langword="null" /> when no matching external credential exists.</returns>
-    public virtual async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default)
+    public virtual async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserLookup users, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(users);
 
         if (assertion is not ExternalIdentityAssertion externalAssertion)
         {
             return null;
         }
 
-        return await repository.GetUserByProviderKeyAsync(Key.Type, Key.Name, externalAssertion.ProviderKey, cancellationToken);
+        return await users.GetUserByProviderKeyAsync(Key.Type, Key.Name, externalAssertion.ProviderKey, cancellationToken);
     }
 
     /// <summary>

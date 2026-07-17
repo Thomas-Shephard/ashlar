@@ -8,26 +8,29 @@ internal static class DurableAuditServiceCollectionExtensions
 {
     public static IServiceCollection AddDurableAuditForTests(this IServiceCollection services)
     {
-        services.Replace(ServiceDescriptor.Scoped<IPersistentSecurityEventSink, TestPersistentSecurityEventSink>());
+        services.ReplaceAshlarProviderScoped<IPersistentSecurityEventSink>(_ => new TestPersistentSecurityEventSink());
         services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>();
         services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
-        if (services.Any(descriptor => descriptor.ServiceType == typeof(IUserRepository)))
+        if (HasProviderService<IUserRepository>(services))
             services.AddAshlarDurableTransactionParticipant<IUserRepository>();
-        if (services.Any(descriptor => descriptor.ServiceType == typeof(ICredentialRepository)))
+        if (HasProviderService<ICredentialRepository>(services))
             services.AddAshlarDurableTransactionParticipant<ICredentialRepository>();
-        if (services.Any(descriptor => descriptor.ServiceType == typeof(IAuthenticationSessionRepository)))
+        if (HasProviderService<IAuthenticationSessionRepository>(services))
             services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionRepository>();
-        if (services.Any(descriptor => descriptor.ServiceType == typeof(IRememberedMfaDeviceRepository)))
+        if (HasProviderService<IRememberedMfaDeviceRepository>(services))
             services.AddAshlarDurableTransactionParticipant<IRememberedMfaDeviceRepository>();
-        if (services.Any(descriptor => descriptor.ServiceType == typeof(IAccountLockoutRepository)))
+        if (HasProviderService<IAccountLockoutRepository>(services))
             services.AddAshlarDurableTransactionParticipant<IAccountLockoutRepository>();
         services.Replace(ServiceDescriptor.Scoped<SecurityEventFanOutSink>(provider => new SecurityEventFanOutSink(
-            provider.GetRequiredService<IPersistentSecurityEventSink>(),
+            AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(provider),
             handlers: provider.GetServices<ISecurityEventHandler>(),
             transactionProvider: provider.GetRequiredService<AshlarDurableTransactionProvider>())));
         services.Replace(ServiceDescriptor.Scoped<ISecurityEventSink>(provider => provider.GetRequiredService<SecurityEventFanOutSink>()));
         return services;
     }
+
+    private static bool HasProviderService<TService>(IServiceCollection services) where TService : class =>
+        services.Any(descriptor => descriptor.ServiceType == typeof(AshlarProviderService<TService>));
 
     private sealed class TestPersistentSecurityEventSink : IPersistentSecurityEventSink
     {

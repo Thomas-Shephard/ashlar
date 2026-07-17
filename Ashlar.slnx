@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Ashlar/Ashlar.csproj" />
+    <Project Path="src/Ashlar.ProviderContracts/Ashlar.ProviderContracts.csproj" />
     <Project Path="src/Ashlar.AspNetCore/Ashlar.AspNetCore.csproj" />
     <Project Path="src/Ashlar.Email.Smtp/Ashlar.Email.Smtp.csproj" />
     <Project Path="src/Ashlar.OAuth/Ashlar.OAuth.csproj" />

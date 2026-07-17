@@ -114,8 +114,8 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
 
         await using (var scope = _serviceProvider.CreateAsyncScope())
         {
-            var transactions = scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>();
-            var repository = scope.ServiceProvider.GetRequiredService<IAuthorizationGrantRepository>();
+            var transactions = scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>();
+            var repository = scope.ServiceProvider.GetRequiredAshlarProviderService<IAuthorizationGrantRepository>();
             await using var transaction = await transactions.BeginTransactionAsync();
             await repository.CreateGrantAsync(grant);
             await transaction.RollbackAsync();
@@ -163,7 +163,7 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
             AccountState = UserAccountState.Active,
             TenantId = tenantId
         };
-        await _serviceProvider.GetRequiredService<IUserRepository>().CreateUserAsync(user);
+        await _serviceProvider.GetRequiredAshlarProviderService<IUserRepository>().CreateUserAsync(user);
         return user;
     }
 

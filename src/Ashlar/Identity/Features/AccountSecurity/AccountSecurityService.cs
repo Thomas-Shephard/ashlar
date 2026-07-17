@@ -30,7 +30,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         ICredentialRepository credentialRepository,
         IAuthenticationSessionMutationExecutor sessionService,
         IAuthenticationSessionReader sessionReader,
-        IAshlarTransactionProvider transactionProvider,
+        AshlarDurableTransactionProvider transactionProvider,
         IAccountSecurityGuard accountSecurityGuard,
         AccountSecurityServiceDependencies dependencies)
     {
@@ -40,9 +40,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
         _sessionService = sessionService ?? throw new ArgumentNullException(nameof(sessionService));
         _sessionReader = sessionReader ?? throw new ArgumentNullException(nameof(sessionReader));
-        ArgumentNullException.ThrowIfNull(transactionProvider);
-        _transactionProvider = transactionProvider as AshlarDurableTransactionProvider
-            ?? throw new ArgumentException("Account-security mutations require an Ashlar durable transaction composition.", nameof(transactionProvider));
+        _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
         _accountSecurityGuard = accountSecurityGuard ?? throw new ArgumentNullException(nameof(accountSecurityGuard));
         _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
         _securityEvents = new SecurityEventEmitter(

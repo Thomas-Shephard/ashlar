@@ -16,14 +16,14 @@ internal sealed class SqliteAuthenticationRateLimiter : IAuthenticationRateLimit
     private const string LimitParameter = "$limit";
 
     private readonly ISqliteConnectionProvider _connectionProvider;
-    private readonly IAshlarTransactionProvider _transactionProvider;
+    private readonly AshlarDurableTransactionProvider _transactionProvider;
     private readonly TimeProvider _timeProvider;
 
     internal Func<SqliteConnectionHandle, string, string, CancellationToken, Task>? AfterInsertForTesting { get; set; }
 
     public SqliteAuthenticationRateLimiter(
         ISqliteConnectionProvider connectionProvider,
-        IAshlarTransactionProvider transactionProvider,
+        AshlarDurableTransactionProvider transactionProvider,
         TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(connectionProvider);

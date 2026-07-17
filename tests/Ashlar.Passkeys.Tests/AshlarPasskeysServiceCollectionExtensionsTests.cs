@@ -32,8 +32,8 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
         {
             Assert.That(options.RelyingPartyId, Is.EqualTo("example.com"));
             Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(IAuthenticationProvider) && descriptor.ImplementationType == typeof(PasskeyAuthenticationProvider)), Is.True);
-            Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(IPasskeyCeremonyValidator) && descriptor.ImplementationType == typeof(Fido2PasskeyCeremonyValidator)), Is.True);
-            Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(IPasskeyService) && descriptor.ImplementationType == typeof(PasskeyService)), Is.True);
+            Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(IPasskeyCeremonyValidator) && descriptor.Lifetime == ServiceLifetime.Scoped), Is.True);
+            Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(IPasskeyService) && descriptor.Lifetime == ServiceLifetime.Scoped), Is.True);
         }
     }
 
@@ -59,17 +59,17 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IUserAdministrationRepository>());
         services.AddSingleton(Mock.Of<ICredentialAdministrationRepository>());
-        services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
-        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationHandshakeRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
-        services.AddSingleton(Mock.Of<IPasskeyChallengeRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IPasskeyChallengeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddSingleton(Mock.Of<IPersistentSecurityEventSink>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IPersistentSecurityEventSink>());
         services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>();
         services.AddAshlarDurableTransactionParticipant<IUserRepository>();
         services.AddAshlarDurableTransactionParticipant<ICredentialRepository>();
@@ -126,7 +126,7 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(services.Where(descriptor => descriptor.ServiceType == typeof(IAuthenticationProvider) && descriptor.ImplementationType == typeof(PasskeyAuthenticationProvider)), Has.Exactly(1).Items);
-            Assert.That(services.Where(descriptor => descriptor.ServiceType == typeof(IPasskeyService) && descriptor.ImplementationType == typeof(PasskeyService)), Has.Exactly(1).Items);
+            Assert.That(services.Where(descriptor => descriptor.ServiceType == typeof(IPasskeyService)), Has.Exactly(1).Items);
         }
     }
 
@@ -162,7 +162,7 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
     public async Task AddAshlarPasskeysDoesNotReportChallengeRepositoryWhenRegistered()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IPasskeyChallengeRepository, StubPasskeyChallengeRepository>();
+        services.AddAshlarProviderScoped<IPasskeyChallengeRepository>(_ => new StubPasskeyChallengeRepository());
 
         services.AddAshlarPasskeys();
 
@@ -174,14 +174,27 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
     }
 
     [Test]
-    public void IsServiceRegisteredFallsBackWhenProviderDoesNotExposeIsService()
+    public async Task AddAshlarPasskeysRejectsOrdinaryChallengeRepositoryRegistration()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<IPasskeyChallengeRepository, StubPasskeyChallengeRepository>();
+        services.AddAshlarPasskeys();
+
+        using var provider = services.BuildServiceProvider();
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Contains.Item(AshlarConfigurationIssueCodes.PasskeyChallengeRepositoryMissing));
+    }
+
+    [Test]
+    public void ProviderRegistrationInspectionRejectsOrdinaryFallbackServices()
     {
         var provider = new FallbackServiceProvider(typeof(IPasskeyChallengeRepository), new StubPasskeyChallengeRepository());
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.IsServiceRegistered<IPasskeyChallengeRepository>(), Is.True);
-            Assert.That(provider.IsServiceRegistered<IPasskeyService>(), Is.False);
+            Assert.That(provider.IsAshlarProviderServiceRegistered<IPasskeyChallengeRepository>(), Is.False);
+            Assert.That(provider.IsAshlarProviderServiceRegistered<IPasskeyService>(), Is.False);
         }
     }
 

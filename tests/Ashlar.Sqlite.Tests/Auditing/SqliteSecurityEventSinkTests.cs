@@ -116,7 +116,8 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "OtherTenant", UserId = userId, TenantId = otherTenantId, OccurredAt = now });
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "NoUser", TenantId = tenantId, OccurredAt = now });
 
-        var count = await CreateSink().CountSecurityEventsForUserAsync(userId, since);
+        var count = await new SqliteUserSecurityEventSummaryRepository(CreateSink())
+            .CountSecurityEventsForUserAsync(userId, since);
         var eventTypeCount = await CountEventsByTypeAsync("Recent");
         var tenantCount = await CountEventsByTenantAsync(tenantId);
 
@@ -131,7 +132,7 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
     [Test]
     public async Task RecordAsyncParticipatesInCommittedTransaction()
     {
-        var manager = _serviceProvider.GetRequiredService<IAshlarTransactionProvider>();
+        var manager = _serviceProvider.GetRequiredService<AshlarDurableTransactionProvider>();
         var sink = CreateSink();
         await using var transaction = await manager.BeginTransactionAsync();
 
@@ -144,7 +145,7 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
     [Test]
     public async Task RecordAsyncRollsBackWithActiveTransaction()
     {
-        var manager = _serviceProvider.GetRequiredService<IAshlarTransactionProvider>();
+        var manager = _serviceProvider.GetRequiredService<AshlarDurableTransactionProvider>();
         var sink = CreateSink();
         await using var transaction = await manager.BeginTransactionAsync();
 

@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Ashlar.Auditing;
-using Ashlar.Identity.Features.Mfa;
 using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
@@ -54,7 +53,7 @@ internal sealed class PasskeyService : IPasskeyService
     private readonly AuthenticationRateLimitChecker _rateLimitChecker;
     private readonly PasskeyOptions _options;
     private readonly TimeProvider _timeProvider;
-    private readonly ActiveSessionFreshProofValidator _proofValidator;
+    private readonly IFreshAuthenticationProofValidator _proofValidator;
     private readonly SecurityEventFanOutSink _securityEventSink;
     private readonly AshlarDurableTransactionProvider _transactionProvider;
     private readonly IReadOnlyList<ISecondaryAuthenticationFactorProvider> _additionalVerificationProviders;
@@ -80,7 +79,7 @@ internal sealed class PasskeyService : IPasskeyService
         _rateLimitChecker = new AuthenticationRateLimitChecker(dependencies.RateLimiter);
         _options = dependencies.Options.Value;
         _timeProvider = dependencies.TimeProvider;
-        _proofValidator = new(dependencies.SessionRepository, _timeProvider);
+        _proofValidator = dependencies.ProofValidator;
         _securityEventSink = dependencies.SecurityEventSink;
         _transactionProvider = dependencies.TransactionProvider;
         if (!_securityEventSink.RequiresDurableTransaction)
@@ -1023,6 +1022,7 @@ internal sealed class PasskeyServiceDependencies(
     ISecureTokenHasher tokenHasher,
     IAuthenticationRateLimiter rateLimiter,
     IAuthenticationSessionRepository sessionRepository,
+    IFreshAuthenticationProofValidator proofValidator,
     PasskeyServiceInfrastructure infrastructure)
 {
     public IOptions<PasskeyOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
@@ -1031,6 +1031,7 @@ internal sealed class PasskeyServiceDependencies(
     public ISecureTokenHasher TokenHasher { get; } = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
     public IAuthenticationRateLimiter RateLimiter { get; } = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
     public IAuthenticationSessionRepository SessionRepository { get; } = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
+    public IFreshAuthenticationProofValidator ProofValidator { get; } = proofValidator ?? throw new ArgumentNullException(nameof(proofValidator));
     public TimeProvider TimeProvider { get; } = infrastructure.TimeProvider ?? TimeProvider.System;
     public SecurityEventFanOutSink SecurityEventSink { get; } = infrastructure.SecurityEventSink;
     public AshlarDurableTransactionProvider TransactionProvider { get; } = infrastructure.TransactionProvider

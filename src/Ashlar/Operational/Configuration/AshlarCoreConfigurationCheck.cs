@@ -28,12 +28,12 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
 
         List<AshlarConfigurationIssue> issues = [];
 
-        AddMissingServiceIssue<IUserRepository>(
+        AddMissingProviderServiceIssue<IUserRepository>(
             serviceProvider,
             issues,
             AshlarConfigurationIssueCodes.UserRepositoryMissing,
             "Identity user persistence is not configured.",
-            "Register a durable IUserRepository implementation, usually from an Ashlar persistence provider.",
+            "Install and configure an Ashlar persistence provider. Provider authors must register IUserRepository through Ashlar.ProviderContracts.",
             "Identity persistence",
             typeof(IIdentityService),
             typeof(ICredentialService),
@@ -48,12 +48,12 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             typeof(ITotpService),
             typeof(IRecoveryCodeService));
 
-        AddMissingServiceIssue<ICredentialRepository>(
+        AddMissingProviderServiceIssue<ICredentialRepository>(
             serviceProvider,
             issues,
             AshlarConfigurationIssueCodes.CredentialRepositoryMissing,
             "Credential persistence is not configured.",
-            "Register a durable ICredentialRepository implementation, usually from an Ashlar persistence provider.",
+            "Install and configure an Ashlar persistence provider. Provider authors must register ICredentialRepository through Ashlar.ProviderContracts.",
             "Credential persistence",
             typeof(ICredentialService),
             typeof(IAccountSecurityService),
@@ -76,12 +76,12 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             typeof(ICredentialService),
             typeof(IEmailChangeService));
 
-        AddMissingServiceIssue<IAuthenticationSessionRepository>(
+        AddMissingProviderServiceIssue<IAuthenticationSessionRepository>(
             serviceProvider,
             issues,
             AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing,
             "Authentication session persistence is not configured.",
-            "Register an IAuthenticationSessionRepository implementation, usually from an Ashlar persistence provider.",
+            "Install and configure an Ashlar persistence provider. Provider authors must register IAuthenticationSessionRepository through Ashlar.ProviderContracts.",
             "Session persistence",
             typeof(IAuthenticationSessionService),
             typeof(IAccountSecurityService),
@@ -124,40 +124,40 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             "Session administration",
             typeof(IAuthenticationSessionAdministrationService));
 
-        AddMissingServiceIssue<IInvitationRepository>(
+        AddMissingProviderServiceIssue<IInvitationRepository>(
             serviceProvider,
             issues,
             AshlarConfigurationIssueCodes.InvitationRepositoryMissing,
             "Invitation persistence is not configured.",
-            "Register an IInvitationRepository implementation before using Ashlar invitations.",
+            "Install and configure an Ashlar persistence provider with invitation support.",
             "Invitation persistence",
             typeof(IInvitationService),
             typeof(IInvitationAdministrationService));
 
-        AddMissingServiceIssue<IBootstrapStateRepository>(
+        AddMissingProviderServiceIssue<IBootstrapStateRepository>(
             serviceProvider,
             issues,
             AshlarConfigurationIssueCodes.BootstrapStateRepositoryMissing,
             "Bootstrap state persistence is not configured.",
-            "Register an IBootstrapStateRepository implementation before using Ashlar bootstrap flows.",
+            "Install and configure an Ashlar persistence provider with bootstrap support.",
             "Bootstrap persistence",
             typeof(IBootstrapService));
 
-        AddMissingServiceIssue<IAuthenticationHandshakeRepository>(
+        AddMissingProviderServiceIssue<IAuthenticationHandshakeRepository>(
             serviceProvider,
             issues,
             AshlarConfigurationIssueCodes.AuthenticationHandshakeRepositoryMissing,
             "Authentication handshake persistence is not configured.",
-            "Register an IAuthenticationHandshakeRepository implementation before using Ashlar MFA handshakes or orchestration.",
+            "Install and configure an Ashlar persistence provider with authentication-handshake support.",
             "Authentication handshakes",
             typeof(IAuthenticationHandshakeService));
 
-        AddMissingServiceIssue<IAuthorizationGrantRepository>(
+        AddMissingProviderServiceIssue<IAuthorizationGrantRepository>(
             serviceProvider,
             issues,
             AshlarConfigurationIssueCodes.AuthorizationGrantRepositoryMissing,
             "Authorization grant persistence is not configured.",
-            "Register an IAuthorizationGrantRepository implementation before using Ashlar authorization grants, including bootstrap grant assignment.",
+            "Install and configure an Ashlar persistence provider with authorization-grant support.",
             "Authorization persistence",
             typeof(IAuthorizationGrantService),
             typeof(IAuthorizationEvaluator));
@@ -214,6 +214,28 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
                 message,
                 recommendation,
                 component));
+        }
+    }
+
+    private static void AddMissingProviderServiceIssue<TService>(
+        IServiceProvider serviceProvider,
+        List<AshlarConfigurationIssue> issues,
+        string code,
+        string message,
+        string recommendation,
+        string component,
+        params Type[] requiredWhenAnyServiceIsRegistered)
+        where TService : class
+    {
+        if (requiredWhenAnyServiceIsRegistered.Length > 0
+            && !requiredWhenAnyServiceIsRegistered.Any(serviceProvider.IsServiceRegistered))
+        {
+            return;
+        }
+
+        if (!IsProviderServiceRegistered<TService>(serviceProvider))
+        {
+            issues.Add(new AshlarConfigurationIssue(code, AshlarConfigurationIssueSeverity.Error, message, recommendation, component));
         }
     }
 
@@ -398,16 +420,20 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
 
     private static void AddNullSecurityEventSinkIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
     {
-        if (serviceProvider.GetService<IPersistentSecurityEventSink>() is null
-            || serviceProvider.GetService<SecurityEventFanOutSink>() is not { RequiresDurableTransaction: true })
+        if (serviceProvider.GetAshlarProviderService<IPersistentSecurityEventSink>() is not null)
         {
-            issues.Add(new AshlarConfigurationIssue(
-                AshlarConfigurationIssueCodes.NullSecurityEventSink,
-                AshlarConfigurationIssueSeverity.Warning,
-                "Security audit events do not have a persistent sink configured, so Ashlar audit events will not be persisted.",
-                "Register a production IPersistentSecurityEventSink, usually from an Ashlar persistence provider.",
-                "Security auditing"));
+            if (serviceProvider.GetService<SecurityEventFanOutSink>() is { RequiresDurableTransaction: true })
+            {
+                return;
+            }
         }
+
+        issues.Add(new AshlarConfigurationIssue(
+            AshlarConfigurationIssueCodes.NullSecurityEventSink,
+            AshlarConfigurationIssueSeverity.Warning,
+            "Security audit events do not have a persistent sink configured, so Ashlar audit events will not be persisted.",
+            "Install and configure an Ashlar persistence provider with durable security-event storage.",
+            "Security auditing"));
     }
 
     private static void AddPermissiveAccountSecurityGuardIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
@@ -441,14 +467,14 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
     private static void AddAuthorizationGrantMutationDependencyIssues(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
     {
         if (!serviceProvider.IsServiceRegistered<AuthorizationGrantService>()
-            || serviceProvider.IsServiceRegistered<IAuthenticationSessionRepository>()
+            || IsProviderServiceRegistered<IAuthenticationSessionRepository>(serviceProvider)
             || issues.Any(issue => issue.Code == AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing)) return;
 
         issues.Add(new AshlarConfigurationIssue(
             AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing,
             AshlarConfigurationIssueSeverity.Error,
             "Authentication session persistence is not configured.",
-            "Register an IAuthenticationSessionRepository implementation before using built-in authorization grant mutations.",
+            "Install and configure an Ashlar persistence provider with authentication-session support.",
             "Session persistence"));
     }
 
@@ -529,47 +555,39 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
 
     private static void AddTransactionProviderIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
     {
-        var transactionProvider = serviceProvider.GetService<IAshlarTransactionProvider>();
-        if (transactionProvider is not null and not NullTransactionProvider)
+        var transactionProvider = serviceProvider.GetService<AshlarDurableTransactionProvider>();
+        if (transactionProvider is not null)
         {
             return;
         }
 
         var hasDurableRepositories =
-            serviceProvider.IsServiceRegistered<IUserRepository>()
-            || serviceProvider.IsServiceRegistered<ICredentialRepository>()
-            || serviceProvider.IsServiceRegistered<IUserAdministrationRepository>()
-            || serviceProvider.IsServiceRegistered<ICredentialAdministrationRepository>()
-            || serviceProvider.IsServiceRegistered<ISecurityEventAdministrationRepository>()
-            || serviceProvider.IsServiceRegistered<IAuthenticationSessionRepository>()
-            || serviceProvider.IsServiceRegistered<IAuthenticationSessionAdministrationRepository>()
-            || serviceProvider.IsServiceRegistered<IAuthenticationHandshakeRepository>()
-            || serviceProvider.IsServiceRegistered<IInvitationRepository>()
-            || serviceProvider.IsServiceRegistered<IBootstrapStateRepository>()
-            || serviceProvider.IsServiceRegistered<IAuthorizationGrantRepository>();
-
-        if (transactionProvider is null)
-        {
-            issues.Add(new AshlarConfigurationIssue(
-                AshlarConfigurationIssueCodes.TransactionProviderMissing,
-                hasDurableRepositories ? AshlarConfigurationIssueSeverity.Warning : AshlarConfigurationIssueSeverity.Information,
-                "No Ashlar transaction provider is configured.",
-                hasDurableRepositories
-                    ? "Register a durable IAshlarTransactionProvider that coordinates the configured repositories, usually from an Ashlar persistence provider."
-                    : "Register a durable IAshlarTransactionProvider before using Ashlar with persistent data, or call AddAshlarNullTransactions only when no transaction atomicity is required.",
-                "Transactions"));
-            return;
-        }
+            IsProviderServiceRegistered<IUserRepository>(serviceProvider)
+            || IsProviderServiceRegistered<ICredentialRepository>(serviceProvider)
+            || IsProviderServiceRegistered<IAuthenticationSessionRepository>(serviceProvider)
+            || IsProviderServiceRegistered<IAuthenticationHandshakeRepository>(serviceProvider)
+            || IsProviderServiceRegistered<IInvitationRepository>(serviceProvider)
+            || IsProviderServiceRegistered<IBootstrapStateRepository>(serviceProvider)
+            || IsProviderServiceRegistered<IAuthorizationGrantRepository>(serviceProvider)
+            || IsProviderServiceRegistered<IAccountLockoutRepository>(serviceProvider)
+            || IsProviderServiceRegistered<IRememberedMfaDeviceRepository>(serviceProvider)
+            || IsProviderServiceRegistered<IPasskeyChallengeRepository>(serviceProvider)
+            || IsProviderServiceRegistered<IAuthenticationRateLimitAdministrationRepository>(serviceProvider)
+            || IsProviderServiceRegistered<IPersistentSecurityEventSink>(serviceProvider);
 
         issues.Add(new AshlarConfigurationIssue(
-            AshlarConfigurationIssueCodes.NullTransactionProvider,
+            AshlarConfigurationIssueCodes.TransactionProviderMissing,
             hasDurableRepositories ? AshlarConfigurationIssueSeverity.Warning : AshlarConfigurationIssueSeverity.Information,
-            "Ashlar transactions use the null transaction provider.",
+            "No Ashlar transaction provider is configured.",
             hasDurableRepositories
-                ? "Register a durable IAshlarTransactionProvider that coordinates the configured repositories."
-                : "No durable repository setup was detected. Review this before using Ashlar with persistent data.",
+                ? "Install and configure an Ashlar persistence provider. Provider authors must compose its durable transaction through Ashlar.ProviderContracts."
+                : "Install and configure an Ashlar persistence provider before using persistent data.",
             "Transactions"));
     }
+
+    private static bool IsProviderServiceRegistered<TService>(IServiceProvider serviceProvider)
+        where TService : class =>
+        serviceProvider.GetService<IServiceProviderIsService>()?.IsService(typeof(AshlarProviderService<TService>)) == true;
 
     private static void AddBootstrapOptionIssues(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
     {
@@ -624,18 +642,9 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
     }
 }
 
-/// <summary>
-/// Provides safe service registration inspection helpers for Ashlar configuration diagnostics.
-/// </summary>
-public static class AshlarConfigurationServiceProviderExtensions
+internal static class AshlarConfigurationServiceProviderExtensions
 {
-    /// <summary>
-    /// Determines whether the specified service type is registered.
-    /// </summary>
-    /// <typeparam name="TService">The service type to inspect.</typeparam>
-    /// <param name="serviceProvider">The service provider to inspect.</param>
-    /// <returns><see langword="true" /> when the service appears to be registered; otherwise <see langword="false" />.</returns>
-    public static bool IsServiceRegistered<TService>(this IServiceProvider serviceProvider)
+    internal static bool IsServiceRegistered<TService>(this IServiceProvider serviceProvider)
         where TService : class
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
@@ -643,20 +652,15 @@ public static class AshlarConfigurationServiceProviderExtensions
         return serviceProvider.IsServiceRegistered(typeof(TService));
     }
 
-    /// <summary>
-    /// Determines whether the specified service type is registered.
-    /// </summary>
-    /// <param name="serviceProvider">The service provider to inspect.</param>
-    /// <param name="serviceType">The service type to inspect.</param>
-    /// <returns><see langword="true" /> when the service appears to be registered; otherwise <see langword="false" />.</returns>
-    public static bool IsServiceRegistered(this IServiceProvider serviceProvider, Type serviceType)
+    internal static bool IsServiceRegistered(this IServiceProvider serviceProvider, Type serviceType)
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(serviceType);
 
         try
         {
-            var isService = serviceProvider.GetService<IServiceProviderIsService>();
+            var isService = serviceProvider as IServiceProviderIsService
+                ?? serviceProvider.GetService<IServiceProviderIsService>();
             if (isService is not null)
             {
                 return isService.IsService(serviceType);

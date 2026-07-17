@@ -3,11 +3,11 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.Abstractions.Tenancy;
 using Ashlar.Identity.Abstractions.Transactions;
-using Ashlar.Identity.Features.Mfa;
 using Ashlar.Identity.Models.Credentials;
 using Ashlar.Identity.Models.Sessions;
 using Ashlar.Identity.Models.Tenants;
 using Moq;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Ashlar.OAuth.Tests;
 
@@ -61,7 +61,7 @@ internal sealed class ExternalAccountCredentialLinkerTests
         var credentials = Mock.Of<ICredentialRepository>();
         var transactions = Transactions(persistent, users, credentials);
         var events = new SecurityEventFanOutSink(persistent, transactionProvider: transactions.Provider);
-        var validator = new ActiveSessionFreshProofValidator(Mock.Of<IAuthenticationSessionRepository>(), TimeProvider.System);
+        var validator = ProofValidator(Mock.Of<IAuthenticationSessionRepository>());
 
         using (Assert.EnterMultipleScope())
         {
@@ -223,7 +223,7 @@ internal sealed class ExternalAccountCredentialLinkerTests
         AshlarDurableTransactionProvider transactions,
         SecurityEventFanOutSink events) =>
         new(users, credentials,
-            new ActiveSessionFreshProofValidator(Mock.Of<IAuthenticationSessionRepository>(), TimeProvider.System),
+            ProofValidator(Mock.Of<IAuthenticationSessionRepository>()),
             transactions, events);
 
     private static ExternalAccountCredentialLinker CreateService(
@@ -234,10 +234,9 @@ internal sealed class ExternalAccountCredentialLinkerTests
         Guid userId,
         Guid tenantId)
     {
-        var sessionId = Guid.NewGuid();
         var sessions = new Mock<IAuthenticationSessionRepository>();
         sessions.Setup(repository => repository.GetSessionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationSession
+            .ReturnsAsync((Guid sessionId, CancellationToken _) => new AuthenticationSession
             {
                 Id = sessionId,
                 UserId = userId,
@@ -248,8 +247,18 @@ internal sealed class ExternalAccountCredentialLinkerTests
                 ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
             });
         return new ExternalAccountCredentialLinker(users, credentials,
-            new ActiveSessionFreshProofValidator(sessions.Object, TimeProvider.System), transactions,
+            ProofValidator(sessions.Object), transactions,
             new SecurityEventFanOutSink(events, transactionProvider: transactions));
+    }
+
+    private static IFreshAuthenticationProofValidator ProofValidator(IAuthenticationSessionRepository sessions)
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarProviderScoped<IAuthenticationSessionRepository>(_ => sessions);
+        services.AddAshlarIdentity();
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        return scope.ServiceProvider.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>();
     }
 
     private static ExternalAccountCredentialLinkRequest Request(Guid userId, Guid tenantId, IAuthenticationProvider provider, string? metadata = null)

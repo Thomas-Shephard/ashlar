@@ -4,18 +4,7 @@ using Ashlar.Auditing;
 
 namespace Ashlar.Authorization;
 
-/// <summary>
-/// Implements read-only administrator authorization grant search and single-item lookup operations.
-/// </summary>
-/// <param name="repository">Repository used for safe administrator grant lookup.</param>
-/// <param name="options">Validation limits for grant fields.</param>
-/// <param name="timeProvider">Clock used for status projection.</param>
-/// <param name="authorizationContext">Required host authorizer and active-session store.</param>
-/// <remarks>
-/// Operations fail closed unless the actor has a valid purpose-bound proof from an active session, matching audit identity,
-/// explicit scope, and host authorization for the complete read operation.
-/// </remarks>
-public sealed class AuthorizationGrantAdministrationService(
+internal sealed class AuthorizationGrantAdministrationService(
     IAuthorizationGrantAdministrationRepository repository,
     AuthorizationGrantOptions? options = null,
     TimeProvider? timeProvider = null,
@@ -31,7 +20,6 @@ public sealed class AuthorizationGrantAdministrationService(
     private readonly ActiveSessionFreshProofValidator? _proofValidator = authorizationContext?.SessionRepository is { } sessions
         ? new ActiveSessionFreshProofValidator(sessions, timeProvider ?? TimeProvider.System) : null;
 
-    /// <inheritdoc />
     public async Task<Result<AuthorizationGrantSearchResult>> SearchAuthorizationGrantsAsync(SearchAuthorizationGrantsRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -83,7 +71,6 @@ public sealed class AuthorizationGrantAdministrationService(
         return Result.Success(new AuthorizationGrantSearchResult(page, limit, request.Offset, hasMore));
     }
 
-    /// <inheritdoc />
     public async Task<Result<AuthorizationGrantAdministrationSummary>> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationLookupRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -112,13 +99,6 @@ public sealed class AuthorizationGrantAdministrationService(
             : Result.Success(grant);
     }
 
-    /// <summary>
-    /// Derives an administrator display status from expiry and revocation timestamps.
-    /// </summary>
-    /// <param name="expiresAt">UTC expiry time, when configured.</param>
-    /// <param name="revokedAt">UTC revocation time, when the grant has been revoked.</param>
-    /// <param name="now">UTC time used for expiry evaluation.</param>
-    /// <returns>The lifecycle status represented by the supplied timestamps.</returns>
     public static AuthorizationGrantAdministrationStatus DeriveStatus(DateTimeOffset? expiresAt, DateTimeOffset? revokedAt, DateTimeOffset now)
     {
         if (revokedAt != null)

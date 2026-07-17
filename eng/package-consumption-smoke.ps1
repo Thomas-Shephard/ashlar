@@ -21,7 +21,38 @@ $smokeRootFullPath = if ([System.IO.Path]::IsPathRooted($SmokeRoot)) {
     [System.IO.Path]::GetFullPath((Join-Path $repoRoot $SmokeRoot))
 }
 
-$packageIds = @(
+$pathComparison = [System.StringComparison]::OrdinalIgnoreCase
+$normalizedSmokeRoot = $smokeRootFullPath.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+$normalizedRepoRoot = ([string] $repoRoot).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+$normalizedPackageOutput = $packageOutputFullPath.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+$volumeRoot = [System.IO.Path]::GetPathRoot($smokeRootFullPath).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+$smokeRootPrefix = $normalizedSmokeRoot + [System.IO.Path]::DirectorySeparatorChar
+$hasReparsePointAncestor = $false
+$candidate = $smokeRootFullPath
+while (-not [string]::IsNullOrWhiteSpace($candidate)) {
+    if ((Test-Path -LiteralPath $candidate) -and
+        ((Get-Item -LiteralPath $candidate -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        $hasReparsePointAncestor = $true
+        break
+    }
+
+    $parent = [System.IO.Path]::GetDirectoryName($candidate.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar))
+    if ([string]::IsNullOrWhiteSpace($parent) -or $parent.Equals($candidate, $pathComparison)) { break }
+    $candidate = $parent
+}
+
+$unsafeSmokeRoot = [string]::IsNullOrWhiteSpace($normalizedSmokeRoot) -or
+    $normalizedSmokeRoot.Equals($volumeRoot, $pathComparison) -or
+    $normalizedSmokeRoot.Equals($normalizedRepoRoot, $pathComparison) -or
+    $normalizedSmokeRoot.Equals($normalizedPackageOutput, $pathComparison) -or
+    $normalizedRepoRoot.StartsWith($smokeRootPrefix, $pathComparison) -or
+    $normalizedPackageOutput.StartsWith($smokeRootPrefix, $pathComparison) -or
+    $hasReparsePointAncestor
+if ($unsafeSmokeRoot) {
+    throw "Smoke root '$smokeRootFullPath' is not safe to delete recursively."
+}
+
+$applicationPackageIds = @(
     "Ashlar",
     "Ashlar.AspNetCore",
     "Ashlar.Sqlite",
@@ -33,6 +64,7 @@ $packageIds = @(
     "Ashlar.OAuth",
     "Ashlar.Redis"
 )
+$packageIds = @($applicationPackageIds) + "Ashlar.ProviderContracts"
 
 function Invoke-DotNet {
     param([Parameter(ValueFromRemainingArguments = $true)] [string[]] $Arguments)
@@ -79,6 +111,11 @@ foreach ($packageId in $packageIds) {
     Write-Host "Using $packageId $($packageVersions[$packageId])"
 }
 
+$distinctVersions = @($packageVersions.Values | Sort-Object -Unique)
+if ($distinctVersions.Count -ne 1) {
+    throw "Package output contains mixed latest versions: $($distinctVersions -join ', ')."
+}
+
 if (Test-Path $smokeRootFullPath) {
     Remove-Item -LiteralPath $smokeRootFullPath -Recurse -Force
 }
@@ -104,7 +141,7 @@ Set-Content -Path (Join-Path $smokeProjectPath "nuget.config") -Value $nugetConf
 $projectFile = Join-Path $smokeProjectPath "Ashlar.PackageSmoke.csproj"
 [xml] $projectXml = Get-Content $projectFile
 $itemGroup = $projectXml.CreateElement("ItemGroup")
-foreach ($packageId in $packageIds) {
+foreach ($packageId in $applicationPackageIds) {
     $packageReference = $projectXml.CreateElement("PackageReference")
     $packageReference.SetAttribute("Include", $packageId)
     $packageReference.SetAttribute("Version", $packageVersions[$packageId])
@@ -112,6 +149,15 @@ foreach ($packageId in $packageIds) {
 }
 
 [void] $projectXml.Project.AppendChild($itemGroup)
+
+$boundaryTarget = $projectXml.CreateElement("Target")
+$boundaryTarget.SetAttribute("Name", "RejectProviderAuthoringCompileSurface")
+$boundaryTarget.SetAttribute("BeforeTargets", "CoreCompile")
+$boundaryError = $projectXml.CreateElement("Error")
+$boundaryError.SetAttribute("Condition", "'@(ReferencePath->WithMetadataValue('Filename', 'Ashlar.ProviderContracts'))' != ''")
+$boundaryError.SetAttribute("Text", "Ordinary package consumers must not receive Ashlar.ProviderContracts as a compile reference.")
+[void] $boundaryTarget.AppendChild($boundaryError)
+[void] $projectXml.Project.AppendChild($boundaryTarget)
 $projectXml.Save($projectFile)
 
 $program = @'
@@ -173,5 +219,49 @@ Set-Content -Path (Join-Path $smokeProjectPath "Program.cs") -Value $program -En
 
 Invoke-DotNet restore $smokeProjectPath --configfile (Join-Path $smokeProjectPath "nuget.config")
 Invoke-DotNet build $smokeProjectPath --configuration $Configuration --no-restore
+
+$depsFile = Join-Path $smokeProjectPath "bin/$Configuration/net10.0/Ashlar.PackageSmoke.deps.json"
+if (-not (Select-String -LiteralPath $depsFile -Pattern 'Ashlar.ProviderContracts' -Quiet)) {
+    throw "Ordinary package consumers must receive Ashlar.ProviderContracts as a runtime dependency."
+}
+
+$providerProjectPath = Join-Path $smokeRootFullPath "Ashlar.ProviderPackageSmoke"
+Invoke-DotNet new classlib --framework net10.0 --output $providerProjectPath --no-restore
+
+$providerProjectFile = Join-Path $providerProjectPath "Ashlar.ProviderPackageSmoke.csproj"
+[xml] $providerProjectXml = Get-Content $providerProjectFile
+$providerItemGroup = $providerProjectXml.CreateElement("ItemGroup")
+$providerPackageReference = $providerProjectXml.CreateElement("PackageReference")
+$providerPackageReference.SetAttribute("Include", "Ashlar.ProviderContracts")
+$providerPackageReference.SetAttribute("Version", $packageVersions["Ashlar.ProviderContracts"])
+[void] $providerItemGroup.AppendChild($providerPackageReference)
+[void] $providerProjectXml.Project.AppendChild($providerItemGroup)
+$providerProjectXml.Save($providerProjectFile)
+
+$providerSource = @'
+using Ashlar.Identity.Abstractions.Transactions;
+using Ashlar.ProviderContracts.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
+
+internal static class CompositionSmoke
+{
+    public static void Compose(IServiceCollection services)
+    {
+        services.AddAshlarProviderScoped<object>(_ => new object());
+        services.AddAshlarDurableTransactionProvider<CustomTransactionProvider>();
+        services.AddAshlarDurableTransactionParticipant<object>();
+    }
+}
+
+internal sealed class CustomTransactionProvider : IAshlarTransactionProvider
+{
+    public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+}
+'@
+Set-Content -Path (Join-Path $providerProjectPath "Class1.cs") -Value $providerSource -Encoding utf8
+
+Invoke-DotNet restore $providerProjectPath --configfile (Join-Path $smokeProjectPath "nuget.config")
+Invoke-DotNet build $providerProjectPath --configuration $Configuration --no-restore
 
 Write-Host "Package consumption smoke test passed."

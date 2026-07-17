@@ -21,8 +21,8 @@ public static partial class AshlarServiceCollectionExtensions
     /// <returns>The same service collection so calls can be chained.</returns>
     /// <remarks>
     /// This method intentionally does not register <see cref="IInvitationRepository"/> or
-    /// <see cref="IUserRepository"/> and <see cref="ICredentialRepository"/>. Applications should provide those dependencies explicitly,
-    /// such as by using Ashlar.Postgres or custom repository implementations. Invitation revocation also requires an
+    /// <see cref="IUserRepository"/> and <see cref="ICredentialRepository"/>. Applications should install an Ashlar persistence provider.
+    /// Custom persistence packages register these dependencies through Ashlar.ProviderContracts. Invitation revocation also requires an
     /// <see cref="AshlarDurableTransactionProvider"/> and a transaction-bound <see cref="SecurityEventFanOutSink"/>.
     /// </remarks>
     public static IServiceCollection AddAshlarInvitations(
@@ -42,15 +42,18 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.TryAddScoped<IInvitationService, InvitationService>();
         services.TryAddScoped<IInvitationAdministrationReader>(provider => new InvitationAdministrationReader(
-            provider.GetRequiredService<IInvitationRepository>(), provider.GetService<TimeProvider>()));
+            provider.GetRequiredAshlarProviderService<IInvitationRepository>(), provider.GetService<TimeProvider>()));
         services.TryAddScoped(provider => new InvitationAdministrationServiceDependencies(
             provider.GetService<TimeProvider>(),
             provider.GetRequiredService<SecurityEventFanOutSink>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>()));
         services.TryAddScoped<IInvitationAdministrationService>(provider => new InvitationAdministrationService(
-            provider.GetRequiredService<IInvitationRepository>(),
+            provider.GetRequiredAshlarProviderService<IInvitationRepository>(),
             provider.GetRequiredService<InvitationAdministrationServiceDependencies>()));
-        services.TryAddScoped<InvitationStoreContext>();
+        services.TryAddScoped(provider => new InvitationStoreContext(
+            provider.GetRequiredAshlarProviderService<IInvitationRepository>(),
+            provider.GetRequiredAshlarProviderService<IUserRepository>(),
+            provider.GetRequiredService<AshlarDurableTransactionProvider>()));
         services.TryAddScoped<InvitationDependencies>();
 
         return services;
@@ -78,7 +81,10 @@ public static partial class AshlarServiceCollectionExtensions
         }
 
         services.TryAddScoped<IBootstrapService, BootstrapService>();
-        services.TryAddScoped<BootstrapStoreContext>();
+        services.TryAddScoped(provider => new BootstrapStoreContext(
+            provider.GetRequiredAshlarProviderService<IBootstrapStateRepository>(),
+            provider.GetRequiredAshlarProviderService<IUserRepository>(),
+            provider.GetRequiredService<AshlarDurableTransactionProvider>()));
         services.TryAddScoped<BootstrapDependencies>();
 
         return services;
@@ -141,7 +147,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<IdentityContext>(),
             provider.GetRequiredService<SecureTokenContext>(),
             provider.GetRequiredService<IdentityInfrastructureContext>(),
-            provider.GetRequiredService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
             provider.GetRequiredService<ISecretProtector>(),
             provider.GetRequiredService<IdentityAuditContext>()));
         services.TryAddScoped<IEmailChangeService, EmailChangeService>();
@@ -175,7 +181,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<IdentityContext>(),
             provider.GetRequiredService<SecureTokenContext>(),
             provider.GetRequiredService<IdentityInfrastructureContext>(),
-            provider.GetRequiredService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
             provider.GetRequiredService<PasswordHasherSelector>(),
             provider.GetRequiredService<IdentityAuditContext>(),
             provider.GetService<IRememberedMfaDeviceMutationExecutor>()));

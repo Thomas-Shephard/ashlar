@@ -35,7 +35,7 @@ internal sealed class InvitationDependencies(
     /// <summary>
     /// Gets the transaction provider used for invitation mutations.
     /// </summary>
-    public IAshlarTransactionProvider TransactionProvider => _storeContext.TransactionProvider;
+    public AshlarDurableTransactionProvider TransactionProvider => _storeContext.TransactionProvider;
     /// <summary>
     /// Gets the generator used for raw invitation tokens.
     /// </summary>

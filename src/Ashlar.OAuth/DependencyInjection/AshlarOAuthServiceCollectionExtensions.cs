@@ -43,17 +43,20 @@ public static class AshlarOAuthServiceCollectionExtensions
 
         services.Configure(configure);
         services.TryAddScoped<AshlarExternalCredentialAuthenticationService>();
-        services.TryAddScoped<IExternalAccountCredentialLinker, ExternalAccountCredentialLinker>();
+        services.TryAddScoped<IExternalAccountCredentialLinker>(provider => ActivatorUtilities.CreateInstance<ExternalAccountCredentialLinker>(provider,
+            provider.GetRequiredAshlarProviderService<IUserRepository>(),
+            provider.GetRequiredAshlarProviderService<ICredentialRepository>(),
+            provider.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>()));
         services.TryAddScoped(provider => new AshlarExternalAccountLinkService(
             provider.GetRequiredService<IExternalAccountCredentialLinker>(),
             provider.GetRequiredService<IAccountSecurityAdministrationService>(),
-            provider.GetRequiredService<IUserRepository>(),
+            provider.GetRequiredAshlarProviderService<IUserRepository>(),
             provider.GetRequiredService<global::Microsoft.Extensions.Options.IOptionsMonitor<AshlarOAuthOptions>>(),
             provider.GetService<TimeProvider>() ?? TimeProvider.System,
             provider.GetService<ISecurityEventSink>()));
         services.TryAddScoped(provider => new AshlarOidcInvitationRegistrationService(
             provider.GetRequiredService<IInvitationService>(),
-            provider.GetRequiredService<ICredentialRepository>(),
+            provider.GetRequiredAshlarProviderService<ICredentialRepository>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetRequiredService<global::Microsoft.Extensions.Options.IOptionsMonitor<AshlarOAuthOptions>>(),
             provider.GetRequiredService<IOidcInvitationEmailMatchPolicy>(),

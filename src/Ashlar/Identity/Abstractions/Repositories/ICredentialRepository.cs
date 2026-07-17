@@ -3,7 +3,7 @@ namespace Ashlar.Identity.Abstractions.Repositories;
 /// <summary>
 /// Provider contract for storing credential records used by authentication providers.
 /// </summary>
-public interface ICredentialRepository
+public interface ICredentialRepository : ICredentialLookup
 {
     /// <summary>
     /// Acquires the provider's transaction-scoped mutation lock for a user.
@@ -16,21 +16,6 @@ public interface ICredentialRepository
     /// reads and writes complete. Implementations must serialize calls for the same user across application instances.
     /// </remarks>
     Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Retrieves one credential for a user and provider.
-    /// </summary>
-    /// <param name="userId">The user that must own the credential.</param>
-    /// <param name="type">The provider category.</param>
-    /// <param name="providerName">The provider name within the category.</param>
-    /// <param name="providerKey">The optional provider-specific credential key.</param>
-    /// <param name="cancellationToken">A token that can cancel credential lookup.</param>
-    /// <returns>The matching credential, or <see langword="null" /> when no matching credential belongs to the user.</returns>
-    /// <remarks>
-    /// Implementations must verify ownership by <paramref name="userId" />. If a matching provider key belongs to a different
-    /// user, this method must return <see langword="null" />.
-    /// </remarks>
-    Task<UserCredential?> GetCredentialForUserAsync(Guid userId, ProviderType type, string providerName, string? providerKey = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lists credentials for a user.

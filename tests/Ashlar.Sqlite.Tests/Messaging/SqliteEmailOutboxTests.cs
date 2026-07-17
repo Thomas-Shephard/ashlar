@@ -191,7 +191,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     public async Task SenderParticipatesInTransactionsAndRollback()
     {
         var sender = _serviceProvider.GetRequiredService<IEmailSender>();
-        var txProvider = _serviceProvider.GetRequiredService<IAshlarTransactionProvider>();
+        var txProvider = _serviceProvider.GetRequiredService<AshlarDurableTransactionProvider>();
 
         await using (var tx = await txProvider.BeginTransactionAsync())
         {

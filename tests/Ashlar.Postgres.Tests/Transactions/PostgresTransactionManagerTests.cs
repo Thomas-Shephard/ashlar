@@ -24,6 +24,15 @@ internal sealed class PostgresTransactionManagerTests : PostgresTestBase
     }
 
     [Test]
+    public async Task DisposeAsyncIsIdempotent()
+    {
+        var manager = new PostgresTransactionManager(_ => throw new AssertionException("Disposal must not open a connection."));
+
+        await manager.DisposeAsync();
+        await manager.DisposeAsync();
+    }
+
+    [Test]
     public async Task GetConnectionAsyncDuringTransactionReturnsTransactionalConnection()
     {
         await using var manager = new PostgresTransactionManager(GetDataSource());

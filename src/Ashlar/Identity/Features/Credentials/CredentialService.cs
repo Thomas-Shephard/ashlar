@@ -59,6 +59,8 @@ internal sealed class CredentialService(
     private const string CredentialIdPropertyName = "credential_id";
     private readonly IUserRepository _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
     private readonly ICredentialRepository _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
+    private readonly IUserLookup _userLookup = new UserLookup(userRepository!);
+    private readonly ICredentialLookup _credentialLookup = new CredentialLookup(credentialRepository!);
     private readonly ISecretProtector _secretProtector = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
     private readonly AshlarDurableTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly IdentityServiceOptions _options = ValidateDependencies(dependencies).Options ?? new IdentityServiceOptions();
@@ -88,7 +90,7 @@ internal sealed class CredentialService(
         if (provider is IAuthenticationUserResolver userResolver)
         {
             user = await ResolveTenantConsistentUserAsync(
-                () => userResolver.FindUserAsync(assertion, context, _userRepository, cancellationToken));
+                () => userResolver.FindUserAsync(assertion, context, _userLookup, cancellationToken));
         }
 
         if (user == null && context.UserId.HasValue)
@@ -136,7 +138,7 @@ internal sealed class CredentialService(
         UserCredential? credential;
         if (provider is IAuthenticationCredentialResolver credentialResolver)
         {
-            credential = await credentialResolver.ResolveCredentialAsync(userId, assertion, context, _credentialRepository, cancellationToken);
+            credential = await credentialResolver.ResolveCredentialAsync(userId, assertion, context, _credentialLookup, cancellationToken);
             if (credential == null)
             {
                 // Timing attack resistance: hit the repository even if no credential was resolved by the provider.
@@ -156,6 +158,24 @@ internal sealed class CredentialService(
 
         var (unprotectedCredential, unprotectFailed) = UnprotectCredential(credential, provider);
         return (unprotectedCredential, credential, unprotectFailed);
+    }
+
+    private sealed class UserLookup(IUserRepository repository) : IUserLookup
+    {
+        public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default) =>
+            repository.GetUserByEmailAsync(email, tenantId, cancellationToken);
+
+        public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) =>
+            repository.GetUserByIdAsync(userId, cancellationToken);
+
+        public Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default) =>
+            repository.GetUserByProviderKeyAsync(type, providerName, providerKey, cancellationToken);
+    }
+
+    private sealed class CredentialLookup(ICredentialRepository repository) : ICredentialLookup
+    {
+        public Task<UserCredential?> GetCredentialForUserAsync(Guid userId, ProviderType type, string providerName, string? providerKey = null, CancellationToken cancellationToken = default) =>
+            repository.GetCredentialForUserAsync(userId, type, providerName, providerKey, cancellationToken);
     }
 
     private (UserCredential? Credential, bool UnprotectFailed) UnprotectCredential(UserCredential? credential, IAuthenticationProvider provider)

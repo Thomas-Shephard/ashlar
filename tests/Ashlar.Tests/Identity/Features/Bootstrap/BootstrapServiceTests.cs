@@ -81,11 +81,11 @@ internal sealed class BootstrapServiceTests
             Assert.Throws<ArgumentNullException>(() => _ = new BootstrapStoreContext(
                 null!,
                 _userRepository.Object,
-                _transactionProvider.Object));
+                AshlarDurableTransactionProvider.Create(_transactionProvider.Object)));
             Assert.Throws<ArgumentNullException>(() => _ = new BootstrapStoreContext(
                 _stateRepository.Object,
                 null!,
-                _transactionProvider.Object));
+                AshlarDurableTransactionProvider.Create(_transactionProvider.Object)));
             Assert.Throws<ArgumentNullException>(() => _ = new BootstrapStoreContext(
                 _stateRepository.Object,
                 _userRepository.Object,
@@ -925,7 +925,7 @@ internal sealed class BootstrapServiceTests
 
     private BootstrapStoreContext CreateStoreContext()
     {
-        return new BootstrapStoreContext(_stateRepository.Object, _userRepository.Object, _transactionProvider.Object);
+        return new BootstrapStoreContext(_stateRepository.Object, _userRepository.Object, AshlarDurableTransactionProvider.Create(_transactionProvider.Object));
     }
 
     private IdentityInfrastructureContext CreateInfrastructureContext(IAuthenticationRateLimiter? rateLimiter = null)
@@ -946,9 +946,19 @@ internal sealed class BootstrapServiceTests
         var transaction = new Mock<IAshlarTransaction>();
         if (executeCommitCallbacks)
         {
+            var commitCallbacks = new List<Func<CancellationToken, Task>>();
             transaction
                 .Setup(t => t.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()))
-                .Callback<Func<CancellationToken, Task>>(action => action(CancellationToken.None).GetAwaiter().GetResult());
+                .Callback<Func<CancellationToken, Task>>(commitCallbacks.Add);
+            transaction
+                .Setup(t => t.CommitAsync(It.IsAny<CancellationToken>()))
+                .Returns<CancellationToken>(async cancellationToken =>
+                {
+                    foreach (var callback in commitCallbacks)
+                    {
+                        await callback(cancellationToken);
+                    }
+                });
         }
 
         _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);

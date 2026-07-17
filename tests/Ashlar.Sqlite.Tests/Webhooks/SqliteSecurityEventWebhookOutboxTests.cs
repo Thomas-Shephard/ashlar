@@ -94,7 +94,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     public async Task EnqueueStoresSafeBodyHeadersAndSignatureWithoutSecret()
     {
         var delivery = CreateDelivery("shared-secret");
-        var enqueuer = _serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>();
+        var enqueuer = _serviceProvider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>();
 
         await enqueuer.EnqueueAsync(delivery);
 
@@ -124,8 +124,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     [Test]
     public async Task EnqueueRollsBackInsideAshlarTransaction()
     {
-        var txProvider = _serviceProvider.GetRequiredService<IAshlarTransactionProvider>();
-        var enqueuer = _serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>();
+        var txProvider = _serviceProvider.GetRequiredService<AshlarDurableTransactionProvider>();
+        var enqueuer = _serviceProvider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>();
 
         await using (await txProvider.BeginTransactionAsync())
         {
@@ -711,7 +711,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.GetService<IAshlarSecurityEventWebhookEnqueuer>(), Is.InstanceOf<SqliteSecurityEventWebhookEnqueuer>());
+            Assert.That(provider.GetService<IAshlarSecurityEventWebhookEnqueuer>(), Is.Null);
             Assert.That(provider.GetService<IAshlarSecurityEventWebhookOutboxBrowser>(), Is.InstanceOf<SqliteSecurityEventWebhookOutboxBrowser>());
             Assert.That(provider.GetService<SqliteSecurityEventWebhookOutboxDispatcher>(), Is.Not.Null);
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
@@ -735,7 +735,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.GetServices<IHostedService>().Any(service => service is SqliteSecurityEventWebhookOutboxHostedService), Is.True);
-            Assert.That(provider.GetService<IAshlarSecurityEventWebhookEnqueuer>(), Is.InstanceOf<SqliteSecurityEventWebhookEnqueuer>());
+            Assert.That(provider.GetService<IAshlarSecurityEventWebhookEnqueuer>(), Is.Null);
             Assert.That(provider.GetService<SqliteSecurityEventWebhookOutboxDispatcher>(), Is.Not.Null);
             Assert.That(provider.GetRequiredService<IHttpClientFactory>().CreateClient(SqliteSecurityEventWebhookOutboxDispatcher.HttpClientName).DefaultRequestHeaders.GetValues("X-Test").Single(), Is.EqualTo("configured"));
         }
@@ -758,7 +758,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
             Assert.That(scope.ServiceProvider.GetServices<IDurableSecurityEventFanOutHandler>().Single(), Is.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
             Assert.That(scope.ServiceProvider.GetServices<ISecurityEventHandler>(), Is.Empty);
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>(), Is.TypeOf<SqliteSecurityEventWebhookEnqueuer>());
+            Assert.That(scope.ServiceProvider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>(), Is.TypeOf<SqliteSecurityEventWebhookEnqueuer>());
         }
     }
 
@@ -840,7 +840,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
 
     private async Task EnqueueAsync(AshlarSecurityEventWebhookDelivery delivery)
     {
-        await _serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>().EnqueueAsync(delivery);
+        await _serviceProvider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>().EnqueueAsync(delivery);
     }
 
     private SqliteSecurityEventWebhookOutboxDispatcher CreateDispatcher(

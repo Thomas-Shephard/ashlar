@@ -5,3 +5,4 @@ global using Ashlar.Identity.Models.Authentication;
 global using Ashlar.Identity.Models.Mfa;
 global using Ashlar.Identity.Models.Sessions;
 global using Ashlar.Identity.Features.Mfa;
+global using Ashlar.ProviderContracts.DependencyInjection;

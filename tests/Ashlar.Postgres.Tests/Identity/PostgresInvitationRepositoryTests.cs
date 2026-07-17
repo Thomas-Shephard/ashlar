@@ -30,7 +30,7 @@ internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
         }
     }
 
-    private PostgresInvitationRepository GetRepository() => (PostgresInvitationRepository)_serviceProvider.GetRequiredService<IInvitationRepository>();
+    private PostgresInvitationRepository GetRepository() => (PostgresInvitationRepository)_serviceProvider.GetRequiredAshlarProviderService<IInvitationRepository>();
 
     [Test]
     public async Task CreateAndFetchInvitationShouldSucceed()

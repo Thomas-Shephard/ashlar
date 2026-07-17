@@ -113,7 +113,6 @@ internal sealed class AshlarConfigurationValidatorTests
             AssertIssue(result, AshlarConfigurationIssueCodes.InMemoryAuthenticationRateLimiter, AshlarConfigurationIssueSeverity.Warning);
             AssertIssue(result, AshlarConfigurationIssueCodes.TransactionProviderMissing, AshlarConfigurationIssueSeverity.Information);
             Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.PermissiveAccountSecurityGuard));
-            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.NullTransactionProvider));
             Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.InvitationRepositoryMissing));
             Assert.That(result.HasErrors, Is.True);
             Assert.That(result.IsValid, Is.False);
@@ -238,7 +237,7 @@ internal sealed class AshlarConfigurationValidatorTests
     public async Task CoreCheckDoesNotReportPermissiveMfaPolicyWhenCredentialBackedPolicyIsRegistered()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
         services.AddAshlarRequireMfaWhenCredentialExists(options =>
         {
             options.CredentialProviderKeys.Add(new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
@@ -331,41 +330,10 @@ internal sealed class AshlarConfigurationValidatorTests
     }
 
     [Test]
-    public async Task CoreCheckReportsWarningForNullTransactionProviderWithRepositories()
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
-        services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddAshlarIdentity();
-        services.AddAshlarNullTransactions();
-
-        using var provider = services.BuildServiceProvider();
-
-        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
-
-        AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Warning);
-    }
-
-    [Test]
-    public async Task CoreCheckReportsInformationForNullTransactionProviderWithoutRepositories()
-    {
-        var services = new ServiceCollection();
-        services.AddAshlarConfigurationValidation();
-        services.AddAshlarNullTransactions();
-
-        using var provider = services.BuildServiceProvider();
-
-        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
-
-        AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Information);
-    }
-
-    [Test]
     public async Task CoreCheckReportsWarningForMissingTransactionProviderWithRepositories()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
         services.AddAshlarConfigurationValidation();
 
         using var provider = services.BuildServiceProvider();
@@ -373,38 +341,6 @@ internal sealed class AshlarConfigurationValidatorTests
         var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
 
         AssertIssue(result, AshlarConfigurationIssueCodes.TransactionProviderMissing, AshlarConfigurationIssueSeverity.Warning);
-        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.NullTransactionProvider));
-    }
-
-    [Test]
-    public async Task CoreCheckReportsWarningForNullTransactionProviderWithOnlyCredentialRepository()
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
-        services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddAshlarIdentity();
-        services.AddAshlarNullTransactions();
-
-        using var provider = services.BuildServiceProvider();
-
-        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
-
-        AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Warning);
-    }
-
-    [Test]
-    public async Task CoreCheckReportsWarningForNullTransactionProviderWithAuthorizationRepository()
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IAuthorizationGrantRepository>());
-        services.AddAshlarIdentity();
-        services.AddAshlarNullTransactions();
-
-        using var provider = services.BuildServiceProvider();
-
-        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
-
-        AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Warning);
     }
 
     [Test]
@@ -479,7 +415,7 @@ internal sealed class AshlarConfigurationValidatorTests
     public async Task CoreCheckDoesNotReportMissingSessionForBuiltInGrantServiceWhenRegistered()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
         services.AddAshlarAuthorization();
 
         using var provider = services.BuildServiceProvider();
@@ -1048,17 +984,17 @@ internal sealed class AshlarConfigurationValidatorTests
     public async Task CoreCheckDoesNotReportDefaultIssuesWhenProductionServicesAreRegistered()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
         services.AddSingleton(Mock.Of<IUserAdministrationRepository>());
         services.AddSingleton(Mock.Of<ICredentialAdministrationRepository>());
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
-        services.AddSingleton(Mock.Of<IInvitationRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IInvitationRepository>());
         services.AddSingleton<IEmailSender, CustomEmailSender>();
-        services.AddSingleton<IPersistentSecurityEventSink, CustomPersistentSecurityEventSink>();
+        services.AddAshlarProviderScoped<IPersistentSecurityEventSink>(_ => new CustomPersistentSecurityEventSink());
         services.AddSingleton<IAuthenticationRateLimiter, CustomAuthenticationRateLimiter>();
         services.AddSingleton<CustomTransactionProvider>();
         services.AddAshlarDurableTransactionProvider<CustomTransactionProvider>();
@@ -1094,7 +1030,8 @@ internal sealed class AshlarConfigurationValidatorTests
     public async Task CoreCheckReportsAuditWarningWhenPersistentSinkIsNotReachableThroughFanOut()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IPersistentSecurityEventSink, CustomPersistentSecurityEventSink>();
+        services.AddAshlarProviderScoped<IPersistentSecurityEventSink>(_ => new CustomPersistentSecurityEventSink());
+        services.AddSingleton(new SecurityEventFanOutSink());
         services.AddAshlarConfigurationValidation();
 
         using var provider = services.BuildServiceProvider();
@@ -1195,7 +1132,7 @@ internal sealed class AshlarConfigurationValidatorTests
     public void CoreCheckDoesNotSwallowTransactionProviderActivationFailures()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IAshlarTransactionProvider>(_ => throw new InvalidOperationException("custom transaction failure"));
+        services.AddSingleton<AshlarDurableTransactionProvider>(_ => throw new InvalidOperationException("custom transaction failure"));
         using var provider = services.BuildServiceProvider();
         var check = new AshlarCoreConfigurationCheck();
 
@@ -1205,14 +1142,14 @@ internal sealed class AshlarConfigurationValidatorTests
     }
 
     [Test]
-    public async Task CoreCheckSupportsServiceProvidersWithoutScopeFactory()
+    public async Task CoreCheckDoesNotTreatOrdinaryFallbackRepositoryAsProviderInfrastructure()
     {
         var provider = new FallbackServiceProvider(typeof(IUserRepository), Mock.Of<IUserRepository>());
         var check = new AshlarCoreConfigurationCheck();
 
         var issues = await check.CheckAsync(provider);
 
-        AssertIssue(issues, AshlarConfigurationIssueCodes.TransactionProviderMissing, AshlarConfigurationIssueSeverity.Warning);
+        AssertIssue(issues, AshlarConfigurationIssueCodes.TransactionProviderMissing, AshlarConfigurationIssueSeverity.Information);
     }
 
     [Test]
@@ -1225,6 +1162,16 @@ internal sealed class AshlarConfigurationValidatorTests
             Assert.That(provider.IsServiceRegistered<IUserRepository>(), Is.True);
             Assert.That(provider.IsServiceRegistered<ICredentialRepository>(), Is.False);
         }
+    }
+
+    [Test]
+    public void IsServiceRegisteredDoesNotTreatProviderRegistrationAsOrdinaryRegistration()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.IsServiceRegistered<IUserRepository>(), Is.False);
     }
 
     [Test]

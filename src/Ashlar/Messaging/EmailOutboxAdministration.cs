@@ -57,7 +57,7 @@ public interface IEmailOutboxAdministrationService
 /// </summary>
 /// <param name="timeProvider">Clock used for operation timestamps and audit events.</param>
 /// <param name="securityEventSink">Durable audit sink used for successful mutating operations. It is required so state changes and audit writes share one atomic boundary.</param>
-/// <param name="transactionProvider">Transaction provider used to commit provider mutations with their required audit writes. It is required for every mutating operation.</param>
+/// <param name="transactionProvider">Ashlar-owned durable transaction composition used to commit provider mutations with their required audit writes.</param>
 /// <remarks>
 /// Providers supply read projections and conditional storage mutations; this base class centralizes audit requirements, stable no-op classification, and the rule that administration
 /// mutations never send emails directly.
@@ -65,10 +65,10 @@ public interface IEmailOutboxAdministrationService
 public abstract class EmailOutboxAdministrationServiceBase(
     TimeProvider timeProvider,
     ISecurityEventSink securityEventSink,
-    IAshlarTransactionProvider transactionProvider) : IEmailOutboxAdministrationService
+    AshlarDurableTransactionProvider transactionProvider) : IEmailOutboxAdministrationService
 {
     private readonly ISecurityEventSink _securityEventSink = securityEventSink ?? throw new ArgumentNullException(nameof(securityEventSink));
-    private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
+    private readonly AshlarDurableTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
 
     /// <summary>
     /// Gets the clock used by provider queries and mutations.

@@ -7,6 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Ashlar.Testing\Ashlar.Testing.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.OAuth\Ashlar.OAuth.csproj" />
+    <ProjectReference Include="..\..\src\Ashlar.ProviderContracts\Ashlar.ProviderContracts.csproj" />
     <ProjectReference Include="..\..\src\Ashlar\Ashlar.csproj" />
   </ItemGroup>
 

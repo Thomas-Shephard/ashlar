@@ -779,7 +779,7 @@ services.AddAshlarMfaHandshakes(options =>
 });
 ```
 
-`AddAshlarMfaHandshakes()` registers the service layer only. Applications must also register an `IAuthenticationHandshakeRepository` implementation, such as by calling `AddAshlarPostgres(connectionString)`, or provide their own repository.
+`AddAshlarMfaHandshakes()` registers the service layer only. Applications must also install a persistence provider with authentication-handshake support, such as `AddAshlarPostgres(connectionString)`. Custom persistence packages provide the repository through `Ashlar.ProviderContracts`.
 
 When primary authentication succeeds and MFA is required, `IAuthenticationOrchestrator.AuthenticateAsync`
 creates the handshake internally and returns its one-time token and required factors. Applications cannot mint
@@ -1376,7 +1376,7 @@ public class MySessionMaintenance(
 
 Application-facing user creation should go through purpose-specific Ashlar flows such as bootstrap or invitation acceptance. `IUserRepository.CreateUserAsync` is a provider/infrastructure contract for persistence implementations, data import, and test seeding.
 
-`AddAshlarIdentity()` does not register a transaction provider. Persistence packages like **Ashlar.Postgres** provide a functional implementation. Provider-less or test composition can explicitly call `AddAshlarNullTransactions()`, which registers `NullTransactionProvider`; it performs no-op transactions and provides no atomicity across multi-step identity operations.
+`AddAshlarIdentity()` does not register a transaction provider. Persistence packages like **Ashlar.Postgres** and **Ashlar.Sqlite** compose their repositories with a durable transaction provider. Provider authors create the same composition through **Ashlar.ProviderContracts**; applications cannot supply or replace it through ordinary DI.
 
 - **Scope Bound**: Transactions are bound to the `IServiceProvider` scope (typically the HTTP request).
 - **Single Transaction**: Only one active transaction is supported per scope. Attempting to start a nested transaction will throw an `InvalidOperationException`.
@@ -1415,7 +1415,7 @@ var detail = await securityEventAdministration.GetSecurityEventAsync(
     new SecurityEventAdministrationDetailRequest(eventId, new TenantContext(tenantId)));
 ```
 
-Use `ISecurityEventAdministrationService` from application code and implement or register `ISecurityEventAdministrationRepository` for the backing store. `Ashlar.Postgres` and `Ashlar.Sqlite` provide repository implementations that query `ashlar_security_events` without exposing provider-specific row ids or JSON storage details.
+Use `ISecurityEventAdministrationService` from application code and install a persistence provider with security-event administration support. `Ashlar.Postgres` and `Ashlar.Sqlite` provide read-only repository implementations that query `ashlar_security_events` without exposing provider-specific row ids or JSON storage details; custom provider integrations may supply the same safe read contract.
 
 Search, lookup, and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. These APIs do not authorize callers by themselves. Host applications must protect any endpoint or job that uses them with admin authorization and an appropriate step-up policy. Event properties are intended only for operational diagnostics and must never contain secrets.
 

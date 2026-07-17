@@ -631,7 +631,7 @@ internal sealed class MagicLinkSignInTests
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), new Sha256TokenHasher());
         var uriValidator = Mock.Of<IUriValidator>();
         var provider = new MagicLinkAuthenticationProvider(tokenContext.Hasher);
-        var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
+        var core = new IdentityContext(repository, repository, identity, AshlarDurableTransactionProvider.Create(new NullTransactionProvider()));
         var infrastructure = new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator);
         var audit = new IdentityAuditContext(TimeProvider.System, Mock.Of<ISecurityEventSink>());
         var dependencies = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, provider, Mock.Of<IAuthenticationOrchestrator>(), audit);
@@ -650,7 +650,7 @@ internal sealed class MagicLinkSignInTests
     {
         var repository = new InMemoryUserCredentialStore(_user);
         var identity = Mock.Of<IIdentityService>();
-        var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
+        var core = new IdentityContext(repository, repository, identity, AshlarDurableTransactionProvider.Create(new NullTransactionProvider()));
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), new Sha256TokenHasher());
         var infrastructure = new IdentityInfrastructureContext(Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), Mock.Of<IUriValidator>());
         var provider = new MagicLinkAuthenticationProvider(tokenContext.Hasher);
@@ -684,9 +684,9 @@ internal sealed class MagicLinkSignInTests
     {
         var services = new ServiceCollection();
         var repository = new InMemoryUserCredentialStore(_user);
-        services.AddSingleton<IUserRepository>(repository);
-        services.AddSingleton<ICredentialRepository>(repository);
-        services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
+        services.AddAshlarProviderScoped<IUserRepository>(_ => repository);
+        services.AddAshlarProviderScoped<ICredentialRepository>(_ => repository);
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IEmailSender, RecordingEmailSender>();
         services.AddAshlarMagicLinkSignIn(options => options.EmailSubject = "Modified");
@@ -791,7 +791,7 @@ internal sealed class MagicLinkSignInTests
             registry,
             pipeline);
         var orchestrator = authenticationOrchestrator ?? CreateOrchestrator(pipeline, user, requireMfa);
-        var core = new IdentityContext(repository, repository, identity, transactionProvider);
+        var core = new IdentityContext(repository, repository, identity, AshlarDurableTransactionProvider.Create(transactionProvider));
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), tokenHasher);
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed, time);
         var uriValidator = new Mock<IUriValidator>();

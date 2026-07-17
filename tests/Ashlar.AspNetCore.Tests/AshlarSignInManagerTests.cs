@@ -191,11 +191,10 @@ internal sealed class AshlarSignInManagerTests
         var repository = new InMemoryAuthenticationSessionRepository();
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton<IAuthenticationSessionRepository>(repository);
-        services.AddSingleton<IUserRepository, InMemoryUserRepository>();
+        services.AddAshlarProviderScoped<IAuthenticationSessionRepository>(_ => repository);
+        services.AddAshlarProviderScoped<IUserRepository>(_ => new InMemoryUserRepository());
         services.AddSingleton<ISecureTokenGenerator>(new FixedSessionTokenGenerator("raw-token"));
         services.AddSingleton<ISecureTokenHasher, PrefixSessionTokenHasher>();
-        services.AddAshlarNullTransactions();
         services.AddAshlarIdentity(configureSessions: sessionOptions =>
         {
             sessionOptions.DefaultLifetime = TimeSpan.FromHours(1);
@@ -409,19 +408,19 @@ internal sealed class AshlarSignInManagerTests
         out InMemoryAuthenticationSessionRepository repository,
         Action<AshlarSessionAuthenticationOptions>? configure = null)
     {
-        repository = new InMemoryAuthenticationSessionRepository();
+        var sessionRepository = new InMemoryAuthenticationSessionRepository();
+        repository = sessionRepository;
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton<IAuthenticationSessionRepository>(repository);
-        services.AddSingleton<IUserRepository, InMemoryUserRepository>();
+        services.AddAshlarProviderScoped<IAuthenticationSessionRepository>(_ => sessionRepository);
+        services.AddAshlarProviderScoped<IUserRepository>(_ => new InMemoryUserRepository());
         services.AddSingleton<ISecureTokenGenerator>(new FixedSessionTokenGenerator("raw-token"));
         services.AddSingleton<ISecureTokenHasher, PrefixSessionTokenHasher>();
-        services.AddAshlarNullTransactions();
         services.AddAshlarIdentity(configureSessions: sessionOptions =>
         {
             sessionOptions.DefaultLifetime = TimeSpan.FromHours(1);
         });
-        services.AddSingleton<IAuthenticationSessionService>(new TestAuthenticationSessionService(repository));
+        services.AddSingleton<IAuthenticationSessionService>(new TestAuthenticationSessionService(sessionRepository));
         services.AddAshlarAspNetCoreSessions(configure);
         return services.BuildServiceProvider();
     }

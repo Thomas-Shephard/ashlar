@@ -29,9 +29,9 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
     public void AddAshlarNoMfaPolicyResolvesOrchestratorWhenRequiredDependenciesArePresent()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
-        services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddAshlarNoMfaPolicy();
         services.AddDurableAuditForTests();
@@ -53,9 +53,9 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
             .Setup(service => service.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.EmptyToken));
         services.AddSingleton(handshakeService.Object);
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
-        services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddAshlarNoMfaPolicy();
         services.AddDurableAuditForTests();
@@ -98,8 +98,8 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
     public void AddAshlarRememberedMfaDevicesRegistersExpectedServices()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IRememberedMfaDeviceRepository>());
-        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IRememberedMfaDeviceRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
         services.AddAshlarRememberedMfaDevices(options => options.DefaultLifetime = TimeSpan.FromDays(7));
         services.AddDurableAuditForTests();
 
@@ -177,7 +177,7 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
     public void AddAshlarRequireMfaWhenCredentialExistsRegistersCompositePolicy()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
         services.AddAshlarRequireMfaWhenCredentialExists(options =>
         {
             options.CredentialProviderKeys.Add(new AuthenticationProviderKey(ProviderType.Mfa, "totp"));

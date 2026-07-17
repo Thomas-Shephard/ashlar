@@ -29,8 +29,8 @@ internal static class HomeEndpoints
             if (isAuthenticated)
             {
                 var userId = user.GetAshlarUserId();
-                var ashlarUser = await services.Users.GetUserByIdAsync(userId, cancellationToken);
-                userName = ashlarUser?.Name;
+                var profile = await services.Profiles.GetAsync(userId, cancellationToken);
+                userName = profile?.Name;
 
                 isAdmin = (await services.Auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), cancellationToken)).Succeeded;
 
@@ -61,7 +61,7 @@ internal static class HomeEndpoints
     private sealed record HomeServices(
         [FromServices] IBootstrapService Bootstrap,
         [FromServices] IAuthorizationEvaluator Auth,
-        [FromServices] IUserRepository Users,
+        [FromServices] IUserProfileService Profiles,
         [FromServices] NpgsqlDataSource DataSource,
         [FromServices] IConfiguration Configuration);
 }

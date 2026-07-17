@@ -9,7 +9,7 @@ namespace Ashlar.Identity.Features.Authentication;
 internal sealed class AuthenticationPipeline(
     IAuthenticationProviderRegistry providerRegistry,
     ICredentialService credentialService,
-    IAshlarTransactionProvider transactionProvider,
+    AshlarDurableTransactionProvider transactionProvider,
     IPrimaryAuthenticationRateLimiter primaryRateLimiter,
     IAuthenticationFactorRateLimiter factorRateLimiter,
     AuthenticationPipelineDependencies? dependencies = null)
@@ -41,7 +41,7 @@ internal sealed class AuthenticationPipeline(
 
     private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
     private readonly ICredentialService _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
-    private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
+    private readonly AshlarDurableTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly IPrimaryAuthenticationRateLimiter _primaryRateLimiter = primaryRateLimiter ?? throw new ArgumentNullException(nameof(primaryRateLimiter));
     private readonly IAuthenticationFactorRateLimiter _factorRateLimiter = factorRateLimiter ?? throw new ArgumentNullException(nameof(factorRateLimiter));
     private readonly IAccountLockoutService? _accountLockoutService = dependencies?.AccountLockoutService;

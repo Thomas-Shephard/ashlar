@@ -146,11 +146,6 @@ public static class AshlarConfigurationIssueCodes
     public const string InMemorySecurityNotificationSuppressionStore = "ASHLAR-CONFIG-IN-MEMORY-SECURITY-NOTIFICATION-SUPPRESSION";
 
     /// <summary>
-    /// Transactions are configured with the <see langword="null" /> transaction provider.
-    /// </summary>
-    public const string NullTransactionProvider = "ASHLAR-CONFIG-NULL-TRANSACTION-PROVIDER";
-
-    /// <summary>
     /// No transaction provider is configured.
     /// </summary>
     public const string TransactionProviderMissing = "ASHLAR-CONFIG-TRANSACTION-PROVIDER-MISSING";

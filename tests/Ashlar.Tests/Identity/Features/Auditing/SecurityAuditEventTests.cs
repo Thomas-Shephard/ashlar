@@ -187,7 +187,7 @@ internal sealed class SecurityAuditEventTests
         var pipeline = new AuthenticationPipeline(
             registry.Object,
             new TestCredentialService(),
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             AllowPrimaryAuthenticationRateLimiter.Instance,
             AllowAuthenticationFactorRateLimiter.Instance,
             new AuthenticationPipelineDependencies(sink, new FakeTimeProvider(TestTime)));
@@ -496,7 +496,7 @@ internal sealed class SecurityAuditEventTests
         var pipeline = new AuthenticationPipeline(
             registry.Object,
             credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             AllowPrimaryAuthenticationRateLimiter.Instance,
             AllowAuthenticationFactorRateLimiter.Instance,
             new AuthenticationPipelineDependencies(sink, new FakeTimeProvider(TestTime)));
@@ -566,7 +566,7 @@ internal sealed class SecurityAuditEventTests
         var custom = new SecurityEventFanOutSink();
         var services = new ServiceCollection();
         services.AddSingleton(custom);
-        services.AddSingleton(Mock.Of<IPersistentSecurityEventSink>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IPersistentSecurityEventSink>());
         services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>();
         services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
         services.AddAshlarIdentity();
@@ -608,7 +608,7 @@ internal sealed class SecurityAuditEventTests
         var pipeline = new AuthenticationPipeline(
             registry.Object,
             credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             AllowPrimaryAuthenticationRateLimiter.Instance,
             AllowAuthenticationFactorRateLimiter.Instance,
             new AuthenticationPipelineDependencies(sink, new FakeTimeProvider(TestTime)));

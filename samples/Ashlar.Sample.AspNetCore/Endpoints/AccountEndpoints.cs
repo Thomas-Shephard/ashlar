@@ -29,7 +29,7 @@ internal static class AccountEndpoints
     }
 
     private static async Task<IResult> RenderAccountSettingsAsync(
-        IUserRepository users,
+        IUserProfileService profiles,
         IAuthorizationEvaluator auth,
         IAccountSecurityService accountSecurity,
         IConfiguration configuration,
@@ -37,7 +37,7 @@ internal static class AccountEndpoints
         CancellationToken cancellationToken)
     {
         var userId = user.GetAshlarUserId();
-        var ashlarUser = await users.GetUserByIdAsync(userId, cancellationToken);
+        var ashlarUser = await profiles.GetAsync(userId, cancellationToken);
         if (ashlarUser == null) return Results.NotFound();
 
         var posture = await accountSecurity.GetUserSecurityPostureAsync(userId, cancellationToken: cancellationToken);
@@ -55,23 +55,15 @@ internal static class AccountEndpoints
 
     private static async Task<IResult> UpdateProfileAsync(
         UpdateProfileRequest request,
-        IUserRepository users,
+        IUserProfileService profiles,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
         var userId = user.GetAshlarUserId();
-        var ashlarUser = await users.GetUserByIdAsync(userId, cancellationToken);
-        if (ashlarUser is not AshlarUser typedUser) return Results.NotFound();
-
-        if (request.Name?.Length > 100)
-        {
-            return Results.BadRequest(new { error = "Name is too long." });
-        }
-
-        var updatedUser = typedUser with { Name = request.Name };
-        await users.UpdateUserAsync(updatedUser, cancellationToken);
-
-        return Results.Ok(new { name = updatedUser.Name });
+        var result = await profiles.UpdateNameAsync(userId, request.Name, cancellationToken);
+        return result.Succeeded ? Results.Ok(new { name = result.Value!.Name }) : result.FailureCode == AshlarFailureCodes.UserNotFound
+            ? Results.NotFound()
+            : Results.BadRequest(new { error = result.FailureMessage });
     }
 
     private static async Task<IResult> RequestEmailVerificationAsync(

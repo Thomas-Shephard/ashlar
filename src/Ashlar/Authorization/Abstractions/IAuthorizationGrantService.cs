@@ -8,6 +8,9 @@ namespace Ashlar.Authorization.Abstractions;
 /// <remarks>Creation and revocation require an Ashlar-issued purpose-bound fresh MFA proof, its current session, matching audit actor identity, explicit scope, approval from the configured host authorizer, and durable audit in the same Ashlar transaction as the grant mutation. Revoking or expiring the proof's source session immediately invalidates it.</remarks>
 public interface IAuthorizationGrantService
 {
+    /// <summary>Purpose required on fresh MFA proofs authorizing grant administration.</summary>
+    public const string AdministrationProofPurpose = "authorization-grant-administration";
+
     /// <summary>
     /// Creates a role or permission grant after actor proof, session, audit identity, host authorization, scope, and tenant ownership validation.
     /// </summary>

@@ -7,6 +7,7 @@ using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Identity.Models.Sessions;
 using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 
@@ -409,6 +410,7 @@ internal sealed class PasskeyServiceTests
             new TestTokenHasher(),
             AllowRateLimiter.Instance,
             ActiveSessionRepository(),
+            Mock.Of<IFreshAuthenticationProofValidator>(),
             null!));
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
             Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
@@ -417,6 +419,7 @@ internal sealed class PasskeyServiceTests
             new TestTokenHasher(),
             AllowRateLimiter.Instance,
             ActiveSessionRepository(),
+            Mock.Of<IFreshAuthenticationProofValidator>(),
             null!));
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
             Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
@@ -425,6 +428,7 @@ internal sealed class PasskeyServiceTests
             null!,
             AllowRateLimiter.Instance,
             ActiveSessionRepository(),
+            Mock.Of<IFreshAuthenticationProofValidator>(),
             null!));
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
             Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
@@ -433,6 +437,7 @@ internal sealed class PasskeyServiceTests
             new TestTokenHasher(),
             null!,
             ActiveSessionRepository(),
+            Mock.Of<IFreshAuthenticationProofValidator>(),
             null!));
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
             Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
@@ -440,6 +445,16 @@ internal sealed class PasskeyServiceTests
             new Mock<IAuthenticationHandshakeService>().Object,
             new TestTokenHasher(),
             AllowRateLimiter.Instance,
+            null!,
+            Mock.Of<IFreshAuthenticationProofValidator>(),
+            null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
+            Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
+            new Mock<IAuthenticationOrchestrator>().Object,
+            new Mock<IAuthenticationHandshakeService>().Object,
+            new TestTokenHasher(),
+            AllowRateLimiter.Instance,
+            ActiveSessionRepository(),
             null!,
             null!));
     }
@@ -3270,26 +3285,43 @@ internal sealed class PasskeyServiceTests
             ?? DurableTransactionComposition.Create(transactionProvider ?? new RecordingTransactionProvider(), persistent);
         var fanOut = securityEventSink as SecurityEventFanOutSink
             ?? new SecurityEventFanOutSink(persistent, transactionProvider: transactions);
+        var sessions = sessionRepository ?? ActiveSessionRepository();
         return new PasskeyServiceDependencies(
             Options.Create(options ?? new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
             authenticationOrchestrator ?? new Mock<IAuthenticationOrchestrator>().Object,
             handshakeService ?? new Mock<IAuthenticationHandshakeService>().Object,
             tokenHasher ?? new TestTokenHasher(),
             rateLimiter ?? AllowRateLimiter.Instance,
-            sessionRepository ?? ActiveSessionRepository(),
+            sessions,
+            ProofValidator(sessions, timeProvider),
             new PasskeyServiceInfrastructure(timeProvider, fanOut, transactions));
+    }
+
+    private static IFreshAuthenticationProofValidator ProofValidator(
+        IAuthenticationSessionRepository sessions,
+        TimeProvider? timeProvider = null)
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarProviderScoped<IAuthenticationSessionRepository>(_ => sessions);
+        services.AddSingleton<TimeProvider>(timeProvider ?? TimeProvider.System);
+        services.AddAshlarIdentity();
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        return scope.ServiceProvider.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>();
     }
 
     [Test]
     public void ConstructorRejectsMissingOrMismatchedDurableAuditComposition()
     {
         var transactions = new RecordingTransactionProvider();
+        var mismatchedSink = new ForwardingPersistentSink(new RecordingSecurityEventSink());
+        var mismatchedTransactions = DurableTransactionComposition.Create(new RecordingTransactionProvider(), mismatchedSink);
 
         Assert.Throws<ArgumentException>(() => CreatePasskeyService(
             CreateDependencies(securityEventSink: new SecurityEventFanOutSink(), transactionProvider: transactions)));
-        Assert.Throws<InvalidOperationException>(() => CreatePasskeyService(
+        Assert.Throws<ArgumentException>(() => CreatePasskeyService(
             CreateDependencies(
-                securityEventSink: new SecurityEventFanOutSink(new ForwardingPersistentSink(new RecordingSecurityEventSink()), transactionProvider: new RecordingTransactionProvider()),
+                securityEventSink: new SecurityEventFanOutSink(mismatchedSink, transactionProvider: mismatchedTransactions),
                 transactionProvider: transactions)));
         Assert.Throws<ArgumentException>(() => CreatePasskeyService(CreateDependencies()));
     }
@@ -3383,6 +3415,7 @@ internal sealed class PasskeyServiceTests
             dependencies.TokenHasher,
             dependencies.RateLimiter,
             dependencies.SessionRepository,
+            dependencies.ProofValidator,
             new PasskeyServiceInfrastructure(
                 dependencies.TimeProvider,
                 new SecurityEventFanOutSink(persistent, transactionProvider: transactions),
