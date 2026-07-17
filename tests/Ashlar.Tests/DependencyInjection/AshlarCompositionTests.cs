@@ -135,15 +135,16 @@ internal sealed class AshlarCompositionTests
     }
 
     [Test]
-    public void ProviderWrapperRejectsSynchronousDisposalOfAsyncOnlyResource()
+    public void ProviderWrapperSynchronouslyDisposesAsyncOnlyResourceExactlyOnce()
     {
+        var dependency = new AsyncDisposableDependency();
         var services = new ServiceCollection();
-        services.AddAshlarProviderScoped(_ => new AsyncDisposableDependency());
+        services.AddAshlarProviderScoped(_ => dependency);
         using var provider = services.BuildServiceProvider();
-        var scope = provider.CreateScope();
-        _ = AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<AsyncDisposableDependency>(scope.ServiceProvider);
+        using (var scope = provider.CreateScope())
+            _ = AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<AsyncDisposableDependency>(scope.ServiceProvider);
 
-        Assert.Throws<InvalidOperationException>(scope.Dispose);
+        Assert.That(dependency.DisposeCount, Is.EqualTo(1));
     }
 
     [Test]

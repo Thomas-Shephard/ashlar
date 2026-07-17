@@ -19,11 +19,11 @@ internal static class AshlarProviderServiceCollection
     internal static T GetRequiredAshlarProviderService<T>(this IServiceProvider provider) where T : class =>
         provider.GetRequiredService<AshlarProviderService<T>>().Value;
 
-    internal static T? GetAshlarProviderService<T>(this IServiceProvider provider) where T : class =>
-        provider.GetService<AshlarProviderService<T>>()?.Value;
-
     internal static object GetRequiredAshlarProviderService(this IServiceProvider provider, Type serviceType) =>
         ((IAshlarProviderService)provider.GetRequiredService(typeof(AshlarProviderService<>).MakeGenericType(serviceType))).Value;
+
+    internal static T? GetAshlarProviderService<T>(this IServiceProvider provider) where T : class =>
+        provider.GetService<AshlarProviderService<T>>()?.Value;
 }
 
 internal interface IAshlarProviderService
@@ -39,7 +39,7 @@ internal sealed class AshlarProviderService<T>(T value) : IAshlarProviderService
     public void Dispose()
     {
         if (Value is IDisposable disposable) disposable.Dispose();
-        else if (Value is IAsyncDisposable) throw new InvalidOperationException("This provider service requires asynchronous disposal.");
+        else if (Value is IAsyncDisposable asyncDisposable) asyncDisposable.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
     public ValueTask DisposeAsync() => Value switch

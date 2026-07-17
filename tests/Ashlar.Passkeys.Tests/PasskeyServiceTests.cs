@@ -403,60 +403,31 @@ internal sealed class PasskeyServiceTests
             new Mock<IPasskeyCeremonyValidator>().Object,
             null!));
 
+        var valid = CreateDependencies();
+        var infrastructure = new PasskeyServiceInfrastructure(
+            valid.TimeProvider,
+            valid.SecurityEventSink,
+            valid.TransactionProvider,
+            valid.SessionRepository,
+            valid.ProofValidator);
+        var options = Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" });
+        var orchestrator = new Mock<IAuthenticationOrchestrator>().Object;
+        var handshakes = new Mock<IAuthenticationHandshakeService>().Object;
+
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
-            Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
-            null!,
-            new Mock<IAuthenticationHandshakeService>().Object,
-            new TestTokenHasher(),
-            AllowRateLimiter.Instance,
-            ActiveSessionRepository(),
-            Mock.Of<IFreshAuthenticationProofValidator>(),
-            null!));
+            options, null!, handshakes, new TestTokenHasher(), AllowRateLimiter.Instance, infrastructure));
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
-            Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
-            new Mock<IAuthenticationOrchestrator>().Object,
-            null!,
-            new TestTokenHasher(),
-            AllowRateLimiter.Instance,
-            ActiveSessionRepository(),
-            Mock.Of<IFreshAuthenticationProofValidator>(),
-            null!));
+            options, orchestrator, null!, new TestTokenHasher(), AllowRateLimiter.Instance, infrastructure));
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
-            Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
-            new Mock<IAuthenticationOrchestrator>().Object,
-            new Mock<IAuthenticationHandshakeService>().Object,
-            null!,
-            AllowRateLimiter.Instance,
-            ActiveSessionRepository(),
-            Mock.Of<IFreshAuthenticationProofValidator>(),
-            null!));
+            options, orchestrator, handshakes, null!, AllowRateLimiter.Instance, infrastructure));
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
-            Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
-            new Mock<IAuthenticationOrchestrator>().Object,
-            new Mock<IAuthenticationHandshakeService>().Object,
-            new TestTokenHasher(),
-            null!,
-            ActiveSessionRepository(),
-            Mock.Of<IFreshAuthenticationProofValidator>(),
-            null!));
+            options, orchestrator, handshakes, new TestTokenHasher(), null!, infrastructure));
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
-            Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
-            new Mock<IAuthenticationOrchestrator>().Object,
-            new Mock<IAuthenticationHandshakeService>().Object,
-            new TestTokenHasher(),
-            AllowRateLimiter.Instance,
-            null!,
-            Mock.Of<IFreshAuthenticationProofValidator>(),
-            null!));
-        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
-            Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
-            new Mock<IAuthenticationOrchestrator>().Object,
-            new Mock<IAuthenticationHandshakeService>().Object,
-            new TestTokenHasher(),
-            AllowRateLimiter.Instance,
-            ActiveSessionRepository(),
-            null!,
-            null!));
+            options, orchestrator, handshakes, new TestTokenHasher(), AllowRateLimiter.Instance, null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceInfrastructure(
+            valid.TimeProvider, valid.SecurityEventSink, valid.TransactionProvider, null!, valid.ProofValidator));
+        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceInfrastructure(
+            valid.TimeProvider, valid.SecurityEventSink, valid.TransactionProvider, valid.SessionRepository, null!));
     }
 
     [Test]
@@ -3292,9 +3263,7 @@ internal sealed class PasskeyServiceTests
             handshakeService ?? new Mock<IAuthenticationHandshakeService>().Object,
             tokenHasher ?? new TestTokenHasher(),
             rateLimiter ?? AllowRateLimiter.Instance,
-            sessions,
-            ProofValidator(sessions, timeProvider),
-            new PasskeyServiceInfrastructure(timeProvider, fanOut, transactions));
+            new PasskeyServiceInfrastructure(timeProvider, fanOut, transactions, sessions, ProofValidator(sessions, timeProvider)));
     }
 
     private static IFreshAuthenticationProofValidator ProofValidator(
@@ -3414,12 +3383,12 @@ internal sealed class PasskeyServiceTests
             dependencies.HandshakeService,
             dependencies.TokenHasher,
             dependencies.RateLimiter,
-            dependencies.SessionRepository,
-            dependencies.ProofValidator,
             new PasskeyServiceInfrastructure(
                 dependencies.TimeProvider,
                 new SecurityEventFanOutSink(persistent, transactionProvider: transactions),
-                transactions));
+                transactions,
+                dependencies.SessionRepository,
+                dependencies.ProofValidator));
     }
 
     private sealed class ForwardingPersistentSink(ISecurityEventSink sink) : IPersistentSecurityEventSink

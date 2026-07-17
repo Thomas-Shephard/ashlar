@@ -61,7 +61,9 @@ internal static class AccountEndpoints
     {
         var userId = user.GetAshlarUserId();
         var result = await profiles.UpdateNameAsync(userId, request.Name, cancellationToken);
-        return result.Succeeded ? Results.Ok(new { name = result.Value!.Name }) : result.FailureCode == AshlarFailureCodes.UserNotFound
+        if (result.Succeeded) return Results.Ok(new { name = result.Value!.Name });
+
+        return result.FailureCode == AshlarFailureCodes.UserNotFound
             ? Results.NotFound()
             : Results.BadRequest(new { error = result.FailureMessage });
     }

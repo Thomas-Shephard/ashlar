@@ -133,6 +133,11 @@ internal sealed class SqliteAuthorizationGrantAdministrationRepository(ISqliteCo
     {
         var expiresAt = reader.GetNullableDateTimeOffsetFromText("expires_at");
         var revokedAt = reader.GetNullableDateTimeOffsetFromText("revoked_at");
+        var status = expiresAt <= now
+            ? AuthorizationGrantAdministrationStatus.Expired
+            : AuthorizationGrantAdministrationStatus.Active;
+        if (revokedAt != null) status = AuthorizationGrantAdministrationStatus.Revoked;
+
         return new AuthorizationGrantAdministrationSummary(
             reader.GetGuidFromText("id"),
             reader.GetGuidFromText("user_id"),
@@ -144,8 +149,6 @@ internal sealed class SqliteAuthorizationGrantAdministrationRepository(ISqliteCo
             reader.GetDateTimeOffsetFromText("created_at"),
             expiresAt,
             revokedAt,
-            revokedAt != null
-                ? AuthorizationGrantAdministrationStatus.Revoked
-                : expiresAt <= now ? AuthorizationGrantAdministrationStatus.Expired : AuthorizationGrantAdministrationStatus.Active);
+            status);
     }
 }

@@ -1021,24 +1021,31 @@ internal sealed class PasskeyServiceDependencies(
     IAuthenticationHandshakeService handshakeService,
     ISecureTokenHasher tokenHasher,
     IAuthenticationRateLimiter rateLimiter,
-    IAuthenticationSessionRepository sessionRepository,
-    IFreshAuthenticationProofValidator proofValidator,
     PasskeyServiceInfrastructure infrastructure)
 {
+    private PasskeyServiceInfrastructure Infrastructure { get; } = infrastructure ?? throw new ArgumentNullException(nameof(infrastructure));
     public IOptions<PasskeyOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
     public IAuthenticationOrchestrator AuthenticationOrchestrator { get; } = authenticationOrchestrator ?? throw new ArgumentNullException(nameof(authenticationOrchestrator));
     public IAuthenticationHandshakeService HandshakeService { get; } = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
     public ISecureTokenHasher TokenHasher { get; } = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
     public IAuthenticationRateLimiter RateLimiter { get; } = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
-    public IAuthenticationSessionRepository SessionRepository { get; } = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
-    public IFreshAuthenticationProofValidator ProofValidator { get; } = proofValidator ?? throw new ArgumentNullException(nameof(proofValidator));
-    public TimeProvider TimeProvider { get; } = infrastructure.TimeProvider ?? TimeProvider.System;
-    public SecurityEventFanOutSink SecurityEventSink { get; } = infrastructure.SecurityEventSink;
-    public AshlarDurableTransactionProvider TransactionProvider { get; } = infrastructure.TransactionProvider
-        ?? throw new ArgumentException("Passkey mutations require a durable transaction provider.", nameof(infrastructure));
+    public IAuthenticationSessionRepository SessionRepository => Infrastructure.SessionRepository;
+    public IFreshAuthenticationProofValidator ProofValidator => Infrastructure.ProofValidator;
+    public TimeProvider TimeProvider => Infrastructure.TimeProvider ?? TimeProvider.System;
+    public SecurityEventFanOutSink SecurityEventSink => Infrastructure.SecurityEventSink;
+    public AshlarDurableTransactionProvider TransactionProvider => Infrastructure.TransactionProvider;
 }
 
-internal sealed record PasskeyServiceInfrastructure(
-    TimeProvider? TimeProvider,
-    SecurityEventFanOutSink SecurityEventSink,
-    AshlarDurableTransactionProvider TransactionProvider);
+internal sealed class PasskeyServiceInfrastructure(
+    TimeProvider? timeProvider,
+    SecurityEventFanOutSink securityEventSink,
+    AshlarDurableTransactionProvider transactionProvider,
+    IAuthenticationSessionRepository sessionRepository,
+    IFreshAuthenticationProofValidator proofValidator)
+{
+    public TimeProvider? TimeProvider { get; } = timeProvider;
+    public SecurityEventFanOutSink SecurityEventSink { get; } = securityEventSink ?? throw new ArgumentNullException(nameof(securityEventSink));
+    public AshlarDurableTransactionProvider TransactionProvider { get; } = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
+    public IAuthenticationSessionRepository SessionRepository { get; } = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
+    public IFreshAuthenticationProofValidator ProofValidator { get; } = proofValidator ?? throw new ArgumentNullException(nameof(proofValidator));
+}

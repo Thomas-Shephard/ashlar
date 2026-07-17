@@ -15,6 +15,10 @@ internal sealed class ActiveSessionFreshProofValidator : IFreshAuthenticationPro
         FreshMfaVerificationProof? proof, Guid? currentSessionId, string? purpose, CancellationToken cancellationToken) =>
         ValidateMfaAsync(userId, tenant, proof, currentSessionId, purpose, cancellationToken);
 
+    public ValueTask<AshlarFailureCode?> ValidateAsync(Guid userId, TenantContext tenant,
+        FreshPrimaryAuthenticationProof? proof, Guid? currentSessionId, string? purpose, CancellationToken cancellationToken) =>
+        ValidatePrimaryAsync(userId, tenant, proof, currentSessionId, purpose, cancellationToken);
+
     private async ValueTask<AshlarFailureCode?> ValidateMfaAsync(Guid userId, TenantContext tenant,
         FreshMfaVerificationProof? proof, Guid? currentSessionId, string? purpose, CancellationToken cancellationToken)
     {
@@ -27,10 +31,6 @@ internal sealed class ActiveSessionFreshProofValidator : IFreshAuthenticationPro
         return FreshVerificationProofValidator.ValidateMfaProof(userId, tenant, proof, currentSessionId, now, purpose)
             ?? ValidateSession(session, userId, tenant, now);
     }
-
-    public ValueTask<AshlarFailureCode?> ValidateAsync(Guid userId, TenantContext tenant,
-        FreshPrimaryAuthenticationProof? proof, Guid? currentSessionId, string? purpose, CancellationToken cancellationToken) =>
-        ValidatePrimaryAsync(userId, tenant, proof, currentSessionId, purpose, cancellationToken);
 
     private async ValueTask<AshlarFailureCode?> ValidatePrimaryAsync(Guid userId, TenantContext tenant,
         FreshPrimaryAuthenticationProof? proof, Guid? currentSessionId, string? purpose, CancellationToken cancellationToken)

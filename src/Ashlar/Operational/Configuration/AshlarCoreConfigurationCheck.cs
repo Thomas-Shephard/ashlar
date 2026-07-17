@@ -420,12 +420,10 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
 
     private static void AddNullSecurityEventSinkIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
     {
-        if (serviceProvider.GetAshlarProviderService<IPersistentSecurityEventSink>() is not null)
+        if (serviceProvider.GetAshlarProviderService<IPersistentSecurityEventSink>() is not null
+            && serviceProvider.GetService<SecurityEventFanOutSink>() is { RequiresDurableTransaction: true })
         {
-            if (serviceProvider.GetService<SecurityEventFanOutSink>() is { RequiresDurableTransaction: true })
-            {
-                return;
-            }
+            return;
         }
 
         issues.Add(new AshlarConfigurationIssue(
