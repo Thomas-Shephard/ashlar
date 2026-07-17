@@ -58,22 +58,22 @@ public static class AshlarPostgresServiceCollectionExtensions
     private static IServiceCollection AddAshlarPostgresPersistence(this IServiceCollection services)
     {
         services.AddPostgresTransactionServices();
-        services.TryAddScoped<IUserRepository, PostgresUserRepository>();
-        services.TryAddScoped<ICredentialRepository, PostgresCredentialRepository>();
-        services.TryAddScoped<IAccountLockoutRepository, PostgresAccountLockoutRepository>();
+        services.TryAddAshlarProviderScoped<IUserRepository, PostgresUserRepository>();
+        services.TryAddAshlarProviderScoped<ICredentialRepository, PostgresCredentialRepository>();
+        services.TryAddAshlarProviderScoped<IAccountLockoutRepository, PostgresAccountLockoutRepository>();
         services.TryAddScoped<IUserAdministrationRepository, PostgresUserAdministrationRepository>();
         services.TryAddScoped<ICredentialAdministrationRepository, PostgresCredentialAdministrationRepository>();
         services.TryAddScoped<ISecurityEventAdministrationRepository, PostgresSecurityEventAdministrationRepository>();
         services.TryAddScoped<IAuthenticationSessionAdministrationRepository, PostgresAuthenticationSessionAdministrationRepository>();
-        services.TryAddScoped<IInvitationRepository, PostgresInvitationRepository>();
-        services.TryAddScoped<IAuthenticationSessionRepository, PostgresAuthenticationSessionRepository>();
-        services.TryAddScoped<IAuthenticationHandshakeRepository, PostgresAuthenticationHandshakeRepository>();
-        services.TryAddScoped<IRememberedMfaDeviceRepository, PostgresRememberedMfaDeviceRepository>();
-        services.TryAddScoped<IPasskeyChallengeRepository, PostgresPasskeyChallengeRepository>();
-        services.TryAddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
+        services.TryAddAshlarProviderScoped<IInvitationRepository, PostgresInvitationRepository>();
+        services.TryAddAshlarProviderScoped<IAuthenticationSessionRepository, PostgresAuthenticationSessionRepository>();
+        services.TryAddAshlarProviderScoped<IAuthenticationHandshakeRepository, PostgresAuthenticationHandshakeRepository>();
+        services.TryAddAshlarProviderScoped<IRememberedMfaDeviceRepository, PostgresRememberedMfaDeviceRepository>();
+        services.TryAddAshlarProviderScoped<IPasskeyChallengeRepository, PostgresPasskeyChallengeRepository>();
+        services.TryAddAshlarProviderScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
         services.TryAddScoped<IAuthorizationGrantAdministrationRepository, PostgresAuthorizationGrantAdministrationRepository>();
         services.AddAshlarIdentityDurableTransactionParticipants();
-        services.TryAddScoped<IBootstrapStateRepository, PostgresBootstrapStateRepository>();
+        services.TryAddAshlarProviderScoped<IBootstrapStateRepository, PostgresBootstrapStateRepository>();
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarSchemaDiagnostics, PostgresSchemaDiagnostics>();
         services.TryAddTransient<SchemaManager>();
@@ -127,7 +127,7 @@ public static class AshlarPostgresServiceCollectionExtensions
     {
         services.AddAshlarBootstrap(configure);
         services.AddPostgresTransactionServices();
-        services.TryAddScoped<IBootstrapStateRepository, PostgresBootstrapStateRepository>();
+        services.TryAddAshlarProviderScoped<IBootstrapStateRepository, PostgresBootstrapStateRepository>();
 
         return services;
     }
@@ -172,10 +172,9 @@ public static class AshlarPostgresServiceCollectionExtensions
     {
         services.AddAshlarAuthorization();
         services.AddPostgresTransactionServices();
-        services.TryAddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
+        services.TryAddAshlarProviderScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
         services.TryAddScoped<IAuthorizationGrantAdministrationRepository, PostgresAuthorizationGrantAdministrationRepository>();
         services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantRepository>();
-        services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantAdministrationRepository>();
 
         return services;
     }
@@ -193,7 +192,8 @@ public static class AshlarPostgresServiceCollectionExtensions
     private static void AddPostgresTransactionServices(this IServiceCollection services)
     {
         services.AddAshlarDurableTransactionProvider<PostgresTransactionManager>();
-        services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
+        services.TryAddScoped<IPostgresConnectionProvider>(provider =>
+            new PostgresConnectionProvider(provider.GetRequiredAshlarProviderService<PostgresTransactionManager>()));
     }
 
     /// <summary>
@@ -234,7 +234,7 @@ public static class AshlarPostgresServiceCollectionExtensions
 
         services.Replace(ServiceDescriptor.Singleton<IAuthenticationRateLimiter, PostgresAuthenticationRateLimiter>());
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiterDiagnostics, PostgresAuthenticationRateLimiterDiagnostics>());
-        services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimitAdministrationRepository, PostgresAuthenticationRateLimitAdministrationRepository>());
+        services.TryAddAshlarProviderScoped<IAuthenticationRateLimitAdministrationRepository, PostgresAuthenticationRateLimitAdministrationRepository>();
         services.AddAshlarDurableTransactionParticipant<IAuthenticationRateLimitAdministrationRepository>();
         services.AddAshlarAuthenticationRateLimitAdministration();
 
@@ -297,11 +297,13 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarIdentity();
-        services.TryAddScoped<PostgresSecurityEventSink>();
         services.TryAddScoped<ISecurityEventAdministrationRepository, PostgresSecurityEventAdministrationRepository>();
-        services.Replace(ServiceDescriptor.Scoped<IPersistentSecurityEventSink>(provider => provider.GetRequiredService<PostgresSecurityEventSink>()));
+        services.ReplaceAshlarProviderScoped<IPersistentSecurityEventSink>(provider =>
+            ActivatorUtilities.CreateInstance<PostgresSecurityEventSink>(provider));
         services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
-        services.Replace(ServiceDescriptor.Scoped<IUserSecurityEventSummaryRepository>(provider => provider.GetRequiredService<PostgresSecurityEventSink>()));
+        services.Replace(ServiceDescriptor.Scoped<IUserSecurityEventSummaryRepository>(provider =>
+            new PostgresUserSecurityEventSummaryRepository(
+                (PostgresSecurityEventSink)provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>())));
 
         return services;
     }
@@ -332,7 +334,7 @@ public static class AshlarPostgresServiceCollectionExtensions
             provider.GetRequiredService<IPostgresConnectionProvider>(),
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ISecurityEventSink>(),
-            provider.GetRequiredService<IAshlarTransactionProvider>())));
+            provider.GetRequiredService<AshlarDurableTransactionProvider>())));
         services.Replace(ServiceDescriptor.Scoped<IEmailOutboxDiagnostics, PostgresEmailOutboxDiagnostics>());
         services.Replace(ServiceDescriptor.Scoped<IEmailSender, PostgresEmailOutboxSender>());
 
@@ -395,6 +397,7 @@ public static class AshlarPostgresServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        services.AddAshlarSecurityEventWebhookOutbox();
         services.AddOptions<PostgresSecurityEventWebhookOutboxOptions>()
             .Validate(PostgresSecurityEventWebhookOutboxOptions.Validate, "Security event webhook outbox options are invalid.")
             .ValidateOnStart();
@@ -405,12 +408,16 @@ public static class AshlarPostgresServiceCollectionExtensions
         }
 
         services.TryAddSingleton(TimeProvider.System);
-        services.TryAddScoped<IAshlarSecurityEventWebhookEnqueuer, PostgresSecurityEventWebhookEnqueuer>();
+        services.TryAddAshlarProviderScoped<IAshlarSecurityEventWebhookEnqueuer, PostgresSecurityEventWebhookEnqueuer>();
+        services.AddAshlarProviderScoped(provider => new AshlarSecurityEventWebhookOutboxHandler(
+            provider.GetRequiredService<AshlarSecurityEventWebhookDeliveryFactory>(),
+            provider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>()));
+        services.AddAshlarDurableSecurityEventFanOutHandler<AshlarSecurityEventWebhookOutboxHandler>();
         services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxOperations>(provider => new PostgresSecurityEventWebhookOutboxOperations(
             provider.GetRequiredService<IPostgresConnectionProvider>(),
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ISecurityEventSink>(),
-            provider.GetRequiredService<IAshlarTransactionProvider>())));
+            provider.GetRequiredService<AshlarDurableTransactionProvider>())));
         services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxBrowser, PostgresSecurityEventWebhookOutboxBrowser>());
         services.Replace(ServiceDescriptor.Scoped<ISecurityEventWebhookOutboxDiagnostics, PostgresSecurityEventWebhookOutboxDiagnostics>());
 

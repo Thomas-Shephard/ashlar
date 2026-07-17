@@ -1,29 +1,25 @@
 namespace Ashlar.Identity.Features.Mfa;
 
-/// <summary>Validates fresh proofs and their source session. Revoking the session invalidates every outstanding proof.</summary>
-public sealed class ActiveSessionFreshProofValidator
+internal sealed class ActiveSessionFreshProofValidator : IFreshAuthenticationProofValidator
 {
     private readonly IAuthenticationSessionRepository _sessions;
     private readonly TimeProvider _timeProvider;
 
-    /// <summary>Creates a validator backed by the authoritative session repository.</summary>
-    /// <param name="sessions">Authoritative session repository.</param>
-    /// <param name="timeProvider">Current-time provider.</param>
     public ActiveSessionFreshProofValidator(IAuthenticationSessionRepository sessions, TimeProvider timeProvider)
     {
         _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     }
 
-    /// <summary>Validates an MFA proof and reloads its active source session.</summary>
-    /// <param name="userId">Expected session user.</param>
-    /// <param name="tenant">Expected session tenant.</param>
-    /// <param name="proof">Proof to validate.</param>
-    /// <param name="currentSessionId">Authenticated request session.</param>
-    /// <param name="purpose">Required proof purpose.</param>
-    /// <param name="cancellationToken">Token used to cancel the session lookup.</param>
-    /// <returns>A failure code, or <see langword="null" /> when valid.</returns>
-    public async ValueTask<AshlarFailureCode?> ValidateAsync(Guid userId, TenantContext tenant,
+    public ValueTask<AshlarFailureCode?> ValidateAsync(Guid userId, TenantContext tenant,
+        FreshMfaVerificationProof? proof, Guid? currentSessionId, string? purpose, CancellationToken cancellationToken) =>
+        ValidateMfaAsync(userId, tenant, proof, currentSessionId, purpose, cancellationToken);
+
+    public ValueTask<AshlarFailureCode?> ValidateAsync(Guid userId, TenantContext tenant,
+        FreshPrimaryAuthenticationProof? proof, Guid? currentSessionId, string? purpose, CancellationToken cancellationToken) =>
+        ValidatePrimaryAsync(userId, tenant, proof, currentSessionId, purpose, cancellationToken);
+
+    private async ValueTask<AshlarFailureCode?> ValidateMfaAsync(Guid userId, TenantContext tenant,
         FreshMfaVerificationProof? proof, Guid? currentSessionId, string? purpose, CancellationToken cancellationToken)
     {
         var now = _timeProvider.GetUtcNow();
@@ -36,15 +32,7 @@ public sealed class ActiveSessionFreshProofValidator
             ?? ValidateSession(session, userId, tenant, now);
     }
 
-    /// <summary>Validates a primary-authentication proof and reloads its active source session.</summary>
-    /// <param name="userId">Expected session user.</param>
-    /// <param name="tenant">Expected session tenant.</param>
-    /// <param name="proof">Proof to validate.</param>
-    /// <param name="currentSessionId">Authenticated request session.</param>
-    /// <param name="purpose">Required proof purpose.</param>
-    /// <param name="cancellationToken">Token used to cancel the session lookup.</param>
-    /// <returns>A failure code, or <see langword="null" /> when valid.</returns>
-    public async ValueTask<AshlarFailureCode?> ValidateAsync(Guid userId, TenantContext tenant,
+    private async ValueTask<AshlarFailureCode?> ValidatePrimaryAsync(Guid userId, TenantContext tenant,
         FreshPrimaryAuthenticationProof? proof, Guid? currentSessionId, string? purpose, CancellationToken cancellationToken)
     {
         var now = _timeProvider.GetUtcNow();

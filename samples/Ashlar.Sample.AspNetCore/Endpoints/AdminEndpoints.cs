@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using System.Text.RegularExpressions;
 using Ashlar.Authorization.Abstractions;
-using Ashlar.Authorization;
 using Ashlar.Authorization.Models;
 using Ashlar.AspNetCore.Mfa;
 using Ashlar.Identity.Features.Mfa;
@@ -20,7 +19,7 @@ internal static partial class AdminEndpoints
 {
     private const string AdminPolicy = "admin";
     private static readonly StepUpRequirement AdminSecurityRequirement = new(TimeSpan.FromMinutes(5), Purpose: "account-security-administration");
-    private static readonly StepUpRequirement GrantAdministrationRequirement = new(TimeSpan.FromMinutes(5), Purpose: AuthorizationGrantService.AdministrationProofPurpose);
+    private static readonly StepUpRequirement GrantAdministrationRequirement = new(TimeSpan.FromMinutes(5), Purpose: IAuthorizationGrantService.AdministrationProofPurpose);
 
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app)
     {

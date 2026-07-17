@@ -7,7 +7,7 @@ internal sealed class PostgresEmailOutboxAdministrationService(
     IPostgresConnectionProvider connectionProvider,
     TimeProvider timeProvider,
     ISecurityEventSink securityEventSink,
-    IAshlarTransactionProvider transactionProvider) : EmailOutboxAdministrationServiceBase(timeProvider, securityEventSink, transactionProvider)
+    AshlarDurableTransactionProvider transactionProvider) : EmailOutboxAdministrationServiceBase(timeProvider, securityEventSink, transactionProvider)
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 

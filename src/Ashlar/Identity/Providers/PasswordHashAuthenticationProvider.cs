@@ -51,20 +51,20 @@ public abstract class PasswordHashAuthenticationProvider(PasswordHasherSelector 
     /// </summary>
     /// <param name="assertion">Assertion that must be supported by the derived provider.</param>
     /// <param name="context">Authentication context containing the email address and tenant scope used by normalized repository lookup.</param>
-    /// <param name="repository">User repository used to resolve the account.</param>
+    /// <param name="users">Read-only user lookup capability.</param>
     /// <param name="cancellationToken">Token for aborting lookup work.</param>
     /// <returns>The matching user, or <see langword="null" /> when the assertion or email cannot resolve an account.</returns>
-    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default)
+    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserLookup users, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(users);
 
         if (!SupportsAssertion(assertion) || string.IsNullOrWhiteSpace(context.Email))
         {
             return null;
         }
 
-        return await repository.GetUserByEmailAsync(context.Email, context.TenantId, cancellationToken);
+        return await users.GetUserByEmailAsync(context.Email, context.TenantId, cancellationToken);
     }
 
     /// <summary>

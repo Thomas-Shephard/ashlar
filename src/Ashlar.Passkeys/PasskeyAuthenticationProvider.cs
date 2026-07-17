@@ -58,13 +58,13 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
     /// </summary>
     /// <param name="assertion">The authentication assertion.</param>
     /// <param name="context">The authentication context.</param>
-    /// <param name="repository">The user repository.</param>
+    /// <param name="users">Read-only user lookup capability.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The user when a matching credential exists.</returns>
-    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default)
+    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserLookup users, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(users);
 
         if (!PasskeyService.TryReadCapability(assertion, Key, out var credentialId, out _))
         {
@@ -76,7 +76,7 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
             return null;
         }
 
-        return await repository.GetUserByProviderKeyAsync(Key.Type, Key.Name, credentialId, cancellationToken);
+        return await users.GetUserByProviderKeyAsync(Key.Type, Key.Name, credentialId, cancellationToken);
     }
 
     /// <summary>

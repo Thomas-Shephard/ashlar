@@ -1,6 +1,5 @@
 global using Ashlar.Identity.Abstractions.AccountSecurity;
 global using Ashlar.Identity.Abstractions.Authentication;
-global using Ashlar.Identity.Abstractions.Repositories;
 global using Ashlar.Identity.Abstractions.Services;
 global using Ashlar.Identity.Abstractions.Tenancy;
 global using Ashlar.Identity.Models.AccountSecurity;

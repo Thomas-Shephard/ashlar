@@ -681,9 +681,12 @@ internal sealed class InvitationServiceTests
     public void AddAshlarInvitationsResolvesService()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<IInvitationRepository>());
-        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
+        var users = Mock.Of<IUserRepository>();
+        var invitations = Mock.Of<IInvitationRepository>();
+        var composition = new DurableSecurityMutationTestComposition(participants: [users, invitations]);
+        services.AddAshlarProviderScoped(_ => users);
+        services.AddAshlarProviderScoped(_ => invitations);
+        services.AddScoped(_ => composition.Transactions);
         services.AddAshlarInvitations();
 
         using var provider = services.BuildServiceProvider();
@@ -696,7 +699,7 @@ internal sealed class InvitationServiceTests
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void ConstructorValidatesArguments()
     {
-        var storeContext = new InvitationStoreContext(Mock.Of<IInvitationRepository>(), Mock.Of<IUserRepository>(), Mock.Of<IAshlarTransactionProvider>());
+        var storeContext = new InvitationStoreContext(Mock.Of<IInvitationRepository>(), Mock.Of<IUserRepository>(), AshlarDurableTransactionProvider.Create(Mock.Of<IAshlarTransactionProvider>()));
         var tokenContext = new SecureTokenContext(Mock.Of<ISecureTokenGenerator>(), Mock.Of<ISecureTokenHasher>());
         var infrastructure = new IdentityInfrastructureContext(Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), Mock.Of<IUriValidator>());
         var audit = new IdentityAuditContext(TimeProvider.System, Mock.Of<ISecurityEventSink>());
@@ -704,8 +707,8 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentNullException>(() => _ = new InvitationService(null!));
-            Assert.Throws<ArgumentNullException>(() => _ = new InvitationStoreContext(null!, Mock.Of<IUserRepository>(), Mock.Of<IAshlarTransactionProvider>()));
-            Assert.Throws<ArgumentNullException>(() => _ = new InvitationStoreContext(Mock.Of<IInvitationRepository>(), null!, Mock.Of<IAshlarTransactionProvider>()));
+            Assert.Throws<ArgumentNullException>(() => _ = new InvitationStoreContext(null!, Mock.Of<IUserRepository>(), AshlarDurableTransactionProvider.Create(Mock.Of<IAshlarTransactionProvider>())));
+            Assert.Throws<ArgumentNullException>(() => _ = new InvitationStoreContext(Mock.Of<IInvitationRepository>(), null!, AshlarDurableTransactionProvider.Create(Mock.Of<IAshlarTransactionProvider>())));
             Assert.Throws<ArgumentNullException>(() => _ = new InvitationStoreContext(Mock.Of<IInvitationRepository>(), Mock.Of<IUserRepository>(), null!));
             Assert.Throws<ArgumentNullException>(() => _ = new InvitationDependencies(null!, tokenContext, infrastructure, audit));
             Assert.Throws<ArgumentNullException>(() => _ = new InvitationDependencies(storeContext, null!, infrastructure, audit));
@@ -764,9 +767,12 @@ internal sealed class InvitationServiceTests
     public void AddAshlarInvitationsConfiguresOptions()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<IInvitationRepository>());
-        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
+        var users = Mock.Of<IUserRepository>();
+        var invitations = Mock.Of<IInvitationRepository>();
+        var composition = new DurableSecurityMutationTestComposition(participants: [users, invitations]);
+        services.AddAshlarProviderScoped(_ => users);
+        services.AddAshlarProviderScoped(_ => invitations);
+        services.AddScoped(_ => composition.Transactions);
         services.AddAshlarInvitations(options => options.EmailSubject = "Custom Subject");
 
         using var provider = services.BuildServiceProvider();
@@ -820,9 +826,12 @@ internal sealed class InvitationServiceTests
     public void AddAshlarInvitationsWithNullConfigureWorks()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<IInvitationRepository>());
-        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
+        var users = Mock.Of<IUserRepository>();
+        var invitations = Mock.Of<IInvitationRepository>();
+        var composition = new DurableSecurityMutationTestComposition(participants: [users, invitations]);
+        services.AddAshlarProviderScoped(_ => users);
+        services.AddAshlarProviderScoped(_ => invitations);
+        services.AddScoped(_ => composition.Transactions);
         services.AddAshlarInvitations();
 
         using var provider = services.BuildServiceProvider();
@@ -1189,7 +1198,7 @@ internal sealed class InvitationServiceTests
         var emailSender = new RecordingEmailSender();
         var tokenHasher = new Sha256TokenHasher();
         var tokenGenerator = new SecureTokenGenerator();
-        var transactionProvider = new NullTransactionProvider();
+        var transactionProvider = AshlarDurableTransactionProvider.Create(new NullTransactionProvider());
         var rateLimiter = new StubRateLimiter(creationAllowed, acceptanceAllowed, previewAllowed, time);
 
         var options = new InvitationOptions();
@@ -1271,7 +1280,7 @@ internal sealed class InvitationServiceTests
         }
 
         return new InvitationDependencies(
-            new InvitationStoreContext(invitationRepository, UserRepository, transactionProvider),
+            new InvitationStoreContext(invitationRepository, UserRepository, AshlarDurableTransactionProvider.Create(transactionProvider)),
             new SecureTokenContext(tokenGenerator, tokenHasher),
             new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator.Object),
             new IdentityAuditContext(timeProvider ?? TimeProvider.System, securityEventSink ?? new NullSecurityEventSink()));

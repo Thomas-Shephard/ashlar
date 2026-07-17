@@ -293,8 +293,8 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
         }
     }
 
-    private IAuthenticationHandshakeRepository GetRepository() => _serviceProvider.GetRequiredService<IAuthenticationHandshakeRepository>();
-    private IUserRepository GetUserRepository() => _serviceProvider.GetRequiredService<IUserRepository>();
+    private IAuthenticationHandshakeRepository GetRepository() => _serviceProvider.GetRequiredAshlarProviderService<IAuthenticationHandshakeRepository>();
+    private IUserRepository GetUserRepository() => _serviceProvider.GetRequiredAshlarProviderService<IUserRepository>();
 
     private async Task<bool> IsHandshakeMetadataSqlNullAsync(Guid handshakeId)
     {

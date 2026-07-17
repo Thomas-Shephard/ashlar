@@ -76,7 +76,6 @@ public static class AshlarWebhooksServiceCollectionExtensions
         services.TryAddSingleton<IAshlarSecurityEventWebhookDestinationResolver, DnsAshlarSecurityEventWebhookDestinationResolver>();
         services.TryAddSingleton<AshlarSecurityEventWebhookDestinationValidator>();
         services.TryAddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance);
-        services.AddAshlarDurableSecurityEventFanOutHandler<AshlarSecurityEventWebhookOutboxHandler>();
 
         return services;
     }

@@ -560,11 +560,11 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         Assert.That(fetched, Is.Null);
     }
 
-    private IUserRepository GetUserRepository() => _serviceProvider.GetRequiredService<IUserRepository>();
+    private IUserRepository GetUserRepository() => _serviceProvider.GetRequiredAshlarProviderService<IUserRepository>();
 
     private PostgresAuthenticationSessionRepository GetSessionRepository()
     {
-        return (PostgresAuthenticationSessionRepository)_serviceProvider.GetRequiredService<IAuthenticationSessionRepository>();
+        return (PostgresAuthenticationSessionRepository)_serviceProvider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>();
     }
 
     private async Task DeleteUserAsync(Guid userId)

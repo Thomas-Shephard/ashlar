@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ashlar.Testing\Ashlar.Testing.csproj" />
+    <ProjectReference Include="..\..\src\Ashlar.ProviderContracts\Ashlar.ProviderContracts.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.AspNetCore\Ashlar.AspNetCore.csproj" />
   </ItemGroup>
 

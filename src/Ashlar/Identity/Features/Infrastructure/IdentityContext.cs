@@ -11,7 +11,7 @@ internal sealed class IdentityContext(
     IUserRepository userRepository,
     ICredentialRepository credentialRepository,
     IIdentityService identityService,
-    IAshlarTransactionProvider transactionProvider)
+    AshlarDurableTransactionProvider transactionProvider)
 {
     /// <summary>
     /// Gets the user repository.
@@ -28,5 +28,5 @@ internal sealed class IdentityContext(
     /// <summary>
     /// Gets the transaction provider.
     /// </summary>
-    public IAshlarTransactionProvider TransactionProvider { get; } = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
+    public AshlarDurableTransactionProvider TransactionProvider { get; } = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
 }

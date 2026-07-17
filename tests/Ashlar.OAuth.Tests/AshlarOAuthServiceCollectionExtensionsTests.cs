@@ -66,24 +66,23 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IUserAdministrationRepository>());
         services.AddSingleton(Mock.Of<ICredentialAdministrationRepository>());
-        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
-        services.AddSingleton(Mock.Of<IInvitationRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IInvitationRepository>());
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         var persistent = Mock.Of<IPersistentSecurityEventSink>();
-        services.AddSingleton(persistent);
-        services.AddSingleton(provider => DurableTransactionComposition.Create(
+        services.AddAshlarProviderScoped<IPersistentSecurityEventSink>(_ => persistent);
+        services.AddScoped(provider => DurableTransactionComposition.Create(
             Mock.Of<IAshlarTransactionProvider>(),
-            provider.GetRequiredService<IUserRepository>(),
-            provider.GetRequiredService<ICredentialRepository>(),
-            provider.GetRequiredService<IAuthenticationSessionRepository>(),
+            AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<IUserRepository>(provider),
+            AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<ICredentialRepository>(provider),
+            AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(provider),
             persistent));
-        services.AddSingleton<IAshlarTransactionProvider>(provider => provider.GetRequiredService<AshlarDurableTransactionProvider>());
         services.AddPermissiveAccountSecurityGuard();
         services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services.AddPasswordHasher<PasswordHasherV1>();

@@ -30,4 +30,3 @@ global using Ashlar.Identity.Models.Tenants;
 global using Ashlar.Identity.Features.Mfa;
 global using Ashlar.Identity.Features.Services;
 global using Ashlar.Identity.Features.Sessions;
-global using Ashlar.Identity.Features.Transactions;

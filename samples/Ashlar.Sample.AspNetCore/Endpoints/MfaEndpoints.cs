@@ -33,8 +33,7 @@ internal static class MfaEndpoints
 
     private sealed record MfaEnrollServices(
         [FromServices] ITotpService Totp,
-        [FromServices] IUserRepository Users,
-        [FromServices] ICredentialRepository Credentials,
+        [FromServices] IUserProfileService Profiles,
         [FromServices] IAccountSecurityService AccountSecurity,
         [FromServices] IAuthorizationEvaluator Auth,
         [FromServices] StepUpAuthenticationService StepUp,
@@ -46,19 +45,14 @@ internal static class MfaEndpoints
     private static async Task<IResult> StartTotpEnrollmentAsync([AsParameters] MfaEnrollServices services)
     {
         var userId = services.User.GetAshlarUserId();
-        var ashlarUser = await services.Users.GetUserByIdAsync(userId, services.CancellationToken);
-        if (ashlarUser == null) return Results.NotFound();
-
-        var totpCredential = await services.Credentials.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, services.CancellationToken);
-        if (totpCredential != null)
-        {
-            return Results.Redirect("/account");
-        }
+        var profile = await services.Profiles.GetAsync(userId, services.CancellationToken);
+        if (profile == null) return Results.NotFound();
 
         if (!services.HttpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return Results.Forbid();
         var posture = await services.AccountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(services.HttpContext.ToTenantContext()), services.CancellationToken);
         if (!posture.Succeeded) return Results.Forbid();
         if (posture.Value is not { } securityPosture) return Results.Forbid();
+        if (HasFactor(securityPosture, AuthenticationFactorTypes.Totp)) return Results.Redirect("/account");
 
         FreshMfaVerificationProof? freshMfaProof = null;
         FreshPrimaryAuthenticationProof? freshPrimaryProof = null;
@@ -79,7 +73,7 @@ internal static class MfaEndpoints
 
         var verification = new TotpEnrollmentVerificationContext(userId, services.HttpContext.ToTenantContext(), sessionId,
             services.HttpContext.ToAuditContext(), freshMfaProof, freshPrimaryProof);
-        var enrollmentRequest = new StartTotpEnrollmentRequest(verification, services.Options.Value.AppName, ashlarUser.DisplayEmail);
+        var enrollmentRequest = new StartTotpEnrollmentRequest(verification, services.Options.Value.AppName, profile.DisplayEmail);
         var enrollment = await services.Totp.StartEnrollmentAsync(enrollmentRequest, services.CancellationToken);
         var isAdmin = (await services.Auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), services.CancellationToken)).Succeeded;
         return AppViews.RenderMfaSetup(enrollment.SharedSecret, enrollment.AuthenticatorUri, isAdmin);
@@ -88,7 +82,6 @@ internal static class MfaEndpoints
     private sealed record TotpEnrollmentVerifyServices(
         [FromServices] ITotpService Totp,
         [FromServices] StepUpAuthenticationService StepUp,
-        [FromServices] ICredentialRepository Credentials,
         [FromServices] IAccountSecurityService AccountSecurity,
         HttpContext HttpContext,
         ClaimsPrincipal User,
@@ -102,7 +95,6 @@ internal static class MfaEndpoints
             return Results.Forbid();
         }
 
-        var totpCredential = await services.Credentials.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, services.CancellationToken);
         var posture = await services.AccountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(services.HttpContext.ToTenantContext()), services.CancellationToken);
         if (!posture.Succeeded)
         {
@@ -115,7 +107,7 @@ internal static class MfaEndpoints
 
         FreshMfaVerificationProof? freshMfaProof = null;
         FreshPrimaryAuthenticationProof? freshPrimaryProof = null;
-        if (totpCredential == null && !securityPosture.AdditionalVerificationFactors.Any(factor => factor.IsUsable))
+        if (!HasFactor(securityPosture, AuthenticationFactorTypes.Totp) && !securityPosture.AdditionalVerificationFactors.Any(factor => factor.IsUsable))
         {
             var proof = services.HttpContext.CreateFreshPrimaryAuthenticationProof(services.StepUp, TotpManagementRequirement.FreshnessWindow, TotpManagementRequirement.Purpose);
             if (!proof.Succeeded) return Results.Forbid();
@@ -285,22 +277,24 @@ internal static class MfaEndpoints
     }
 
     private static async Task<IResult> GetStepUpOptionsAsync(
-        ICredentialRepository credentials,
+        IAccountSecurityService accountSecurity,
         IPasskeyService passkeys,
         ClaimsPrincipal user,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var userId = user.GetAshlarUserId();
-        var totpCredential = await credentials.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, cancellationToken);
-        var recoveryCredential = await credentials.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", null, cancellationToken);
+        var postureResult = await accountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(httpContext.ToTenantContext()), cancellationToken);
+        if (postureResult.Value is not { } posture) return Results.Forbid();
+        var hasTotp = HasFactor(posture, AuthenticationFactorTypes.Totp);
+        var hasRecoveryCodes = HasFactor(posture, AuthenticationFactorTypes.RecoveryCode);
         var hasPasskeys = (await passkeys.ListAsync(new ListPasskeysRequest(userId, httpContext.ToTenantContext()), cancellationToken)).Count > 0;
-        var canUseCode = totpCredential != null || recoveryCredential != null;
+        var canUseCode = hasTotp || hasRecoveryCodes;
 
         return Results.Ok(new
         {
-            hasTotp = totpCredential != null,
-            hasRecoveryCodes = recoveryCredential != null,
+            hasTotp,
+            hasRecoveryCodes,
             hasPasskeys,
             canUseCode,
             setupUrl = "/account#security"
@@ -308,6 +302,9 @@ internal static class MfaEndpoints
     }
 
     private static bool IsTotpCode(string code) => code.Length == 6 && code.All(char.IsDigit);
+
+    private static bool HasFactor(AccountSecurityPosture posture, string factorType) =>
+        posture.AdditionalVerificationFactors.Any(factor => factor.IsConfigured && factor.FactorType == factorType);
 
     private static async Task<IResult> VerifyTotpAsync(
         string handshakeToken,

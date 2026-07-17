@@ -41,18 +41,23 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthorizationGrantOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
-        services.Replace(ServiceDescriptor.Scoped<SecurityEventFanOutSink, SecurityEventFanOutSink>());
+        services.Replace(ServiceDescriptor.Scoped(provider => new SecurityEventFanOutSink(
+            provider.GetAshlarProviderService<IPersistentSecurityEventSink>(),
+            provider.GetServices<ISecurityEventHandler>(),
+            provider.GetService<global::Microsoft.Extensions.Logging.ILogger<SecurityEventFanOutSink>>(),
+            provider.GetService<AshlarDurableTransactionProvider>(),
+            provider.GetServices<IDurableSecurityEventFanOutHandler>())));
         services.Replace(ServiceDescriptor.Scoped<ISecurityEventSink>(provider => provider.GetRequiredService<SecurityEventFanOutSink>()));
         services.TryAddScoped(provider => new AuthorizationGrantService(
-            provider.GetRequiredService<IAuthorizationGrantRepository>(),
-            provider.GetRequiredService<IUserRepository>(),
+            provider.GetRequiredAshlarProviderService<IAuthorizationGrantRepository>(),
+            provider.GetRequiredAshlarProviderService<IUserRepository>(),
             provider.GetRequiredService<SecurityEventFanOutSink>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetService<AuthorizationGrantOptions>(),
             provider.GetService<TimeProvider>(),
             new AuthorizationGrantMutationContext(
                 provider.GetService<IAccountSecurityOperationAuthorizer>(),
-                provider.GetService<IAuthenticationSessionRepository>())));
+                provider.GetAshlarProviderService<IAuthenticationSessionRepository>())));
         services.TryAddScoped<IAuthorizationGrantService>(provider => provider.GetRequiredService<AuthorizationGrantService>());
         services.TryAddScoped<IAuthorizationGrantBootstrapService>(provider => provider.GetRequiredService<AuthorizationGrantService>());
         services.TryAddScoped<IAuthorizationGrantAdministrationService>(provider => new AuthorizationGrantAdministrationService(
@@ -61,8 +66,11 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<TimeProvider>(),
             new AuthorizationGrantMutationContext(
                 provider.GetService<IAccountSecurityOperationAuthorizer>(),
-                provider.GetService<IAuthenticationSessionRepository>())));
-        services.TryAddScoped<IAuthorizationEvaluator, AuthorizationEvaluator>();
+                provider.GetAshlarProviderService<IAuthenticationSessionRepository>())));
+        services.TryAddScoped<IAuthorizationEvaluator>(provider => new AuthorizationEvaluator(
+            provider.GetRequiredAshlarProviderService<IAuthorizationGrantRepository>(),
+            provider.GetService<AuthorizationGrantOptions>(),
+            provider.GetService<TimeProvider>()));
 
         return services;
     }

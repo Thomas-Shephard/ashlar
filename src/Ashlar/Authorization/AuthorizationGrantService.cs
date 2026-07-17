@@ -5,13 +5,9 @@ using System.Text.Json;
 
 namespace Ashlar.Authorization;
 
-/// <summary>
-/// Creates and revokes authorization grants with durable audit in the same Ashlar transaction.
-/// </summary>
-public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAuthorizationGrantBootstrapService
+internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IAuthorizationGrantBootstrapService
 {
-    /// <summary>Purpose required on fresh MFA proofs used for app-facing grant creation and revocation.</summary>
-    public const string AdministrationProofPurpose = "authorization-grant-administration";
+    internal const string AdministrationProofPurpose = IAuthorizationGrantService.AdministrationProofPurpose;
     private readonly IAuthorizationGrantRepository _repository;
     private readonly AuthorizationGrantOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -21,15 +17,6 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
     private readonly IAccountSecurityOperationAuthorizer? _authorizer;
     private readonly ActiveSessionFreshProofValidator? _proofValidator;
 
-    /// <summary>Initializes the grant service with storage, validation, and audit dependencies.</summary>
-    /// <param name="repository">Grant storage used for authorization assignments.</param>
-    /// <param name="userRepository">User repository used to verify tenant ownership.</param>
-    /// <param name="securityEventSink">Transaction-bound fan-out sink that durably records every grant mutation.</param>
-    /// <param name="transactionProvider">Durable transaction provider shared with <paramref name="securityEventSink" />.</param>
-    /// <param name="options">Validation limits for grant fields.</param>
-    /// <param name="timeProvider">Clock used for timestamps and expiration checks.</param>
-    /// <param name="mutationContext">Host authorization and active-session dependencies for app-facing grant mutations.</param>
-    /// <exception cref="ArgumentException">The fan-out has no durable audit path or does not share this transaction provider.</exception>
     public AuthorizationGrantService(
         IAuthorizationGrantRepository repository,
         IUserRepository userRepository,
@@ -64,12 +51,6 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
             : null;
     }
 
-    /// <summary>
-    /// Creates a role or permission grant after validating the actor's proof, active session, audit identity, host authorization, and target ownership.
-    /// </summary>
-    /// <param name="request">Actor-bound grant details, explicit target scope, and required audit metadata.</param>
-    /// <param name="cancellationToken">A token that can cancel the create operation.</param>
-    /// <returns>Created grant, or a failure when validation or tenant checks fail.</returns>
     public async Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -261,12 +242,6 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
         return Result.Failure(AshlarFailureCodes.TenantMismatch, "Grant tenant must match the referenced user's tenant.");
     }
 
-    /// <summary>
-    /// Revokes an authorization grant after validating the actor's proof, active session, audit identity, host authorization, and requested scope.
-    /// </summary>
-    /// <param name="request">Actor-bound grant identifier, explicit target scope, and required audit metadata.</param>
-    /// <param name="cancellationToken">A token that can cancel the revoke operation.</param>
-    /// <returns>Revocation result with the grant id, requested tenant boundary, and outcome.</returns>
     public async Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -402,9 +377,6 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
         return properties;
     }
 
-    /// <summary>
-    /// Records a revocation failure security event.
-    /// </summary>
     private Task RecordRevokeFailureAsync(RevokeAuthorizationGrantRequest request, string failureReason, CancellationToken cancellationToken)
     {
         return _securityEvents.RecordAsync(new SecurityEventDescriptor

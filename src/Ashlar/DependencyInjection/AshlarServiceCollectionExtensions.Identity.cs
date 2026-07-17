@@ -21,31 +21,23 @@ using Microsoft.Extensions.Options;
 
 public static partial class AshlarServiceCollectionExtensions
 {
-    /// <summary>Registers a transaction provider whose declared participants form one Ashlar durable boundary.</summary>
-    /// <typeparam name="TProvider">The custom or built-in transaction provider implementation.</typeparam>
-    /// <param name="services">The service collection to configure.</param>
-    /// <returns>The same service collection.</returns>
-    public static IServiceCollection AddAshlarDurableTransactionProvider<TProvider>(this IServiceCollection services)
+    internal static IServiceCollection AddProviderDurableTransactionProvider<TProvider>(this IServiceCollection services)
         where TProvider : class, IAshlarTransactionProvider
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.TryAddScoped<TProvider>();
+        AshlarProviderServiceCollection.TryAddProviderScoped<TProvider, TProvider>(services);
         services.Replace(ServiceDescriptor.Scoped<AshlarDurableTransactionProvider>(provider =>
         {
             var participants = provider.GetServices<AshlarDurableTransactionParticipantRegistration>()
-                .Select(registration => provider.GetRequiredService(registration.ServiceType))
+                .Select(registration => provider.GetRequiredAshlarProviderService(registration.ServiceType))
                 .ToArray();
-            return AshlarDurableTransactionProvider.Create(provider.GetRequiredService<TProvider>(), participants);
+            return AshlarDurableTransactionProvider.Create(provider.GetRequiredAshlarProviderService<TProvider>(), participants);
         }));
-        services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<AshlarDurableTransactionProvider>()));
+
         return services;
     }
 
-    /// <summary>Declares a scoped persistence participant that uses the registered durable provider transaction.</summary>
-    /// <typeparam name="TParticipant">The repository service type resolved by mutation services.</typeparam>
-    /// <param name="services">The service collection to configure.</param>
-    /// <returns>The same service collection.</returns>
-    public static IServiceCollection AddAshlarDurableTransactionParticipant<TParticipant>(this IServiceCollection services)
+    internal static IServiceCollection AddProviderDurableTransactionParticipant<TParticipant>(this IServiceCollection services)
         where TParticipant : class
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -61,21 +53,17 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>Declares the core identity repositories as participants in the registered durable transaction provider.</summary>
     /// <param name="services">The service collection to configure.</param>
     /// <returns>The same service collection.</returns>
-    public static IServiceCollection AddAshlarIdentityDurableTransactionParticipants(this IServiceCollection services)
+    internal static IServiceCollection AddProviderIdentityDurableTransactionParticipants(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.AddAshlarDurableTransactionParticipant<IUserRepository>();
-        services.AddAshlarDurableTransactionParticipant<ICredentialRepository>();
-        services.AddAshlarDurableTransactionParticipant<IAccountLockoutRepository>();
-        services.AddAshlarDurableTransactionParticipant<IUserAdministrationRepository>();
-        services.AddAshlarDurableTransactionParticipant<ICredentialAdministrationRepository>();
-        services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionAdministrationRepository>();
-        services.AddAshlarDurableTransactionParticipant<IInvitationRepository>();
-        services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionRepository>();
-        services.AddAshlarDurableTransactionParticipant<IRememberedMfaDeviceRepository>();
-        services.AddAshlarDurableTransactionParticipant<IPasskeyChallengeRepository>();
-        services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantRepository>();
-        services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantAdministrationRepository>();
+        services.AddProviderDurableTransactionParticipant<IUserRepository>();
+        services.AddProviderDurableTransactionParticipant<ICredentialRepository>();
+        services.AddProviderDurableTransactionParticipant<IAccountLockoutRepository>();
+        services.AddProviderDurableTransactionParticipant<IInvitationRepository>();
+        services.AddProviderDurableTransactionParticipant<IAuthenticationSessionRepository>();
+        services.AddProviderDurableTransactionParticipant<IRememberedMfaDeviceRepository>();
+        services.AddProviderDurableTransactionParticipant<IPasskeyChallengeRepository>();
+        services.AddProviderDurableTransactionParticipant<IAuthorizationGrantRepository>();
         return services;
     }
 
@@ -90,10 +78,11 @@ public static partial class AshlarServiceCollectionExtensions
     /// This method intentionally does not register <see cref="IUserRepository"/>, <see cref="ICredentialRepository"/>,
     /// <see cref="ISecretProtector"/>, <see cref="IAccountSecurityGuard"/>, <see cref="IAccountSecurityOperationAuthorizer"/>,
     /// or <see cref="IAshlarTransactionProvider"/>.
-    /// Applications should provide those dependencies explicitly. Use <see cref="AddPermissiveAccountSecurityGuard"/>
+    /// Install a persistence provider, or use the provider-authoring package when implementing one. Applications still
+    /// provide the secret protector and account-security policies. Use <see cref="AddPermissiveAccountSecurityGuard"/>
     /// only when guarded account-security mutations may all proceed. Mutation-capable identity services require an
     /// <see cref="AshlarDurableTransactionProvider"/> and a transaction-bound <see cref="SecurityEventFanOutSink"/>
-    /// using that same provider; <see cref="AddAshlarNullTransactions"/> is therefore not valid for those services.
+    /// using that same provider.
     /// </remarks>
     public static IServiceCollection AddAshlarIdentity(
         this IServiceCollection services,
@@ -128,7 +117,7 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAdd(new ServiceDescriptor(
             typeof(IIdentityService),
             provider => new IdentityService(
-                provider.GetRequiredService<IUserRepository>(),
+                provider.GetRequiredAshlarProviderService<IUserRepository>(),
                 provider.GetRequiredService<IAuthenticationProviderRegistry>(),
                 provider.GetRequiredService<IAuthenticationPipeline>()),
             ServiceLifetime.Scoped));
@@ -143,7 +132,7 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped(provider => new AuthenticationPipeline(
             provider.GetRequiredService<IAuthenticationProviderRegistry>(),
             provider.GetRequiredService<ICredentialService>(),
-            provider.GetRequiredService<IAshlarTransactionProvider>(),
+            provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetRequiredService<IPrimaryAuthenticationRateLimiter>(),
             provider.GetRequiredService<IAuthenticationFactorRateLimiter>(),
             provider.GetRequiredService<AuthenticationPipelineDependencies>()));
@@ -152,24 +141,27 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped<IPrimaryAuthenticationRateLimiter, PrimaryAuthenticationRateLimiter>();
         services.TryAddScoped<IAuthenticationFactorRateLimiter, AuthenticationFactorRateLimiter>();
         services.TryAddScoped<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>();
+        services.TryAddScoped<IUserProfileService>(provider => new UserProfileService(
+            provider.GetRequiredAshlarProviderService<IUserRepository>()));
         services.TryAddScoped(provider =>
         {
             var sink = provider.GetRequiredService<SecurityEventFanOutSink>();
-            var transactions = provider.GetRequiredService<IAshlarTransactionProvider>() as AshlarDurableTransactionProvider
-                ?? throw new InvalidOperationException("Credential mutations require a durable transaction provider.");
+            var transactions = provider.GetRequiredService<AshlarDurableTransactionProvider>();
             if (!sink.RequiresDurableTransaction || !ReferenceEquals(transactions, sink.TransactionProvider))
                 throw new InvalidOperationException("Credential mutations require durable audit using the same transaction provider.");
             return new CredentialServiceDependencies(provider.GetService<IdentityServiceOptions>(), provider.GetService<TimeProvider>(), sink,
                 provider.GetService<global::Microsoft.Extensions.Logging.ILogger<CredentialService>>());
         });
         services.TryAddScoped(provider => new CredentialService(
-            provider.GetRequiredService<IUserRepository>(),
-            provider.GetRequiredService<ICredentialRepository>(),
+            provider.GetRequiredAshlarProviderService<IUserRepository>(),
+            provider.GetRequiredAshlarProviderService<ICredentialRepository>(),
             provider.GetRequiredService<ISecretProtector>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetRequiredService<CredentialServiceDependencies>()));
         services.TryAddScoped<ICredentialService>(provider => provider.GetRequiredService<CredentialService>());
-        services.TryAddScoped<ActiveSessionFreshProofValidator>();
+        services.TryAddScoped(provider => new AshlarProviderService<IFreshAuthenticationProofValidator>(new ActiveSessionFreshProofValidator(
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+            provider.GetService<TimeProvider>() ?? TimeProvider.System)));
         services.TryAddScoped(provider => new AccountSecurityServiceDependencies(
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),
@@ -179,13 +171,20 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<IMfaPolicyEvaluator>(),
             provider.GetService<IAuthenticationProviderRegistry>(),
             provider.GetService<IRememberedMfaDeviceMutationExecutor>()));
-        services.TryAddScoped<AccountSecurityService>();
+        services.TryAddScoped(provider => new AccountSecurityService(
+            provider.GetRequiredAshlarProviderService<IUserRepository>(),
+            provider.GetRequiredAshlarProviderService<ICredentialRepository>(),
+            provider.GetRequiredService<IAuthenticationSessionMutationExecutor>(),
+            provider.GetRequiredService<IAuthenticationSessionReader>(),
+            provider.GetRequiredService<AshlarDurableTransactionProvider>(),
+            provider.GetRequiredService<IAccountSecurityGuard>(),
+            provider.GetRequiredService<AccountSecurityServiceDependencies>()));
         services.TryAddScoped<IAccountSecurityService>(provider => provider.GetRequiredService<AccountSecurityService>());
         services.TryAddScoped<IAccountSecurityMutationExecutor>(provider => provider.GetRequiredService<AccountSecurityService>());
         services.TryAddScoped<IAccountSecurityAdministrationService>(provider => new AccountSecurityAdministrationService(
             provider.GetRequiredService<IAccountSecurityMutationExecutor>(),
             provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
-            provider.GetRequiredService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
             provider.GetService<TimeProvider>() ?? TimeProvider.System,
             provider.GetService<ISecurityEventSink>()));
         services.TryAddScoped(provider => new AccountLockoutServiceDependencies(
@@ -193,7 +192,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<ISecurityEventSink>()));
         services.TryAddScoped<IAccountLockoutService>(provider =>
         {
-            var repository = provider.GetService<IAccountLockoutRepository>();
+            var repository = provider.GetAshlarProviderService<IAccountLockoutRepository>();
             return repository == null
                 ? DisabledAccountLockoutService.Instance
                 : new AccountLockoutService(
@@ -211,16 +210,16 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<SecurityEventFanOutSink>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>()));
         services.TryAddScoped<IAccountLockoutAdministrationService>(provider => new AccountLockoutAdministrationService(
-            provider.GetRequiredService<IAccountLockoutRepository>(),
+            provider.GetRequiredAshlarProviderService<IAccountLockoutRepository>(),
             provider.GetRequiredService<AccountLockoutAdministrationServiceDependencies>()));
         services.TryAddScoped<IAccountLockoutAdministrationReader>(provider => new AccountLockoutAdministrationReader(
-            provider.GetRequiredService<IAccountLockoutRepository>(), provider.GetService<TimeProvider>()));
+            provider.GetRequiredAshlarProviderService<IAccountLockoutRepository>(), provider.GetService<TimeProvider>()));
         services.TryAddScoped<IRememberedMfaDeviceReader>(provider => new RememberedMfaDeviceReader(
-            provider.GetRequiredService<IRememberedMfaDeviceRepository>(), provider.GetService<TimeProvider>()));
+            provider.GetRequiredAshlarProviderService<IRememberedMfaDeviceRepository>(), provider.GetService<TimeProvider>()));
         services.TryAddScoped<ISecurityEventAdministrationService, SecurityEventAdministrationService>();
         services.TryAddScoped<IAuthenticationSessionAdministrationService, AuthenticationSessionAdministrationService>();
         services.TryAddScoped(provider => new AuthenticationSessionServiceDependencies(
-            provider.GetRequiredService<IUserRepository>(),
+            provider.GetRequiredAshlarProviderService<IUserRepository>(),
             Options: provider.GetService<AuthenticationSessionOptions>(),
             TimeProvider: provider.GetService<TimeProvider>(),
             SecurityEventSink: provider.GetRequiredService<SecurityEventFanOutSink>(),
@@ -228,7 +227,7 @@ public static partial class AshlarServiceCollectionExtensions
             Logger: provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationSessionService>>(),
             OperationAuthorizer: provider.GetRequiredService<IAccountSecurityOperationAuthorizer>()));
         services.TryAddScoped(provider => new AuthenticationSessionService(
-            provider.GetRequiredService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
             provider.GetRequiredService<ISecureTokenHasher>(),
             provider.GetRequiredService<ISecureTokenGenerator>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>(),
@@ -236,11 +235,15 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationSessionService>>()));
         services.TryAddScoped<IAuthenticationSessionService>(provider => provider.GetRequiredService<AuthenticationSessionService>());
         services.TryAddScoped<IAuthenticationSessionReader>(provider => new AuthenticationSessionReader(
-            provider.GetRequiredService<IAuthenticationSessionRepository>(), provider.GetService<TimeProvider>()));
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(), provider.GetService<TimeProvider>()));
         services.TryAddScoped<IAuthenticationSessionMutationExecutor>(provider => provider.GetRequiredService<AuthenticationSessionService>());
         services.TryAddScoped<StepUpAuthenticationService>();
         services.TryAddScoped<IStepUpAuthenticationService>(provider => provider.GetRequiredService<StepUpAuthenticationService>());
-        services.TryAddScoped<IdentityContext>();
+        services.TryAddScoped(provider => new IdentityContext(
+            provider.GetRequiredAshlarProviderService<IUserRepository>(),
+            provider.GetRequiredAshlarProviderService<ICredentialRepository>(),
+            provider.GetRequiredService<IIdentityService>(),
+            provider.GetRequiredService<AshlarDurableTransactionProvider>()));
         services.TryAddScoped(provider => new IdentityInfrastructureContext(
             provider.GetRequiredService<IEmailSender>(),
             provider.GetRequiredService<IAuthenticationRateLimiter>(),
@@ -253,7 +256,12 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         services.TryAddSingleton<ISecureTokenHasher, Sha256TokenHasher>();
         services.TryAddSingleton<SecureTokenContext>();
-        services.Replace(ServiceDescriptor.Scoped<SecurityEventFanOutSink, SecurityEventFanOutSink>());
+        services.Replace(ServiceDescriptor.Scoped(provider => new SecurityEventFanOutSink(
+            provider.GetAshlarProviderService<IPersistentSecurityEventSink>(),
+            provider.GetServices<ISecurityEventHandler>(),
+            provider.GetService<global::Microsoft.Extensions.Logging.ILogger<SecurityEventFanOutSink>>(),
+            provider.GetService<AshlarDurableTransactionProvider>(),
+            provider.GetServices<IDurableSecurityEventFanOutHandler>())));
         services.Replace(ServiceDescriptor.Scoped<ISecurityEventSink>(provider => provider.GetRequiredService<SecurityEventFanOutSink>()));
         services.TryAddSingleton<InMemoryAuthenticationRateLimiter>();
         services.TryAddSingleton<IAuthenticationRateLimiter>(provider => provider.GetRequiredService<InMemoryAuthenticationRateLimiter>());
@@ -297,25 +305,6 @@ public static partial class AshlarServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Explicitly registers the transaction provider that performs no transaction work.
-    /// </summary>
-    /// <param name="services">The service collection to add registrations to.</param>
-    /// <returns>The same service collection so calls can be chained.</returns>
-    /// <remarks>
-    /// The <see langword="null" /> transaction provider provides no atomicity across multi-step identity operations. Use this only
-    /// for tests, provider-less composition, or simple custom hosts that deliberately do not require coordinated
-    /// repository transactions. Persistence providers should register a durable <see cref="IAshlarTransactionProvider"/>.
-    /// </remarks>
-    public static IServiceCollection AddAshlarNullTransactions(this IServiceCollection services)
-    {
-        ArgumentNullException.ThrowIfNull(services);
-
-        services.TryAddScoped<IAshlarTransactionProvider, NullTransactionProvider>();
-
-        return services;
-    }
-
-    /// <summary>
     /// Registers authentication rate-limit administration operations for the configured provider repository.
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
@@ -333,10 +322,10 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<AshlarDurableTransactionProvider>()));
         services.TryAddScoped<IAuthenticationRateLimitAdministrationService>(provider =>
             new AuthenticationRateLimitAdministrationService(
-                provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>(),
+                provider.GetRequiredAshlarProviderService<IAuthenticationRateLimitAdministrationRepository>(),
                 provider.GetRequiredService<AuthenticationRateLimitAdministrationServiceDependencies>()));
         services.TryAddScoped<IAuthenticationRateLimitAdministrationReader>(provider => new AuthenticationRateLimitAdministrationReader(
-            provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>(), provider.GetService<TimeProvider>()));
+            provider.GetRequiredAshlarProviderService<IAuthenticationRateLimitAdministrationRepository>(), provider.GetService<TimeProvider>()));
 
         return services;
     }
@@ -397,21 +386,16 @@ public static partial class AshlarServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>
-    /// Registers a required transaction-bound security event continuation.
-    /// </summary>
-    /// <typeparam name="THandler">The durable handler type.</typeparam>
-    /// <param name="services">The service collection to add registrations to.</param>
-    /// <returns>The same service collection so calls can be chained.</returns>
-    public static IServiceCollection AddAshlarDurableSecurityEventFanOutHandler<THandler>(this IServiceCollection services)
+    internal static IServiceCollection AddProviderDurableSecurityEventFanOutHandler<THandler>(this IServiceCollection services)
         where THandler : class, IDurableSecurityEventFanOutHandler
     {
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarIdentity();
-        services.TryAddScoped<THandler>();
-        services.AddScoped<IDurableSecurityEventFanOutHandler>(provider => provider.GetRequiredService<THandler>());
-        services.AddAshlarDurableTransactionParticipant<THandler>();
+        AshlarProviderServiceCollection.TryAddProviderScoped<THandler, THandler>(services);
+        services.AddScoped<IDurableSecurityEventFanOutHandler>(provider =>
+            provider.GetRequiredAshlarProviderService<THandler>());
+        services.AddProviderDurableTransactionParticipant<THandler>();
 
         return services;
     }

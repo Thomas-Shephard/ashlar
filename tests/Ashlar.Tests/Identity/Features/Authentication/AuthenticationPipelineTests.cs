@@ -25,21 +25,21 @@ internal sealed class AuthenticationPipelineTests
         _primaryRateLimiterMock = CreateAllowingPrimaryRateLimiter();
         _factorRateLimiterMock = CreateAllowingFactorRateLimiter();
         _accountLockoutServiceMock = new Mock<IAccountLockoutService>();
-        _pipeline = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialService, new NullTransactionProvider(), _primaryRateLimiterMock.Object, _factorRateLimiterMock.Object);
+        _pipeline = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialService, AshlarDurableTransactionProvider.Create(new NullTransactionProvider()), _primaryRateLimiterMock.Object, _factorRateLimiterMock.Object);
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullProviderRegistry()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(null!, _credentialService, new NullTransactionProvider(), _primaryRateLimiterMock.Object, _factorRateLimiterMock.Object));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(null!, _credentialService, AshlarDurableTransactionProvider.Create(new NullTransactionProvider()), _primaryRateLimiterMock.Object, _factorRateLimiterMock.Object));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullCredentialService()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, null!, new NullTransactionProvider(), _primaryRateLimiterMock.Object, _factorRateLimiterMock.Object));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, null!, AshlarDurableTransactionProvider.Create(new NullTransactionProvider()), _primaryRateLimiterMock.Object, _factorRateLimiterMock.Object));
     }
 
     [Test]
@@ -53,14 +53,14 @@ internal sealed class AuthenticationPipelineTests
     public void ConstructorShouldThrowOnNullPrimaryRateLimiter()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialService, new NullTransactionProvider(), null!, _factorRateLimiterMock.Object));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialService, AshlarDurableTransactionProvider.Create(new NullTransactionProvider()), null!, _factorRateLimiterMock.Object));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullFactorRateLimiter()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialService, new NullTransactionProvider(), _primaryRateLimiterMock.Object, null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialService, AshlarDurableTransactionProvider.Create(new NullTransactionProvider()), _primaryRateLimiterMock.Object, null!));
     }
 
     [Test]
@@ -69,7 +69,7 @@ internal sealed class AuthenticationPipelineTests
         var pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             _primaryRateLimiterMock.Object,
             _factorRateLimiterMock.Object,
             new AuthenticationPipelineDependencies(Logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<AuthenticationPipeline>.Instance));
@@ -108,7 +108,7 @@ internal sealed class AuthenticationPipelineTests
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             primaryRateLimiter.Object,
             _factorRateLimiterMock.Object);
         _credentialService.ContextResolveResult = (user, credential, credential, false);
@@ -138,7 +138,7 @@ internal sealed class AuthenticationPipelineTests
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             primaryRateLimiter.Object,
             _factorRateLimiterMock.Object,
             new AuthenticationPipelineDependencies(Logger: logger));
@@ -172,7 +172,7 @@ internal sealed class AuthenticationPipelineTests
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             primaryRateLimiter.Object,
             _factorRateLimiterMock.Object,
             new AuthenticationPipelineDependencies(
@@ -204,7 +204,7 @@ internal sealed class AuthenticationPipelineTests
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             primaryRateLimiter.Object,
             _factorRateLimiterMock.Object);
 
@@ -224,7 +224,7 @@ internal sealed class AuthenticationPipelineTests
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             primaryRateLimiter.Object,
             _factorRateLimiterMock.Object,
             new AuthenticationPipelineDependencies(SecurityEventSink: audit));
@@ -255,7 +255,7 @@ internal sealed class AuthenticationPipelineTests
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             primaryRateLimiter.Object,
             _factorRateLimiterMock.Object,
             new AuthenticationPipelineDependencies(SecurityEventSink: audit));
@@ -281,7 +281,7 @@ internal sealed class AuthenticationPipelineTests
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             _primaryRateLimiterMock.Object,
             _factorRateLimiterMock.Object,
             new AuthenticationPipelineDependencies(SecurityEventSink: audit));
@@ -314,7 +314,7 @@ internal sealed class AuthenticationPipelineTests
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             primaryRateLimiter.Object,
             _factorRateLimiterMock.Object);
         _credentialService.ContextResolveResult = (user, credential, credential, false);
@@ -350,7 +350,7 @@ internal sealed class AuthenticationPipelineTests
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             _primaryRateLimiterMock.Object,
             factorRateLimiter.Object,
             new AuthenticationPipelineDependencies(Logger: logger));
@@ -388,7 +388,7 @@ internal sealed class AuthenticationPipelineTests
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             _primaryRateLimiterMock.Object,
             factorRateLimiter.Object,
             new AuthenticationPipelineDependencies(
@@ -424,7 +424,7 @@ internal sealed class AuthenticationPipelineTests
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             _primaryRateLimiterMock.Object,
             factorRateLimiter.Object,
             new AuthenticationPipelineDependencies(SecurityEventSink: audit));
@@ -559,7 +559,7 @@ internal sealed class AuthenticationPipelineTests
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             _primaryRateLimiterMock.Object,
             factorRateLimiter.Object,
             new AuthenticationPipelineDependencies(SecurityEventSink: audit));
@@ -938,7 +938,7 @@ internal sealed class AuthenticationPipelineTests
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             primaryRateLimiter.Object,
             _factorRateLimiterMock.Object,
             new AuthenticationPipelineDependencies(AccountLockoutService: _accountLockoutServiceMock.Object));
@@ -1330,7 +1330,7 @@ internal sealed class AuthenticationPipelineTests
     public async Task LoginAsyncWithNestedTransactionRollbackFromBestEffortCredentialUpdateShouldStillReturnSuccess()
     {
         var transactionProvider = new RollbackOnlyTransactionProvider();
-        _pipeline = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialService, transactionProvider, _primaryRateLimiterMock.Object, _factorRateLimiterMock.Object);
+        _pipeline = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialService, AshlarDurableTransactionProvider.Create(transactionProvider), _primaryRateLimiterMock.Object, _factorRateLimiterMock.Object);
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
@@ -1393,7 +1393,7 @@ internal sealed class AuthenticationPipelineTests
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             _primaryRateLimiterMock.Object,
             _factorRateLimiterMock.Object,
             new AuthenticationPipelineDependencies(

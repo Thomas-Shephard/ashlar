@@ -52,7 +52,7 @@ internal sealed class AuthenticationHandshakeServiceTests
             _repositoryMock.Object,
             new FixedTokenGenerator("raw-token"),
             _tokenHasherMock.Object,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             new AuthenticationHandshakeServiceDependencies(
                 Options.Create(new AuthenticationHandshakeOptions()),
                 _timeProvider,
@@ -79,7 +79,7 @@ internal sealed class AuthenticationHandshakeServiceTests
             _repositoryMock.Object,
             new FixedTokenGenerator("raw-token"),
             _tokenHasherMock.Object,
-            new NullTransactionProvider());
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()));
 
         var result = await service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"]));
 
@@ -538,7 +538,7 @@ internal sealed class AuthenticationHandshakeServiceTests
             _repositoryMock.Object,
             new FixedTokenGenerator("raw-token"),
             _tokenHasherMock.Object,
-            transactionProvider,
+            AshlarDurableTransactionProvider.Create(transactionProvider, _repositoryMock.Object),
             new AuthenticationHandshakeServiceDependencies(
                 Options.Create(new AuthenticationHandshakeOptions()),
                 _timeProvider,
@@ -588,7 +588,7 @@ internal sealed class AuthenticationHandshakeServiceTests
             _repositoryMock.Object,
             new FixedTokenGenerator("raw-token"),
             _tokenHasherMock.Object,
-            transactionProvider,
+            AshlarDurableTransactionProvider.Create(transactionProvider, _repositoryMock.Object),
             new AuthenticationHandshakeServiceDependencies(
                 Options.Create(new AuthenticationHandshakeOptions()),
                 _timeProvider,
@@ -642,7 +642,7 @@ internal sealed class AuthenticationHandshakeServiceTests
             _repositoryMock.Object,
             new FixedTokenGenerator("raw-token"),
             _tokenHasherMock.Object,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             new AuthenticationHandshakeServiceDependencies(
                 Options.Create(new AuthenticationHandshakeOptions()),
                 _timeProvider,
@@ -679,7 +679,7 @@ internal sealed class AuthenticationHandshakeServiceTests
             _repositoryMock.Object,
             new FixedTokenGenerator("raw-token"),
             _tokenHasherMock.Object,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             new AuthenticationHandshakeServiceDependencies(
                 Options.Create(new AuthenticationHandshakeOptions()),
                 _timeProvider,
@@ -1268,7 +1268,7 @@ internal sealed class AuthenticationHandshakeServiceTests
             _repositoryMock.Object,
             new FixedTokenGenerator("raw-token"),
             _tokenHasherMock.Object,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             new AuthenticationHandshakeServiceDependencies(
                 Options.Create(new AuthenticationHandshakeOptions()),
                 _timeProvider,
@@ -1328,7 +1328,7 @@ internal sealed class AuthenticationHandshakeServiceTests
             _repositoryMock.Object,
             new FixedTokenGenerator("raw-token"),
             _tokenHasherMock.Object,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             new AuthenticationHandshakeServiceDependencies(
                 Options.Create(new AuthenticationHandshakeOptions()),
                 _timeProvider,
@@ -1506,7 +1506,7 @@ internal sealed class AuthenticationHandshakeServiceTests
             _repositoryMock.Object,
             new FixedTokenGenerator("raw-token"),
             _tokenHasherMock.Object,
-            transactionProvider,
+            AshlarDurableTransactionProvider.Create(transactionProvider, _repositoryMock.Object),
             new AuthenticationHandshakeServiceDependencies(
                 Options.Create(new AuthenticationHandshakeOptions()),
                 _timeProvider,
@@ -1624,21 +1624,21 @@ internal sealed class AuthenticationHandshakeServiceTests
     public void ConstructorShouldThrowOnNullRepository()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationHandshakeService(null!, new FixedTokenGenerator(""), _tokenHasherMock.Object, new NullTransactionProvider()));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationHandshakeService(null!, new FixedTokenGenerator(""), _tokenHasherMock.Object, AshlarDurableTransactionProvider.Create(new NullTransactionProvider())));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullTokenGenerator()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationHandshakeService(_repositoryMock.Object, null!, _tokenHasherMock.Object, new NullTransactionProvider()));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationHandshakeService(_repositoryMock.Object, null!, _tokenHasherMock.Object, AshlarDurableTransactionProvider.Create(new NullTransactionProvider())));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullTokenHasher()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationHandshakeService(_repositoryMock.Object, new FixedTokenGenerator(""), null!, new NullTransactionProvider()));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationHandshakeService(_repositoryMock.Object, new FixedTokenGenerator(""), null!, AshlarDurableTransactionProvider.Create(new NullTransactionProvider())));
     }
 
     [Test]
@@ -1655,7 +1655,7 @@ internal sealed class AuthenticationHandshakeServiceTests
             _repositoryMock.Object,
             new FixedTokenGenerator(""),
             _tokenHasherMock.Object,
-            new NullTransactionProvider());
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()));
 
         Assert.That(service, Is.Not.Null);
     }
@@ -1667,7 +1667,7 @@ internal sealed class AuthenticationHandshakeServiceTests
             _repositoryMock.Object,
             new FixedTokenGenerator(""),
             _tokenHasherMock.Object,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             new AuthenticationHandshakeServiceDependencies(TimeProvider: _timeProvider));
 
         Assert.That(service, Is.Not.Null);

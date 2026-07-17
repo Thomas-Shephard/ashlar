@@ -189,7 +189,7 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
     private sealed class TestWebhookOutboxOperations(
         ISecurityEventSink sink,
         IAshlarTransactionProvider transactionProvider)
-        : AshlarSecurityEventWebhookOutboxOperationsBase(TimeProvider.System, sink, transactionProvider)
+        : AshlarSecurityEventWebhookOutboxOperationsBase(TimeProvider.System, sink, Ashlar.Testing.DurableTransactionComposition.Create(transactionProvider))
     {
         protected override Task<AshlarSecurityEventWebhookOutboxOperationState?> RetryFailedAsync(Guid deliveryId, CancellationToken cancellationToken)
         {

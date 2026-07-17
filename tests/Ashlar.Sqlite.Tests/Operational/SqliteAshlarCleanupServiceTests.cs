@@ -270,7 +270,7 @@ internal sealed class SqliteAshlarCleanupServiceTests : SqliteTestBase
             "INSERT INTO ashlar_rate_limits (purpose, rate_limit_key, count, window_start, expires_at) VALUES ('login', 'rollback', 1, $old, $old);",
             command => command.AddDateTimeOffsetParameter("$old", Now.AddDays(-10)));
 
-        var transactionProvider = _provider.GetRequiredService<Ashlar.Identity.Abstractions.Transactions.IAshlarTransactionProvider>();
+        var transactionProvider = _provider.GetRequiredService<Ashlar.Identity.Abstractions.Transactions.AshlarDurableTransactionProvider>();
         var cleanup = _provider.GetRequiredService<IAshlarCleanupService>();
 
         await using (var transaction = await transactionProvider.BeginTransactionAsync())

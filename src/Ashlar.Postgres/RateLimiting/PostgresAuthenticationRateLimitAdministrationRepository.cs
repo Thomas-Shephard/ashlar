@@ -6,29 +6,15 @@ using Npgsql;
 
 namespace Ashlar.Postgres.RateLimiting;
 
-/// <summary>
-/// Provides safe authentication rate-limit administration queries against PostgreSQL storage.
-/// </summary>
-public sealed class PostgresAuthenticationRateLimitAdministrationRepository : IAuthenticationRateLimitAdministrationRepository
+internal sealed class PostgresAuthenticationRateLimitAdministrationRepository : IAuthenticationRateLimitAdministrationRepository
 {
     private readonly NpgsqlDataSource _dataSource;
 
-    /// <summary>
-    /// Initializes a PostgreSQL-backed rate-limit administration repository.
-    /// </summary>
-    /// <param name="dataSource">Data source used to query Ashlar rate-limit storage.</param>
     public PostgresAuthenticationRateLimitAdministrationRepository(NpgsqlDataSource dataSource)
     {
         _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
     }
 
-    /// <summary>
-    /// Searches PostgreSQL rate-limit buckets without exposing raw key material.
-    /// </summary>
-    /// <param name="request">Validated search request.</param>
-    /// <param name="now">Current UTC time used for status projection.</param>
-    /// <param name="cancellationToken">Token for aborting database work.</param>
-    /// <returns>A list of safe bucket summaries.</returns>
     public async Task<IReadOnlyList<AuthenticationRateLimitBucketSummary>> SearchBucketsAsync(SearchAuthenticationRateLimitBucketsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -58,13 +44,6 @@ public sealed class PostgresAuthenticationRateLimitAdministrationRepository : IA
             .AsReadOnly();
     }
 
-    /// <summary>
-    /// Loads a PostgreSQL rate-limit bucket by purpose and opaque bucket identifier.
-    /// </summary>
-    /// <param name="request">Validated lookup request.</param>
-    /// <param name="now">Current UTC time used for status projection.</param>
-    /// <param name="cancellationToken">Token for aborting database work.</param>
-    /// <returns>The safe bucket summary when found; otherwise <see langword="null" />.</returns>
     public async Task<AuthenticationRateLimitBucketSummary?> GetBucketAsync(AuthenticationRateLimitBucketLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -89,12 +68,6 @@ public sealed class PostgresAuthenticationRateLimitAdministrationRepository : IA
         return rows.Select(row => row.ToLookupResult(now, request.BucketId)).FirstOrDefault(bucket => bucket != null);
     }
 
-    /// <summary>
-    /// Deletes a PostgreSQL rate-limit bucket by purpose and opaque bucket identifier.
-    /// </summary>
-    /// <param name="request">Validated reset request.</param>
-    /// <param name="cancellationToken">Token for aborting database work.</param>
-    /// <returns><see langword="true" /> when a bucket was deleted; otherwise <see langword="false" />.</returns>
     public async Task<bool> ResetBucketAsync(ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

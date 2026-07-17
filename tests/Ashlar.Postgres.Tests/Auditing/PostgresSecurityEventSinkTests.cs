@@ -213,7 +213,8 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "NoUser", OccurredAt = now });
 
         var countingSink = new PostgresSecurityEventSink(new PostgresTransactionManager(GetDataSource()));
-        var count = await countingSink.CountSecurityEventsForUserAsync(userId, now.AddHours(-1));
+        var count = await new PostgresUserSecurityEventSummaryRepository(countingSink)
+            .CountSecurityEventsForUserAsync(userId, now.AddHours(-1));
 
         Assert.That(count, Is.EqualTo(2));
     }
@@ -240,13 +241,13 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
         await using var provider = services.BuildServiceProvider();
 
         var sink = provider.GetRequiredService<ISecurityEventSink>();
-        var persistentSink = provider.GetRequiredService<IPersistentSecurityEventSink>();
+        var persistentSink = provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(sink, Is.TypeOf<SecurityEventFanOutSink>());
             Assert.That(persistentSink, Is.TypeOf<PostgresSecurityEventSink>());
-            Assert.That(provider.GetRequiredService<IUserSecurityEventSummaryRepository>(), Is.SameAs(persistentSink));
+            Assert.That(provider.GetRequiredService<IUserSecurityEventSummaryRepository>(), Is.TypeOf<PostgresUserSecurityEventSummaryRepository>());
         }
     }
 

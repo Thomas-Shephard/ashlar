@@ -95,7 +95,6 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton(customRateLimiter);
         services.AddAshlarIdentity();
-        services.AddAshlarNullTransactions();
         services.AddPermissiveAccountSecurityGuard();
         services.AddPasswordHasher<PasswordHasherV1>();
 

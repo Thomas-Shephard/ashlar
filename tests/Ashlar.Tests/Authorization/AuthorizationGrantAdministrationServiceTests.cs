@@ -154,6 +154,7 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(AuthorizationGrantAdministrationService.DeriveStatus(Now.AddDays(1), null, Now), Is.EqualTo(AuthorizationGrantAdministrationStatus.Active));
+            Assert.That(AuthorizationGrantAdministrationService.DeriveStatus(null, null, Now), Is.EqualTo(AuthorizationGrantAdministrationStatus.Active));
             Assert.That(AuthorizationGrantAdministrationService.DeriveStatus(Now, null, Now), Is.EqualTo(AuthorizationGrantAdministrationStatus.Expired));
             Assert.That(AuthorizationGrantAdministrationService.DeriveStatus(Now.AddDays(-1), Now.AddMinutes(-1), Now), Is.EqualTo(AuthorizationGrantAdministrationStatus.Revoked));
         }
@@ -211,8 +212,8 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
         var services = new ServiceCollection();
         services.AddScoped(_ => new FakeRepository());
         services.AddScoped<IAuthorizationGrantAdministrationRepository>(provider => provider.GetRequiredService<FakeRepository>());
-        services.AddScoped(_ => Moq.Mock.Of<IAuthorizationGrantRepository>());
-        services.AddScoped(_ => Moq.Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Moq.Mock.Of<IAuthorizationGrantRepository>());
+        services.AddAshlarProviderScoped(_ => Moq.Mock.Of<IUserRepository>());
 
         services.AddAshlarAuthorization();
 

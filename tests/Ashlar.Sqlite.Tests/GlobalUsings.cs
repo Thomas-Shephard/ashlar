@@ -32,6 +32,7 @@ global using Ashlar.ProviderContractTests.Webhooks;
 global using Ashlar.ProviderContractTests.Authorization;
 global using Ashlar.ProviderContractTests.Identity;
 
+global using Ashlar.ProviderContracts.DependencyInjection;
 global using Ashlar.Auditing;
 
 [assembly: Parallelizable(ParallelScope.Fixtures)]

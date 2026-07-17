@@ -11,7 +11,7 @@ internal sealed class PasskeyConfigurationCheck : IAshlarConfigurationCheck
         ArgumentNullException.ThrowIfNull(serviceProvider);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (serviceProvider.IsServiceRegistered<IPasskeyChallengeRepository>())
+        if (serviceProvider.IsAshlarProviderServiceRegistered<IPasskeyChallengeRepository>())
         {
             return ValueTask.FromResult<IReadOnlyList<AshlarConfigurationIssue>>([]);
         }
@@ -22,7 +22,7 @@ internal sealed class PasskeyConfigurationCheck : IAshlarConfigurationCheck
                 AshlarConfigurationIssueCodes.PasskeyChallengeRepositoryMissing,
                 AshlarConfigurationIssueSeverity.Error,
                 "Passkey challenge persistence is not configured.",
-                "Register an IPasskeyChallengeRepository implementation before using Ashlar passkeys.",
+                "Install and configure an Ashlar persistence provider with passkey challenge support.",
                 "Passkeys"),
         ]);
     }

@@ -517,11 +517,11 @@ internal sealed class RecoveryCodeTests
         });
         transactions.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
         var notifications = new Mock<ISecurityNotificationService>();
-        var composition = DurableSecurityMutationTestComposition.Compose(transactions.Object, new NullSecurityEventSink(), repository.Object, credentials.Object);
-        var service = new RecoveryCodeService(repository.Object, credentials.Object, composition.Transactions,
+        var (transactionProvider, securityEvents) = DurableSecurityMutationTestComposition.Compose(transactions.Object, new NullSecurityEventSink(), repository.Object, credentials.Object);
+        var service = new RecoveryCodeService(repository.Object, credentials.Object, transactionProvider,
             new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(
                 Options.Create(new RecoveryCodeOptions { CodeCount = 1, ExpiresAfter = TimeSpan.FromDays(30) }),
-                securityEventSink: composition.Events,
+                securityEventSink: securityEvents,
                 notificationService: notifications.Object));
         var request = new RecoveryCodeGenerationExecutionRequest(audit, TenantContext.Global, false, null,
             true, 1, TimeSpan.FromHours(1));
@@ -803,9 +803,9 @@ internal sealed class RecoveryCodeTests
     public void DiRegistrationResolvesServices()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(new Mock<IUserRepository>().Object);
-        services.AddSingleton(new Mock<ICredentialRepository>().Object);
-        services.AddSingleton(new Mock<IAuthenticationSessionRepository>().Object);
+        services.AddAshlarProviderScoped(_ => new Mock<IUserRepository>().Object);
+        services.AddAshlarProviderScoped(_ => new Mock<ICredentialRepository>().Object);
+        services.AddAshlarProviderScoped(_ => new Mock<IAuthenticationSessionRepository>().Object);
         services.AddSingleton<IAccountSecurityOperationAuthorizer, AllowAllAccountSecurityOperationAuthorizer>();
         services.AddAshlarRecoveryCodes(opts =>
         {
@@ -1018,7 +1018,7 @@ internal sealed class RecoveryCodeTests
         var pipeline = new AuthenticationPipeline(
             providerRegistry.Object,
             credentialService,
-            transProvider.Object,
+            AshlarDurableTransactionProvider.Create(transProvider.Object),
             AllowPrimaryAuthenticationRateLimiter.Instance,
             AllowAuthenticationFactorRateLimiter.Instance,
             new AuthenticationPipelineDependencies(SecurityEventSink: securityEventSink.Object));

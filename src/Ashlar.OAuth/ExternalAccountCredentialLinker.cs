@@ -2,7 +2,6 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.Abstractions.Transactions;
 using Ashlar.Identity.Features.Infrastructure;
-using Ashlar.Identity.Features.Mfa;
 using Ashlar.Identity.Models.Credentials;
 using Ashlar.Identity.Models.Mfa;
 using Ashlar.Identity.Models.Tenants;
@@ -29,7 +28,7 @@ internal sealed class ExternalAccountCredentialLinker : IExternalAccountCredenti
     private const string LinkPurpose = "external-account-linking";
     private readonly IUserRepository _users;
     private readonly ICredentialRepository _credentials;
-    private readonly ActiveSessionFreshProofValidator _proofValidator;
+    private readonly IFreshAuthenticationProofValidator _proofValidator;
     private readonly AshlarDurableTransactionProvider _transactions;
     private readonly SecurityEventFanOutSink _events;
     private readonly TimeProvider _timeProvider;
@@ -37,7 +36,7 @@ internal sealed class ExternalAccountCredentialLinker : IExternalAccountCredenti
     public ExternalAccountCredentialLinker(
         IUserRepository users,
         ICredentialRepository credentials,
-        ActiveSessionFreshProofValidator proofValidator,
+        IFreshAuthenticationProofValidator proofValidator,
         AshlarDurableTransactionProvider transactions,
         SecurityEventFanOutSink securityEventSink,
         TimeProvider? timeProvider = null)

@@ -1,4 +1,3 @@
-using Ashlar.Authorization;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.Identity.Features.Mfa;
@@ -41,7 +40,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
             await provider.GetRequiredService<IAuthorizationGrantService>().CreateGrantAsync(
                 new CreateAuthorizationGrantRequest(user.Id, actor, actor.Audit, TenantContext.Global, permission: "posts.read")));
 
-        var grants = await provider.GetRequiredService<IAuthorizationGrantRepository>().ListGrantsAsync(new ListAuthorizationGrantsRequest(user.Id));
+        var grants = await provider.GetRequiredAshlarProviderService<IAuthorizationGrantRepository>().ListGrantsAsync(new ListAuthorizationGrantsRequest(user.Id));
         Assert.That(grants, Is.Empty);
     }
 
@@ -64,13 +63,13 @@ internal sealed class SecurityMutationAuditAtomicityTests
             Permission = "posts.read",
             CreatedAt = DateTimeOffset.UtcNow
         };
-        await provider.GetRequiredService<IAuthorizationGrantRepository>().CreateGrantAsync(grant);
+        await provider.GetRequiredAshlarProviderService<IAuthorizationGrantRepository>().CreateGrantAsync(grant);
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IAuthorizationGrantService>().RevokeGrantAsync(
                 new RevokeAuthorizationGrantRequest(grant.Id, actor, actor.Audit, TenantContext.Global)));
 
-        var stored = await provider.GetRequiredService<IAuthorizationGrantRepository>().GetGrantAsync(grant.Id, null);
+        var stored = await provider.GetRequiredAshlarProviderService<IAuthorizationGrantRepository>().GetGrantAsync(grant.Id, null);
         Assert.That(stored?.RevokedAt, Is.Null);
     }
 
@@ -80,13 +79,13 @@ internal sealed class SecurityMutationAuditAtomicityTests
         _database = await CreateDatabaseAsync(services => services.AddAshlarInvitations());
         var provider = _database.ServiceProvider;
         var invitation = CreateInvitation();
-        await provider.GetRequiredService<IInvitationRepository>().CreateInvitationAsync(invitation);
+        await provider.GetRequiredAshlarProviderService<IInvitationRepository>().CreateInvitationAsync(invitation);
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IInvitationAdministrationService>().RevokeInvitationAsync(
                 new RevokeInvitationAdministrationRequest(invitation.Id, IncludeAllTenants: true, Audit: Audit())));
 
-        var stored = await provider.GetRequiredService<IInvitationRepository>().GetInvitationByTokenHashAsync(invitation.TokenHash);
+        var stored = await provider.GetRequiredAshlarProviderService<IInvitationRepository>().GetInvitationByTokenHashAsync(invitation.TokenHash);
         Assert.That(stored?.RevokedAt, Is.Null);
     }
 
@@ -96,13 +95,13 @@ internal sealed class SecurityMutationAuditAtomicityTests
         _database = await CreateDatabaseAsync(services => services.AddAshlarInvitations());
         var provider = _database.ServiceProvider;
         var invitation = CreateInvitation();
-        await provider.GetRequiredService<IInvitationRepository>().CreateInvitationAsync(invitation);
+        await provider.GetRequiredAshlarProviderService<IInvitationRepository>().CreateInvitationAsync(invitation);
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IInvitationService>().RevokeInvitationsAsync(
                 new RevokeInvitationsRequest { Email = invitation.DisplayEmail, Tenant = TenantContext.Global, Audit = Audit() }));
 
-        var stored = await provider.GetRequiredService<IInvitationRepository>().GetInvitationByTokenHashAsync(invitation.TokenHash);
+        var stored = await provider.GetRequiredAshlarProviderService<IInvitationRepository>().GetInvitationByTokenHashAsync(invitation.TokenHash);
         Assert.That(stored?.RevokedAt, Is.Null);
     }
 
@@ -114,20 +113,20 @@ internal sealed class SecurityMutationAuditAtomicityTests
 
         _database = await CreateDatabaseAsync(services => services.AddAshlarInvitations());
         var provider = _database.ServiceProvider;
-        await provider.GetRequiredService<IUserRepository>().CreateUserAsync(new AshlarUser
+        await provider.GetRequiredAshlarProviderService<IUserRepository>().CreateUserAsync(new AshlarUser
         {
             Id = Guid.NewGuid(),
             DisplayEmail = email,
             AccountState = UserAccountState.Disabled
         });
         var invitation = CreateInvitation(email, provider.GetRequiredService<ISecureTokenHasher>().HashToken(token));
-        await provider.GetRequiredService<IInvitationRepository>().CreateInvitationAsync(invitation);
+        await provider.GetRequiredAshlarProviderService<IInvitationRepository>().CreateInvitationAsync(invitation);
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IInvitationService>().AcceptInvitationAsync(new AcceptInvitationRequest { Token = token }));
 
-        var stored = await provider.GetRequiredService<IInvitationRepository>().GetInvitationByTokenHashAsync(invitation.TokenHash);
-        var user = await provider.GetRequiredService<IUserRepository>().GetUserByEmailAsync(email);
+        var stored = await provider.GetRequiredAshlarProviderService<IInvitationRepository>().GetInvitationByTokenHashAsync(invitation.TokenHash);
+        var user = await provider.GetRequiredAshlarProviderService<IUserRepository>().GetUserByEmailAsync(email);
 
         using (Assert.EnterMultipleScope())
         {
@@ -147,8 +146,8 @@ internal sealed class SecurityMutationAuditAtomicityTests
             services.AddAshlarInvitations();
             services.AddAshlarSqliteAuditSink();
             services.AddScoped<SqliteInvitationRepository>();
-            services.Replace(ServiceDescriptor.Scoped<IInvitationRepository>(provider =>
-                new ConflictOnUpdateInvitationRepository(provider.GetRequiredService<SqliteInvitationRepository>())));
+            services.ReplaceAshlarProviderScoped<IInvitationRepository>(provider =>
+                new ConflictOnUpdateInvitationRepository(provider.GetRequiredService<SqliteInvitationRepository>()));
         });
         var provider = _database.ServiceProvider;
         var invitation = CreateInvitation(email, provider.GetRequiredService<ISecureTokenHasher>().HashToken(token));
@@ -157,7 +156,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
         var result = await provider.GetRequiredService<IInvitationService>().AcceptInvitationAsync(new AcceptInvitationRequest { Token = token });
 
         var stored = await provider.GetRequiredService<SqliteInvitationRepository>().GetInvitationByTokenHashAsync(invitation.TokenHash);
-        var user = await provider.GetRequiredService<IUserRepository>().GetUserByEmailAsync(email);
+        var user = await provider.GetRequiredAshlarProviderService<IUserRepository>().GetUserByEmailAsync(email);
         var auditEvent = (await provider.GetRequiredService<ISecurityEventAdministrationRepository>().SearchSecurityEventsAsync(new SearchSecurityEventsRequest
         {
             IncludeAllTenants = true,
@@ -181,7 +180,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
     {
         _database = await CreateDatabaseAsync(services => services.AddAshlarIdentity());
         var provider = _database.ServiceProvider;
-        var repository = provider.GetRequiredService<IAccountLockoutRepository>();
+        var repository = provider.GetRequiredAshlarProviderService<IAccountLockoutRepository>();
         var tenant = new TenantContext(Guid.NewGuid());
         var userId = (await CreateUserAsync(provider, tenant.TenantId)).Id;
         var authProvider = new AuthenticationProviderKey("password", "local");
@@ -203,7 +202,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
         await provider.GetRequiredService<IAuthenticationRateLimiter>().CheckAsync(
             new RateLimitAttempt { Purpose = "login", Key = "203.0.113.10" },
             new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(5) });
-        var bucket = (await provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>().SearchBucketsAsync(
+        var bucket = (await provider.GetRequiredAshlarProviderService<IAuthenticationRateLimitAdministrationRepository>().SearchBucketsAsync(
             new SearchAuthenticationRateLimitBucketsRequest { Purpose = "login", Limit = 10 },
             DateTimeOffset.UtcNow)).Single();
 
@@ -211,7 +210,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
             await provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>().ResetBucketAsync(
                 new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, bucket.Purpose, Audit())));
 
-        var stored = await provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>().GetBucketAsync(
+        var stored = await provider.GetRequiredAshlarProviderService<IAuthenticationRateLimitAdministrationRepository>().GetBucketAsync(
             new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, bucket.Purpose),
             DateTimeOffset.UtcNow);
         Assert.That(stored, Is.Not.Null);
@@ -223,11 +222,10 @@ internal sealed class SecurityMutationAuditAtomicityTests
         {
             configure?.Invoke(services);
             services.Replace(ServiceDescriptor.Scoped<ThrowingSecurityEventSink, ThrowingSecurityEventSink>());
-            services.RemoveAll<IPersistentSecurityEventSink>();
-            services.AddScoped<IPersistentSecurityEventSink>(provider => provider.GetRequiredService<ThrowingSecurityEventSink>());
+            services.ReplaceAshlarProviderScoped<IPersistentSecurityEventSink>(provider => provider.GetRequiredService<ThrowingSecurityEventSink>());
             services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
             services.Replace(ServiceDescriptor.Scoped<SecurityEventFanOutSink>(provider => new SecurityEventFanOutSink(
-                provider.GetRequiredService<IPersistentSecurityEventSink>(),
+                provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(),
                 transactionProvider: provider.GetRequiredService<AshlarDurableTransactionProvider>())));
             services.Replace(ServiceDescriptor.Scoped<ISecurityEventSink>(provider => provider.GetRequiredService<SecurityEventFanOutSink>()));
         });
@@ -242,7 +240,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
             AccountState = UserAccountState.Active,
             TenantId = tenantId
         };
-        await provider.GetRequiredService<IUserRepository>().CreateUserAsync(user);
+        await provider.GetRequiredAshlarProviderService<IUserRepository>().CreateUserAsync(user);
         return user;
     }
 
@@ -279,10 +277,10 @@ internal sealed class SecurityMutationAuditAtomicityTests
             ExpiresAt = now.AddHours(1),
             AdditionalVerificationAt = now
         };
-        await provider.GetRequiredService<IAuthenticationSessionRepository>().CreateSessionAsync(session);
+        await provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>().CreateSessionAsync(session);
         var validated = await provider.GetRequiredService<IAuthenticationSessionService>().ValidateSessionAsync(token);
         var proof = provider.GetRequiredService<StepUpAuthenticationService>().CreateFreshMfaProof(
-            validated.ValidatedSession!, new StepUpRequirement(TimeSpan.FromMinutes(5), Purpose: AuthorizationGrantService.AdministrationProofPurpose)).Value!;
+            validated.ValidatedSession!, new StepUpRequirement(TimeSpan.FromMinutes(5), Purpose: IAuthorizationGrantService.AdministrationProofPurpose)).Value!;
         var audit = new AuditContext(actor.Id, UserAgent: "atomicity-test");
         return new AccountSecurityActorContext(actor.Id, TenantContext.Global, session.Id, proof, audit);
     }

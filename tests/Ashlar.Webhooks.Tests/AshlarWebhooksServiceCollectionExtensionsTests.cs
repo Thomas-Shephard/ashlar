@@ -148,11 +148,9 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
     }
 
     [Test]
-    public async Task AddAshlarSecurityEventWebhookOutboxRegistersDurableFanOutHandler()
+    public void AddAshlarSecurityEventWebhookOutboxDoesNotSelfAttestDurableInfrastructure()
     {
-        var enqueuer = new TestWebhookEnqueuer();
         var services = new ServiceCollection();
-        services.AddSingleton<IAshlarSecurityEventWebhookEnqueuer>(enqueuer);
         services.AddAshlarSecurityEventWebhookOutbox(options =>
         {
             options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions
@@ -164,24 +162,14 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         });
 
         using var provider = services.BuildServiceProvider();
-        var handler = provider.GetServices<IDurableSecurityEventFanOutHandler>().Single();
-
-        await handler.HandleAsync(new AshlarSecurityEvent
-        {
-            Id = Guid.NewGuid(),
-            EventType = "test.event",
-            OccurredAt = DateTimeOffset.UtcNow,
-            Outcome = SecurityEventOutcomes.Success
-        });
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(handler, Is.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+            Assert.That(provider.GetServices<IDurableSecurityEventFanOutHandler>(), Is.Empty);
+            Assert.That(provider.GetService<IAshlarSecurityEventWebhookEnqueuer>(), Is.Null);
             Assert.That(provider.GetServices<ISecurityEventHandler>(), Is.Empty);
             Assert.That(provider.GetRequiredService<AshlarSecurityEventWebhookDeliveryFactory>(), Is.Not.Null);
             Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>(), Is.TypeOf<NoOpAshlarSecurityEventWebhookDeliveryObserver>());
-            Assert.That(enqueuer.Deliveries, Has.Count.EqualTo(1));
-            Assert.That(enqueuer.Deliveries.Single().Headers, Does.ContainKey(AshlarSecurityEventWebhookSender.SignatureHeaderName));
         }
     }
 
@@ -197,14 +185,12 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
     public void AddAshlarSecurityEventWebhookOutboxAllowsNullConfigure()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IAshlarSecurityEventWebhookEnqueuer, TestWebhookEnqueuer>();
-
         services.AddAshlarSecurityEventWebhookOutbox();
 
         using var provider = services.BuildServiceProvider();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.GetServices<IDurableSecurityEventFanOutHandler>().Single(), Is.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+            Assert.That(provider.GetServices<IDurableSecurityEventFanOutHandler>(), Is.Empty);
             Assert.That(provider.GetServices<ISecurityEventHandler>(), Is.Empty);
         }
     }
@@ -279,16 +265,14 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton(Mock.Of<IUserRepository>());
-        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IUserAdministrationRepository>());
         services.AddSingleton(Mock.Of<ICredentialAdministrationRepository>());
-        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddSingleton<IAshlarSecurityEventWebhookEnqueuer, TestWebhookEnqueuer>();
-        services.AddAshlarDurableTransactionProvider<StubTransactionProvider>();
         services.AddPermissiveAccountSecurityGuard();
         services.AddPasswordHasher<PasswordHasherV1>();
         services.AddAshlarSecurityEventWebhooks(options =>
@@ -323,7 +307,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.ServiceProvider.GetServices<ISecurityEventHandler>(), Has.Some.TypeOf<AshlarSecurityEventWebhookHandler>());
-            Assert.That(scope.ServiceProvider.GetServices<IDurableSecurityEventFanOutHandler>(), Has.Some.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+            Assert.That(scope.ServiceProvider.GetServices<IDurableSecurityEventFanOutHandler>(), Is.Empty);
             Assert.That(scope.ServiceProvider.GetServices<ISecurityEventHandler>(), Has.None.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarOperationsSummaryService>(), Is.TypeOf<AshlarOperationsSummaryService>());
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);

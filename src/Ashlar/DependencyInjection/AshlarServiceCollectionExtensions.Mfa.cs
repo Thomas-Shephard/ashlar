@@ -41,14 +41,14 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, RecoveryCodeAuthenticationProvider>());
         services.TryAddScoped(provider => new RecoveryCodeServiceDependencies(
             provider.GetRequiredService<IOptions<RecoveryCodeOptions>>(),
-            provider.GetRequiredService<ActiveSessionFreshProofValidator>(),
+            provider.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>(),
             provider.GetService<TimeProvider>(),
             provider.GetRequiredService<SecurityEventFanOutSink>(),
             provider.GetService<ISecurityNotificationService>(),
             provider.GetRequiredService<IAccountSecurityOperationAuthorizer>()));
         services.TryAddScoped(provider => new RecoveryCodeService(
-            provider.GetRequiredService<IUserRepository>(),
-            provider.GetRequiredService<ICredentialRepository>(),
+            provider.GetRequiredAshlarProviderService<IUserRepository>(),
+            provider.GetRequiredAshlarProviderService<ICredentialRepository>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetRequiredService<PasswordHasherSelector>(),
             provider.GetRequiredService<RecoveryCodeServiceDependencies>()));
@@ -84,13 +84,13 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, TotpAuthenticationProvider>());
         services.TryAddScoped(provider => new TotpServiceDependencies(
             provider.GetRequiredService<IOptions<TotpOptions>>(),
-            provider.GetRequiredService<ActiveSessionFreshProofValidator>(),
+            provider.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>(),
             provider.GetService<TimeProvider>(),
             provider.GetRequiredService<SecurityEventFanOutSink>(),
             provider.GetService<ISecurityNotificationService>()));
         services.TryAddScoped(provider => new TotpService(
-            provider.GetRequiredService<IUserRepository>(),
-            provider.GetRequiredService<ICredentialRepository>(),
+            provider.GetRequiredAshlarProviderService<IUserRepository>(),
+            provider.GetRequiredAshlarProviderService<ICredentialRepository>(),
             provider.GetRequiredService<ICredentialService>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetRequiredService<IEnumerable<IAuthenticationProvider>>(),
@@ -128,9 +128,11 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),
             provider.GetService<IAuthenticationRateLimiter>(),
-            provider.GetService<IUserRepository>(),
+            provider.GetAshlarProviderService<IUserRepository>(),
             provider.GetService<ISecurityNotificationService>()));
-        services.TryAddScoped<AuthenticationHandshakeService>();
+        services.TryAddScoped(provider => ActivatorUtilities.CreateInstance<AuthenticationHandshakeService>(provider,
+            provider.GetRequiredAshlarProviderService<IAuthenticationHandshakeRepository>(),
+            provider.GetRequiredService<AshlarDurableTransactionProvider>()));
         services.TryAddScoped<IAuthenticationHandshakeService>(provider => provider.GetRequiredService<AuthenticationHandshakeService>());
         services.TryAddScoped<IAuthenticationHandshakeOrchestrationService>(provider => provider.GetRequiredService<AuthenticationHandshakeService>());
         services.TryAddScoped<IAuthenticationHandshakeCompletionService>(provider =>
@@ -166,8 +168,8 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<TimeProvider>(),
             provider.GetRequiredService<SecurityEventFanOutSink>()));
         services.TryAddScoped(provider => new RememberedMfaDeviceService(
-            provider.GetRequiredService<IRememberedMfaDeviceRepository>(),
-            provider.GetRequiredService<IUserRepository>(),
+            provider.GetRequiredAshlarProviderService<IRememberedMfaDeviceRepository>(),
+            provider.GetRequiredAshlarProviderService<IUserRepository>(),
             provider.GetRequiredService<ISecureTokenGenerator>(),
             provider.GetRequiredService<ISecureTokenHasher>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>(),
@@ -278,6 +280,8 @@ public static partial class AshlarServiceCollectionExtensions
             .Validate(CredentialBackedMfaPolicyOptions.Validate, "At least one credential provider key and one non-empty required factor must be configured.")
             .ValidateOnStart();
 
+        services.TryAddScoped(provider => ActivatorUtilities.CreateInstance<RequireMfaWhenCredentialExistsPolicyEvaluator>(provider,
+            provider.GetRequiredAshlarProviderService<ICredentialRepository>()));
         return services.AddAshlarMfaPolicyEvaluator<RequireMfaWhenCredentialExistsPolicyEvaluator>();
     }
 

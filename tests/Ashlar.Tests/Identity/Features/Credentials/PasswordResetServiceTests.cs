@@ -788,8 +788,8 @@ internal sealed class PasswordResetServiceTests
         var notifications = new RecordingSecurityNotificationService();
         IAshlarTransactionProvider transactionProvider = transactionAwareStore
             ? new SnapshotTransactionProvider(store)
-            : new NullTransactionProvider();
-        var identityContext = new IdentityContext(store, store, Mock.Of<IIdentityService>(), transactionProvider);
+            : AshlarDurableTransactionProvider.Create(new NullTransactionProvider());
+        var identityContext = new IdentityContext(store, store, Mock.Of<IIdentityService>(), AshlarDurableTransactionProvider.Create(transactionProvider));
         var infrastructure = new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator.Object);
         var auditContext = new IdentityAuditContext(time, audit, notifications);
         var dependencies = new PasswordResetDependencies(

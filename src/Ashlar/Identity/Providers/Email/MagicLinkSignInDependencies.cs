@@ -38,7 +38,7 @@ internal sealed class MagicLinkSignInDependencies(
     /// <summary>
     /// Gets the transaction provider used to persist magic-link issuance atomically.
     /// </summary>
-    public IAshlarTransactionProvider TransactionProvider => _identityContext.TransactionProvider;
+    public AshlarDurableTransactionProvider TransactionProvider => _identityContext.TransactionProvider;
     /// <summary>
     /// Gets the generator used to create magic-link tokens.
     /// </summary>

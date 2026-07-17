@@ -3,35 +3,8 @@ namespace Ashlar.Identity.Abstractions.Repositories;
 /// <summary>
 /// Provider contract for storing and retrieving Ashlar users.
 /// </summary>
-public interface IUserRepository
+public interface IUserRepository : IUserLookup
 {
-    /// <summary>
-    /// Finds a user by email address within an optional tenant boundary using Ashlar's normalized lookup form.
-    /// </summary>
-    /// <param name="email">The email address to search for. The repository must normalize this value for comparison.</param>
-    /// <param name="tenantId">The tenant boundary for the lookup, or <see langword="null" /> for tenantless users.</param>
-    /// <param name="cancellationToken">A token that can cancel email lookup.</param>
-    /// <returns>The matching user, or <see langword="null" /> when no user exists.</returns>
-    Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Finds a user by its stable identifier.
-    /// </summary>
-    /// <param name="userId">Stable identifier of the user to retrieve.</param>
-    /// <param name="cancellationToken">A token that can cancel user lookup.</param>
-    /// <returns>The matching user, or <see langword="null" /> when no user exists.</returns>
-    Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Finds the user linked to a provider-specific credential key.
-    /// </summary>
-    /// <param name="type">The provider category.</param>
-    /// <param name="providerName">The provider name within the category.</param>
-    /// <param name="providerKey">The provider's stable key for the credential.</param>
-    /// <param name="cancellationToken">A token that can cancel provider-key lookup.</param>
-    /// <returns>The linked user, or <see langword="null" /> when the key is not linked.</returns>
-    Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default);
-
     /// <summary>
     /// Persists a new user.
     /// </summary>

@@ -527,7 +527,7 @@ internal sealed class EmailCodeSignInTests
         var emailSender = new RecordingEmailSender();
         var rateLimiter = new StubRateLimiter(true, true, TimeProvider.System);
         var provider = CreateProvider();
-        var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
+        var core = new IdentityContext(repository, repository, identity, AshlarDurableTransactionProvider.Create(new NullTransactionProvider()));
         var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, Mock.Of<IAuthenticationOrchestrator>(), TimeProvider.System);
 
         using (Assert.EnterMultipleScope())
@@ -548,9 +548,9 @@ internal sealed class EmailCodeSignInTests
     {
         var services = new ServiceCollection();
         var repository = new InMemoryUserCredentialStore(_user);
-        services.AddSingleton<IUserRepository>(repository);
-        services.AddSingleton<ICredentialRepository>(repository);
-        services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
+        services.AddAshlarProviderScoped<IUserRepository>(_ => repository);
+        services.AddAshlarProviderScoped<ICredentialRepository>(_ => repository);
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IEmailSender, RecordingEmailSender>();
         services.AddAshlarEmailCodeSignIn(options => options.CodeLength = 6);
@@ -613,7 +613,7 @@ internal sealed class EmailCodeSignInTests
         var pipeline = new AuthenticationPipeline(
             registry,
             credentialService,
-            new NullTransactionProvider(),
+            AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             primaryRateLimiter,
             AllowAuthenticationFactorRateLimiter.Instance,
             new AuthenticationPipelineDependencies(audit, time));
@@ -622,7 +622,7 @@ internal sealed class EmailCodeSignInTests
             registry,
             pipeline);
         var orchestrator = authenticationOrchestrator ?? authenticationOrchestratorFactory?.Invoke(rateLimiter) ?? CreateOrchestrator(pipeline, user, requireMfa);
-        var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
+        var core = new IdentityContext(repository, repository, identity, AshlarDurableTransactionProvider.Create(new NullTransactionProvider()));
         var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, orchestrator, time, audit);
         var service = new EmailCodeSignInService(dependencies, Options.Create(options ?? new EmailCodeSignInOptions()));
         return new Fixture(service, repository, emailSender, audit, time, rateLimiter);

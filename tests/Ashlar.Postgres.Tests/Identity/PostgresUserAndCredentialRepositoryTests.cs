@@ -36,8 +36,8 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
     private RepositoryFacade GetRepository()
     {
         return new RepositoryFacade(
-            _serviceProvider!.GetRequiredService<IUserRepository>(),
-            _serviceProvider!.GetRequiredService<ICredentialRepository>());
+            _serviceProvider!.GetRequiredAshlarProviderService<IUserRepository>(),
+            _serviceProvider!.GetRequiredAshlarProviderService<ICredentialRepository>());
     }
 
     [Test]

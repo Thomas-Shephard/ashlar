@@ -37,7 +37,7 @@ internal sealed class BootstrapDependencies(
     /// <summary>
     /// Gets the transaction provider.
     /// </summary>
-    public IAshlarTransactionProvider TransactionProvider => _storeContext.TransactionProvider;
+    public AshlarDurableTransactionProvider TransactionProvider => _storeContext.TransactionProvider;
     /// <summary>
     /// Gets the secure token context.
     /// </summary>

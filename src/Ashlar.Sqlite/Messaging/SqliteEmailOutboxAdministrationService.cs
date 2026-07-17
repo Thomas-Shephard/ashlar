@@ -7,7 +7,7 @@ internal sealed class SqliteEmailOutboxAdministrationService(
     ISqliteConnectionProvider connectionProvider,
     TimeProvider timeProvider,
     ISecurityEventSink securityEventSink,
-    IAshlarTransactionProvider transactionProvider) : EmailOutboxAdministrationServiceBase(timeProvider, securityEventSink, transactionProvider)
+    AshlarDurableTransactionProvider transactionProvider) : EmailOutboxAdministrationServiceBase(timeProvider, securityEventSink, transactionProvider)
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 

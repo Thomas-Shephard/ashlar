@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Postgres.Auditing;
 
-internal sealed class PostgresSecurityEventSink : PersistentSecurityEventSink, IUserSecurityEventSummaryRepository
+internal sealed class PostgresSecurityEventSink : PersistentSecurityEventSink
 {
     private readonly IPostgresConnectionProvider _connectionProvider;
 
@@ -65,4 +65,10 @@ internal sealed class PostgresSecurityEventSink : PersistentSecurityEventSink, I
         var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
         await connectionHandle.Connection.ExecuteAsync(command);
     }
+}
+
+internal sealed class PostgresUserSecurityEventSummaryRepository(PostgresSecurityEventSink sink) : IUserSecurityEventSummaryRepository
+{
+    public Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default) =>
+        sink.CountSecurityEventsForUserAsync(userId, since, cancellationToken);
 }

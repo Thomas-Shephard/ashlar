@@ -63,10 +63,10 @@ public sealed class MagicLinkAuthenticationProvider(ISecureTokenHasher tokenHash
     /// </summary>
     /// <param name="assertion">Caller-supplied magic-link assertion containing the raw token.</param>
     /// <param name="context">Authentication request context used for tenant-aware user lookup.</param>
-    /// <param name="repository">The user repository.</param>
+    /// <param name="users">Read-only user lookup capability.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
     /// <returns>The linked user, or <see langword="null" /> when the assertion is unsupported or unlinked.</returns>
-    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default)
+    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserLookup users, CancellationToken cancellationToken = default)
     {
         if (assertion is not MagicLinkAssertion magicLinkAssertion)
         {
@@ -78,7 +78,7 @@ public sealed class MagicLinkAuthenticationProvider(ISecureTokenHasher tokenHash
             return null;
         }
 
-        return await repository.GetUserByProviderKeyAsync(Key.Type, Key.Name, providerKey, cancellationToken);
+        return await users.GetUserByProviderKeyAsync(Key.Type, Key.Name, providerKey, cancellationToken);
     }
 
     /// <summary>

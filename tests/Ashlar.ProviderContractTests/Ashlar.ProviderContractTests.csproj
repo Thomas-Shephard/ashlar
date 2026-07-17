@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ashlar\Ashlar.csproj" />
+    <ProjectReference Include="..\..\src\Ashlar.ProviderContracts\Ashlar.ProviderContracts.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.Webhooks\Ashlar.Webhooks.csproj" />
     <ProjectReference Include="..\Ashlar.Testing\Ashlar.Testing.csproj" />
   </ItemGroup>

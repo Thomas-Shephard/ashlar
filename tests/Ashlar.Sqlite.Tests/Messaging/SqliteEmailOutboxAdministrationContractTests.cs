@@ -95,7 +95,7 @@ internal sealed class SqliteEmailOutboxAdministrationContractTests : EmailOutbox
         var provider = _database!.ServiceProvider;
         var connectionProvider = provider.GetRequiredService<ISqliteConnectionProvider>();
         var audit = provider.GetRequiredService<ISecurityEventSink>();
-        var transactionProvider = provider.GetRequiredService<IAshlarTransactionProvider>();
+        var transactionProvider = provider.GetRequiredService<AshlarDurableTransactionProvider>();
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentNullException>(() => new SqliteEmailOutboxAdministrationService(null!, TimeProvider.System, audit, transactionProvider));
@@ -164,7 +164,7 @@ internal sealed class SqliteEmailOutboxAdministrationContractTests : EmailOutbox
             _database!.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>(),
             _database.ServiceProvider.GetRequiredService<TimeProvider>(),
             new ThrowingSecurityEventSink(new InvalidOperationException("audit failed")),
-            _database.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>());
+            _database.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>());
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await admin.RetryAsync(new EmailOutboxOperationRequest(id, new AuditContext(Guid.NewGuid()))));
         var state = await ReadEmailOutboxAdminRowStateAsync(id);
@@ -185,7 +185,7 @@ internal sealed class SqliteEmailOutboxAdministrationContractTests : EmailOutbox
             _database!.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>(),
             _database.ServiceProvider.GetRequiredService<TimeProvider>(),
             new ThrowingSecurityEventSink(new InvalidOperationException("audit failed")),
-            _database.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>());
+            _database.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>());
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await admin.DiscardAsync(new EmailOutboxOperationRequest(id, new AuditContext(Guid.NewGuid()))));
         var state = await ReadEmailOutboxAdminRowStateAsync(id);
@@ -205,7 +205,7 @@ internal sealed class SqliteEmailOutboxAdministrationContractTests : EmailOutbox
             _database!.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>(),
             _database.ServiceProvider.GetRequiredService<TimeProvider>(),
             new ThrowingSecurityEventSink(new OperationCanceledException("audit canceled")),
-            _database.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>());
+            _database.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>());
 
         Assert.ThrowsAsync<OperationCanceledException>(async () => await admin.RetryAsync(new EmailOutboxOperationRequest(id, new AuditContext(Guid.NewGuid()))));
     }
@@ -220,7 +220,7 @@ internal sealed class SqliteEmailOutboxAdministrationContractTests : EmailOutbox
             _database!.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>(),
             _database.ServiceProvider.GetRequiredService<TimeProvider>(),
             sink,
-            _database.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>());
+            _database.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>());
         var actorId = Guid.NewGuid();
         var audit = new AuditContext(actorId, "203.0.113.10", "audit-agent", "audit-correlation");
 

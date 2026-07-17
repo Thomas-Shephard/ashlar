@@ -212,7 +212,7 @@ internal sealed class SqliteAuthenticationRateLimiterTests : SqliteTestBase
     {
         var rule = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(5) };
         await using var scope = _provider.CreateAsyncScope();
-        var transactionProvider = scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>();
+        var transactionProvider = scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>();
         var limiter = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiter>();
 
         await using (var transaction = await transactionProvider.BeginTransactionAsync())

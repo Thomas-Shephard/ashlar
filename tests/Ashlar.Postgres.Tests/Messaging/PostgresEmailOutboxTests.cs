@@ -283,7 +283,7 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     public async Task SenderSendAsyncIsTransactional()
     {
         var provider = _serviceProvider.GetRequiredService<IPostgresConnectionProvider>();
-        var txProvider = _serviceProvider.GetRequiredService<IAshlarTransactionProvider>();
+        var txProvider = _serviceProvider.GetRequiredService<AshlarDurableTransactionProvider>();
         var sender = new PostgresEmailOutboxSender(provider, _timeProvider);
 
         await using (var tx = await txProvider.BeginTransactionAsync())
