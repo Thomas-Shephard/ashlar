@@ -190,7 +190,7 @@ internal sealed class AshlarPostgresCompositionTests
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<IEmailSender>(), Is.TypeOf<PostgresEmailOutboxSender>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiter>(), Is.TypeOf<PostgresAuthenticationRateLimiter>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<PostgresTransactionManager>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IPersistentSecurityEventSink>(), Is.TypeOf<PostgresSecurityEventSink>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAccountSecurityGuard>(), Is.TypeOf<TestAccountSecurityGuard>());

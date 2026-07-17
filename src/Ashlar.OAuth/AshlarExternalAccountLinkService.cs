@@ -5,6 +5,7 @@ using Ashlar.Identity.Models.Mfa;
 using Ashlar.Identity.Abstractions.Tenancy;
 using Ashlar.Identity.Models.Tenants;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.OAuth;
@@ -42,6 +43,25 @@ public sealed class AshlarExternalAccountLinkService
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _securityEvents = securityEventSink ?? new NullSecurityEventSink();
+    }
+
+    /// <summary>
+    /// Creates Ashlar-owned authentication properties for an external-provider challenge whose resulting ticket may be used for account linking.
+    /// </summary>
+    /// <param name="currentUserId">The currently authenticated Ashlar user id.</param>
+    /// <param name="currentSessionId">The current Ashlar authentication session id.</param>
+    /// <param name="redirectUri">The URI to return to after the external provider callback.</param>
+    /// <returns>Properties bound to account-linking purpose, user, and session.</returns>
+    public static AuthenticationProperties CreateExternalLinkChallengeProperties(Guid currentUserId, Guid currentSessionId, string? redirectUri = null)
+    {
+        if (currentUserId == Guid.Empty) throw new ArgumentException("The current user id cannot be empty.", nameof(currentUserId));
+        if (currentSessionId == Guid.Empty) throw new ArgumentException("The current session id cannot be empty.", nameof(currentSessionId));
+
+        var properties = new AuthenticationProperties { RedirectUri = redirectUri };
+        properties.Items[AshlarOAuthAuthenticationProperties.Purpose] = LinkPurpose;
+        properties.Items[AshlarOAuthAuthenticationProperties.LinkingUserId] = currentUserId.ToString("D");
+        properties.Items[AshlarOAuthAuthenticationProperties.LinkingSessionId] = currentSessionId.ToString("D");
+        return properties;
     }
 
     /// <summary>
@@ -94,6 +114,11 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.AuthenticationFailed);
         }
 
+        if (!IsLinkingTicket(result.Properties, currentUserId, currentSessionId!.Value))
+        {
+            return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.AuthenticationFailed);
+        }
+
         if (!AshlarExternalProviderResolver.MatchesProvider(result, provider))
         {
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.ProviderMismatch);
@@ -115,49 +140,15 @@ public sealed class AshlarExternalAccountLinkService
             cancellationToken: cancellationToken);
     }
 
-    internal async Task<AshlarExternalAccountLinkResult> LinkExternalAccountAsync(
-        Guid currentUserId,
-        string providerName,
-        AshlarExternalAccountLinkRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        ArgumentNullException.ThrowIfNull(request.AuthenticateResult);
-        ArgumentNullException.ThrowIfNull(request.Tenant);
-
-        var proofFailure = ValidateFreshLinkProof(currentUserId, request.FreshMfaProof, request.CurrentSessionId, request.Tenant);
-        if (proofFailure != null)
-        {
-            return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.Failed);
-        }
-
-        var provider = AshlarExternalProviderResolver.GetProvider(_options.CurrentValue, providerName);
-        if (provider == null)
-        {
-            return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.UnsupportedProvider);
-        }
-
-        if (!request.AuthenticateResult.Succeeded || request.AuthenticateResult.Principal == null)
-        {
-            return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.AuthenticationFailed);
-        }
-
-        if (!AshlarExternalProviderResolver.MatchesProvider(request.AuthenticateResult, provider))
-        {
-            return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.ProviderMismatch);
-        }
-
-        return await LinkValidatedExternalAccountCoreAsync(
-            new ExternalAccountLinkCoreRequest(
-                currentUserId,
-                new AshlarValidatedExternalPrincipal(provider, request.AuthenticateResult.Principal),
-                request.Tenant,
-                request.FreshMfaProof,
-                request.CurrentSessionId,
-                request.Audit,
-                request.CredentialMetadata),
-            cancellationToken);
-    }
+    private static bool IsLinkingTicket(AuthenticationProperties? properties, Guid userId, Guid sessionId) =>
+        properties?.Items.TryGetValue(AshlarOAuthAuthenticationProperties.Purpose, out var purpose) == true
+        && string.Equals(purpose, LinkPurpose, StringComparison.Ordinal)
+        && properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.LinkingUserId, out var boundUserId)
+        && Guid.TryParse(boundUserId, out var parsedUserId)
+        && parsedUserId == userId
+        && properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.LinkingSessionId, out var boundSessionId)
+        && Guid.TryParse(boundSessionId, out var parsedSessionId)
+        && parsedSessionId == sessionId;
 
     private AshlarFailureCode? ValidateFreshLinkProof(
         Guid currentUserId,

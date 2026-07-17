@@ -34,8 +34,7 @@ public static class AshlarSqliteServiceCollectionExtensions
 
         services.Replace(ServiceDescriptor.Singleton(new SqliteConnectionFactory(connectionString)));
         services.TryAddScoped<SqliteTransactionManager>();
-        services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<SqliteTransactionManager>()));
-        services.Replace(ServiceDescriptor.Scoped<IAshlarDurableTransactionProvider>(provider => provider.GetRequiredService<SqliteTransactionManager>()));
+        services.AddAshlarDurableTransactionProvider<SqliteTransactionManager>();
         services.TryAddScoped<ISqliteConnectionProvider>(provider => provider.GetRequiredService<SqliteTransactionManager>());
         services.TryAddScoped<IUserRepository, SqliteUserRepository>();
         services.TryAddScoped<ICredentialRepository, SqliteCredentialRepository>();
@@ -52,6 +51,18 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.TryAddScoped<IPasskeyChallengeRepository, SqlitePasskeyChallengeRepository>();
         services.TryAddScoped<IAuthorizationGrantRepository, SqliteAuthorizationGrantRepository>();
         services.TryAddScoped<IAuthorizationGrantAdministrationRepository, SqliteAuthorizationGrantAdministrationRepository>();
+        services.AddAshlarDurableTransactionParticipant<IUserRepository>();
+        services.AddAshlarDurableTransactionParticipant<ICredentialRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAccountLockoutRepository>();
+        services.AddAshlarDurableTransactionParticipant<IUserAdministrationRepository>();
+        services.AddAshlarDurableTransactionParticipant<ICredentialAdministrationRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionAdministrationRepository>();
+        services.AddAshlarDurableTransactionParticipant<IInvitationRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionRepository>();
+        services.AddAshlarDurableTransactionParticipant<IRememberedMfaDeviceRepository>();
+        services.AddAshlarDurableTransactionParticipant<IPasskeyChallengeRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantAdministrationRepository>();
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarSchemaDiagnostics, SqliteSchemaDiagnostics>();
         services.TryAddTransient<SqliteSchemaManager>();
@@ -72,6 +83,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.TryAddScoped<SqliteSecurityEventSink>();
         services.TryAddScoped<ISecurityEventAdministrationRepository, SqliteSecurityEventAdministrationRepository>();
         services.Replace(ServiceDescriptor.Scoped<IPersistentSecurityEventSink>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
+        services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
         services.Replace(ServiceDescriptor.Scoped<IUserSecurityEventSummaryRepository>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
 
         return services;
@@ -89,6 +101,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiter, SqliteAuthenticationRateLimiter>());
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiterDiagnostics, SqliteAuthenticationRateLimiterDiagnostics>());
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimitAdministrationRepository, SqliteAuthenticationRateLimitAdministrationRepository>());
+        services.AddAshlarDurableTransactionParticipant<IAuthenticationRateLimitAdministrationRepository>();
         services.AddAshlarAuthenticationRateLimitAdministration();
 
         return services;

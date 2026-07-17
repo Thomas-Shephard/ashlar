@@ -9,8 +9,7 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
 
     private readonly IAuthenticationRateLimitAdministrationRepository _repository;
     private readonly SecurityEventEmitter _securityEvents;
-    private readonly IAshlarDurableTransactionProvider _transactionProvider;
-    private readonly bool _failClosedBeforeNonAtomicReset;
+    private readonly AshlarDurableTransactionProvider _transactionProvider;
 
     public AuthenticationRateLimitAdministrationService(
         IAuthenticationRateLimitAdministrationRepository repository,
@@ -20,9 +19,12 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
         ArgumentNullException.ThrowIfNull(dependencies);
         _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
         _securityEvents = new SecurityEventEmitter(
-            DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, _transactionProvider, "Authentication rate-limit resets"),
+            DurableSecurityMutationComposition.Require(
+                dependencies.SecurityEventSink,
+                _transactionProvider,
+                "Authentication rate-limit resets",
+                repository),
             dependencies.TimeProvider);
-        _failClosedBeforeNonAtomicReset = repository is INonAtomicAuthenticationRateLimitAdministrationRepository;
     }
 
     public async Task<Result<AuthenticationRateLimitBucketResetResult>> ResetBucketAsync(ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)
@@ -32,16 +34,6 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
         if (!TryValidateResetRequest(request, out var validationFailure))
         {
             return validationFailure;
-        }
-
-        if (_failClosedBeforeNonAtomicReset)
-        {
-            var failedResult = new AuthenticationRateLimitBucketResetResult(
-                request.BucketId,
-                request.Purpose,
-                AuthenticationRateLimitBucketResetStatus.Failed);
-            await RecordResetAttemptAsync(request, failedResult.Status, cancellationToken);
-            return Result.Success(failedResult);
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
@@ -148,4 +140,4 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
 internal sealed record AuthenticationRateLimitAdministrationServiceDependencies(
     TimeProvider? TimeProvider = null,
     SecurityEventFanOutSink? SecurityEventSink = null,
-    IAshlarDurableTransactionProvider? TransactionProvider = null);
+    AshlarDurableTransactionProvider? TransactionProvider = null);

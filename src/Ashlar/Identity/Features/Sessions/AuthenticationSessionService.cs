@@ -11,7 +11,7 @@ internal sealed class AuthenticationSessionService(
     IAuthenticationSessionRepository repository,
     ISecureTokenHasher tokenHasher,
     ISecureTokenGenerator tokenGenerator,
-    IAshlarDurableTransactionProvider transactionProvider,
+    AshlarDurableTransactionProvider transactionProvider,
     AuthenticationSessionServiceDependencies dependencies,
     ILogger<AuthenticationSessionService>? logger = null)
     : IAuthenticationSessionService, IAuthenticationSessionMutationExecutor
@@ -39,12 +39,12 @@ internal sealed class AuthenticationSessionService(
     private readonly ActiveSessionFreshProofValidator _proofValidator = new(repository, dependencies.TimeProvider ?? TimeProvider.System);
     private readonly ISecureTokenHasher _tokenHasher = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
     private readonly ISecureTokenGenerator _tokenGenerator = tokenGenerator ?? throw new ArgumentNullException(nameof(tokenGenerator));
-    private readonly IAshlarDurableTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
+    private readonly AshlarDurableTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly AuthenticationSessionOptions _options = ValidateOptions(dependencies.Options ?? new AuthenticationSessionOptions());
     private readonly TimeProvider _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
-    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, transactionProvider, "Authentication-session mutations"), dependencies.TimeProvider ?? TimeProvider.System);
-    private readonly ILogger<AuthenticationSessionService> _logger = logger ?? dependencies.Logger ?? NullLogger<AuthenticationSessionService>.Instance;
     private readonly IUserRepository _userRepository = dependencies.UserRepository ?? throw new ArgumentNullException($"{nameof(dependencies)}.{nameof(dependencies.UserRepository)}");
+    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, transactionProvider, "Authentication-session mutations", repository, dependencies.UserRepository!), dependencies.TimeProvider ?? TimeProvider.System);
+    private readonly ILogger<AuthenticationSessionService> _logger = logger ?? dependencies.Logger ?? NullLogger<AuthenticationSessionService>.Instance;
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
     private readonly IAccountSecurityOperationAuthorizer? _operationAuthorizer = dependencies.OperationAuthorizer;
 

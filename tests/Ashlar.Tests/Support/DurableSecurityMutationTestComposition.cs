@@ -4,48 +4,45 @@ namespace Ashlar.Tests.Support;
 
 internal sealed class DurableSecurityMutationTestComposition
 {
-    private static readonly RecordingTransactionProvider SharedTransactionProvider = new();
-    private static readonly SecurityEventFanOutSink SharedEventSink = CreateEvents(new NullSecurityEventSink(), SharedTransactionProvider);
-
-    public DurableSecurityMutationTestComposition(ISecurityEventSink? sink = null)
+    public DurableSecurityMutationTestComposition(ISecurityEventSink? sink = null, params object[] participants)
     {
-        Transactions = new RecordingTransactionProvider();
-        Events = new SecurityEventFanOutSink(new PersistentSink(sink ?? new NullSecurityEventSink()), transactionProvider: Transactions);
+        RawTransactions = new RecordingTransactionProvider();
+        (Transactions, Events) = CreateEvents(sink ?? new NullSecurityEventSink(), RawTransactions, participants);
     }
 
-    public RecordingTransactionProvider Transactions { get; }
+    public RecordingTransactionProvider RawTransactions { get; }
+    public AshlarDurableTransactionProvider Transactions { get; }
     public SecurityEventFanOutSink Events { get; }
 
-    public static IAshlarDurableTransactionProvider SharedTransactions => SharedTransactionProvider;
-    public static SecurityEventFanOutSink SharedEvents => SharedEventSink;
-
-    public static SecurityEventFanOutSink EventsFor(ISecurityEventSink sink)
-    {
-        ArgumentNullException.ThrowIfNull(sink);
-        return CreateEvents(sink, SharedTransactionProvider);
-    }
-
-    public static SecurityEventFanOutSink EventsFor(ISecurityEventSink sink, IAshlarDurableTransactionProvider transactions)
-    {
-        ArgumentNullException.ThrowIfNull(sink);
-        ArgumentNullException.ThrowIfNull(transactions);
-        return new SecurityEventFanOutSink(new PersistentSink(sink), transactionProvider: transactions);
-    }
-
-    public static DurableSecurityMutationTestComposition Create(RecordingTransactionProvider transactions, ISecurityEventSink? sink = null)
+    public static DurableSecurityMutationTestComposition Create(RecordingTransactionProvider transactions, ISecurityEventSink? sink = null, params object[] participants)
     {
         ArgumentNullException.ThrowIfNull(transactions);
-        return new DurableSecurityMutationTestComposition(transactions, sink);
+        return new DurableSecurityMutationTestComposition(transactions, sink, participants);
     }
 
-    private DurableSecurityMutationTestComposition(RecordingTransactionProvider transactions, ISecurityEventSink? sink)
+    public static (AshlarDurableTransactionProvider Transactions, SecurityEventFanOutSink Events) Compose(
+        IAshlarTransactionProvider transactions,
+        ISecurityEventSink sink,
+        params object[] participants)
     {
-        Transactions = transactions;
-        Events = CreateEvents(sink ?? new NullSecurityEventSink(), Transactions);
+        ArgumentNullException.ThrowIfNull(transactions);
+        ArgumentNullException.ThrowIfNull(sink);
+        return CreateEvents(sink, transactions, participants);
     }
 
-    private static SecurityEventFanOutSink CreateEvents(ISecurityEventSink sink, RecordingTransactionProvider transactions) =>
-        new(new PersistentSink(sink), transactionProvider: transactions);
+    private DurableSecurityMutationTestComposition(RecordingTransactionProvider transactions, ISecurityEventSink? sink, object[] participants)
+    {
+        RawTransactions = transactions;
+        (Transactions, Events) = CreateEvents(sink ?? new NullSecurityEventSink(), transactions, participants);
+    }
+
+    private static (AshlarDurableTransactionProvider Transactions, SecurityEventFanOutSink Events) CreateEvents(
+        ISecurityEventSink sink, IAshlarTransactionProvider transactions, params object[] participants)
+    {
+        var persistent = new PersistentSink(sink);
+        var composition = AshlarDurableTransactionProvider.Create(transactions, [persistent, .. participants]);
+        return (composition, new SecurityEventFanOutSink(persistent, transactionProvider: composition));
+    }
 
     private sealed class PersistentSink(ISecurityEventSink inner) : IPersistentSecurityEventSink
     {

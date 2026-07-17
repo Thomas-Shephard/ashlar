@@ -47,8 +47,8 @@ internal sealed class AshlarPostgresBootstrapServiceCollectionExtensionsTests
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<NpgsqlDataSource>(), Is.SameAs(dataSource));
             Assert.That(scope.ServiceProvider.GetRequiredService<IBootstrapStateRepository>(), Is.InstanceOf<PostgresBootstrapStateRepository>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<PostgresTransactionManager>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>(), Is.SameAs(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>()));
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>(), Is.TypeOf<PostgresTransactionManager>());
         }
     }
 
@@ -81,8 +81,8 @@ internal sealed class AshlarPostgresBootstrapServiceCollectionExtensionsTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<PostgresTransactionManager>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>(), Is.SameAs(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>()));
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>(), Is.TypeOf<PostgresTransactionManager>());
         }
     }
 }

@@ -54,7 +54,7 @@ public static class AshlarOAuthServiceCollectionExtensions
         services.TryAddScoped(provider => new AshlarOidcInvitationRegistrationService(
             provider.GetRequiredService<IInvitationService>(),
             provider.GetRequiredService<ICredentialRepository>(),
-            provider.GetRequiredService<IAshlarDurableTransactionProvider>(),
+            provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetRequiredService<global::Microsoft.Extensions.Options.IOptionsMonitor<AshlarOAuthOptions>>(),
             provider.GetRequiredService<IOidcInvitationEmailMatchPolicy>(),
             provider.GetRequiredService<SecurityEventFanOutSink>(),

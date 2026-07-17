@@ -72,6 +72,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.TryAddScoped<IPasskeyChallengeRepository, PostgresPasskeyChallengeRepository>();
         services.TryAddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
         services.TryAddScoped<IAuthorizationGrantAdministrationRepository, PostgresAuthorizationGrantAdministrationRepository>();
+        services.AddPostgresDurableParticipants();
         services.TryAddScoped<IBootstrapStateRepository, PostgresBootstrapStateRepository>();
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarSchemaDiagnostics, PostgresSchemaDiagnostics>();
@@ -173,6 +174,8 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.AddPostgresTransactionServices();
         services.TryAddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
         services.TryAddScoped<IAuthorizationGrantAdministrationRepository, PostgresAuthorizationGrantAdministrationRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantAdministrationRepository>();
 
         return services;
     }
@@ -189,10 +192,24 @@ public static class AshlarPostgresServiceCollectionExtensions
 
     private static void AddPostgresTransactionServices(this IServiceCollection services)
     {
-        services.TryAddScoped<PostgresTransactionManager>();
-        services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
-        services.Replace(ServiceDescriptor.Scoped<IAshlarDurableTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
+        services.AddAshlarDurableTransactionProvider<PostgresTransactionManager>();
         services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
+    }
+
+    private static void AddPostgresDurableParticipants(this IServiceCollection services)
+    {
+        services.AddAshlarDurableTransactionParticipant<IUserRepository>();
+        services.AddAshlarDurableTransactionParticipant<ICredentialRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAccountLockoutRepository>();
+        services.AddAshlarDurableTransactionParticipant<IUserAdministrationRepository>();
+        services.AddAshlarDurableTransactionParticipant<ICredentialAdministrationRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionAdministrationRepository>();
+        services.AddAshlarDurableTransactionParticipant<IInvitationRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionRepository>();
+        services.AddAshlarDurableTransactionParticipant<IRememberedMfaDeviceRepository>();
+        services.AddAshlarDurableTransactionParticipant<IPasskeyChallengeRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantAdministrationRepository>();
     }
 
     /// <summary>
@@ -234,6 +251,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Singleton<IAuthenticationRateLimiter, PostgresAuthenticationRateLimiter>());
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiterDiagnostics, PostgresAuthenticationRateLimiterDiagnostics>());
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimitAdministrationRepository, PostgresAuthenticationRateLimitAdministrationRepository>());
+        services.AddAshlarDurableTransactionParticipant<IAuthenticationRateLimitAdministrationRepository>();
         services.AddAshlarAuthenticationRateLimitAdministration();
 
         return services;
@@ -298,6 +316,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.TryAddScoped<PostgresSecurityEventSink>();
         services.TryAddScoped<ISecurityEventAdministrationRepository, PostgresSecurityEventAdministrationRepository>();
         services.Replace(ServiceDescriptor.Scoped<IPersistentSecurityEventSink>(provider => provider.GetRequiredService<PostgresSecurityEventSink>()));
+        services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
         services.Replace(ServiceDescriptor.Scoped<IUserSecurityEventSummaryRepository>(provider => provider.GetRequiredService<PostgresSecurityEventSink>()));
 
         return services;

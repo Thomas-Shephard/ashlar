@@ -4,10 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Ashlar.Sqlite.Transactions;
 
-/// <summary>
-/// Manages the SQLite connection and transaction lifecycle for a scoped database interaction.
-/// </summary>
-internal sealed partial class SqliteTransactionManager : IAshlarDurableTransactionProvider, ISqliteConnectionProvider, IAsyncDisposable
+internal sealed partial class SqliteTransactionManager : IAshlarTransactionProvider, ISqliteConnectionProvider, IAsyncDisposable
 {
     private readonly Func<CancellationToken, ValueTask<SqliteConnection>> _openConnectionAsync;
     private readonly ILogger<SqliteTransactionManager> _logger;

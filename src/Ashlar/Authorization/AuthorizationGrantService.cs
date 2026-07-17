@@ -17,7 +17,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly IUserRepository _userRepository;
-    private readonly IAshlarDurableTransactionProvider _transactionProvider;
+    private readonly AshlarDurableTransactionProvider _transactionProvider;
     private readonly IAccountSecurityOperationAuthorizer? _authorizer;
     private readonly ActiveSessionFreshProofValidator? _proofValidator;
 
@@ -34,7 +34,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
         IAuthorizationGrantRepository repository,
         IUserRepository userRepository,
         SecurityEventFanOutSink securityEventSink,
-        IAshlarDurableTransactionProvider transactionProvider,
+        AshlarDurableTransactionProvider transactionProvider,
         AuthorizationGrantOptions? options = null,
         TimeProvider? timeProvider = null,
         AuthorizationGrantMutationContext? mutationContext = null)
@@ -54,6 +54,8 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService, IAut
             throw new ArgumentException("Authorization grant audit requires durable fan-out.", nameof(securityEventSink));
         if (!ReferenceEquals(transactionProvider, securityEventSink.TransactionProvider))
             throw new ArgumentException("Authorization grant audit requires the fan-out sink's durable transaction provider.", nameof(transactionProvider));
+        if (!transactionProvider.IncludesParticipant(repository) || !transactionProvider.IncludesParticipant(userRepository))
+            throw new ArgumentException("Authorization grant repositories must be enlisted in the durable transaction composition.", nameof(transactionProvider));
         _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
         _transactionProvider = transactionProvider;
         _authorizer = mutationContext?.Authorizer;

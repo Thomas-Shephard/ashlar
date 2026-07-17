@@ -1,3 +1,4 @@
+using Ashlar.Testing;
 using System.Security.Claims;
 using System.Net;
 using System.Text.Json;
@@ -74,10 +75,15 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IInvitationRepository>());
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        var transactions = Mock.Of<IAshlarDurableTransactionProvider>();
-        services.AddSingleton<IAshlarTransactionProvider>(transactions);
-        services.AddSingleton(transactions);
-        services.AddSingleton(Mock.Of<IPersistentSecurityEventSink>());
+        var persistent = Mock.Of<IPersistentSecurityEventSink>();
+        services.AddSingleton(persistent);
+        services.AddSingleton(provider => DurableTransactionComposition.Create(
+            Mock.Of<IAshlarTransactionProvider>(),
+            provider.GetRequiredService<IUserRepository>(),
+            provider.GetRequiredService<ICredentialRepository>(),
+            provider.GetRequiredService<IAuthenticationSessionRepository>(),
+            persistent));
+        services.AddSingleton<IAshlarTransactionProvider>(provider => provider.GetRequiredService<AshlarDurableTransactionProvider>());
         services.AddPermissiveAccountSecurityGuard();
         services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services.AddPasswordHasher<PasswordHasherV1>();

@@ -56,7 +56,7 @@ internal sealed class PasskeyService : IPasskeyService
     private readonly TimeProvider _timeProvider;
     private readonly ActiveSessionFreshProofValidator _proofValidator;
     private readonly SecurityEventFanOutSink _securityEventSink;
-    private readonly IAshlarDurableTransactionProvider _transactionProvider;
+    private readonly AshlarDurableTransactionProvider _transactionProvider;
     private readonly IReadOnlyList<ISecondaryAuthenticationFactorProvider> _additionalVerificationProviders;
 
     public PasskeyService(
@@ -83,8 +83,15 @@ internal sealed class PasskeyService : IPasskeyService
         _proofValidator = new(dependencies.SessionRepository, _timeProvider);
         _securityEventSink = dependencies.SecurityEventSink;
         _transactionProvider = dependencies.TransactionProvider;
-        if (!_securityEventSink.RequiresDurableTransaction || !ReferenceEquals(_transactionProvider, _securityEventSink.TransactionProvider))
+        if (!_securityEventSink.RequiresDurableTransaction)
             throw new ArgumentException("Passkey mutations require durable audit using the same transaction provider.", nameof(dependencies));
+        if (!ReferenceEquals(_transactionProvider, _securityEventSink.TransactionProvider))
+            throw new ArgumentException("Passkey mutations require durable audit using the same transaction provider.", nameof(dependencies));
+        if (!_transactionProvider.IncludesParticipant(userRepository)
+            || !_transactionProvider.IncludesParticipant(credentialRepository)
+            || !_transactionProvider.IncludesParticipant(challengeRepository)
+            || !_transactionProvider.IncludesParticipant(dependencies.SessionRepository))
+            throw new ArgumentException("Passkey repositories must be enlisted in the durable transaction composition.", nameof(dependencies));
     }
 
     internal PasskeyService(
@@ -1026,11 +1033,11 @@ internal sealed class PasskeyServiceDependencies(
     public IAuthenticationSessionRepository SessionRepository { get; } = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
     public TimeProvider TimeProvider { get; } = infrastructure.TimeProvider ?? TimeProvider.System;
     public SecurityEventFanOutSink SecurityEventSink { get; } = infrastructure.SecurityEventSink;
-    public IAshlarDurableTransactionProvider TransactionProvider { get; } = infrastructure.TransactionProvider
+    public AshlarDurableTransactionProvider TransactionProvider { get; } = infrastructure.TransactionProvider
         ?? throw new ArgumentException("Passkey mutations require a durable transaction provider.", nameof(infrastructure));
 }
 
 internal sealed record PasskeyServiceInfrastructure(
     TimeProvider? TimeProvider,
     SecurityEventFanOutSink SecurityEventSink,
-    IAshlarDurableTransactionProvider TransactionProvider);
+    AshlarDurableTransactionProvider TransactionProvider);

@@ -50,9 +50,14 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
         _transactionProvider = transactionProvider;
         _logger = logger ?? NullLogger<SecurityEventFanOutSink>.Instance;
 
-        if (RequiresDurableTransaction && transactionProvider is not IAshlarDurableTransactionProvider)
+        if (RequiresDurableTransaction && transactionProvider is not AshlarDurableTransactionProvider)
         {
-            throw new InvalidOperationException("Persistent security event storage and durable fan-out handlers require an IAshlarDurableTransactionProvider.");
+            throw new InvalidOperationException("Persistent security event storage and durable fan-out handlers require an Ashlar durable transaction provider.");
+        }
+        if (transactionProvider is AshlarDurableTransactionProvider composition
+            && ((_persistentSink != null && !composition.IncludesParticipant(_persistentSink)) || _durableHandlers.Any(handler => !composition.IncludesParticipant(handler))))
+        {
+            throw new InvalidOperationException("Persistent security event storage and durable fan-out handlers must be enlisted in the durable transaction composition.");
         }
     }
 

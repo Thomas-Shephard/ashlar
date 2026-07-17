@@ -622,15 +622,16 @@ internal sealed class PasswordResetServiceTests
         var localProvider = new Mock<IPrimaryAuthenticationProvider>();
         localProvider.SetupGet(provider => provider.Key).Returns(AuthenticationProviderKey.Local);
         var providerRegistry = new AuthenticationProviderRegistry([localProvider.Object]);
+        var composition = new DurableSecurityMutationTestComposition(fixture.Audit, fixture.Store, fixture.Store);
 
         var accountSecurity = new AccountSecurityService(
             fixture.Store,
             fixture.Store,
             sessionService,
             new TestAuthenticationSessionReader(),
-            new NullTransactionProvider(),
+            composition.Transactions,
             new PermissiveAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(fixture.Time, fixture.Audit, ProviderRegistry: providerRegistry));
+            new AccountSecurityServiceDependencies(fixture.Time, composition.Events, ProviderRegistry: providerRegistry));
 
         var posture = await accountSecurity.GetUserSecurityPostureAsync(user.Id);
 

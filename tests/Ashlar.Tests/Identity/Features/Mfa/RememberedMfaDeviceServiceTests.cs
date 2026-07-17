@@ -501,8 +501,9 @@ internal sealed class RememberedMfaDeviceServiceTests
         var users = new InMemoryUserRepository();
         var generator = new SequenceTokenGenerator("selector", "verifier");
         var hasher = new Sha256TokenHasher();
-        var transactions = DurableSecurityMutationTestComposition.SharedTransactions;
-        var events = DurableSecurityMutationTestComposition.SharedEvents;
+        var composition = new DurableSecurityMutationTestComposition(participants: [repository, users]);
+        var transactions = composition.Transactions;
+        var events = composition.Events;
 
         using (Assert.EnterMultipleScope())
         {
@@ -560,7 +561,7 @@ internal sealed class RememberedMfaDeviceServiceTests
         var events = new RecordingSecurityEventSink();
         var time = new FakeTimeProvider(Now);
         var hasher = new Sha256TokenHasher();
-        var composition = new DurableSecurityMutationTestComposition(events);
+        var composition = new DurableSecurityMutationTestComposition(events, repository, users);
         var service = new RememberedMfaDeviceService(
             repository,
             users,

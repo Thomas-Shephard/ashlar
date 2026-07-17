@@ -9,7 +9,7 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
 
     private readonly IAccountLockoutRepository _repository;
     private readonly SecurityEventEmitter _securityEvents;
-    private readonly IAshlarDurableTransactionProvider _transactionProvider;
+    private readonly AshlarDurableTransactionProvider _transactionProvider;
 
     public AccountLockoutAdministrationService(
         IAccountLockoutRepository repository,
@@ -19,7 +19,7 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
         ArgumentNullException.ThrowIfNull(dependencies);
         _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
         _securityEvents = new SecurityEventEmitter(
-            DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, _transactionProvider, "Account-lockout reset"),
+            DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, _transactionProvider, "Account-lockout reset", repository),
             dependencies.TimeProvider ?? TimeProvider.System);
     }
 
@@ -180,4 +180,4 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
 internal sealed record AccountLockoutAdministrationServiceDependencies(
     TimeProvider? TimeProvider = null,
     SecurityEventFanOutSink? SecurityEventSink = null,
-    IAshlarDurableTransactionProvider? TransactionProvider = null);
+    AshlarDurableTransactionProvider? TransactionProvider = null);

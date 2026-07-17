@@ -2,10 +2,10 @@ using Ashlar.Identity.RateLimiting.Abstractions;
 
 namespace Ashlar.Identity.Features.Administration;
 
-internal sealed class AuthenticationRateLimitAdministrationReader(IAuthenticationRateLimitAdministrationRepository repository, TimeProvider? timeProvider = null)
+internal sealed class AuthenticationRateLimitAdministrationReader(IAuthenticationRateLimitAdministrationReaderRepository repository, TimeProvider? timeProvider = null)
     : IAuthenticationRateLimitAdministrationReader
 {
-    private readonly IAuthenticationRateLimitAdministrationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+    private readonly IAuthenticationRateLimitAdministrationReaderRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
     public async Task<Result<AuthenticationRateLimitBucketSearchResult>> SearchBucketsAsync(SearchAuthenticationRateLimitBucketsRequest request, CancellationToken cancellationToken = default)

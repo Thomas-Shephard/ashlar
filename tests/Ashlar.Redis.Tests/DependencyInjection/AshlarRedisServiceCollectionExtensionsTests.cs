@@ -29,7 +29,12 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
         {
             Assert.That(provider.GetRequiredService<IAuthenticationRateLimiter>(), Is.TypeOf<RedisAuthenticationRateLimiter>());
             Assert.That(provider.GetRequiredService<IAuthenticationRateLimiterDiagnostics>(), Is.TypeOf<RedisAuthenticationRateLimiterDiagnostics>());
+            Assert.That(provider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>(), Is.Not.Null);
+            Assert.That(provider.GetService<IAuthenticationRateLimitAdministrationService>(), Is.Null);
             Assert.That(provider.GetRequiredService<IOptions<RedisAuthenticationRateLimiterOptions>>().Value.KeyPrefix, Is.EqualTo("custom:prefix"));
+            Assert.That(provider.GetService<RedisAuthenticationRateLimitAdministrationRepository>(), Is.Null);
+            Assert.That(provider.GetService<IAuthenticationRateLimitAdministrationReaderRepository>(), Is.Null);
+            Assert.That(provider.GetService<IAuthenticationRateLimitAdministrationRepository>(), Is.Null);
         }
     }
 

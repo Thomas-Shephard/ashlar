@@ -25,7 +25,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
     private readonly IUserRepository _userRepository;
     private readonly ISecureTokenGenerator _tokenGenerator;
     private readonly ISecureTokenHasher _tokenHasher;
-    private readonly IAshlarDurableTransactionProvider _transactionProvider;
+    private readonly AshlarDurableTransactionProvider _transactionProvider;
     private readonly RememberedMfaDeviceOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
@@ -36,7 +36,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
         IUserRepository userRepository,
         ISecureTokenGenerator tokenGenerator,
         ISecureTokenHasher tokenHasher,
-        IAshlarDurableTransactionProvider transactionProvider,
+        AshlarDurableTransactionProvider transactionProvider,
         RememberedMfaDeviceServiceDependencies dependencies,
         ILogger<RememberedMfaDeviceService>? logger = null)
     {
@@ -48,7 +48,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
         _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
         _options = ValidateOptions(dependencies.Options?.Value ?? new RememberedMfaDeviceOptions());
         _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
-        _securityEvents = new SecurityEventEmitter(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, transactionProvider, "Remembered MFA device mutations"), _timeProvider);
+        _securityEvents = new SecurityEventEmitter(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, transactionProvider, "Remembered MFA device mutations", repository, userRepository), _timeProvider);
         _logger = logger ?? NullLogger<RememberedMfaDeviceService>.Instance;
     }
 

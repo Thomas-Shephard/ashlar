@@ -54,7 +54,8 @@ internal sealed class AshlarCompositionTests
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecretProtector>(), Is.SameAs(secretProtector));
             Assert.That(scope.ServiceProvider.GetRequiredService<IEmailSender>(), Is.SameAs(emailSender));
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiter>(), Is.SameAs(rateLimiter));
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<RecordingTransactionProvider>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<RecordingTransactionProvider>(), Is.Not.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarOperationsSummaryService>(), Is.TypeOf<AshlarOperationsSummaryService>());
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
@@ -71,6 +72,198 @@ internal sealed class AshlarCompositionTests
         using var scope = provider.CreateScope();
 
         Assert.That(scope.ServiceProvider.GetRequiredService<ScopedDependency>(), Is.Not.Null);
+    }
+
+    [Test]
+    public async Task DurableProviderJoinsNestedCallsWithoutTrustingCustomProvider()
+    {
+        var raw = new IndependentTransactionProvider();
+        var provider = AshlarDurableTransactionProvider.Create(raw);
+
+        await using (var outer = await provider.BeginTransactionAsync())
+        {
+            await using (var inner = await provider.BeginTransactionAsync())
+            {
+                Assert.Throws<ArgumentNullException>(() => inner.OnCommitted(null!));
+                inner.OnCommitted(_ => Task.CompletedTask);
+                await inner.CommitAsync();
+                Assert.ThrowsAsync<InvalidOperationException>(() => inner.CommitAsync());
+            }
+            Assert.Throws<ArgumentNullException>(() => outer.OnCommitted(null!));
+            await outer.CommitAsync();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(raw.BeginCount, Is.EqualTo(1));
+            Assert.That(raw.Transaction.CommitCount, Is.EqualTo(1));
+            Assert.That(raw.Transaction.HookCount, Is.EqualTo(1));
+        }
+
+        await using (var rollbackOuter = await provider.BeginTransactionAsync())
+        {
+            await using (var inner = await provider.BeginTransactionAsync())
+            {
+                await inner.RollbackAsync();
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(raw.BeginCount, Is.EqualTo(2));
+                Assert.ThrowsAsync<InvalidOperationException>(() => rollbackOuter.CommitAsync());
+            }
+            await rollbackOuter.RollbackAsync();
+            Assert.That(raw.Transaction.RollbackCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task DurableProviderCanRetryAfterCustomProviderBeginFails()
+    {
+        var raw = new IndependentTransactionProvider { FailNextBegin = true };
+        var provider = AshlarDurableTransactionProvider.Create(raw);
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => provider.BeginTransactionAsync());
+        await using var transaction = await provider.BeginTransactionAsync();
+
+        Assert.That(raw.BeginCount, Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task DurableProviderCanRetryAfterCustomProviderReturnsNull()
+    {
+        var raw = new IndependentTransactionProvider { ReturnNull = true };
+        var provider = AshlarDurableTransactionProvider.Create(raw);
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => provider.BeginTransactionAsync());
+        raw.ReturnNull = false;
+        await using var transaction = await provider.BeginTransactionAsync();
+
+        Assert.That(raw.BeginCount, Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task DurableProviderRejectsWorkWhileBoundaryIsStartingOrFinished()
+    {
+        var raw = new IndependentTransactionProvider { BeginGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
+        var provider = AshlarDurableTransactionProvider.Create(raw);
+        var pending = provider.BeginTransactionAsync();
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => provider.BeginTransactionAsync());
+        raw.BeginGate.SetResult();
+        var transaction = await pending;
+        await transaction.CommitAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<InvalidOperationException>(() => transaction.CommitAsync());
+            Assert.ThrowsAsync<InvalidOperationException>(() => provider.BeginTransactionAsync());
+        }
+
+        await transaction.DisposeAsync();
+        await using var next = await provider.BeginTransactionAsync();
+        Assert.That(raw.BeginCount, Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task DurableProviderRejectsNestedWorkOutsideActiveRootLifecycle()
+    {
+        var commitGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var raw = new IndependentTransactionProvider { CompletionGate = commitGate };
+        var provider = AshlarDurableTransactionProvider.Create(raw);
+        var root = await provider.BeginTransactionAsync();
+        var nested = await provider.BeginTransactionAsync();
+
+        var commit = root.CommitAsync();
+        Assert.Throws<InvalidOperationException>(() => nested.OnCommitted(_ => Task.CompletedTask));
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await root.DisposeAsync());
+        commitGate.SetResult();
+        await commit;
+        Assert.ThrowsAsync<InvalidOperationException>(() => nested.CommitAsync());
+        await nested.DisposeAsync();
+        await nested.DisposeAsync();
+        await root.DisposeAsync();
+        await root.DisposeAsync();
+
+        var unfinishedRoot = await provider.BeginTransactionAsync();
+        var unfinishedNested = await provider.BeginTransactionAsync();
+        await unfinishedRoot.DisposeAsync();
+        Assert.ThrowsAsync<InvalidOperationException>(() => unfinishedNested.CommitAsync());
+        await unfinishedNested.DisposeAsync();
+    }
+
+    [Test]
+    public async Task DurableProviderAllowsPostCommitHookToStartANewBoundary()
+    {
+        var raw = new IndependentTransactionProvider { RunHooksOnCommit = true };
+        var provider = AshlarDurableTransactionProvider.Create(raw);
+        await using var transaction = await provider.BeginTransactionAsync();
+        transaction.OnCommitted(async cancellationToken =>
+        {
+            await using var next = await provider.BeginTransactionAsync(cancellationToken);
+            await next.CommitAsync(cancellationToken);
+        });
+
+        await transaction.CommitAsync();
+
+        Assert.That(raw.BeginCount, Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task DurableProviderDoesNotReleasePreCommitAmbientContextsForPostCommitHooks()
+    {
+        var raw = new IndependentTransactionProvider { RunHooksOnCommit = true };
+        var provider = AshlarDurableTransactionProvider.Create(raw);
+        var hookStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var detachedContextChecked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var transaction = await provider.BeginTransactionAsync();
+        var inheritedContext = Task.Run(async () =>
+        {
+            await hookStarted.Task;
+            Assert.ThrowsAsync<InvalidOperationException>(() => provider.BeginTransactionAsync());
+            detachedContextChecked.SetResult();
+        });
+        transaction.OnCommitted(async cancellationToken =>
+        {
+            hookStarted.SetResult();
+            await detachedContextChecked.Task.WaitAsync(cancellationToken);
+            await using var next = await provider.BeginTransactionAsync(cancellationToken);
+            await next.CommitAsync(cancellationToken);
+        });
+
+        await transaction.CommitAsync();
+        await inheritedContext;
+
+        Assert.That(raw.BeginCount, Is.EqualTo(2));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task DurableProviderDoesNotRetryAnIndeterminateCompletion(bool commit)
+    {
+        var raw = new IndependentTransactionProvider { FailCompletion = true };
+        var provider = AshlarDurableTransactionProvider.Create(raw);
+        var transaction = await provider.BeginTransactionAsync();
+
+        Assert.ThrowsAsync<InvalidOperationException>(() =>
+            commit ? transaction.CommitAsync() : transaction.RollbackAsync());
+        Assert.ThrowsAsync<InvalidOperationException>(() =>
+            commit ? transaction.CommitAsync() : transaction.RollbackAsync());
+
+        await transaction.DisposeAsync();
+        await using var next = await provider.BeginTransactionAsync();
+        Assert.That(raw.BeginCount, Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task DurableProviderDoesNotReopenBoundaryAfterDisposalFails()
+    {
+        var raw = new IndependentTransactionProvider { FailDisposal = true };
+        var provider = AshlarDurableTransactionProvider.Create(raw);
+        var transaction = await provider.BeginTransactionAsync();
+
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await transaction.DisposeAsync());
+        Assert.ThrowsAsync<InvalidOperationException>(() => provider.BeginTransactionAsync());
     }
 
     [Test]
@@ -151,5 +344,57 @@ internal sealed class AshlarCompositionTests
         {
             throw new NotSupportedException();
         }
+    }
+
+    private sealed class IndependentTransactionProvider : IAshlarTransactionProvider
+    {
+        public int BeginCount { get; private set; }
+        public bool FailNextBegin { get; set; }
+        public bool ReturnNull { get; set; }
+        public TaskCompletionSource? BeginGate { get; set; }
+        public TaskCompletionSource? CompletionGate { get; set; }
+        public bool RunHooksOnCommit { get; set; }
+        public bool FailCompletion { get; set; }
+        public bool FailDisposal { get; set; }
+        public IndependentTransaction Transaction { get; private set; } = null!;
+
+        public async Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        {
+            BeginCount++;
+            if (FailNextBegin)
+            {
+                FailNextBegin = false;
+                throw new InvalidOperationException("begin failed");
+            }
+            if (BeginGate is not null) await BeginGate.Task.WaitAsync(cancellationToken);
+            if (ReturnNull) return null!;
+            Transaction = new IndependentTransaction(CompletionGate, RunHooksOnCommit, FailCompletion, FailDisposal);
+            return Transaction;
+        }
+    }
+
+    private sealed class IndependentTransaction(TaskCompletionSource? completionGate = null, bool runHooksOnCommit = false, bool failCompletion = false, bool failDisposal = false) : IAshlarTransaction
+    {
+        private readonly List<Func<CancellationToken, Task>> _hooks = [];
+        public int CommitCount { get; private set; }
+        public int RollbackCount { get; private set; }
+        public int HookCount { get; private set; }
+        public async Task CommitAsync(CancellationToken cancellationToken = default)
+        {
+            CommitCount++;
+            if (failCompletion) throw new InvalidOperationException("commit failed");
+            if (completionGate is not null) await completionGate.Task.WaitAsync(cancellationToken);
+            if (runHooksOnCommit)
+                foreach (var hook in _hooks) await hook(CancellationToken.None);
+        }
+        public Task RollbackAsync(CancellationToken cancellationToken = default)
+        {
+            RollbackCount++;
+            return failCompletion ? Task.FromException(new InvalidOperationException("rollback failed")) : Task.CompletedTask;
+        }
+        public void OnCommitted(Func<CancellationToken, Task> action) { HookCount++; _hooks.Add(action); }
+        public ValueTask DisposeAsync() => failDisposal
+            ? ValueTask.FromException(new InvalidOperationException("dispose failed"))
+            : ValueTask.CompletedTask;
     }
 }

@@ -288,10 +288,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IAshlarSecurityEventWebhookEnqueuer, TestWebhookEnqueuer>();
-        services.AddAshlarNullTransactions();
-        var transactionProvider = Mock.Of<IAshlarDurableTransactionProvider>();
-        services.AddSingleton<IAshlarTransactionProvider>(transactionProvider);
-        services.AddSingleton(transactionProvider);
+        services.AddAshlarDurableTransactionProvider<StubTransactionProvider>();
         services.AddPermissiveAccountSecurityGuard();
         services.AddPasswordHasher<PasswordHasherV1>();
         services.AddAshlarSecurityEventWebhooks(options =>
@@ -331,6 +328,12 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarOperationsSummaryService>(), Is.TypeOf<AshlarOperationsSummaryService>());
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
         }
+    }
+
+    private sealed class StubTransactionProvider : IAshlarTransactionProvider
+    {
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class TestHttpClientFactory : IHttpClientFactory

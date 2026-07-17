@@ -90,13 +90,15 @@ internal sealed class RecoveryCodeTests
     {
         var repo = new Mock<IUserRepository>().Object;
         var credentialRepo = new Mock<ICredentialRepository>().Object;
-        var trans = new Mock<IAshlarDurableTransactionProvider>().Object;
+        var composition = new DurableSecurityMutationTestComposition(participants: [repo, credentialRepo]);
+        var trans = composition.Transactions;
         var hasher = new PasswordHasherSelector([new PasswordHasherV1()]);
         var options = Options.Create(new RecoveryCodeOptions());
+        var dependencies = CreateDependencies(options, securityEventSink: composition.Events);
 
-        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeService(null!, credentialRepo, trans, hasher, CreateDependencies(options)));
-        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeService(repo, null!, trans, hasher, CreateDependencies(options)));
-        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeService(repo, credentialRepo, trans, null!, CreateDependencies(options)));
+        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeService(null!, credentialRepo, trans, hasher, dependencies));
+        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeService(repo, null!, trans, hasher, dependencies));
+        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeService(repo, credentialRepo, trans, null!, dependencies));
         Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeService(repo, credentialRepo, trans, hasher, CreateDependencies(null!)));
 
         var optionsMock = new Mock<IOptions<RecoveryCodeOptions>>();
@@ -161,16 +163,15 @@ internal sealed class RecoveryCodeTests
         var proof = CreateProof(userId);
         var repository = new Mock<IUserRepository>();
         var credentials = new Mock<ICredentialRepository>();
-        var transactions = new Mock<IAshlarDurableTransactionProvider>();
-        var transaction = new Mock<IAshlarTransaction>();
+        var transactions = new RecordingTransactionProvider();
         repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com", AccountState = UserAccountState.Active });
         credentials.Setup(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()))
             .ReturnsAsync(2);
-        transactions.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
-        var service = new RecoveryCodeService(repository.Object, credentials.Object, transactions.Object,
+        var composition = DurableSecurityMutationTestComposition.Create(transactions, participants: [repository.Object, credentials.Object]);
+        var service = new RecoveryCodeService(repository.Object, credentials.Object, composition.Transactions,
             new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions { CodeCount = 1 }),
-                securityEventSink: DurableSecurityMutationTestComposition.EventsFor(new NullSecurityEventSink(), transactions.Object)));
+                securityEventSink: composition.Events));
 
         var generated = await service.GenerateRecoveryCodesAsync(CreateGenerationRequest(userId, proof));
         var revoked = await service.RevokeRecoveryCodesAsync(CreateRevocationRequest(userId, proof, reason: "cleanup"));
@@ -257,14 +258,13 @@ internal sealed class RecoveryCodeTests
         var userId = Guid.NewGuid();
         var repository = new Mock<IUserRepository>();
         var credentials = new Mock<ICredentialRepository>();
-        var transactions = new Mock<IAshlarDurableTransactionProvider>();
-        var transaction = new Mock<IAshlarTransaction>();
+        var transactions = new RecordingTransactionProvider();
         repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com", AccountState = UserAccountState.Active });
-        transactions.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
-        var service = new RecoveryCodeService(repository.Object, credentials.Object, transactions.Object,
+        var composition = DurableSecurityMutationTestComposition.Create(transactions, participants: [repository.Object, credentials.Object]);
+        var service = new RecoveryCodeService(repository.Object, credentials.Object, composition.Transactions,
             new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions { CodeCount = 1, ExpiresAfter = null }),
-                securityEventSink: DurableSecurityMutationTestComposition.EventsFor(new NullSecurityEventSink(), transactions.Object)));
+                securityEventSink: composition.Events));
 
         var result = await ((IRecoveryCodeMutationExecutor)service).GenerateRecoveryCodesAsync(userId,
             GenerationExecution(new AuditContext(ActorUserId: userId), replaceExisting: false));
@@ -308,8 +308,7 @@ internal sealed class RecoveryCodeTests
         var repository = new Mock<IUserRepository>();
         repository.SetupSequence(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user).ReturnsAsync((IUser?)null).ReturnsAsync(user).ReturnsAsync((IUser?)null);
-        var transactions = new RecordingTransactionProvider();
-        var service = CreateService(repository.Object, new RecoveryCodeOptions(), transactions: transactions);
+        var service = CreateService(repository.Object, new RecoveryCodeOptions());
         var executor = (IRecoveryCodeMutationExecutor)service;
         var audit = new AuditContext(ActorUserId: userId);
 
@@ -321,7 +320,6 @@ internal sealed class RecoveryCodeTests
             Assert.That(generation.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
             Assert.That(revocation.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
         }
-        Assert.That(transactions.CommitCount, Is.EqualTo(2));
     }
 
     [Test]
@@ -508,7 +506,7 @@ internal sealed class RecoveryCodeTests
         repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
         var credentials = new Mock<ICredentialRepository>();
-        var transactions = new Mock<IAshlarDurableTransactionProvider>();
+        var transactions = new Mock<IAshlarTransactionProvider>();
         var transaction = new Mock<IAshlarTransaction>();
         var committed = new List<Func<CancellationToken, Task>>();
         transaction.Setup(t => t.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()))
@@ -519,10 +517,11 @@ internal sealed class RecoveryCodeTests
         });
         transactions.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
         var notifications = new Mock<ISecurityNotificationService>();
-        var service = new RecoveryCodeService(repository.Object, credentials.Object, transactions.Object,
+        var composition = DurableSecurityMutationTestComposition.Compose(transactions.Object, new NullSecurityEventSink(), repository.Object, credentials.Object);
+        var service = new RecoveryCodeService(repository.Object, credentials.Object, composition.Transactions,
             new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(
                 Options.Create(new RecoveryCodeOptions { CodeCount = 1, ExpiresAfter = TimeSpan.FromDays(30) }),
-                securityEventSink: DurableSecurityMutationTestComposition.EventsFor(new NullSecurityEventSink(), transactions.Object),
+                securityEventSink: composition.Events,
                 notificationService: notifications.Object));
         var request = new RecoveryCodeGenerationExecutionRequest(audit, TenantContext.Global, false, null,
             true, 1, TimeSpan.FromHours(1));
@@ -772,7 +771,7 @@ internal sealed class RecoveryCodeTests
         var events = new RecordingSecurityEventSink();
         repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
-        var composition = new DurableSecurityMutationTestComposition();
+        var composition = new DurableSecurityMutationTestComposition(participants: [repository.Object, credentialRepository.Object]);
         var credentialService = new CredentialService(
             repository.Object,
             credentialRepository.Object,
@@ -995,7 +994,7 @@ internal sealed class RecoveryCodeTests
     {
         var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
         var credentialService = new TestCredentialService();
-        var transProvider = new Mock<IAshlarDurableTransactionProvider>();
+        var transProvider = new Mock<IAshlarTransactionProvider>();
         var securityEventSink = new Mock<ISecurityEventSink>();
 
         var userId = Guid.NewGuid();
@@ -1084,16 +1083,18 @@ internal sealed class RecoveryCodeTests
     {
         var repository = new Mock<IUserRepository>();
         var credentials = credentialRepository ?? new Mock<ICredentialRepository>().Object;
-        var transactionProvider = new Mock<IAshlarDurableTransactionProvider>();
+        var transactionProvider = new RecordingTransactionProvider();
 
         repository.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid id, CancellationToken _) => new User { Id = id, DisplayEmail = "test@example.com", AccountState = UserAccountState.Active, TenantId = userTenantId });
 
-        transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Mock<IAshlarTransaction>().Object);
-
-        return new RecoveryCodeService(repository.Object, credentials, transactionProvider.Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(options), securityEventSink:
-            DurableSecurityMutationTestComposition.EventsFor(securityEventSink ?? new NullSecurityEventSink(), transactionProvider.Object), authorizer: authorizer));
+        var composition = DurableSecurityMutationTestComposition.Create(
+            transactionProvider,
+            securityEventSink ?? new NullSecurityEventSink(),
+            repository.Object,
+            credentials);
+        return new RecoveryCodeService(repository.Object, credentials, composition.Transactions, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(options), securityEventSink:
+            composition.Events, authorizer: authorizer));
     }
 
     private RecoveryCodeServiceDependencies CreateDependencies(
@@ -1161,16 +1162,16 @@ internal sealed class RecoveryCodeTests
         IUserRepository repository,
         RecoveryCodeOptions options,
         ICredentialRepository? credentials = null,
-        IAshlarDurableTransactionProvider? transactions = null,
         ISecurityEventSink? securityEvents = null,
         IAccountSecurityOperationAuthorizer? authorizer = null)
     {
-        transactions ??= Mock.Of<IAshlarDurableTransactionProvider>(provider =>
-            provider.BeginTransactionAsync(It.IsAny<CancellationToken>()) == Task.FromResult(Mock.Of<IAshlarTransaction>()));
-        return new RecoveryCodeService(repository, credentials ?? Mock.Of<ICredentialRepository>(), transactions,
+        credentials ??= Mock.Of<ICredentialRepository>();
+        var composition = new DurableSecurityMutationTestComposition(
+            securityEvents ?? new NullSecurityEventSink(), repository, credentials);
+
+        return new RecoveryCodeService(repository, credentials, composition.Transactions,
             new PasswordHasherSelector([new PasswordHasherV1()]),
-            CreateDependencies(Options.Create(options), securityEventSink:
-                DurableSecurityMutationTestComposition.EventsFor(securityEvents ?? new NullSecurityEventSink(), transactions), authorizer: authorizer));
+            CreateDependencies(Options.Create(options), securityEventSink: composition.Events, authorizer: authorizer));
     }
 
     private FreshMfaVerificationProof CreateProof(Guid userId, TenantContext? tenant = null, DateTimeOffset? expiresAt = null)

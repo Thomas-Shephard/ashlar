@@ -104,14 +104,21 @@ internal static class GitHubOAuthEndpoints
             "We could not sign you in with GitHub. The GitHub account may not be linked yet, or the GitHub sign-in was not completed. Sign in with another method, then link GitHub from Account -> Security.");
     }
 
-    private static IResult StartGitHubAccountLink(IConfiguration configuration)
+    private static IResult StartGitHubAccountLink(IConfiguration configuration, HttpContext httpContext)
     {
         if (!SampleGitHubOAuth.IsConfigured(configuration))
         {
             return Results.NotFound();
         }
 
-        return Results.Challenge(new AuthenticationProperties { RedirectUri = "/account/external/github/link/callback" }, [SampleGitHubOAuth.ProviderName]);
+        if (!httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out _))
+        {
+            return Results.Forbid();
+        }
+
+        return Results.Challenge(
+            AshlarExternalAccountLinkService.CreateExternalLinkChallengeProperties(userId, sessionId, "/account/external/github/link/callback"),
+            [SampleGitHubOAuth.ProviderName]);
     }
 
     private static async Task<IResult> CompleteGitHubAccountLinkAsync(

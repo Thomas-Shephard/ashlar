@@ -167,14 +167,21 @@ internal static class GoogleOidcEndpoints
         return AppViews.RenderGoogleOidcResult("Invitation Could Not Be Accepted", "This invitation could not be accepted with Google. Check that you used the invited email address and try again, or ask an administrator for a new invitation.");
     }
 
-    private static IResult StartGoogleAccountLink(IConfiguration configuration)
+    private static IResult StartGoogleAccountLink(IConfiguration configuration, HttpContext httpContext)
     {
         if (!SampleGoogleOidc.IsConfigured(configuration))
         {
             return Results.NotFound();
         }
 
-        return Results.Challenge(new AuthenticationProperties { RedirectUri = "/account/external/google/link/callback" }, [SampleGoogleOidc.ProviderName]);
+        if (!httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out _))
+        {
+            return Results.Forbid();
+        }
+
+        return Results.Challenge(
+            AshlarExternalAccountLinkService.CreateExternalLinkChallengeProperties(userId, sessionId, "/account/external/google/link/callback"),
+            [SampleGoogleOidc.ProviderName]);
     }
 
     private static async Task<IResult> CompleteGoogleAccountLinkAsync(
