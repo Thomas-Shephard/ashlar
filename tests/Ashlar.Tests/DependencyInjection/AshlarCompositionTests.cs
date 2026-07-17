@@ -15,6 +15,12 @@ namespace Ashlar.Tests.DependencyInjection;
 internal sealed class AshlarCompositionTests
 {
     [Test]
+    public void CoreDurableParticipantRegistrationRejectsNullServices()
+    {
+        Assert.Throws<ArgumentNullException>(() => AshlarServiceCollectionExtensions.AddAshlarIdentityDurableTransactionParticipants(null!));
+    }
+
+    [Test]
     public void CoreIdentityCompositionBuildsWithStrictValidationAndRequiredTestDoubles()
     {
         var secretProtector = new RecordingSecretProtector();

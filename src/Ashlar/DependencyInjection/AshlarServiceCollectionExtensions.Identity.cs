@@ -4,6 +4,7 @@ namespace Microsoft.Extensions.DependencyInjection;
 #pragma warning restore IDE0130
 
 using Ashlar.Auditing;
+using Ashlar.Authorization.Abstractions;
 using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Providers.RecoveryCode;
@@ -56,6 +57,28 @@ public static partial class AshlarServiceCollectionExtensions
         }
         return services;
     }
+
+    /// <summary>Declares the core identity repositories as participants in the registered durable transaction provider.</summary>
+    /// <param name="services">The service collection to configure.</param>
+    /// <returns>The same service collection.</returns>
+    public static IServiceCollection AddAshlarIdentityDurableTransactionParticipants(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.AddAshlarDurableTransactionParticipant<IUserRepository>();
+        services.AddAshlarDurableTransactionParticipant<ICredentialRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAccountLockoutRepository>();
+        services.AddAshlarDurableTransactionParticipant<IUserAdministrationRepository>();
+        services.AddAshlarDurableTransactionParticipant<ICredentialAdministrationRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionAdministrationRepository>();
+        services.AddAshlarDurableTransactionParticipant<IInvitationRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionRepository>();
+        services.AddAshlarDurableTransactionParticipant<IRememberedMfaDeviceRepository>();
+        services.AddAshlarDurableTransactionParticipant<IPasskeyChallengeRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantRepository>();
+        services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantAdministrationRepository>();
+        return services;
+    }
+
     /// <summary>
     /// Registers Ashlar's core identity services.
     /// </summary>

@@ -72,7 +72,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.TryAddScoped<IPasskeyChallengeRepository, PostgresPasskeyChallengeRepository>();
         services.TryAddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
         services.TryAddScoped<IAuthorizationGrantAdministrationRepository, PostgresAuthorizationGrantAdministrationRepository>();
-        services.AddPostgresDurableParticipants();
+        services.AddAshlarIdentityDurableTransactionParticipants();
         services.TryAddScoped<IBootstrapStateRepository, PostgresBootstrapStateRepository>();
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarSchemaDiagnostics, PostgresSchemaDiagnostics>();
@@ -194,22 +194,6 @@ public static class AshlarPostgresServiceCollectionExtensions
     {
         services.AddAshlarDurableTransactionProvider<PostgresTransactionManager>();
         services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
-    }
-
-    private static void AddPostgresDurableParticipants(this IServiceCollection services)
-    {
-        services.AddAshlarDurableTransactionParticipant<IUserRepository>();
-        services.AddAshlarDurableTransactionParticipant<ICredentialRepository>();
-        services.AddAshlarDurableTransactionParticipant<IAccountLockoutRepository>();
-        services.AddAshlarDurableTransactionParticipant<IUserAdministrationRepository>();
-        services.AddAshlarDurableTransactionParticipant<ICredentialAdministrationRepository>();
-        services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionAdministrationRepository>();
-        services.AddAshlarDurableTransactionParticipant<IInvitationRepository>();
-        services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionRepository>();
-        services.AddAshlarDurableTransactionParticipant<IRememberedMfaDeviceRepository>();
-        services.AddAshlarDurableTransactionParticipant<IPasskeyChallengeRepository>();
-        services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantRepository>();
-        services.AddAshlarDurableTransactionParticipant<IAuthorizationGrantAdministrationRepository>();
     }
 
     /// <summary>
