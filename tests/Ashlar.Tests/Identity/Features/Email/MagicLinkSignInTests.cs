@@ -772,17 +772,17 @@ internal sealed class MagicLinkSignInTests
         var provider = new MagicLinkAuthenticationProvider(tokenHasher);
         var registry = new AuthenticationProviderRegistry([provider]);
         var transactionProvider = new RecordingTransactionProvider(events);
-        var credentialComposition = DurableSecurityMutationTestComposition.Compose(transactionProvider, audit, repository, repository);
+        var (transactions, securityEvents) = DurableSecurityMutationTestComposition.Compose(transactionProvider, audit, repository, repository);
         var credentialService = new CredentialService(
             repository,
             repository,
             Mock.Of<ISecretProtector>(),
-            credentialComposition.Transactions,
-            new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: credentialComposition.Events));
+            transactions,
+            new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: securityEvents));
         var pipeline = new AuthenticationPipeline(
             registry,
             credentialService,
-            credentialComposition.Transactions,
+            transactions,
             AllowPrimaryAuthenticationRateLimiter.Instance,
             AllowAuthenticationFactorRateLimiter.Instance,
             new AuthenticationPipelineDependencies(audit, time));

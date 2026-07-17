@@ -517,11 +517,11 @@ internal sealed class RecoveryCodeTests
         });
         transactions.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
         var notifications = new Mock<ISecurityNotificationService>();
-        var composition = DurableSecurityMutationTestComposition.Compose(transactions.Object, new NullSecurityEventSink(), repository.Object, credentials.Object);
-        var service = new RecoveryCodeService(repository.Object, credentials.Object, composition.Transactions,
+        var (transactionProvider, securityEvents) = DurableSecurityMutationTestComposition.Compose(transactions.Object, new NullSecurityEventSink(), repository.Object, credentials.Object);
+        var service = new RecoveryCodeService(repository.Object, credentials.Object, transactionProvider,
             new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(
                 Options.Create(new RecoveryCodeOptions { CodeCount = 1, ExpiresAfter = TimeSpan.FromDays(30) }),
-                securityEventSink: composition.Events,
+                securityEventSink: securityEvents,
                 notificationService: notifications.Object));
         var request = new RecoveryCodeGenerationExecutionRequest(audit, TenantContext.Global, false, null,
             true, 1, TimeSpan.FromHours(1));
