@@ -1,5 +1,4 @@
 using Ashlar.Auditing;
-using Ashlar.Identity.Models.Tenants;
 
 namespace Ashlar.OAuth;
 

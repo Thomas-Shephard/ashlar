@@ -8,11 +8,9 @@
     <UserSecretsId>ashlar-sample-aspnetcore</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
     <PackageReference Include="Testcontainers.PostgreSql" />
     <ProjectReference Include="..\..\src\Ashlar\Ashlar.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.AspNetCore\Ashlar.AspNetCore.csproj" />
-    <ProjectReference Include="..\..\src\Ashlar.OAuth\Ashlar.OAuth.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.Passkeys\Ashlar.Passkeys.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.Postgres\Ashlar.Postgres.csproj" />
   </ItemGroup>

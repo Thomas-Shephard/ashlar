@@ -161,7 +161,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetRequiredService<CredentialServiceDependencies>()));
         services.TryAddScoped<ICredentialService>(provider => provider.GetRequiredService<CredentialService>());
-        services.TryAddScoped<ICredentialLinkService>(provider => provider.GetRequiredService<CredentialService>());
+        services.TryAddScoped<IValidatedExternalCredentialLinkService>(provider => provider.GetRequiredService<CredentialService>());
         services.TryAddScoped<IFreshAuthenticationProofValidator>(provider => new ActiveSessionFreshProofValidator(
             provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
             provider.GetService<TimeProvider>() ?? TimeProvider.System));

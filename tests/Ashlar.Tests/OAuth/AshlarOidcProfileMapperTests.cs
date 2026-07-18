@@ -1,6 +1,6 @@
 using System.Security.Claims;
 
-namespace Ashlar.OAuth.Tests;
+namespace Ashlar.Tests.OAuth;
 
 internal sealed class AshlarOidcProfileMapperTests
 {

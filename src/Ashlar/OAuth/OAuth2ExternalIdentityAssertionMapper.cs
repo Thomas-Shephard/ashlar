@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Ashlar.Identity.Providers.External;
 
 namespace Ashlar.OAuth;
 

@@ -35,7 +35,23 @@ services.AddAshlarNoMfaPolicy();
 
 Authentication providers that participate in MFA orchestration require an explicit MFA policy. Use `AddAshlarNoMfaPolicy()` only for deliberate no-MFA composition; use `AddAshlarRequireMfaWhenCredentialExists(...)`, `AddAshlarRequireMfaForAllUsers(...)`, or a custom `IMfaPolicyEvaluator` when authentication must be gated by MFA.
 
-Ashlar keeps the core package framework-neutral. ASP.NET Core cookies, PostgreSQL persistence, SMTP delivery, and hosted background workers live in companion packages.
+Ashlar includes ASP.NET Core OAuth and OpenID Connect integration. Cookie session integration, PostgreSQL persistence, SMTP delivery, and hosted background workers live in companion packages.
+
+## OAuth and OpenID Connect
+
+Configure validated external sign-in providers directly from the Ashlar package:
+
+```csharp
+using Ashlar.OAuth.Providers.Google;
+
+services.AddAshlarOAuth(options => options.AddGoogle(google =>
+{
+    google.ClientId = configuration["Authentication:Google:ClientId"]!;
+    google.ClientSecret = configuration["Authentication:Google:ClientSecret"]!;
+}));
+```
+
+Account linking consumes Ashlar-validated temporary external tickets and requires an Ashlar-issued fresh MFA proof bound to the target user, tenant, session, and linking purpose. Applications cannot submit raw authentication providers or assertions to credential mutation.
 
 ## Account Security Posture
 

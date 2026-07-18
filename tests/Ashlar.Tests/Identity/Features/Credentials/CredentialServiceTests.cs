@@ -110,6 +110,44 @@ internal sealed class CredentialServiceTests
             c.CreatedAt == testTime), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [TestCase("oidc")]
+    [TestCase("oauth")]
+    public async Task LinkValidatedExternalCredentialAsyncShouldLinkFixedCapabilityData(string providerType)
+    {
+        var userId = Guid.NewGuid();
+        var type = providerType == "oidc" ? ProviderType.Oidc : ProviderType.OAuth;
+        _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
+        _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(type, "External", "stable-key", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IUser?)null);
+
+        var result = await _service.LinkValidatedExternalCredentialAsync(new InternalValidatedExternalCredentialLinkRequest(
+            userId,
+            type,
+            "External",
+            "stable-key",
+            new AuditContext(userId)));
+
+        Assert.That(result.Succeeded, Is.True);
+        _credentialRepositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(credential =>
+            credential.ProviderType == type &&
+            credential.ProviderName == "External" &&
+            credential.ProviderKey == "stable-key"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public void LinkValidatedExternalCredentialAsyncShouldRejectAnythingButFixedOAuthCapabilityData()
+    {
+        Assert.Throws<ArgumentNullException>(() => _service.LinkValidatedExternalCredentialAsync(null!));
+        Assert.Throws<ArgumentException>(() => _service.LinkValidatedExternalCredentialAsync(
+            new InternalValidatedExternalCredentialLinkRequest(
+                Guid.NewGuid(),
+                ProviderType.Saml2,
+                "External",
+                "key",
+                new AuditContext())));
+    }
+
     [Test]
     public async Task ResolveAsyncShouldUseClockForExpiryCheck()
     {

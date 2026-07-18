@@ -11,9 +11,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions.Repositories;
-using Ashlar.Identity.Abstractions.Transactions;
-using Ashlar.Identity.Models.Invitations;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 using Ashlar.Testing.DependencyInjection;
@@ -23,9 +20,9 @@ using Ashlar.OAuth.Providers.Google;
 using Ashlar.OAuth.Providers.Microsoft;
 using Moq;
 
-namespace Ashlar.OAuth.Tests;
+namespace Ashlar.Tests.OAuth;
 
-internal sealed class AshlarOAuthServiceCollectionExtensionsTests
+internal sealed class AshlarServiceCollectionExtensionsOAuthTests
 {
     [Test]
     public void AddAshlarOAuthShouldRegisterGenericOidcProviderAndAshlarProvider()
@@ -963,7 +960,7 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => AshlarOAuthServiceCollectionExtensions.AddAshlarOAuth(null!, _ => { }));
+            Assert.Throws<ArgumentNullException>(() => AshlarServiceCollectionExtensions.AddAshlarOAuth(null!, _ => { }));
             Assert.Throws<ArgumentNullException>(() => new ServiceCollection().AddAshlarOAuth(null!));
         }
     }

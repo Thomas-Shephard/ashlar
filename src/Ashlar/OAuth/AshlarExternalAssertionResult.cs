@@ -1,3 +1,5 @@
+using Ashlar.Identity.Providers.External;
+
 namespace Ashlar.OAuth;
 
 /// <summary>

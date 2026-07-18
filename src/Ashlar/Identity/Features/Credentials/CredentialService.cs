@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Ashlar.Auditing;
+using Ashlar.Identity.Providers.External;
 using Ashlar.Security.Encryption;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -12,7 +13,7 @@ internal sealed class CredentialService(
     ISecretProtector secretProtector,
     AshlarDurableTransactionProvider transactionProvider,
     CredentialServiceDependencies dependencies)
-    : ICredentialService, ICredentialLinkService
+    : ICredentialService, IValidatedExternalCredentialLinkService
 {
     private static readonly Action<ILogger, Guid, Guid, string, string, Exception?> CredentialProtectionFailedRequired =
         LoggerMessage.Define<Guid, Guid, string, string>(
@@ -529,17 +530,37 @@ internal sealed class CredentialService(
         return originalCredential?.Version ?? unprotectedCredential.Version;
     }
 
-    public async Task<Result> LinkCredentialAsync(CredentialLinkRequest request, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return await LinkCredentialCoreAsync(new InternalCredentialLinkRequest(
-            request.UserId, request.Assertion, request.Provider, null, null, request.Audit, request.TenantId), cancellationToken);
-    }
-
     public async Task<Result> LinkCredentialAsync(InternalCredentialLinkRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         return await LinkCredentialCoreAsync(request, cancellationToken);
+    }
+
+    public Task<Result> LinkValidatedExternalCredentialAsync(InternalValidatedExternalCredentialLinkRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        IAuthenticationProvider provider;
+        if (request.ProviderType == ProviderType.Oidc)
+        {
+            provider = new OidcAuthenticationProvider(request.ProviderName);
+        }
+        else if (request.ProviderType == ProviderType.OAuth)
+        {
+            provider = new OAuthAuthenticationProvider(request.ProviderName);
+        }
+        else
+        {
+            throw new ArgumentException("Only OAuth and OIDC credentials may use the validated external boundary.", nameof(request));
+        }
+
+        var assertion = new ExternalIdentityAssertion(
+            request.ProviderType,
+            request.ProviderName,
+            request.ProviderKey,
+            new Dictionary<string, IReadOnlyList<string>>());
+
+        return LinkCredentialCoreAsync(new InternalCredentialLinkRequest(
+            request.UserId, assertion, provider, null, null, request.Audit, request.TenantId), cancellationToken);
     }
 
     private async Task<Result> LinkCredentialCoreAsync(InternalCredentialLinkRequest request, CancellationToken cancellationToken)
