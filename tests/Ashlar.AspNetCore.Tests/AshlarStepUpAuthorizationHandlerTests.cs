@@ -14,6 +14,20 @@ namespace Ashlar.AspNetCore.Tests;
 
 internal sealed class AshlarStepUpAuthorizationHandlerTests
 {
+    [Test]
+    public async Task HandleAsyncShouldFailWithOnlyRawSessionItem()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-1);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var context = CreateContext(session, new AshlarStepUpRequirement(TimeSpan.FromMinutes(5)));
+
+        await CreateHandler(session, rawOnly: true).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
     private static readonly DateTimeOffset Now = new(2026, 5, 17, 12, 0, 0, TimeSpan.Zero);
     private static readonly string[] TotpAndPasskeyFactors = [AuthenticationFactorTypes.Totp, AuthenticationFactorTypes.Passkey];
     private static readonly AuthenticationProviderKey[] PasskeyProvider = [AuthenticationProviderKey.Passkey];
@@ -541,7 +555,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         {
             HttpContext = new DefaultHttpContext { RequestServices = provider }
         };
-        httpContextAccessor.HttpContext.Items[AshlarHttpContextItems.AuthenticationSession] = session;
+        httpContextAccessor.HttpContext.Items[AshlarHttpContextItems.ValidatedAuthenticationSession] = CreateValidatedSession(session);
         var context = CreateContext(
             session,
             new AshlarStepUpRequirement(
@@ -577,7 +591,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
-    public async Task HandleAsyncShouldFailSafelyForMalformedStepUpClaims()
+    public async Task HandleAsyncShouldUseCapabilityWhenStepUpClaimsAreMalformed()
     {
         var session = CreateSession();
         session.AdditionalVerificationAt = Now.AddMinutes(-2);
@@ -591,7 +605,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
 
         await CreateHandler(session).HandleAsync(context);
 
-        Assert.That(context.HasSucceeded, Is.False);
+        Assert.That(context.HasSucceeded, Is.True);
     }
 
     [Test]
@@ -655,7 +669,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
-    public async Task HandleAsyncShouldFailSafelyForMalformedPrimaryProviderClaims()
+    public async Task HandleAsyncShouldUseCapabilityWhenPrimaryProviderClaimsAreMalformed()
     {
         var session = CreateSession();
         session.AdditionalVerificationAt = Now.AddMinutes(-2);
@@ -669,11 +683,11 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
 
         await CreateHandler(session).HandleAsync(context);
 
-        Assert.That(context.HasSucceeded, Is.False);
+        Assert.That(context.HasSucceeded, Is.True);
     }
 
     [Test]
-    public async Task HandleAsyncShouldFailSafelyForOutOfRangeTimeClaim()
+    public async Task HandleAsyncShouldUseCapabilityWhenTimeClaimIsOutOfRange()
     {
         var session = CreateSession();
         session.AdditionalVerificationAt = Now.AddMinutes(-2);
@@ -686,11 +700,11 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
 
         await CreateHandler(session).HandleAsync(context);
 
-        Assert.That(context.HasSucceeded, Is.False);
+        Assert.That(context.HasSucceeded, Is.True);
     }
 
     [Test]
-    public async Task HandleAsyncShouldFailSafelyForTimeClaimBeforeUnixTimeRange()
+    public async Task HandleAsyncShouldUseCapabilityWhenTimeClaimPrecedesUnixRange()
     {
         var session = CreateSession();
         session.AdditionalVerificationAt = Now.AddMinutes(-2);
@@ -703,11 +717,11 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
 
         await CreateHandler(session).HandleAsync(context);
 
-        Assert.That(context.HasSucceeded, Is.False);
+        Assert.That(context.HasSucceeded, Is.True);
     }
 
     [Test]
-    public async Task HandleAsyncShouldFailSafelyForInvalidProviderClaim()
+    public async Task HandleAsyncShouldUseCapabilityWhenProviderClaimIsInvalid()
     {
         var session = CreateSession();
         session.AdditionalVerificationAt = Now.AddMinutes(-2);
@@ -720,7 +734,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
 
         await CreateHandler(session).HandleAsync(context);
 
-        Assert.That(context.HasSucceeded, Is.False);
+        Assert.That(context.HasSucceeded, Is.True);
     }
 
     [Test]
@@ -775,7 +789,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
-    public async Task HandleAsyncShouldFailWhenTimeClaimExistsForMissingSessionTime()
+    public async Task HandleAsyncShouldUseCapabilityWhenExtraTimeClaimExists()
     {
         var session = CreateSession();
         session.AuthenticatedAt = null;
@@ -789,11 +803,12 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
 
         await CreateHandler(session).HandleAsync(context);
 
-        Assert.That(context.HasSucceeded, Is.False);
+        Assert.That(context.HasSucceeded, Is.True);
     }
 
-    [Test]
-    public async Task HandleAsyncShouldFailWhenProviderClaimsExistForMissingSessionProvider()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task HandleAsyncShouldUseCapabilityWhenExtraProviderClaimsExist(bool includeType)
     {
         var session = CreateSession();
         session.PrimaryProvider = null;
@@ -801,30 +816,34 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
         session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
         var claims = CreateClaims(session);
-        claims.Add(new Claim(AshlarClaimTypes.PrimaryProviderType, ProviderType.EmailCode.Value));
+        if (includeType)
+        {
+            claims.Add(new Claim(AshlarClaimTypes.PrimaryProviderType, ProviderType.EmailCode.Value));
+        }
         claims.Add(new Claim(AshlarClaimTypes.PrimaryProviderName, "EmailCode"));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
         await CreateHandler(session).HandleAsync(context);
 
-        Assert.That(context.HasSucceeded, Is.False);
+        Assert.That(context.HasSucceeded, Is.True);
     }
 
     [Test]
-    public async Task HandleAsyncShouldFailSafelyForMissingAdditionalProviderTypeClaim()
+    public async Task HandleAsyncShouldUseCapabilityWhenAdditionalProviderTypeClaimIsMissing()
     {
         var session = CreateSession();
         session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
         session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
         var claims = CreateClaims(session);
-        claims.Add(new Claim(AshlarClaimTypes.AdditionalVerificationProviderName, AuthenticationFactorTypes.Totp));
+        claims.RemoveAll(claim => claim.Type == AshlarClaimTypes.AdditionalVerificationProviderType);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
-        await CreateHandler().HandleAsync(context);
+        await CreateHandler(session).HandleAsync(context);
 
-        Assert.That(context.HasSucceeded, Is.False);
+        Assert.That(context.HasSucceeded, Is.True);
     }
 
     [Test]
@@ -1080,13 +1099,16 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
 
     private static AshlarStepUpAuthorizationHandler CreateHandler(
         AuthenticationSession? session = null,
-        IAccountSecurityService? accountSecurity = null)
+        IAccountSecurityService? accountSecurity = null,
+        bool rawOnly = false)
     {
         var httpContextAccessor = new HttpContextAccessor();
         if (session != null)
         {
             httpContextAccessor.HttpContext = new DefaultHttpContext();
-            httpContextAccessor.HttpContext.Items[AshlarHttpContextItems.AuthenticationSession] = session;
+            httpContextAccessor.HttpContext.Items[rawOnly
+                ? "Ashlar.AspNetCore.AuthenticationSession"
+                : AshlarHttpContextItems.ValidatedAuthenticationSession] = rawOnly ? session : CreateValidatedSession(session);
         }
 
         return new AshlarStepUpAuthorizationHandler(
@@ -1177,6 +1199,11 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
             ExpiresAt = Now.AddHours(1)
         };
     }
+
+    private static ValidatedAuthenticationSession CreateValidatedSession(AuthenticationSession session) =>
+        (ValidatedAuthenticationSession)Activator.CreateInstance(typeof(ValidatedAuthenticationSession),
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+            binder: null, [session], culture: null)!;
 
     private static IAccountSecurityService CreateAccountSecurityService(
         Guid userId,

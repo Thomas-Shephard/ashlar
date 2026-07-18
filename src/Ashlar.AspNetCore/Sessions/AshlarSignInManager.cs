@@ -139,7 +139,7 @@ public sealed class AshlarSignInManager(
         if (httpContext.Request.Cookies.TryGetValue(authenticationOptions.CookieName, out var token) && !string.IsNullOrWhiteSpace(token))
         {
             var validation = await _sessionService.ValidateSessionAsync(token, cancellationToken);
-            if (validation is { Succeeded: true, Session: { } session })
+            if (validation.ValidatedSession is { } session)
             {
                 return new CurrentSessionContext(session.Id, session.UserId, ToTenantContext(session.TenantId));
             }

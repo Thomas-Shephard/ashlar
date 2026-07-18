@@ -6,9 +6,9 @@ namespace Ashlar.Identity.Abstractions.Services;
 public interface IStepUpAuthenticationService
 {
     /// <summary>
-    /// Evaluates the supplied session against a step-up requirement.
+    /// Evaluates the supplied validated-session capability against a step-up requirement.
     /// </summary>
-    /// <param name="request">Session metadata and freshness requirement to evaluate.</param>
+    /// <param name="request">Validated-session capability and freshness requirement to evaluate.</param>
     /// <returns>Decision describing whether the session satisfies the requested step-up requirement.</returns>
     StepUpEvaluationResult Evaluate(StepUpEvaluationRequest request);
 

@@ -31,7 +31,7 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
 
         var now = _timeProvider.GetUtcNow();
         var session = request.Session;
-        if (session == null || !session.IsActive(now))
+        if (session == null || session.ExpiresAt <= now)
         {
             return Failure(AshlarFailureCodes.SessionNotFoundOrInactive, "Session was not found or is inactive.");
         }

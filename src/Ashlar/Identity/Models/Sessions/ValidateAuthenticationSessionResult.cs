@@ -9,6 +9,7 @@ public sealed class ValidatedAuthenticationSession
         UserId = session.UserId;
         TenantId = session.TenantId;
         AuthenticatedAt = session.AuthenticatedAt?.ToUniversalTime();
+        PrimaryProvider = session.PrimaryProvider;
         AdditionalVerificationAt = session.AdditionalVerificationAt?.ToUniversalTime();
         AdditionalVerificationProvider = session.AdditionalVerificationProvider;
         AdditionalVerificationFactor = session.AdditionalVerificationFactor;
@@ -23,6 +24,8 @@ public sealed class ValidatedAuthenticationSession
     public Guid? TenantId { get; }
     /// <summary>UTC primary-authentication time captured during validation.</summary>
     public DateTimeOffset? AuthenticatedAt { get; }
+    /// <summary>Primary-authentication provider captured during validation.</summary>
+    public AuthenticationProviderKey? PrimaryProvider { get; }
     /// <summary>UTC additional-verification time captured during validation.</summary>
     public DateTimeOffset? AdditionalVerificationAt { get; }
     /// <summary>Additional-verification provider captured during validation.</summary>
@@ -36,25 +39,39 @@ public sealed class ValidatedAuthenticationSession
 /// <summary>
 /// Result returned after validating a presented bearer token.
 /// </summary>
-/// <param name="Succeeded">Whether validation produced an active <paramref name="Session" />.</param>
-/// <param name="Session">The matching <paramref name="Session" /> when validation succeeds.</param>
-/// <param name="UserId">The owner of the matching record, when known.</param>
-/// <param name="Status">Validation outcome. Avoid exposing precise failure status to untrusted clients.</param>
-public sealed record ValidateAuthenticationSessionResult(
-    bool Succeeded,
-    AuthenticationSession? Session,
-    Guid? UserId,
-    AuthenticationSessionValidationStatus Status)
+public sealed class ValidateAuthenticationSessionResult
 {
+    private ValidateAuthenticationSessionResult(
+        AuthenticationSessionValidationStatus status,
+        ValidatedAuthenticationSession? validatedSession = null)
+    {
+        Status = status;
+        ValidatedSession = validatedSession;
+    }
+
+    /// <summary>Validation outcome. Avoid exposing precise failure status to untrusted clients.</summary>
+    public AuthenticationSessionValidationStatus Status { get; }
+
     /// <summary>
-    /// Capability available only from Ashlar's built-in successful token-validation path. Custom session validators may
-    /// authenticate callers but do not enable fresh-verification proof issuance.
+    /// Capability available only from Ashlar's built-in successful token-validation path. Security-sensitive consumers
+    /// must require this capability rather than trusting mutable session result fields.
     /// </summary>
-    public ValidatedAuthenticationSession? ValidatedSession { get; internal init; }
+    public ValidatedAuthenticationSession? ValidatedSession { get; }
+
+    internal static ValidateAuthenticationSessionResult Success(AuthenticationSession session) =>
+        new(AuthenticationSessionValidationStatus.Succeeded, new ValidatedAuthenticationSession(session));
 
     /// <summary>
     /// A generic failed validation result with no matching session.
     /// </summary>
     public static ValidateAuthenticationSessionResult Failed { get; } =
-        new(false, null, null, AuthenticationSessionValidationStatus.Failed);
+        new(AuthenticationSessionValidationStatus.Failed);
+
+    /// <summary>An expired-session validation result.</summary>
+    public static ValidateAuthenticationSessionResult Expired { get; } =
+        new(AuthenticationSessionValidationStatus.Expired);
+
+    /// <summary>A revoked-session validation result.</summary>
+    public static ValidateAuthenticationSessionResult Revoked { get; } =
+        new(AuthenticationSessionValidationStatus.Revoked);
 }

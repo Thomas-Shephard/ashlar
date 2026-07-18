@@ -13,7 +13,7 @@ internal sealed class StepUpAuthenticationServiceTests
         var service = CreateService();
         var session = CreateSession();
 
-        var result = service.Evaluate(new StepUpEvaluationRequest(session, new StepUpRequirement(TimeSpan.FromMinutes(10))));
+        var result = service.Evaluate(new StepUpEvaluationRequest(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(10))));
 
         using (Assert.EnterMultipleScope())
         {
@@ -29,7 +29,7 @@ internal sealed class StepUpAuthenticationServiceTests
         var session = CreateSession(additionalVerificationAt: _now.AddMinutes(-5), additionalVerificationProvider: TotpProvider(), additionalVerificationFactor: "totp");
 
         var result = service.Evaluate(new StepUpEvaluationRequest(
-            session,
+            new ValidatedAuthenticationSession(session),
             new StepUpRequirement(TimeSpan.FromMinutes(10), [TotpProvider()], ["totp"])));
 
         Assert.That(result.Succeeded, Is.True);
@@ -70,7 +70,7 @@ internal sealed class StepUpAuthenticationServiceTests
         var service = CreateService();
 
         using var _ = Assert.EnterMultipleScope();
-        Assert.That(service.Evaluate(new StepUpEvaluationRequest(session, new StepUpRequirement(TimeSpan.FromMinutes(10)))).FailureCode,
+        Assert.That(service.Evaluate(new StepUpEvaluationRequest(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(10)))).FailureCode,
             Is.EqualTo(AshlarFailureCodes.StepUpExpired));
         Assert.That(service.CreateFreshMfaProof(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(10))).FailureCode,
             Is.EqualTo(AshlarFailureCodes.StepUpExpired));
@@ -227,7 +227,7 @@ internal sealed class StepUpAuthenticationServiceTests
         var service = CreateService();
         var session = CreateSession(additionalVerificationAt: _now.AddMinutes(-11), additionalVerificationProvider: TotpProvider(), additionalVerificationFactor: "totp");
 
-        var result = service.Evaluate(new StepUpEvaluationRequest(session, new StepUpRequirement(TimeSpan.FromMinutes(10))));
+        var result = service.Evaluate(new StepUpEvaluationRequest(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(10))));
 
         using (Assert.EnterMultipleScope())
         {
@@ -242,7 +242,7 @@ internal sealed class StepUpAuthenticationServiceTests
         var service = CreateService();
         var session = CreateSession(additionalVerificationAt: _now.AddMinutes(1));
 
-        var result = service.Evaluate(new StepUpEvaluationRequest(session, new StepUpRequirement(TimeSpan.FromMinutes(10))));
+        var result = service.Evaluate(new StepUpEvaluationRequest(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(10))));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
     }
@@ -378,9 +378,10 @@ internal sealed class StepUpAuthenticationServiceTests
         session.AdditionalVerificationProvider = TotpProvider();
         session.AdditionalVerificationFactor = "totp";
 
-        var fresh = service.Evaluate(new StepUpEvaluationRequest(session, new StepUpRequirement(TimeSpan.FromMinutes(10))));
+        var validatedSession = new ValidatedAuthenticationSession(session);
+        var fresh = service.Evaluate(new StepUpEvaluationRequest(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(10))));
         timeProvider.SetUtcNow(_now.AddMinutes(11));
-        var expired = service.Evaluate(new StepUpEvaluationRequest(session, new StepUpRequirement(TimeSpan.FromMinutes(10))));
+        var expired = service.Evaluate(new StepUpEvaluationRequest(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(10))));
 
         using (Assert.EnterMultipleScope())
         {
@@ -397,7 +398,7 @@ internal sealed class StepUpAuthenticationServiceTests
         var session = CreateSession(additionalVerificationAt: _now.AddMinutes(-1), additionalVerificationProvider: TotpProvider(), additionalVerificationFactor: "totp");
 
         var result = service.Evaluate(new StepUpEvaluationRequest(
-            session,
+            new ValidatedAuthenticationSession(session),
             new StepUpRequirement(TimeSpan.FromMinutes(10), [AuthenticationProviderKey.Passkey])));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpProviderNotAllowed));
@@ -410,7 +411,7 @@ internal sealed class StepUpAuthenticationServiceTests
         var session = CreateSession(additionalVerificationAt: _now.AddMinutes(-1), additionalVerificationFactor: "totp");
 
         var result = service.Evaluate(new StepUpEvaluationRequest(
-            session,
+            new ValidatedAuthenticationSession(session),
             new StepUpRequirement(TimeSpan.FromMinutes(10), [AuthenticationProviderKey.Passkey])));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpProviderNotAllowed));
@@ -423,7 +424,7 @@ internal sealed class StepUpAuthenticationServiceTests
         var session = CreateSession(additionalVerificationAt: _now.AddMinutes(-1), additionalVerificationProvider: TotpProvider(), additionalVerificationFactor: "totp");
 
         var result = service.Evaluate(new StepUpEvaluationRequest(
-            session,
+            new ValidatedAuthenticationSession(session),
             new StepUpRequirement(TimeSpan.FromMinutes(10), AllowedFactors: ["passkey"])));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpFactorNotAllowed));
@@ -436,7 +437,7 @@ internal sealed class StepUpAuthenticationServiceTests
         var session = CreateSession(additionalVerificationAt: _now.AddMinutes(-1), additionalVerificationProvider: TotpProvider());
 
         var result = service.Evaluate(new StepUpEvaluationRequest(
-            session,
+            new ValidatedAuthenticationSession(session),
             new StepUpRequirement(TimeSpan.FromMinutes(10), AllowedFactors: ["totp"])));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpFactorNotAllowed));
@@ -447,7 +448,7 @@ internal sealed class StepUpAuthenticationServiceTests
     {
         var service = CreateService();
         var result = service.Evaluate(new StepUpEvaluationRequest(null, new StepUpRequirement(TimeSpan.FromMinutes(10))));
-        var expired = service.Evaluate(new StepUpEvaluationRequest(CreateSession(expiresAt: _now), new StepUpRequirement(TimeSpan.FromMinutes(10))));
+        var expired = service.Evaluate(new StepUpEvaluationRequest(new ValidatedAuthenticationSession(CreateSession(expiresAt: _now)), new StepUpRequirement(TimeSpan.FromMinutes(10))));
 
         using (Assert.EnterMultipleScope())
         {
@@ -463,7 +464,7 @@ internal sealed class StepUpAuthenticationServiceTests
 
         Assert.Throws<ArgumentNullException>(() => service.Evaluate(null!));
         Assert.Throws<ArgumentOutOfRangeException>(() => service.Evaluate(new StepUpEvaluationRequest(
-            CreateSession(),
+            new ValidatedAuthenticationSession(CreateSession()),
             new StepUpRequirement(TimeSpan.Zero))));
     }
 
