@@ -181,7 +181,7 @@ internal sealed class TotpService : ITotpService
         var assertion = new TotpAssertion(context.Code);
         var totpCredentialMetadata = System.Text.Json.JsonSerializer.Serialize(new { LastUsedStep = verifiedStep });
         var linkResult = await _credentialService.LinkCredentialAsync(
-            new CredentialLinkRequest(context.UserId, assertion, _provider, context.SharedSecret, totpCredentialMetadata, context.Audit, context.Tenant.TenantId),
+            new InternalCredentialLinkRequest(context.UserId, assertion, _provider, context.SharedSecret, totpCredentialMetadata, context.Audit, context.Tenant.TenantId),
             cancellationToken);
 
         if (!linkResult.Succeeded)

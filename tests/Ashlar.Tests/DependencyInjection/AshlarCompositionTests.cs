@@ -83,16 +83,20 @@ internal sealed class AshlarCompositionTests
     {
         var services = new ServiceCollection();
         services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
 
         using var provider = services.BuildServiceProvider();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(IUserRepository)), Is.False);
+            Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(ICredentialRepository)), Is.False);
             Assert.That(provider.GetService<IUserRepository>(), Is.Null);
+            Assert.That(provider.GetService<ICredentialRepository>(), Is.Null);
             Assert.That(services.Where(descriptor => descriptor.ServiceKey is not null)
                 .Select(descriptor => provider.GetKeyedService(typeof(IUserRepository), descriptor.ServiceKey!)), Is.All.Null);
             Assert.That(AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<IUserRepository>(provider), Is.Not.Null);
+            Assert.That(AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<ICredentialRepository>(provider), Is.Not.Null);
         }
     }
 
@@ -204,7 +208,7 @@ internal sealed class AshlarCompositionTests
     }
 
     [Test]
-    public void FreshProofValidationIsProviderOwned()
+    public void FreshProofValidationIsAvailableWithoutExposingItsRepository()
     {
         var services = new ServiceCollection();
         services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
@@ -215,7 +219,8 @@ internal sealed class AshlarCompositionTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(scope.ServiceProvider.GetService<IFreshAuthenticationProofValidator>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetService<IFreshAuthenticationProofValidator>(), Is.Not.Null);
+            Assert.That(scope.ServiceProvider.GetService<IAuthenticationSessionRepository>(), Is.Null);
             Assert.That(AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>(scope.ServiceProvider), Is.Not.Null);
         }
     }
@@ -263,6 +268,8 @@ internal sealed class AshlarCompositionTests
             Assert.That(scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
             Assert.That(AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<RecordingTransactionProvider>(scope.ServiceProvider), Is.Not.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<ICredentialLinkService>(),
+                Is.SameAs(scope.ServiceProvider.GetRequiredService<ICredentialService>()));
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarOperationsSummaryService>(), Is.TypeOf<AshlarOperationsSummaryService>());
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
         }

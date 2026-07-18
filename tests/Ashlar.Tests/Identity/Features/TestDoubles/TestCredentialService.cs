@@ -33,7 +33,7 @@ internal sealed class TestCredentialService : ICredentialService
         return Task.FromResult(UserResolveResult);
     }
 
-    public Task<Result> LinkCredentialAsync(CredentialLinkRequest request, CancellationToken cancellationToken = default)
+    public Task<Result> LinkCredentialAsync(InternalCredentialLinkRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         LinkCalls.Add(new LinkCredentialCall(request.UserId, request.Assertion, request.Provider, request.CredentialValue, request.CredentialMetadata, request.TenantId));

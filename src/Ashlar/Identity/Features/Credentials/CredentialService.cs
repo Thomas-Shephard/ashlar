@@ -12,7 +12,7 @@ internal sealed class CredentialService(
     ISecretProtector secretProtector,
     AshlarDurableTransactionProvider transactionProvider,
     CredentialServiceDependencies dependencies)
-    : ICredentialService
+    : ICredentialService, ICredentialLinkService
 {
     private static readonly Action<ILogger, Guid, Guid, string, string, Exception?> CredentialProtectionFailedRequired =
         LoggerMessage.Define<Guid, Guid, string, string>(
@@ -532,10 +532,17 @@ internal sealed class CredentialService(
     public async Task<Result> LinkCredentialAsync(CredentialLinkRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        return await LinkCredentialCoreAsync(new InternalCredentialLinkRequest(
+            request.UserId, request.Assertion, request.Provider, null, null, request.Audit, request.TenantId), cancellationToken);
+    }
+
+    public async Task<Result> LinkCredentialAsync(InternalCredentialLinkRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
         return await LinkCredentialCoreAsync(request, cancellationToken);
     }
 
-    private async Task<Result> LinkCredentialCoreAsync(CredentialLinkRequest request, CancellationToken cancellationToken)
+    private async Task<Result> LinkCredentialCoreAsync(InternalCredentialLinkRequest request, CancellationToken cancellationToken)
     {
         var (userId, assertion, provider, credentialValue, credentialMetadata, audit, tenantId) = request;
         ArgumentNullException.ThrowIfNull(assertion);
@@ -554,6 +561,11 @@ internal sealed class CredentialService(
         if (user == null)
         {
             return await FailAsync(AshlarFailureCodes.UserNotFound);
+        }
+
+        if (!UserTenantOwnership.Matches(user, tenantId))
+        {
+            return await FailAsync(AshlarFailureCodes.TenantMismatch);
         }
 
         var providerKey = provider.GetProviderKey(assertion, userId);
