@@ -4,9 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.Abstractions.Transactions;
-using Ashlar.Identity.Models.Credentials;
 using Ashlar.Identity.Models.Invitations;
 using Ashlar.Identity.Providers.External;
 using Ashlar.OAuth.Providers.Google;
@@ -26,19 +24,12 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var userId = Guid.NewGuid();
         var invitations = CreateInvitations(acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        ExternalIdentityAssertion? observedAssertion = null;
-        string? observedCredentialValue = "not-null";
-        string? observedMetadata = "not-null";
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .Callback<UserCredential, CancellationToken>((credential, _) =>
-            {
-                observedAssertion = new ExternalIdentityAssertion(credential.ProviderType, credential.ProviderName, credential.ProviderKey, new Dictionary<string, string>());
-                observedCredentialValue = null;
-                observedMetadata = credential.Metadata;
-            })
-            .Returns(Task.CompletedTask);
-        var service = CreateService(invitations.Object, credentials.Object);
+        CredentialLinkRequest? observedRequest = null;
+        var linker = new Mock<ICredentialLinkService>();
+        linker.Setup(s => s.LinkCredentialAsync(It.IsAny<CredentialLinkRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<CredentialLinkRequest, CancellationToken>((request, _) => observedRequest = request)
+            .ReturnsAsync(Result.Success());
+        var service = CreateService(invitations.Object, linkService: linker.Object);
 
         var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")), "Invitee");
 
@@ -48,10 +39,9 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             Assert.That(result.Registered, Is.True);
             Assert.That(result.UserId, Is.EqualTo(userId));
             Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("subject"));
-            Assert.That(observedAssertion?.ProviderKey, Is.EqualTo("subject"));
+            Assert.That(observedRequest?.Assertion, Is.EqualTo(result.Assertion));
+            Assert.That(observedRequest?.UserId, Is.EqualTo(userId));
             Assert.That(result.Assertion?.Claims, Does.Not.ContainKey("access_token"));
-            Assert.That(observedCredentialValue, Is.Null);
-            Assert.That(observedMetadata, Is.Null);
             invitations.Verify(s => s.AcceptInvitationAsync(
                 It.Is<AcceptInvitationRequest>(r => r.UserName == "Invitee"),
                 It.IsAny<AuthenticationContext?>(),
@@ -60,19 +50,20 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     }
 
     [Test]
-    public async Task RegisterShouldAuditLinkedOidcCredential()
+    public async Task RegisterShouldPassAuditContextToCredentialLinker()
     {
         var userId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
         var invitations = CreateInvitations(
             preview: Result.Success(new InvitationAcceptancePreview("invitee@example.com", tenantId)),
             acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-        var securityEvents = new Mock<ISecurityEventSink>();
+        CredentialLinkRequest? observedRequest = null;
+        var linker = new Mock<ICredentialLinkService>();
+        linker.Setup(s => s.LinkCredentialAsync(It.IsAny<CredentialLinkRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<CredentialLinkRequest, CancellationToken>((request, _) => observedRequest = request)
+            .ReturnsAsync(Result.Success());
         var context = new AuthenticationContext(UserId: userId, TenantId: tenantId, IpAddress: "203.0.113.10", UserAgent: "agent", CorrelationId: "corr");
-        var service = CreateService(invitations.Object, credentials.Object, securityEvents: securityEvents.Object);
+        var service = CreateService(invitations.Object, linkService: linker.Object);
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -83,18 +74,9 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
-            securityEvents.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
-                e.EventType == AshlarSecurityEventTypes.CredentialLinked &&
-                e.Outcome == SecurityEventOutcomes.Success &&
-                e.UserId == userId &&
-                e.ActorUserId == userId &&
-                e.TenantId == tenantId &&
-                e.Provider == new AuthenticationProviderKey(ProviderType.Oidc, "Google") &&
-                e.IpAddress == "203.0.113.10" &&
-                e.UserAgent == "agent" &&
-                e.CorrelationId == "corr" &&
-                e.Properties != null &&
-                e.Properties.ContainsKey("credential_id")), It.IsAny<CancellationToken>()), Times.Once);
+            Assert.That(observedRequest?.UserId, Is.EqualTo(userId));
+            Assert.That(observedRequest?.TenantId, Is.EqualTo(tenantId));
+            Assert.That(observedRequest?.Audit, Is.EqualTo(new AuditContext(userId, "203.0.113.10", "agent", "corr")));
         }
     }
 
@@ -107,10 +89,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         invitations.Setup(s => s.AcceptInvitationAsync(It.Is<AcceptInvitationRequest>(r => r.Token == "token"), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()))
             .Callback<AcceptInvitationRequest, AuthenticationContext?, CancellationToken>((request, _, _) => observedRequest = request)
             .ReturnsAsync(AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-        var service = CreateService(invitations.Object, credentials.Object);
+        var service = CreateService(invitations.Object);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
         [
             new Claim("sub", "subject"),
@@ -132,21 +111,18 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public void ConstructorShouldRejectNullDependencies()
     {
         var invitations = Mock.Of<IInvitationService>();
-        var credentials = Mock.Of<ICredentialRepository>();
-        var persistent = Mock.Of<IPersistentSecurityEventSink>();
-        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object, credentials, persistent);
-        var fanOut = new SecurityEventFanOutSink(persistent, transactionProvider: transactions);
+        var linker = Mock.Of<ICredentialLinkService>();
+        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object);
         var oauth = new TestOptionsMonitor(CreateOptions());
         var emailPolicy = Mock.Of<IOidcInvitationEmailMatchPolicy>();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => { _ = new AshlarOidcInvitationRegistrationService(null!, credentials, transactions, oauth, emailPolicy, fanOut); });
-            Assert.Throws<ArgumentNullException>(() => new AshlarOidcInvitationRegistrationService(invitations, null!, transactions, oauth, emailPolicy, fanOut));
-            Assert.Throws<ArgumentNullException>(() => { _ = new AshlarOidcInvitationRegistrationService(invitations, credentials, null!, oauth, emailPolicy, fanOut); });
-            Assert.Throws<ArgumentNullException>(() => { _ = new AshlarOidcInvitationRegistrationService(invitations, credentials, transactions, null!, emailPolicy, fanOut); });
-            Assert.Throws<ArgumentNullException>(() => { _ = new AshlarOidcInvitationRegistrationService(invitations, credentials, transactions, oauth, null!, fanOut); });
-            Assert.Throws<ArgumentNullException>(() => { _ = new AshlarOidcInvitationRegistrationService(invitations, credentials, transactions, oauth, emailPolicy, null!); });
+            Assert.Throws<ArgumentNullException>(() => { _ = new AshlarOidcInvitationRegistrationService(null!, linker, transactions, oauth, emailPolicy); });
+            Assert.Throws<ArgumentNullException>(() => new AshlarOidcInvitationRegistrationService(invitations, null!, transactions, oauth, emailPolicy));
+            Assert.Throws<ArgumentNullException>(() => { _ = new AshlarOidcInvitationRegistrationService(invitations, linker, null!, oauth, emailPolicy); });
+            Assert.Throws<ArgumentNullException>(() => { _ = new AshlarOidcInvitationRegistrationService(invitations, linker, transactions, null!, emailPolicy); });
+            Assert.Throws<ArgumentNullException>(() => { _ = new AshlarOidcInvitationRegistrationService(invitations, linker, transactions, oauth, null!); });
             Assert.Throws<ArgumentException>(() => new MicrosoftOidcInvitationEmailMatchPolicy(" ", new StandardOidcVerifiedEmailMatchPolicy()));
             Assert.Throws<ArgumentNullException>(() => new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", null!));
             Assert.Throws<ArgumentException>(() => new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), [" "]));
@@ -192,17 +168,14 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var userId = Guid.NewGuid();
         var invitations = CreateInvitations(acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        ExternalIdentityAssertion? observedAssertion = null;
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .Callback<UserCredential, CancellationToken>((credential, _) =>
-            {
-                observedAssertion = new ExternalIdentityAssertion(credential.ProviderType, credential.ProviderName, credential.ProviderKey, new Dictionary<string, string>());
-            })
-            .Returns(Task.CompletedTask);
+        CredentialLinkRequest? observedRequest = null;
+        var linker = new Mock<ICredentialLinkService>();
+        linker.Setup(s => s.LinkCredentialAsync(It.IsAny<CredentialLinkRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<CredentialLinkRequest, CancellationToken>((request, _) => observedRequest = request)
+            .ReturnsAsync(Result.Success());
         var service = CreateService(
             invitations.Object,
-            credentials.Object,
+            linkService: linker.Object,
             provider: new AshlarOidcProviderOptions("Google", "Google", _ => { }, AshlarOidcProviderKeyMode.IssuerAndSubject));
 
         var result = await service.RegisterOidcInvitationAsync(
@@ -214,7 +187,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         {
             Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
             Assert.That(result.Assertion?.ProviderKey, Is.EqualTo(CreateExpectedIssuerSubjectKey("https://issuer.example/tenant", "subject")));
-            Assert.That(observedAssertion?.ProviderKey, Is.EqualTo(CreateExpectedIssuerSubjectKey("https://issuer.example/tenant", "subject")));
+            Assert.That((observedRequest?.Assertion as ExternalIdentityAssertion)?.ProviderKey, Is.EqualTo(CreateExpectedIssuerSubjectKey("https://issuer.example/tenant", "subject")));
         }
     }
 
@@ -384,10 +357,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var invitations = CreateInvitations(
             preview: Result.Success(new InvitationAcceptancePreview("invitee@example.com", tenantId)),
             acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-        var service = CreateService(invitations.Object, credentials.Object);
+        var service = CreateService(invitations.Object);
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -403,10 +373,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var userId = Guid.NewGuid();
         var invitations = CreateInvitations(acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-        var service = CreateService(invitations.Object, credentials.Object);
+        var service = CreateService(invitations.Object);
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -445,12 +412,9 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var userId = Guid.NewGuid();
         var invitations = CreateInvitations(acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
         var policy = new Mock<IOidcInvitationEmailMatchPolicy>();
         policy.Setup(p => p.Validate(It.IsAny<OidcInvitationEmailMatchContext>())).Returns(OidcInvitationEmailMatchResult.Success());
-        var service = CreateService(invitations.Object, credentials.Object, emailPolicy: policy.Object);
+        var service = CreateService(invitations.Object, emailPolicy: policy.Object);
 
         var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "other@example.com", null)));
 
@@ -475,18 +439,14 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var userId = Guid.NewGuid();
         var invitations = CreateInvitations(acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
         var options = CreateOptions();
-        var transactions = CreateTransactionProvider(credentials.Object, out var fanOut);
+        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object);
         var service = new AshlarOidcInvitationRegistrationService(
             invitations.Object,
-            credentials.Object,
+            new StubCredentialLinkService(Result.Success()),
             transactions,
             new TestOptionsMonitor(options),
-            new StandardOidcVerifiedEmailMatchPolicy(),
-            fanOut);
+            new StandardOidcVerifiedEmailMatchPolicy());
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -501,19 +461,15 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var userId = Guid.NewGuid();
         var invitations = CreateInvitations(acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
         var options = CreateOptions();
         options.AddMicrosoft("contoso.onmicrosoft.com");
-        var transactions = CreateTransactionProvider(credentials.Object, out var fanOut);
+        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object);
         var service = new AshlarOidcInvitationRegistrationService(
             invitations.Object,
-            credentials.Object,
+            new StubCredentialLinkService(Result.Success()),
             transactions,
             new TestOptionsMonitor(options),
-            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy()),
-            fanOut);
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy()));
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -530,15 +486,13 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var options = CreateOptions();
         options.AddMicrosoft("contoso.onmicrosoft.com");
-        var credentials = Mock.Of<ICredentialRepository>();
-        var transactions = CreateTransactionProvider(credentials, out var fanOut);
+        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object);
         var service = new AshlarOidcInvitationRegistrationService(
             CreateInvitations().Object,
-            credentials,
+            new StubCredentialLinkService(Result.Success()),
             transactions,
             new TestOptionsMonitor(options),
-            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy()),
-            fanOut);
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy()));
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -555,15 +509,13 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var options = CreateOptions();
         options.AddMicrosoft("contoso.onmicrosoft.com");
-        var credentials = Mock.Of<ICredentialRepository>();
-        var transactions = CreateTransactionProvider(credentials, out var fanOut);
+        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object);
         var service = new AshlarOidcInvitationRegistrationService(
             CreateInvitations().Object,
-            credentials,
+            new StubCredentialLinkService(Result.Success()),
             transactions,
             new TestOptionsMonitor(options),
-            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy()),
-            fanOut);
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy()));
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -580,21 +532,17 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var userId = Guid.NewGuid();
         var invitations = CreateInvitations(acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
         var options = CreateOptions();
         options.AddMicrosoft(
             "contoso.onmicrosoft.com",
             configureInvitationEmailMatch: match => match.AllowedEmailLikeClaimTypes.Add(claimType));
-        var transactions = CreateTransactionProvider(credentials.Object, out var fanOut);
+        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object);
         var service = new AshlarOidcInvitationRegistrationService(
             invitations.Object,
-            credentials.Object,
+            new StubCredentialLinkService(Result.Success()),
             transactions,
             new TestOptionsMonitor(options),
-            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), [claimType]),
-            fanOut);
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), [claimType]));
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -608,18 +556,16 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldOnlyAllowExplicitMicrosoftEmailLikeClaimTypes()
     {
         var options = CreateOptions();
-        var credentials = Mock.Of<ICredentialRepository>();
-        var transactions = CreateTransactionProvider(credentials, out var fanOut);
+        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object);
         options.AddMicrosoft(
             "contoso.onmicrosoft.com",
             configureInvitationEmailMatch: match => match.AllowedEmailLikeClaimTypes.Add("upn"));
         var service = new AshlarOidcInvitationRegistrationService(
             CreateInvitations().Object,
-            credentials,
+            new StubCredentialLinkService(Result.Success()),
             transactions,
             new TestOptionsMonitor(options),
-            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["upn"]),
-            fanOut);
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["upn"]));
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -636,15 +582,13 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         options.AddMicrosoft(
             "contoso.onmicrosoft.com",
             configureInvitationEmailMatch: match => match.AllowedEmailLikeClaimTypes.Add("upn"));
-        var credentials = Mock.Of<ICredentialRepository>();
-        var transactions = CreateTransactionProvider(credentials, out var fanOut);
+        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object);
         var service = new AshlarOidcInvitationRegistrationService(
             CreateInvitations().Object,
-            credentials,
+            new StubCredentialLinkService(Result.Success()),
             transactions,
             new TestOptionsMonitor(options),
-            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["upn"]),
-            fanOut);
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["upn"]));
         var principal = CreatePrincipal("subject", "other@example.com", "true");
         ((ClaimsIdentity)principal.Identity!).AddClaim(new Claim("upn", "invitee@example.com"));
 
@@ -663,15 +607,13 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         options.AddMicrosoft(
             "contoso.onmicrosoft.com",
             configureInvitationEmailMatch: match => match.AllowedEmailLikeClaimTypes.Add("upn"));
-        var credentials = Mock.Of<ICredentialRepository>();
-        var transactions = CreateTransactionProvider(credentials, out var fanOut);
+        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object);
         var service = new AshlarOidcInvitationRegistrationService(
             invitations.Object,
-            credentials,
+            new StubCredentialLinkService(Result.Success()),
             transactions,
             new TestOptionsMonitor(options),
-            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["upn"]),
-            fanOut);
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["upn"]));
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -687,18 +629,14 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var userId = Guid.NewGuid();
         var invitations = CreateInvitations(acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
         var options = CreateOptions();
-        var transactions = CreateTransactionProvider(credentials.Object, out var fanOut);
+        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object);
         var service = new AshlarOidcInvitationRegistrationService(
             invitations.Object,
-            credentials.Object,
+            new StubCredentialLinkService(Result.Success()),
             transactions,
             new TestOptionsMonitor(options),
-            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["preferred_username"]),
-            fanOut);
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["preferred_username"]));
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -728,15 +666,13 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         options.AddMicrosoft(
             "contoso.onmicrosoft.com",
             configureInvitationEmailMatch: match => match.AllowedEmailLikeClaimTypes.Add("preferred_username"));
-        var credentials = Mock.Of<ICredentialRepository>();
-        var transactions = CreateTransactionProvider(credentials, out var fanOut);
+        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object);
         var service = new AshlarOidcInvitationRegistrationService(
             CreateInvitations().Object,
-            credentials,
+            new StubCredentialLinkService(Result.Success()),
             transactions,
             new TestOptionsMonitor(options),
-            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["preferred_username"]),
-            fanOut);
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["preferred_username"]));
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -751,15 +687,13 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var options = CreateOptions();
         options.AddMicrosoft("contoso.onmicrosoft.com");
-        var credentials = Mock.Of<ICredentialRepository>();
-        var transactions = CreateTransactionProvider(credentials, out var fanOut);
+        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object);
         var service = new AshlarOidcInvitationRegistrationService(
             CreateInvitations().Object,
-            credentials,
+            new StubCredentialLinkService(Result.Success()),
             transactions,
             new TestOptionsMonitor(options),
-            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["preferred_username"]),
-            fanOut);
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["preferred_username"]));
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -797,10 +731,8 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var userId = Guid.NewGuid();
         var invitations = CreateInvitations(acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new CredentialProviderKeyConflictException());
-        var service = CreateService(invitations.Object, credentials.Object);
+        var linker = MockLinkFailure(AshlarFailureCodes.AlreadyLinkedToOther);
+        var service = CreateService(invitations.Object, linkService: linker.Object);
 
         var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
@@ -812,43 +744,12 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     }
 
     [Test]
-    public async Task RegisterShouldAuditCredentialProviderKeyConflict()
-    {
-        var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new CredentialProviderKeyConflictException());
-        var securityEvents = new Mock<ISecurityEventSink>();
-        var service = CreateService(invitations.Object, credentials.Object, securityEvents: securityEvents.Object);
-
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.AlreadyLinkedToAnotherUser));
-            securityEvents.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
-                e.EventType == AshlarSecurityEventTypes.CredentialLinked &&
-                e.Outcome == SecurityEventOutcomes.Failure &&
-                e.UserId == userId &&
-                e.TenantId == null &&
-                e.ActorUserId == null &&
-                e.Provider == new AuthenticationProviderKey(ProviderType.Oidc, "Google") &&
-                e.FailureReason == AshlarFailureCodes.AlreadyLinkedToOther.Value &&
-                e.Properties == null), It.IsAny<CancellationToken>()), Times.Once);
-        }
-    }
-
-    [Test]
     public async Task RegisterShouldCommitOnlyAfterInvitationAcceptanceAndCredentialLinkSucceed()
     {
         var userId = Guid.NewGuid();
         var invitations = CreateInvitations(acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
         var transaction = new Mock<IAshlarTransaction>();
-        var service = CreateService(invitations.Object, credentials.Object, transaction: transaction);
+        var service = CreateService(invitations.Object, transaction: transaction);
 
         var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
@@ -865,11 +766,8 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var userId = Guid.NewGuid();
         var invitations = CreateInvitations(acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new CredentialProviderKeyConflictException());
         var transaction = new Mock<IAshlarTransaction>();
-        var service = CreateService(invitations.Object, credentials.Object, transaction: transaction);
+        var service = CreateService(invitations.Object, transaction: transaction, linkService: MockLinkFailure(AshlarFailureCodes.AlreadyLinkedToOther).Object);
 
         var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
@@ -897,28 +795,13 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     }
 
     [Test]
-    public void ConstructorShouldRejectFanOutWithoutDurableWork()
-    {
-        var credentials = Mock.Of<ICredentialRepository>();
-        var transactions = CreateTransactionProvider(credentials, out _);
-
-        Assert.Throws<ArgumentException>(() => new AshlarOidcInvitationRegistrationService(
-            CreateInvitations().Object,
-            credentials,
-            transactions,
-            new TestOptionsMonitor(CreateOptions()),
-            new StandardOidcVerifiedEmailMatchPolicy(),
-            new SecurityEventFanOutSink(transactionProvider: transactions)));
-    }
-
-    [Test]
     public void RegisterShouldMapCredentialLinkFailureWithoutCode()
     {
         var mapper = typeof(AshlarOidcInvitationRegistrationService).GetMethod("MapLinkFailure", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
 
         var status = mapper.Invoke(null, [new Result(false)]);
 
-        Assert.That(status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.AlreadyLinkedToAnotherUser));
+        Assert.That(status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.LinkFailed));
     }
 
     [Test]
@@ -926,27 +809,15 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var userId = Guid.NewGuid();
         var invitations = CreateInvitations(acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", "subject", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new UserCredential
-            {
-                Id = Guid.NewGuid(),
-                UserId = userId,
-                ProviderType = ProviderType.Oidc,
-                ProviderName = "Google",
-                ProviderKey = "subject",
-                Version = "existing",
-                CreatedAt = DateTimeOffset.UtcNow,
-                Status = CredentialStatus.Active
-            });
-        var service = CreateService(invitations.Object, credentials.Object);
+        var linker = MockLinkFailure(AshlarFailureCodes.AlreadyLinkedToSelf);
+        var service = CreateService(invitations.Object, linkService: linker.Object);
 
         var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.AlreadyLinked));
-            credentials.Verify(s => s.CreateOrReplaceCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
+            linker.Verify(s => s.LinkCredentialAsync(It.IsAny<CredentialLinkRequest>(), It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 
@@ -980,11 +851,8 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var userId = Guid.NewGuid();
         var invitations = CreateInvitations(acceptance: AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
         var auth = new TestAuthenticationService(CreateTicket("Google", "Google", "subject"));
-        var service = CreateService(invitations.Object, credentials.Object);
+        var service = CreateService(invitations.Object);
 
         var result = await service.CompleteOidcInvitationRegistrationAsync(CreateHttpContext(auth), "token", "Google");
 
@@ -999,15 +867,13 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task CompleteShouldNotRegisterWhenClearingSuccessfulTicketThrows()
     {
         var invitations = CreateInvitations(acceptance: AcceptResult(Guid.NewGuid()));
-        var credentials = new Mock<ICredentialRepository>();
         var auth = new TestAuthenticationService(CreateTicket("Google", "Google", "subject"), signOutException: new InvalidOperationException("clear failed"));
-        var service = CreateService(invitations.Object, credentials.Object);
+        var service = CreateService(invitations.Object);
 
         var result = await service.CompleteOidcInvitationRegistrationAsync(CreateHttpContext(auth), "token", "Google");
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.AuthenticationFailed));
         invitations.Verify(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()), Times.Never);
-        credentials.Verify(s => s.CreateOrReplaceCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -1019,14 +885,11 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         invitations.Setup(s => s.AcceptInvitationAsync(It.Is<AcceptInvitationRequest>(r => r.Token == "ticket-token"), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()))
             .Callback<AcceptInvitationRequest, AuthenticationContext?, CancellationToken>((request, _, _) => observedRequest = request)
             .ReturnsAsync(AcceptResult(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
         var ticket = CreateTicket("Google", "Google", "subject");
         ticket.Properties!.Items["invitation_token"] = "ticket-token";
         ticket.Properties.Items["display_name"] = "Ticket Name";
         var auth = new TestAuthenticationService(ticket);
-        var service = CreateService(invitations.Object, credentials.Object);
+        var service = CreateService(invitations.Object);
 
         var result = await service.CompleteOidcInvitationRegistrationFromPropertiesAsync(
             CreateHttpContext(auth),
@@ -1121,53 +984,34 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
 
     private static AshlarOidcInvitationRegistrationService CreateService(
         IInvitationService? invitations = null,
-        ICredentialRepository? credentials = null,
         AshlarOidcProviderOptions? provider = null,
         IOidcInvitationEmailMatchPolicy? emailPolicy = null,
         Mock<IAshlarTransaction>? transaction = null,
         Mock<IAshlarTransactionProvider>? transactionProvider = null,
-        ISecurityEventSink? securityEvents = null,
-        TimeProvider? timeProvider = null)
+        ICredentialLinkService? linkService = null)
     {
-        var credentialRepository = credentials ?? Mock.Of<ICredentialRepository>();
-        var persistent = securityEvents == null ? Mock.Of<IPersistentSecurityEventSink>() : new ForwardingPersistentSink(securityEvents);
         var transactions = DurableTransactionComposition.Create(
-            (transactionProvider ?? CreateTransactionProvider(transaction)).Object,
-            credentialRepository,
-            persistent);
-        var fanOut = new SecurityEventFanOutSink(persistent, transactionProvider: transactions);
+            (transactionProvider ?? CreateTransactionProvider(transaction)).Object);
         return new AshlarOidcInvitationRegistrationService(
             invitations ?? CreateInvitations().Object,
-            credentialRepository,
+            linkService ?? new StubCredentialLinkService(Result.Success()),
             transactions,
             new TestOptionsMonitor(CreateOptions(provider)),
-            emailPolicy ?? new StandardOidcVerifiedEmailMatchPolicy(),
-            fanOut,
-            timeProvider);
+            emailPolicy ?? new StandardOidcVerifiedEmailMatchPolicy());
     }
 
-    [Test]
-    public void ConstructorShouldRejectAuditUsingAnotherTransactionProvider()
+    private sealed class StubCredentialLinkService(Result result) : ICredentialLinkService
     {
-        var invitations = CreateInvitations();
-        var credentials = Mock.Of<ICredentialRepository>();
-        var persistent = Mock.Of<IPersistentSecurityEventSink>();
-        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object, credentials, persistent);
-        var otherPersistent = Mock.Of<IPersistentSecurityEventSink>();
-        var otherTransactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object, credentials, otherPersistent);
-        Assert.Throws<ArgumentException>(() => new AshlarOidcInvitationRegistrationService(
-            invitations.Object,
-            credentials,
-            transactions,
-            new TestOptionsMonitor(CreateOptions()),
-            new StandardOidcVerifiedEmailMatchPolicy(),
-            new SecurityEventFanOutSink(otherPersistent, transactionProvider: otherTransactions)));
+        public Task<Result> LinkCredentialAsync(CredentialLinkRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(result);
     }
 
-    private sealed class ForwardingPersistentSink(ISecurityEventSink sink) : IPersistentSecurityEventSink
+    private static Mock<ICredentialLinkService> MockLinkFailure(AshlarFailureCode failure)
     {
-        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default) =>
-            sink.RecordAsync(securityEvent, cancellationToken);
+        var linker = new Mock<ICredentialLinkService>();
+        linker.Setup(s => s.LinkCredentialAsync(It.IsAny<CredentialLinkRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure(failure));
+        return linker;
     }
 
     private static Mock<IAshlarTransactionProvider> CreateTransactionProvider(Mock<IAshlarTransaction>? transaction = null)
@@ -1186,16 +1030,6 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         provider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => calls++ == 0 ? transaction.Object : participant.Object);
         return provider;
-    }
-
-    private static AshlarDurableTransactionProvider CreateTransactionProvider(
-        ICredentialRepository credentials,
-        out SecurityEventFanOutSink fanOut)
-    {
-        var persistent = Mock.Of<IPersistentSecurityEventSink>();
-        var transactions = DurableTransactionComposition.Create(CreateTransactionProvider().Object, credentials, persistent);
-        fanOut = new SecurityEventFanOutSink(persistent, transactionProvider: transactions);
-        return transactions;
     }
 
     private static Mock<IInvitationService> CreateInvitations(

@@ -231,7 +231,7 @@ internal sealed class SecurityAuditEventTests
         repository.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "provider-key", It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
 
-        await service.LinkCredentialAsync(new CredentialLinkRequest(userId, assertion, provider.Object, "raw-secret", null, new AuditContext(userId)));
+        await service.LinkCredentialAsync(new InternalCredentialLinkRequest(userId, assertion, provider.Object, "raw-secret", null, new AuditContext(userId)));
 
         var securityEvent = sink.Events.Single();
         using (Assert.EnterMultipleScope())

@@ -2,7 +2,6 @@
 
 using Ashlar.OAuth;
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.Abstractions.Transactions;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authentication.OAuth;
@@ -43,25 +42,19 @@ public static class AshlarOAuthServiceCollectionExtensions
 
         services.Configure(configure);
         services.TryAddScoped<AshlarExternalCredentialAuthenticationService>();
-        services.TryAddScoped<IExternalAccountCredentialLinker>(provider => ActivatorUtilities.CreateInstance<ExternalAccountCredentialLinker>(provider,
-            provider.GetRequiredAshlarProviderService<IUserRepository>(),
-            provider.GetRequiredAshlarProviderService<ICredentialRepository>(),
-            provider.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>()));
         services.TryAddScoped(provider => new AshlarExternalAccountLinkService(
-            provider.GetRequiredService<IExternalAccountCredentialLinker>(),
+            provider.GetRequiredService<ICredentialLinkService>(),
+            provider.GetRequiredService<IFreshAuthenticationProofValidator>(),
             provider.GetRequiredService<IAccountSecurityAdministrationService>(),
-            provider.GetRequiredAshlarProviderService<IUserRepository>(),
             provider.GetRequiredService<global::Microsoft.Extensions.Options.IOptionsMonitor<AshlarOAuthOptions>>(),
             provider.GetService<TimeProvider>() ?? TimeProvider.System,
             provider.GetService<ISecurityEventSink>()));
         services.TryAddScoped(provider => new AshlarOidcInvitationRegistrationService(
             provider.GetRequiredService<IInvitationService>(),
-            provider.GetRequiredAshlarProviderService<ICredentialRepository>(),
+            provider.GetRequiredService<ICredentialLinkService>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetRequiredService<global::Microsoft.Extensions.Options.IOptionsMonitor<AshlarOAuthOptions>>(),
-            provider.GetRequiredService<IOidcInvitationEmailMatchPolicy>(),
-            provider.GetRequiredService<SecurityEventFanOutSink>(),
-            provider.GetService<TimeProvider>()));
+            provider.GetRequiredService<IOidcInvitationEmailMatchPolicy>()));
         services.TryAddScoped<IOidcInvitationEmailMatchPolicy>(_ =>
         {
             IOidcInvitationEmailMatchPolicy policy = new StandardOidcVerifiedEmailMatchPolicy();

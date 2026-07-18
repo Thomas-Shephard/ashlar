@@ -2257,6 +2257,6 @@ internal sealed class IdentityServiceTests
             _composition.Transactions,
             new CredentialServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _composition.Events));
 
-        return credentialService.LinkCredentialAsync(new CredentialLinkRequest(userId, assertion, provider, credentialValue, null, new AuditContext(userId)));
+        return credentialService.LinkCredentialAsync(new InternalCredentialLinkRequest(userId, assertion, provider, credentialValue, null, new AuditContext(userId)));
     }
 }

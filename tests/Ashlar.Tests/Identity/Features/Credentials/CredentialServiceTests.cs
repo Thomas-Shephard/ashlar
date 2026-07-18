@@ -1513,6 +1513,19 @@ internal sealed class CredentialServiceTests
     }
 
     [Test]
+    public async Task LinkCredentialAsyncWithTenantMismatchShouldFail()
+    {
+        var userId = Guid.NewGuid();
+        _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NonTenantUser { Id = userId, DisplayEmail = "test@example.com" });
+
+        var result = await _service.LinkCredentialAsync(LinkRequest(
+            userId, Mock.Of<IAuthenticationAssertion>(), Mock.Of<IAuthenticationProvider>(), tenantId: Guid.NewGuid()));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+    }
+
+    [Test]
     public async Task LinkCredentialAsyncWithEmptyProviderKeyShouldFail()
     {
         var userId = Guid.NewGuid();
@@ -1672,7 +1685,7 @@ internal sealed class CredentialServiceTests
     [Test]
     public void LinkCredentialAsyncWithNullAuditShouldThrow()
     {
-        Assert.ThrowsAsync<ArgumentNullException>(() => _service.LinkCredentialAsync(new CredentialLinkRequest(
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.LinkCredentialAsync(new InternalCredentialLinkRequest(
             Guid.NewGuid(), new Mock<IAuthenticationAssertion>().Object, new Mock<IAuthenticationProvider>().Object, null, null, null!)));
     }
 
@@ -1711,14 +1724,15 @@ internal sealed class CredentialServiceTests
         Assert.Throws<ArgumentNullException>(() => _ = new CredentialService(_repositoryMock.Object, _credentialRepositoryMock.Object, _secretProtectorMock.Object, _composition.Transactions, null!));
     }
 
-    private static CredentialLinkRequest LinkRequest(
+    private static InternalCredentialLinkRequest LinkRequest(
         Guid userId,
         IAuthenticationAssertion assertion,
         IAuthenticationProvider provider,
         string? credentialValue = null,
-        string? credentialMetadata = null)
+        string? credentialMetadata = null,
+        Guid? tenantId = null)
     {
-        return new CredentialLinkRequest(userId, assertion, provider, credentialValue, credentialMetadata, new AuditContext(userId));
+        return new InternalCredentialLinkRequest(userId, assertion, provider, credentialValue, credentialMetadata, new AuditContext(userId), tenantId);
     }
 
     private async Task<UserCredential?> ResolveCredentialAsync(UserCredential credential)

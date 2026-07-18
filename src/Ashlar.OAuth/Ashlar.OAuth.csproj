@@ -7,7 +7,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ashlar\Ashlar.csproj" />
-    <ProjectReference Include="..\Ashlar.ProviderContracts\Ashlar.ProviderContracts.csproj" PrivateAssets="compile" />
   </ItemGroup>
 
   <ItemGroup>
