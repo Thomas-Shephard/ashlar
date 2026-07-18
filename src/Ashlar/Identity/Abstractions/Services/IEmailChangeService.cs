@@ -8,7 +8,7 @@ public interface IEmailChangeService
     /// <summary>
     /// Enqueues or sends a confirmation message for a pending email change.
     /// </summary>
-    /// <param name="request">The user, new email address, callback base URI, and audit context.</param>
+    /// <param name="request">The validated session, new email address, callback base URI, and audit context.</param>
     /// <param name="cancellationToken">A token that can cancel the request.</param>
     /// <returns>A success result when the email-change confirmation message is queued or sent; otherwise, a failure describing why the request was rejected.</returns>
     Task<Result> RequestChangeAsync(RequestEmailChangeRequest request, CancellationToken cancellationToken = default);

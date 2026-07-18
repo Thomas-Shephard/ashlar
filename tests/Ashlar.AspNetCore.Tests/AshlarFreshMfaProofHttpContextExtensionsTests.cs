@@ -1,5 +1,6 @@
 using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Mfa;
+using Ashlar.AspNetCore.Sessions;
 using Microsoft.AspNetCore.Http;
 
 namespace Ashlar.AspNetCore.Tests;
@@ -21,6 +22,25 @@ internal sealed class AshlarFreshMfaProofHttpContextExtensionsTests
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
         }
+    }
+
+    [Test]
+    public void GetValidatedAuthenticationSessionReturnsOnlyValidatedItem()
+    {
+        var context = new DefaultHttpContext();
+        Assert.That(context.GetValidatedAuthenticationSession(), Is.Null);
+
+        var expected = CreateValidatedSession(new AuthenticationSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            TokenHash = "hash",
+            CreatedAt = Now,
+            ExpiresAt = Now.AddMinutes(1)
+        });
+        context.Items[AshlarHttpContextItems.ValidatedAuthenticationSession] = expected;
+
+        Assert.That(context.GetValidatedAuthenticationSession(), Is.SameAs(expected));
     }
 
     [Test]

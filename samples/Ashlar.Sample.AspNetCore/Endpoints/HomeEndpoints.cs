@@ -1,7 +1,7 @@
 using System.Security.Claims;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
-using Ashlar.Sample.AspNetCore.Extensions;
+using Ashlar.AspNetCore.Sessions;
 using Ashlar.Sample.AspNetCore.Views;
 using Dapper;
 using Microsoft.AspNetCore.Mvc;
@@ -17,6 +17,7 @@ internal static class HomeEndpoints
 
         app.MapGet("/", async (
             [AsParameters] HomeServices services,
+            HttpContext httpContext,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
@@ -26,11 +27,13 @@ internal static class HomeEndpoints
             bool isAdmin = false;
             var projectsWithAccess = new List<(string Id, string Name, bool HasAccess)>();
 
-            if (isAuthenticated)
+            var session = httpContext.GetValidatedAuthenticationSession();
+            if (isAuthenticated && session != null)
             {
-                var userId = user.GetAshlarUserId();
-                var profile = await services.Profiles.GetAsync(userId, cancellationToken);
-                userName = profile?.Name;
+                var userId = session.UserId;
+                var profile = await services.Profiles.GetAsync(session, cancellationToken);
+                if (!profile.Succeeded) return Results.Unauthorized();
+                userName = profile.Value?.Name;
 
                 isAdmin = (await services.Auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), cancellationToken)).Succeeded;
 

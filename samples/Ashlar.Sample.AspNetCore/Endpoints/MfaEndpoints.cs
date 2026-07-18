@@ -44,9 +44,12 @@ internal static class MfaEndpoints
 
     private static async Task<IResult> StartTotpEnrollmentAsync([AsParameters] MfaEnrollServices services)
     {
-        var userId = services.User.GetAshlarUserId();
-        var profile = await services.Profiles.GetAsync(userId, services.CancellationToken);
-        if (profile == null) return Results.NotFound();
+        var session = services.HttpContext.GetValidatedAuthenticationSession();
+        if (session == null) return Results.Unauthorized();
+        var userId = session.UserId;
+        var profile = await services.Profiles.GetAsync(session, services.CancellationToken);
+        if (!profile.Succeeded)
+            return profile.FailureCode == AshlarFailureCodes.SessionNotFoundOrInactive ? Results.Unauthorized() : Results.NotFound();
 
         if (!services.HttpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return Results.Forbid();
         var posture = await services.AccountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(services.HttpContext.ToTenantContext()), services.CancellationToken);
@@ -73,7 +76,7 @@ internal static class MfaEndpoints
 
         var verification = new TotpEnrollmentVerificationContext(userId, services.HttpContext.ToTenantContext(), sessionId,
             services.HttpContext.ToAuditContext(), freshMfaProof, freshPrimaryProof);
-        var enrollmentRequest = new StartTotpEnrollmentRequest(verification, services.Options.Value.AppName, profile.DisplayEmail);
+        var enrollmentRequest = new StartTotpEnrollmentRequest(verification, services.Options.Value.AppName, profile.Value!.DisplayEmail);
         var enrollment = await services.Totp.StartEnrollmentAsync(enrollmentRequest, services.CancellationToken);
         var isAdmin = (await services.Auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), services.CancellationToken)).Succeeded;
         return AppViews.RenderMfaSetup(enrollment.SharedSecret, enrollment.AuthenticatorUri, isAdmin);

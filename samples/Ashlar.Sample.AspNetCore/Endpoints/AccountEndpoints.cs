@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
+using Ashlar.AspNetCore.Sessions;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
 using Microsoft.Extensions.Options;
@@ -33,12 +34,15 @@ internal static class AccountEndpoints
         IAuthorizationEvaluator auth,
         IAccountSecurityService accountSecurity,
         IConfiguration configuration,
-        ClaimsPrincipal user,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var userId = user.GetAshlarUserId();
-        var ashlarUser = await profiles.GetAsync(userId, cancellationToken);
-        if (ashlarUser == null) return Results.NotFound();
+        var session = httpContext.GetValidatedAuthenticationSession();
+        if (session == null) return Results.Unauthorized();
+        var userId = session.UserId;
+        var profile = await profiles.GetAsync(session, cancellationToken);
+        if (!profile.Succeeded) return profile.FailureCode == AshlarFailureCodes.SessionNotFoundOrInactive ? Results.Unauthorized() : Results.NotFound();
+        var ashlarUser = profile.Value!;
 
         var posture = await accountSecurity.GetUserSecurityPostureAsync(userId, cancellationToken: cancellationToken);
         if (!posture.Succeeded || posture.Value == null) return Results.NotFound();
@@ -56,14 +60,16 @@ internal static class AccountEndpoints
     private static async Task<IResult> UpdateProfileAsync(
         UpdateProfileRequest request,
         IUserProfileService profiles,
-        ClaimsPrincipal user,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var userId = user.GetAshlarUserId();
-        var result = await profiles.UpdateNameAsync(userId, request.Name, cancellationToken);
+        var session = httpContext.GetValidatedAuthenticationSession();
+        if (session == null) return Results.Unauthorized();
+        var result = await profiles.UpdateNameAsync(new(session, request.Name, httpContext.ToAuditContext()), cancellationToken);
         if (result.Succeeded) return Results.Ok(new { name = result.Value!.Name });
 
-        return result.FailureCode == AshlarFailureCodes.UserNotFound
+        if (result.FailureCode == AshlarFailureCodes.SessionNotFoundOrInactive) return Results.Unauthorized();
+        return result.FailureCode == AshlarFailureCodes.UserNotFoundOrUnavailable
             ? Results.NotFound()
             : Results.BadRequest(new { error = result.FailureMessage });
     }
@@ -108,11 +114,11 @@ internal static class AccountEndpoints
         SampleEmailChangeRequest request,
         IEmailChangeService emailChange,
         HttpContext httpContext,
-        ClaimsPrincipal userPrincipal,
         IOptions<SampleAshlarOptions> options,
         CancellationToken cancellationToken)
     {
-        var userId = userPrincipal.GetAshlarUserId();
+        var session = httpContext.GetValidatedAuthenticationSession();
+        if (session == null) return Results.Unauthorized();
 
         if (string.IsNullOrWhiteSpace(request.NewEmail) || !new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(request.NewEmail))
         {
@@ -122,13 +128,16 @@ internal static class AccountEndpoints
         var callback = new Uri(new Uri(options.Value.PublicAppUrl), "/account/change-email");
         var result = await emailChange.RequestChangeAsync(new RequestEmailChangeRequest
         {
-            UserId = userId,
+            Session = session,
             NewEmail = request.NewEmail,
             CallbackBaseUri = callback,
             Audit = httpContext.ToAuditContext()
         }, cancellationToken);
 
-        return result.Succeeded ? Results.Accepted() : Results.BadRequest(SampleResultErrors.From(result));
+        if (result.Succeeded) return Results.Accepted();
+        return result.FailureCode == AshlarFailureCodes.SessionNotFoundOrInactive
+            ? Results.Unauthorized()
+            : Results.BadRequest(SampleResultErrors.From(result));
     }
 
     private static async Task<IResult> ConfirmEmailChangeAsync(

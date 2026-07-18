@@ -50,6 +50,20 @@ internal sealed class EmailChangeService(
     public async Task<Result> RequestChangeAsync(RequestEmailChangeRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Session);
+        ArgumentNullException.ThrowIfNull(request.Audit);
+        var userId = request.Session.UserId;
+        var tenantId = request.Session.TenantId;
+
+        if (request.Audit.ActorUserId != userId)
+            return await RejectRequestAsync(request, AshlarFailureCodes.ValidationError, "Audit actor must match the validated session user.", cancellationToken);
+        var session = await _dependencies.SessionRepository.GetSessionAsync(request.Session.Id, cancellationToken);
+        if (session is null
+            || session.Id != request.Session.Id
+            || session.UserId != userId
+            || !Nullable.Equals(session.TenantId, tenantId)
+            || !session.IsActive(_dependencies.TimeProvider.GetUtcNow()))
+            return await RejectRequestAsync(request, AshlarFailureCodes.SessionNotFoundOrInactive, null, cancellationToken);
 
         if (!_dependencies.UriValidator.IsValid(request.CallbackBaseUri))
         {
@@ -57,25 +71,34 @@ internal sealed class EmailChangeService(
             {
                 EventType = AshlarSecurityEventTypes.EmailChangeFailed,
                 Outcome = SecurityEventOutcomes.Failure,
-                UserId = request.UserId,
+                UserId = userId,
+                TenantId = tenantId,
+                SessionId = request.Session.Id,
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.InvalidCallbackUri.Value
             }, cancellationToken);
             return Result.Failure(AshlarFailureCodes.InvalidCallbackUri, $"The URI '{request.CallbackBaseUri}' is not allowed.");
         }
 
-        var user = await _dependencies.IdentityContext.UserRepository.GetUserByIdAsync(request.UserId, cancellationToken);
-        if (user == null || !user.CanSignIn())
+        var user = await _dependencies.IdentityContext.UserRepository.GetUserByIdAsync(userId, cancellationToken);
+        var tenantMatches = user != null && UserTenantOwnership.Matches(user, tenantId);
+        if (user == null || !user.CanSignIn() || !tenantMatches)
         {
+            var failureCode = UserUnavailableFailureCode(user, tenantMatches);
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.EmailChangeFailed,
                 Outcome = SecurityEventOutcomes.Failure,
-                UserId = request.UserId,
+                UserId = userId,
+                TenantId = tenantId,
+                SessionId = request.Session.Id,
                 Audit = request.Audit,
-                FailureReason = AshlarFailureCodes.UserNotFoundOrUnavailable.Value
+                FailureReason = failureCode.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.UserNotFoundOrUnavailable, "User was not found or cannot currently sign in.");
+
+            return failureCode == AshlarFailureCodes.TenantMismatch
+                ? Result.Failure(failureCode)
+                : Result.Failure(failureCode, "User was not found or cannot currently sign in.");
         }
 
         var newEmail = IdentityNormalization.SanitizeEmailForDelivery(request.NewEmail);
@@ -87,7 +110,8 @@ internal sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = user.Id,
-                TenantId = GetTenantId(user),
+                TenantId = tenantId,
+                SessionId = request.Session.Id,
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.SameEmail.Value
             }, cancellationToken);
@@ -98,7 +122,7 @@ internal sealed class EmailChangeService(
         var rateLimit = await _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(RequestPurpose, AuthenticationRateLimitDimensions.DimensionName(userBucket), userBucket, _options.Value.RequestRateLimit)
         {
             UserId = user.Id,
-            TenantId = GetTenantId(user),
+            TenantId = tenantId,
             Context = EmailFlowRateLimitHelpers.ToAuthenticationContext(request.Audit)
         }, cancellationToken);
 
@@ -109,7 +133,8 @@ internal sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = user.Id,
-                TenantId = GetTenantId(user),
+                TenantId = tenantId,
+                SessionId = request.Session.Id,
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.RateLimited.Value
             }, cancellationToken);
@@ -118,9 +143,9 @@ internal sealed class EmailChangeService(
 
         var existingUser = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(
             newEmail,
-            GetTenantId(user),
+            tenantId,
             cancellationToken);
-        if (existingUser != null) return await SuppressEmailChangeRequestAsync(newEmail, user, request.Audit, cancellationToken);
+        if (existingUser != null) return await SuppressEmailChangeRequestAsync(newEmail, user, request.Session.Id, request.Audit, cancellationToken);
 
         var token = _dependencies.TokenContext.Generator.GenerateToken();
         var tokenHash = _dependencies.TokenContext.Hasher.HashToken(token);
@@ -164,7 +189,8 @@ internal sealed class EmailChangeService(
             EventType = AshlarSecurityEventTypes.EmailChangeRequested,
             Outcome = SecurityEventOutcomes.Success,
             UserId = user.Id,
-            TenantId = GetTenantId(user),
+            TenantId = tenantId,
+            SessionId = request.Session.Id,
             Audit = request.Audit,
             Properties = new Dictionary<string, string> { ["new_email"] = newEmail }
         }, cancellationToken);
@@ -174,7 +200,31 @@ internal sealed class EmailChangeService(
         return Result.Success();
     }
 
-    private async Task<Result> SuppressEmailChangeRequestAsync(string newEmail, IUser user, AuditContext? audit, CancellationToken cancellationToken)
+    private static AshlarFailureCode UserUnavailableFailureCode(IUser? user, bool tenantMatches) =>
+        user is not null && !tenantMatches
+            ? AshlarFailureCodes.TenantMismatch
+            : AshlarFailureCodes.UserNotFoundOrUnavailable;
+
+    private async Task<Result> RejectRequestAsync(
+        RequestEmailChangeRequest request,
+        AshlarFailureCode failureCode,
+        string? message,
+        CancellationToken cancellationToken)
+    {
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.EmailChangeFailed,
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = request.Session.UserId,
+            TenantId = request.Session.TenantId,
+            SessionId = request.Session.Id,
+            Audit = request.Audit with { ActorUserId = request.Session.UserId },
+            FailureReason = failureCode.Value
+        }, cancellationToken);
+        return message == null ? Result.Failure(failureCode) : Result.Failure(failureCode, message);
+    }
+
+    private async Task<Result> SuppressEmailChangeRequestAsync(string newEmail, IUser user, Guid sessionId, AuditContext audit, CancellationToken cancellationToken)
     {
         await using var suppressionTransaction = await _dependencies.IdentityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
         var suppressionMessage = new EmailMessage(
@@ -191,6 +241,7 @@ internal sealed class EmailChangeService(
             Outcome = SecurityEventOutcomes.Success,
             UserId = user.Id,
             TenantId = GetTenantId(user),
+            SessionId = sessionId,
             Audit = audit,
             FailureReason = AshlarFailureCodes.EmailAlreadyInUse.Value
         }, cancellationToken);

@@ -70,9 +70,9 @@ public sealed class EmailChangeOptions
 public sealed class RequestEmailChangeRequest
 {
     /// <summary>
-    /// User whose email address should be changed.
+    /// Ashlar-issued validated session whose user owns the email address.
     /// </summary>
-    public required Guid UserId { get; init; }
+    public required ValidatedAuthenticationSession Session { get; init; }
     /// <summary>
     /// New email address to confirm before it replaces the current address. Ashlar stores a sanitized display/delivery address and uses a separate normalized form for lookup and uniqueness checks.
     /// </summary>
@@ -88,7 +88,7 @@ public sealed class RequestEmailChangeRequest
     /// <summary>
     /// Audit context to include in emitted security events.
     /// </summary>
-    public AuditContext? Audit { get; init; }
+    public required AuditContext Audit { get; init; }
 }
 
 /// <summary>
