@@ -15,7 +15,7 @@ namespace Ashlar.Tests.Passkeys;
 
 internal sealed class PasskeyServiceTests
 {
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<PasskeyServiceDependencies, TestStoreInfrastructure> StoreInfrastructure = new();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<PasskeyServiceDependencies, TestStoreInfrastructure> StoreInfrastructure = [];
     private readonly Dictionary<Guid, AuthenticationSession> _proofSessions = [];
     private static readonly Guid RegistrationSessionId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly TimeSpan RegistrationFreshnessWindow = TimeSpan.FromMinutes(10);
