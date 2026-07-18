@@ -1,5 +1,3 @@
-using Ashlar.Identity.Features.Infrastructure;
-
 namespace Ashlar.OAuth.Providers.Microsoft;
 
 /// <summary>

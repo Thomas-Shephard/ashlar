@@ -300,8 +300,6 @@ internal sealed class AshlarCompositionTests
             Assert.That(scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
             Assert.That(Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<RecordingTransactionProvider>(scope.ServiceProvider), Is.Not.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<ICredentialLinkService>(),
-                Is.SameAs(scope.ServiceProvider.GetRequiredService<ICredentialService>()));
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarOperationsSummaryService>(), Is.TypeOf<AshlarOperationsSummaryService>());
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
         }

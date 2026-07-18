@@ -84,19 +84,12 @@ public sealed class AshlarExternalCredentialAuthenticationService
             return await CreateFailureResultAsync(context, providerKey, AshlarExternalAssertionStatus.ProviderMismatch, cancellationToken);
         }
 
-        try
+        if (AshlarExternalProviderResolver.TryMapAssertion(provider, result.Principal, out var assertion))
         {
-            var assertion = AshlarExternalProviderResolver.MapAssertion(provider, result.Principal);
             return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.Succeeded, assertion);
         }
-        catch (InvalidOperationException)
-        {
-            return await CreateFailureResultAsync(context, providerKey, AshlarExternalAssertionStatus.InvalidPrincipal, cancellationToken);
-        }
-        catch (ArgumentException)
-        {
-            return await CreateFailureResultAsync(context, providerKey, AshlarExternalAssertionStatus.InvalidPrincipal, cancellationToken);
-        }
+
+        return await CreateFailureResultAsync(context, providerKey, AshlarExternalAssertionStatus.InvalidPrincipal, cancellationToken);
     }
 
     private static AuthenticationContext CreateAuthenticationContext(HttpContext httpContext, Guid? tenantId)

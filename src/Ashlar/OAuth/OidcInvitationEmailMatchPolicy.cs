@@ -1,6 +1,4 @@
 using System.Security.Claims;
-using Ashlar.Identity.Features.Infrastructure;
-using Ashlar.Identity.Models.Invitations;
 
 namespace Ashlar.OAuth;
 

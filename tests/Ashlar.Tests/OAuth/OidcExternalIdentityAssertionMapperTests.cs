@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Ashlar.OAuth.Providers.Apple;
 
-namespace Ashlar.OAuth.Tests;
+namespace Ashlar.Tests.OAuth;
 
 internal sealed class OidcExternalIdentityAssertionMapperTests
 {

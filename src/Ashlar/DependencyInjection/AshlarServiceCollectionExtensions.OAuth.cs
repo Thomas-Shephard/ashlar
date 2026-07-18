@@ -1,8 +1,8 @@
 // ReSharper disable CheckNamespace
 
-using Ashlar.OAuth;
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions.Transactions;
+using Ashlar.Identity.Providers.External;
+using Ashlar.OAuth;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Http;
@@ -12,10 +12,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace Microsoft.Extensions.DependencyInjection;
 #pragma warning restore IDE0130
 
-/// <summary>
-/// Provides dependency injection registration helpers for Ashlar OAuth and OpenID Connect integration.
-/// </summary>
-public static class AshlarOAuthServiceCollectionExtensions
+public static partial class AshlarServiceCollectionExtensions
 {
     /// <summary>
     /// Adds Ashlar OAuth and OpenID Connect sign-in integration.
@@ -43,7 +40,7 @@ public static class AshlarOAuthServiceCollectionExtensions
         services.Configure(configure);
         services.TryAddScoped<AshlarExternalCredentialAuthenticationService>();
         services.TryAddScoped(provider => new AshlarExternalAccountLinkService(
-            provider.GetRequiredService<ICredentialLinkService>(),
+            provider.GetRequiredService<IValidatedExternalCredentialLinkService>(),
             provider.GetRequiredService<IFreshAuthenticationProofValidator>(),
             provider.GetRequiredService<IAccountSecurityAdministrationService>(),
             provider.GetRequiredService<global::Microsoft.Extensions.Options.IOptionsMonitor<AshlarOAuthOptions>>(),
@@ -51,7 +48,7 @@ public static class AshlarOAuthServiceCollectionExtensions
             provider.GetService<ISecurityEventSink>()));
         services.TryAddScoped(provider => new AshlarOidcInvitationRegistrationService(
             provider.GetRequiredService<IInvitationService>(),
-            provider.GetRequiredService<ICredentialLinkService>(),
+            provider.GetRequiredService<IValidatedExternalCredentialLinkService>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetRequiredService<global::Microsoft.Extensions.Options.IOptionsMonitor<AshlarOAuthOptions>>(),
             provider.GetRequiredService<IOidcInvitationEmailMatchPolicy>()));

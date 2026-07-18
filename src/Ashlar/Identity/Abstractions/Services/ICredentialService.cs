@@ -13,28 +13,10 @@ internal interface ICredentialService
     Task<Result> LinkCredentialAsync(InternalCredentialLinkRequest request, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Links provider-owned credentials through Ashlar's durable security mutation boundary.</summary>
-public interface ICredentialLinkService
+internal interface IValidatedExternalCredentialLinkService
 {
-    /// <summary>Links a credential to an existing user.</summary>
-    /// <param name="request">The credential mutation and audit context.</param>
-    /// <param name="cancellationToken">A token that can cancel linking.</param>
-    /// <returns>Success when linked; otherwise, a stable failure code.</returns>
-    Task<Result> LinkCredentialAsync(CredentialLinkRequest request, CancellationToken cancellationToken = default);
+    Task<Result> LinkValidatedExternalCredentialAsync(InternalValidatedExternalCredentialLinkRequest request, CancellationToken cancellationToken = default);
 }
-
-/// <summary>Describes a credential-link mutation.</summary>
-/// <param name="UserId">User receiving the credential.</param>
-/// <param name="Assertion">Authentication assertion used to derive the external key.</param>
-/// <param name="Provider">Authentication provider owning the credential.</param>
-/// <param name="Audit">Required audit context.</param>
-/// <param name="TenantId">Expected tenant identifier, or <see langword="null" /> for a global user.</param>
-public sealed record CredentialLinkRequest(
-    Guid UserId,
-    IAuthenticationAssertion Assertion,
-    IAuthenticationProvider Provider,
-    AuditContext Audit,
-    Guid? TenantId = null);
 
 internal sealed record InternalCredentialLinkRequest(
     Guid UserId,
@@ -42,6 +24,14 @@ internal sealed record InternalCredentialLinkRequest(
     IAuthenticationProvider Provider,
     string? CredentialValue,
     string? CredentialMetadata,
+    AuditContext Audit,
+    Guid? TenantId = null);
+
+internal sealed record InternalValidatedExternalCredentialLinkRequest(
+    Guid UserId,
+    ProviderType ProviderType,
+    string ProviderName,
+    string ProviderKey,
     AuditContext Audit,
     Guid? TenantId = null);
 

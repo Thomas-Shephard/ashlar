@@ -1,7 +1,4 @@
 using Ashlar.Auditing;
-using Ashlar.Identity.Features.Mfa;
-using Ashlar.Identity.Models.Mfa;
-using Ashlar.Identity.Models.Tenants;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
@@ -12,15 +9,15 @@ namespace Ashlar.OAuth;
 /// Links validated external identities to an existing Ashlar user.
 /// </summary>
 /// <remarks>
-/// Applications should treat calls to this service as sensitive account security operations and require
-/// appropriate recent verification, such as fresh MFA, before invoking it.
+/// Linking accepts only an Ashlar-validated external ticket and an Ashlar-issued fresh authentication proof
+/// bound to the target user, tenant, session, and linking purpose.
 /// </remarks>
 public sealed class AshlarExternalAccountLinkService
 {
     private const string LinkPurpose = "external-account-linking";
     private const string UnlinkPurpose = "external-account-unlinking";
 
-    private readonly ICredentialLinkService _credentialLinkService;
+    private readonly IValidatedExternalCredentialLinkService _credentialLinkService;
     private readonly IFreshAuthenticationProofValidator _proofValidator;
     private readonly IAccountSecurityAdministrationService _accountSecurityAdministration;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _options;
@@ -28,7 +25,7 @@ public sealed class AshlarExternalAccountLinkService
     private readonly ISecurityEventSink _securityEvents;
 
     internal AshlarExternalAccountLinkService(
-        ICredentialLinkService credentialLinkService,
+        IValidatedExternalCredentialLinkService credentialLinkService,
         IFreshAuthenticationProofValidator proofValidator,
         IAccountSecurityAdministrationService accountSecurityAdministration,
         IOptionsMonitor<AshlarOAuthOptions> options,
@@ -125,16 +122,16 @@ public sealed class AshlarExternalAccountLinkService
         }
 
         return await LinkValidatedExternalAccountCoreAsync(
-            new ExternalAccountLinkCoreRequest(
+            currentUserId,
+            provider,
+            result.Principal,
+            tenant,
+            new AuditContext(
                 currentUserId,
-                new AshlarValidatedExternalPrincipal(provider, result.Principal),
-                tenant,
-                new AuditContext(
-                    currentUserId,
-                    httpContext.Connection.RemoteIpAddress?.ToString(),
-                    httpContext.Request.Headers.UserAgent.ToString(),
-                    httpContext.TraceIdentifier)),
-            cancellationToken: cancellationToken);
+                httpContext.Connection.RemoteIpAddress?.ToString(),
+                httpContext.Request.Headers.UserAgent.ToString(),
+                httpContext.TraceIdentifier),
+            cancellationToken);
     }
 
     private static bool IsLinkingTicket(AuthenticationProperties? properties, Guid userId, Guid sessionId) =>
@@ -148,29 +145,28 @@ public sealed class AshlarExternalAccountLinkService
         && parsedSessionId == sessionId;
 
     private async Task<AshlarExternalAccountLinkResult> LinkValidatedExternalAccountCoreAsync(
-        ExternalAccountLinkCoreRequest request,
+        Guid currentUserId,
+        AshlarExternalProvider provider,
+        System.Security.Claims.ClaimsPrincipal principal,
+        TenantContext tenant,
+        AuditContext audit,
         CancellationToken cancellationToken = default)
     {
-        var (currentUserId, principal, tenant, audit) = request;
         ArgumentNullException.ThrowIfNull(principal);
 
-        ExternalIdentityAssertion assertion;
-        try
-        {
-            assertion = AshlarExternalProviderResolver.MapAssertion(principal.Provider, principal.Principal);
-        }
-        catch (InvalidOperationException)
-        {
-            return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.InvalidPrincipal);
-        }
-        catch (ArgumentException)
+        if (!AshlarExternalProviderResolver.TryMapAssertion(provider, principal, out var assertion))
         {
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.InvalidPrincipal);
         }
 
-        var provider = AshlarExternalProviderResolver.CreateAuthenticationProvider(principal.Provider);
-        var linkResult = await _credentialLinkService.LinkCredentialAsync(
-            new CredentialLinkRequest(currentUserId, assertion, provider, audit!, tenant.TenantId), cancellationToken);
+        var linkResult = await _credentialLinkService.LinkValidatedExternalCredentialAsync(
+            new InternalValidatedExternalCredentialLinkRequest(
+                currentUserId,
+                assertion.ProviderIdentity.Type,
+                assertion.ProviderIdentity.Name,
+                assertion.ProviderKey,
+                audit,
+                tenant.TenantId), cancellationToken);
 
         if (linkResult.Succeeded)
         {
@@ -278,10 +274,4 @@ public sealed class AshlarExternalAccountLinkService
             _ => AshlarExternalAccountUnlinkStatus.Failed
         };
     }
-
-    private sealed record ExternalAccountLinkCoreRequest(
-        Guid CurrentUserId,
-        AshlarValidatedExternalPrincipal Principal,
-        TenantContext Tenant,
-        AuditContext? Audit);
 }

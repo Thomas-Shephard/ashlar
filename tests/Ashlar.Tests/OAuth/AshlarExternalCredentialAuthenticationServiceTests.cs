@@ -1,7 +1,5 @@
 using System.Security.Claims;
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions.Tenancy;
-using Ashlar.Identity.Models.Mfa;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
@@ -12,7 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 
-namespace Ashlar.OAuth.Tests;
+namespace Ashlar.Tests.OAuth;
 
 internal sealed class AshlarExternalCredentialAuthenticationServiceTests
 {

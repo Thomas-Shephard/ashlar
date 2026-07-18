@@ -1,7 +1,4 @@
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions.Transactions;
-using Ashlar.Identity.Models.Invitations;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 
@@ -13,7 +10,7 @@ namespace Ashlar.OAuth;
 public sealed class AshlarOidcInvitationRegistrationService
 {
     private readonly IInvitationService _invitationService;
-    private readonly ICredentialLinkService _credentialLinkService;
+    private readonly IValidatedExternalCredentialLinkService _credentialLinkService;
     private readonly AshlarDurableTransactionProvider _transactionProvider;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _oauthOptions;
     private readonly IOidcInvitationEmailMatchPolicy _emailMatchPolicy;
@@ -28,7 +25,7 @@ public sealed class AshlarOidcInvitationRegistrationService
     /// <param name="emailMatchPolicy">The invitation email match policy.</param>
     internal AshlarOidcInvitationRegistrationService(
         IInvitationService invitationService,
-        ICredentialLinkService credentialLinkService,
+        IValidatedExternalCredentialLinkService credentialLinkService,
         AshlarDurableTransactionProvider transactionProvider,
         IOptionsMonitor<AshlarOAuthOptions> oauthOptions,
         IOidcInvitationEmailMatchPolicy emailMatchPolicy)
@@ -114,8 +111,8 @@ public sealed class AshlarOidcInvitationRegistrationService
     {
         ArgumentNullException.ThrowIfNull(httpContext);
 
-        var provider = GetOidcProvider(providerName);
-        if (provider == null)
+        var provider = AshlarExternalProviderResolver.GetProvider(_oauthOptions.CurrentValue, providerName);
+        if (provider == null || provider.Type != ProviderType.Oidc)
         {
             await AshlarExternalTicket.TryClearAsync(httpContext, _oauthOptions.CurrentValue.ExternalSignInScheme, CancellationToken.None);
             return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.UnsupportedProvider);
@@ -128,8 +125,7 @@ public sealed class AshlarOidcInvitationRegistrationService
             return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.AuthenticationFailed);
         }
 
-        var externalProvider = CreateExternalProvider(provider);
-        var (matched, properties) = AshlarExternalProviderResolver.MatchProvider(result, externalProvider);
+        var (matched, properties) = AshlarExternalProviderResolver.MatchProvider(result, provider);
         if (!matched || properties is null)
         {
             return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.ProviderMismatch);
@@ -153,7 +149,8 @@ public sealed class AshlarOidcInvitationRegistrationService
 
         return await RegisterValidatedOidcInvitationAsync(
             invitationToken,
-            new AshlarValidatedExternalPrincipal(externalProvider, result.Principal),
+            provider,
+            result.Principal,
             displayName,
             context,
             cancellationToken);
@@ -165,63 +162,17 @@ public sealed class AshlarOidcInvitationRegistrationService
         string? InvitationTokenPropertyName = null,
         string? DisplayNamePropertyName = null);
 
-    internal Task<AshlarOidcInvitationRegistrationResult> RegisterOidcInvitationAsync(
-        string? invitationToken,
-        string providerName,
-        AuthenticateResult authenticateResult,
-        string? displayName = null,
-        AuthenticationContext? context = null,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(authenticateResult);
-
-        var provider = GetOidcProvider(providerName);
-        if (provider == null)
-        {
-            return Task.FromResult(new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.UnsupportedProvider));
-        }
-
-        if (!authenticateResult.Succeeded || authenticateResult.Principal == null)
-        {
-            return Task.FromResult(new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.AuthenticationFailed));
-        }
-
-        var externalProvider = CreateExternalProvider(provider);
-        if (!AshlarExternalProviderResolver.MatchesProvider(authenticateResult, externalProvider))
-        {
-            return Task.FromResult(new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.ProviderMismatch));
-        }
-
-        return RegisterValidatedOidcInvitationAsync(
-            invitationToken,
-            new AshlarValidatedExternalPrincipal(externalProvider, authenticateResult.Principal),
-            displayName,
-            context,
-            cancellationToken);
-    }
-
     private async Task<AshlarOidcInvitationRegistrationResult> RegisterValidatedOidcInvitationAsync(
         string? invitationToken,
-        AshlarValidatedExternalPrincipal principal,
+        AshlarExternalProvider provider,
+        System.Security.Claims.ClaimsPrincipal principal,
         string? displayName = null,
         AuthenticationContext? context = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(principal);
 
-        ExternalIdentityAssertion assertion;
-        try
-        {
-            assertion = OidcExternalIdentityAssertionMapper.Map(
-                principal.Provider.ProviderName,
-                principal.Principal,
-                principal.Provider.OidcProviderKeyMode);
-        }
-        catch (InvalidOperationException)
-        {
-            return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.InvalidPrincipal);
-        }
-        catch (ArgumentException)
+        if (!AshlarExternalProviderResolver.TryMapAssertion(provider, principal, out var assertion))
         {
             return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.InvalidPrincipal);
         }
@@ -237,7 +188,7 @@ public sealed class AshlarOidcInvitationRegistrationService
             return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.InvalidInvitation, Assertion: assertion);
         }
 
-        var emailMatch = _emailMatchPolicy.Validate(new OidcInvitationEmailMatchContext(principal.Provider.ProviderName, principal.Principal, preview.Value));
+        var emailMatch = _emailMatchPolicy.Validate(new OidcInvitationEmailMatchContext(provider.ProviderName, principal, preview.Value));
         if (!emailMatch.Succeeded)
         {
             return new AshlarOidcInvitationRegistrationResult(emailMatch.Status ?? AshlarOidcInvitationRegistrationStatus.Failed, Assertion: assertion);
@@ -255,13 +206,13 @@ public sealed class AshlarOidcInvitationRegistrationService
             return new AshlarOidcInvitationRegistrationResult(MapInvitationFailure(acceptance), Assertion: assertion, InvitationAcceptance: acceptance);
         }
 
-        var link = await LinkAcceptedInvitationCredentialAsync(
+        var link = await _credentialLinkService.LinkValidatedExternalCredentialAsync(new InternalValidatedExternalCredentialLinkRequest(
             acceptance.Value.UserId,
-            assertion,
-            new OidcAuthenticationProvider(principal.Provider.ProviderName),
-            preview.Value.TenantId,
-            context,
-            cancellationToken: cancellationToken);
+            assertion.ProviderIdentity.Type,
+            assertion.ProviderIdentity.Name,
+            assertion.ProviderKey,
+            new AuditContext(context?.UserId, context?.IpAddress, context?.UserAgent, context?.CorrelationId),
+            preview.Value.TenantId), cancellationToken);
 
         if (!link.Succeeded)
         {
@@ -271,30 +222,6 @@ public sealed class AshlarOidcInvitationRegistrationService
 
         await transaction.CommitAsync(cancellationToken);
         return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.Registered, acceptance.Value.UserId, assertion, acceptance, link);
-    }
-
-    private async Task<Result> LinkAcceptedInvitationCredentialAsync(
-        Guid userId,
-        ExternalIdentityAssertion assertion,
-        OidcAuthenticationProvider provider,
-        Guid? tenantId,
-        AuthenticationContext? context,
-        CancellationToken cancellationToken)
-    {
-        return await _credentialLinkService.LinkCredentialAsync(new CredentialLinkRequest(
-            userId, assertion, provider,
-            new AuditContext(context?.UserId, context?.IpAddress, context?.UserAgent, context?.CorrelationId), tenantId), cancellationToken);
-    }
-
-    private AshlarOidcProviderOptions? GetOidcProvider(string providerName)
-    {
-        if (string.IsNullOrWhiteSpace(providerName))
-        {
-            return null;
-        }
-
-        var normalizedProviderName = AshlarOAuthOptions.NormalizeProviderName(providerName);
-        return _oauthOptions.CurrentValue.OidcProviders.TryGetValue(normalizedProviderName, out var provider) ? provider : null;
     }
 
     private static AshlarOidcInvitationRegistrationStatus MapInvitationFailure(Result<InvitationAcceptanceResult> result)
@@ -326,14 +253,5 @@ public sealed class AshlarOidcInvitationRegistrationService
             AshlarFailureCodes.AlreadyLinkedToOtherValue => AshlarOidcInvitationRegistrationStatus.AlreadyLinkedToAnotherUser,
             _ => AshlarOidcInvitationRegistrationStatus.LinkFailed
         };
-    }
-
-    private static AshlarExternalProvider CreateExternalProvider(AshlarOidcProviderOptions provider)
-    {
-        return new AshlarExternalProvider(
-            ProviderType.Oidc,
-            provider.ProviderName,
-            provider.SchemeName,
-            provider.ProviderKeyMode);
     }
 }

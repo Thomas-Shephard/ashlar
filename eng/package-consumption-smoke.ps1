@@ -61,7 +61,6 @@ $applicationPackageIds = @(
     "Ashlar.Email.Smtp",
     "Ashlar.Observability",
     "Ashlar.Webhooks",
-    "Ashlar.OAuth",
     "Ashlar.Redis"
 )
 $packageIds = @($applicationPackageIds) + "Ashlar.ProviderContracts"
@@ -194,7 +193,7 @@ builder.Services.AddAshlarSecurityEventMetrics();
 // Ashlar.Webhooks
 builder.Services.AddAshlarSecurityEventWebhooks();
 
-// Ashlar.OAuth
+// Ashlar OAuth/OIDC
 builder.Services.AddAshlarOAuth(options => options.AddGoogle(oidc =>
 {
     oidc.ClientId = "ashlar-smoke-client-id";

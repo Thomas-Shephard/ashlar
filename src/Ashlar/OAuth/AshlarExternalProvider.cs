@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Authentication;
+using Ashlar.Identity.Providers.External;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Ashlar.OAuth;
 
@@ -9,10 +11,6 @@ internal sealed record AshlarExternalProvider(
     AshlarOidcProviderKeyMode OidcProviderKeyMode = AshlarOidcProviderKeyMode.IssuerAndSubject,
     string OAuth2ProviderKeyClaimType = "id",
     bool AllowUnsafeOAuth2ProviderKeyClaimType = false);
-
-internal sealed record AshlarValidatedExternalPrincipal(
-    AshlarExternalProvider Provider,
-    System.Security.Claims.ClaimsPrincipal Principal);
 
 internal static class AshlarExternalProviderResolver
 {
@@ -44,15 +42,32 @@ internal static class AshlarExternalProviderResolver
             : null;
     }
 
-    public static ExternalIdentityAssertion MapAssertion(AshlarExternalProvider provider, System.Security.Claims.ClaimsPrincipal principal)
+    public static bool TryMapAssertion(
+        AshlarExternalProvider provider,
+        System.Security.Claims.ClaimsPrincipal principal,
+        [NotNullWhen(true)] out ExternalIdentityAssertion? assertion)
     {
-        return provider.Type == ProviderType.Oidc
-            ? OidcExternalIdentityAssertionMapper.Map(provider.ProviderName, principal, provider.OidcProviderKeyMode)
-            : OAuth2ExternalIdentityAssertionMapper.Map(
-                provider.ProviderName,
-                principal,
-                provider.OAuth2ProviderKeyClaimType,
-                provider.AllowUnsafeOAuth2ProviderKeyClaimType);
+        try
+        {
+            assertion = provider.Type == ProviderType.Oidc
+                ? OidcExternalIdentityAssertionMapper.Map(provider.ProviderName, principal, provider.OidcProviderKeyMode)
+                : OAuth2ExternalIdentityAssertionMapper.Map(
+                    provider.ProviderName,
+                    principal,
+                    provider.OAuth2ProviderKeyClaimType,
+                    provider.AllowUnsafeOAuth2ProviderKeyClaimType);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            assertion = null;
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            assertion = null;
+            return false;
+        }
     }
 
     public static bool MatchesProvider(AuthenticateResult result, AshlarExternalProvider provider)
@@ -75,13 +90,6 @@ internal static class AshlarExternalProviderResolver
         }
 
         return (false, null);
-    }
-
-    public static IAuthenticationProvider CreateAuthenticationProvider(AshlarExternalProvider provider)
-    {
-        return provider.Type == ProviderType.Oidc
-            ? new OidcAuthenticationProvider(provider.ProviderName)
-            : new OAuthAuthenticationProvider(provider.ProviderName);
     }
 
     private static bool MatchesProviderType(AuthenticationProperties properties, AshlarExternalProvider provider)

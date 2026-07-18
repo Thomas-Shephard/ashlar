@@ -57,8 +57,8 @@ public static class GitHubOAuthExtensions
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
             var version = typeof(GitHubOAuthExtensions).Assembly.GetName().Version?.ToString();
             request.Headers.UserAgent.Add(version == null
-                ? new ProductInfoHeaderValue("Ashlar.OAuth")
-                : new ProductInfoHeaderValue("Ashlar.OAuth", version));
+                ? new ProductInfoHeaderValue("Ashlar")
+                : new ProductInfoHeaderValue("Ashlar", version));
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", context.AccessToken);
 
             using var response = await context.Backchannel.SendAsync(request, context.HttpContext.RequestAborted);

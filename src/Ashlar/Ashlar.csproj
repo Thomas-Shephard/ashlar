@@ -1,15 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>Core identity, authentication, authorization, messaging, and security primitives for .NET applications.</Description>
-    <PackageTags>ashlar;identity;authentication;authorization;security</PackageTags>
+    <Description>Identity, authentication, authorization, OAuth, OpenID Connect, messaging, and security primitives for .NET applications.</Description>
+    <PackageTags>ashlar;identity;authentication;authorization;oauth;oidc;security</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
+    <PackageReference Include="Microsoft.IdentityModel.Validators" />
   </ItemGroup>
 
   <ItemGroup>
