@@ -168,6 +168,27 @@ internal sealed class EmailChangeServiceTests
     }
 
     [Test]
+    public async Task RequestChangeFailsIfUserCannotSignIn()
+    {
+        var user = CreateUser() with { AccountState = UserAccountState.Disabled };
+        var fixture = CreateFixture(user);
+
+        var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest
+        {
+            Session = fixture.SessionRepository.Session(user.Id),
+            Audit = new(user.Id),
+            NewEmail = "new@example.com",
+            CallbackBaseUri = new Uri("http://localhost/confirm")
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
+            Assert.That(fixture.EmailSender.Messages, Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task RequestChangeRateLimits()
     {
         var user = CreateUser();
