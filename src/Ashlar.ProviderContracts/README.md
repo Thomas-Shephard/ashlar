@@ -12,4 +12,4 @@ services.AddAshlarDurableTransactionProvider<CustomTransactionProvider>();
 services.AddAshlarIdentityDurableTransactionParticipants();
 ```
 
-Provider contract tests can resolve provider-owned services with `GetRequiredAshlarProviderService<TService>()`. Ordinary application DI does not expose those services.
+Provider contract tests register test-only aliases in their provider test projects. Ordinary application DI does not expose provider-owned services.

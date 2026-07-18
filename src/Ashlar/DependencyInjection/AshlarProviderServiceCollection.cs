@@ -31,23 +31,34 @@ internal interface IAshlarProviderService
     object Value { get; }
 }
 
-internal sealed class AshlarProviderService<T>(T value) : IAshlarProviderService, IDisposable, IAsyncDisposable where T : class
+internal sealed class AshlarProviderService<T> : IAshlarProviderService, IDisposable, IAsyncDisposable where T : class
 {
-    internal T Value { get; } = value ?? throw new ArgumentNullException(nameof(value));
+    private readonly bool _ownsValue;
+
+    internal AshlarProviderService(T value, bool ownsValue = true)
+    {
+        Value = value ?? throw new ArgumentNullException(nameof(value));
+        _ownsValue = ownsValue;
+    }
+
+    internal T Value { get; }
     object IAshlarProviderService.Value => Value;
 
     public void Dispose()
     {
+        if (!_ownsValue) return;
         if (Value is IDisposable disposable) disposable.Dispose();
         else if (Value is IAsyncDisposable asyncDisposable) asyncDisposable.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
-    public ValueTask DisposeAsync() => Value switch
-    {
-        IAsyncDisposable disposable => disposable.DisposeAsync(),
-        IDisposable disposable => DisposeAsync(disposable),
-        _ => ValueTask.CompletedTask
-    };
+    public ValueTask DisposeAsync() => !_ownsValue
+        ? ValueTask.CompletedTask
+        : Value switch
+        {
+            IAsyncDisposable disposable => disposable.DisposeAsync(),
+            IDisposable disposable => DisposeAsync(disposable),
+            _ => ValueTask.CompletedTask
+        };
 
     private static ValueTask DisposeAsync(IDisposable disposable)
     {

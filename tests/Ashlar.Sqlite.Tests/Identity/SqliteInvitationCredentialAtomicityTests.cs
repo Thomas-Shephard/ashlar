@@ -40,8 +40,8 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
         var acceptance = await invitations.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token });
 
         var tokenHash = services.GetRequiredService<ISecureTokenHasher>().HashToken(token);
-        var storedInvitation = await services.GetRequiredAshlarProviderService<IInvitationRepository>().GetInvitationByTokenHashAsync(tokenHash);
-        var storedUser = await services.GetRequiredAshlarProviderService<IUserRepository>().GetUserByEmailAsync(inviteeEmail, tenantId);
+        var storedInvitation = await services.GetRequiredService<IInvitationRepository>().GetInvitationByTokenHashAsync(tokenHash);
+        var storedUser = await services.GetRequiredService<IUserRepository>().GetUserByEmailAsync(inviteeEmail, tenantId);
 
         using (Assert.EnterMultipleScope())
         {
@@ -71,7 +71,7 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
 
         var transactions = services.GetRequiredService<AshlarDurableTransactionProvider>();
         var invitations = services.GetRequiredService<IInvitationService>();
-        var credentialRepository = services.GetRequiredAshlarProviderService<ICredentialRepository>();
+        var credentialRepository = services.GetRequiredService<ICredentialRepository>();
         await using (var transaction = await transactions.BeginTransactionAsync())
         {
             var acceptance = await invitations.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token, UserName = "Invitee" });
@@ -87,8 +87,8 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
             await transaction.RollbackAsync();
         }
 
-        var invitationRepository = services.GetRequiredAshlarProviderService<IInvitationRepository>();
-        var userRepository = services.GetRequiredAshlarProviderService<IUserRepository>();
+        var invitationRepository = services.GetRequiredService<IInvitationRepository>();
+        var userRepository = services.GetRequiredService<IUserRepository>();
         var rolledBackInvitation = await invitationRepository.GetInvitationByTokenHashAsync(services.GetRequiredService<ISecureTokenHasher>().HashToken(token));
         var rolledBackInvitee = await userRepository.GetUserByEmailAsync(inviteeEmail);
 
@@ -137,7 +137,7 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
 
     private static async Task SeedInvitationAsync(IServiceProvider services, string token, string email, Guid? tenantId = null)
     {
-        await services.GetRequiredAshlarProviderService<IInvitationRepository>().CreateInvitationAsync(new UserInvitation
+        await services.GetRequiredService<IInvitationRepository>().CreateInvitationAsync(new UserInvitation
         {
             Id = Guid.NewGuid(),
             DisplayEmail = email,
@@ -152,14 +152,14 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
 
     private static async Task SeedExistingLinkedCredentialAsync(IServiceProvider services, Guid userId, string email, string subject)
     {
-        await services.GetRequiredAshlarProviderService<IUserRepository>().CreateUserAsync(new AshlarUser
+        await services.GetRequiredService<IUserRepository>().CreateUserAsync(new AshlarUser
         {
             Id = userId,
             DisplayEmail = email,
             AccountState = UserAccountState.Active,
             EmailVerifiedAt = Now
         });
-        await services.GetRequiredAshlarProviderService<ICredentialRepository>().CreateCredentialAsync(new UserCredential
+        await services.GetRequiredService<ICredentialRepository>().CreateCredentialAsync(new UserCredential
         {
             Id = Guid.NewGuid(),
             UserId = userId,

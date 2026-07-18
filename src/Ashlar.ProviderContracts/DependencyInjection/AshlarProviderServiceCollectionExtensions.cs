@@ -1,7 +1,7 @@
 namespace Ashlar.ProviderContracts.DependencyInjection;
 
-using Ashlar.Identity.Abstractions.Transactions;
 using Ashlar.Auditing;
+using Ashlar.Identity.Abstractions.Transactions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -16,16 +16,6 @@ public static class AshlarProviderServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(provider);
         return provider.GetService<IServiceProviderIsService>()?.IsService(typeof(AshlarProviderService<TService>)) is true;
-    }
-
-    /// <summary>Resolves a private provider service for provider contract testing and provider-owned composition.</summary>
-    /// <typeparam name="TService">The provider contract to resolve.</typeparam>
-    /// <param name="provider">The provider-owned service provider scope.</param>
-    /// <returns>The registered provider service.</returns>
-    public static TService GetRequiredAshlarProviderService<TService>(this IServiceProvider provider) where TService : class
-    {
-        ArgumentNullException.ThrowIfNull(provider);
-        return AshlarProviderServiceCollection.GetRequiredAshlarProviderService<TService>(provider);
     }
 
     /// <summary>Registers a provider-owned service factory in Ashlar's private infrastructure lane.</summary>
@@ -77,6 +67,22 @@ public static class AshlarProviderServiceCollectionExtensions
         where TProvider : class, IAshlarTransactionProvider
     {
         ArgumentNullException.ThrowIfNull(services);
+        return AshlarServiceCollectionExtensions.AddProviderDurableTransactionProvider<TProvider>(services);
+    }
+
+    /// <summary>Creates Ashlar's durable transaction composition from an ordinary-DI-owned transaction manager without transferring disposal ownership.</summary>
+    /// <typeparam name="TProvider">The provider-owned transaction manager.</typeparam>
+    /// <param name="services">The provider package's service collection.</param>
+    /// <param name="factory">The scoped transaction manager factory.</param>
+    /// <returns>The same service collection.</returns>
+    public static IServiceCollection AddAshlarDurableTransactionProvider<TProvider>(
+        this IServiceCollection services,
+        Func<IServiceProvider, TProvider> factory)
+        where TProvider : class, IAshlarTransactionProvider
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(factory);
+        services.TryAddScoped(provider => new AshlarProviderService<TProvider>(factory(provider), ownsValue: false));
         return AshlarServiceCollectionExtensions.AddProviderDurableTransactionProvider<TProvider>(services);
     }
 

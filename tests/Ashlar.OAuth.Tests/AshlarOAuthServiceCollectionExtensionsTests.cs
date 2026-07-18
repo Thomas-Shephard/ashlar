@@ -66,11 +66,14 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
-        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
+        var users = Mock.Of<IUserRepository>();
+        var credentials = Mock.Of<ICredentialRepository>();
+        var sessions = Mock.Of<IAuthenticationSessionRepository>();
+        services.AddAshlarProviderScoped(_ => users);
+        services.AddAshlarProviderScoped(_ => credentials);
         services.AddSingleton(Mock.Of<IUserAdministrationRepository>());
         services.AddSingleton(Mock.Of<ICredentialAdministrationRepository>());
-        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarProviderScoped(_ => sessions);
         services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
         services.AddAshlarProviderScoped(_ => Mock.Of<IInvitationRepository>());
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
@@ -79,9 +82,9 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         services.AddAshlarProviderScoped<IPersistentSecurityEventSink>(_ => persistent);
         services.AddScoped(provider => DurableTransactionComposition.Create(
             Mock.Of<IAshlarTransactionProvider>(),
-            AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<IUserRepository>(provider),
-            AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<ICredentialRepository>(provider),
-            AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(provider),
+            users,
+            credentials,
+            sessions,
             persistent));
         services.AddPermissiveAccountSecurityGuard();
         services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());

@@ -47,9 +47,9 @@ internal sealed class PostgresOidcInvitationRegistrationAtomicityTests
         await SeedInvitationAsync(services, token, inviteeEmail);
         await SeedExistingLinkedCredentialAsync(services, existingUserId, existingEmail, subject);
 
-        var invitations = services.GetRequiredAshlarProviderService<IInvitationRepository>();
-        var users = services.GetRequiredAshlarProviderService<IUserRepository>();
-        var credentials = services.GetRequiredAshlarProviderService<ICredentialRepository>();
+        var invitations = services.GetRequiredService<IInvitationRepository>();
+        var users = services.GetRequiredService<IUserRepository>();
+        var credentials = services.GetRequiredService<ICredentialRepository>();
         var service = services.GetRequiredService<AshlarOidcInvitationRegistrationService>();
         var result = await service.CompleteOidcInvitationRegistrationAsync(CreateHttpContext(services, CreateTicket(subject, inviteeEmail)), token, "Google", "Invitee");
 
@@ -92,7 +92,7 @@ internal sealed class PostgresOidcInvitationRegistrationAtomicityTests
 
     private static async Task SeedInvitationAsync(IServiceProvider services, string token, string email)
     {
-        await services.GetRequiredAshlarProviderService<IInvitationRepository>().CreateInvitationAsync(new UserInvitation
+        await services.GetRequiredService<IInvitationRepository>().CreateInvitationAsync(new UserInvitation
         {
             Id = Guid.NewGuid(),
             DisplayEmail = email,
@@ -106,14 +106,14 @@ internal sealed class PostgresOidcInvitationRegistrationAtomicityTests
 
     private static async Task SeedExistingLinkedCredentialAsync(IServiceProvider services, Guid userId, string email, string subject)
     {
-        await services.GetRequiredAshlarProviderService<IUserRepository>().CreateUserAsync(new AshlarUser
+        await services.GetRequiredService<IUserRepository>().CreateUserAsync(new AshlarUser
         {
             Id = userId,
             DisplayEmail = email,
             AccountState = UserAccountState.Active,
             EmailVerifiedAt = Now
         });
-        await services.GetRequiredAshlarProviderService<ICredentialRepository>().CreateCredentialAsync(new UserCredential
+        await services.GetRequiredService<ICredentialRepository>().CreateCredentialAsync(new UserCredential
         {
             Id = Guid.NewGuid(),
             UserId = userId,

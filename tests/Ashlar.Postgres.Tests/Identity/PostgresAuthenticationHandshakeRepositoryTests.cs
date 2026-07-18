@@ -14,6 +14,7 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
 
         var services = new ServiceCollection();
         services.AddAshlarPostgres(GetConnectionString());
+        services.AddPostgresProviderContractTestServices();
         _serviceProvider = services.BuildServiceProvider();
 
         await _serviceProvider.InitializeAshlarPostgresSchemaAsync();
@@ -293,8 +294,8 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
         }
     }
 
-    private IAuthenticationHandshakeRepository GetRepository() => _serviceProvider.GetRequiredAshlarProviderService<IAuthenticationHandshakeRepository>();
-    private IUserRepository GetUserRepository() => _serviceProvider.GetRequiredAshlarProviderService<IUserRepository>();
+    private IAuthenticationHandshakeRepository GetRepository() => _serviceProvider.GetRequiredService<IAuthenticationHandshakeRepository>();
+    private IUserRepository GetUserRepository() => _serviceProvider.GetRequiredService<IUserRepository>();
 
     private async Task<bool> IsHandshakeMetadataSqlNullAsync(Guid handshakeId)
     {

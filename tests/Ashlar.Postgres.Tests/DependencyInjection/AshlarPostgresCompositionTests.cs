@@ -1,4 +1,3 @@
-using Ashlar.Authorization.Abstractions;
 using Ashlar.Identity.Abstractions.AccountSecurity;
 using Ashlar.Identity.Models.AccountSecurity;
 using Ashlar.Identity.Models.Mfa;
@@ -30,6 +29,7 @@ internal sealed class AshlarPostgresCompositionTests
         services.AddSingleton(ambientDataSource);
 
         services.AddAshlarPostgres(CreateConnectionString("explicit-main"));
+        services.AddPostgresProviderContractTestServices();
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<NpgsqlDataSource>(), Is.Not.SameAs(ambientDataSource));
@@ -170,6 +170,7 @@ internal sealed class AshlarPostgresCompositionTests
             options.Host = "localhost";
             options.DefaultFromAddress = "ashlar@example.test";
         });
+        services.AddPostgresProviderContractTestServices();
 
         await using var provider = ServiceProviderValidation.BuildValidatedServiceProvider(
             services,
@@ -185,6 +186,7 @@ internal sealed class AshlarPostgresCompositionTests
             typeof(IAshlarSchemaDiagnostics),
             typeof(IAshlarOperationsSummaryService));
         await using var scope = provider.CreateAsyncScope();
+        scope.ServiceProvider.AssertPostgresProviderContractsRegistered();
 
         using (Assert.EnterMultipleScope())
         {
@@ -192,7 +194,7 @@ internal sealed class AshlarPostgresCompositionTests
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiter>(), Is.TypeOf<PostgresAuthenticationRateLimiter>());
             Assert.That(scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
-            Assert.That(scope.ServiceProvider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(), Is.TypeOf<PostgresSecurityEventSink>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IPersistentSecurityEventSink>(), Is.TypeOf<PostgresSecurityEventSink>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAccountSecurityGuard>(), Is.TypeOf<TestAccountSecurityGuard>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarOperationsSummaryService>(), Is.TypeOf<AshlarOperationsSummaryService>());
             Assert.That(provider.GetServices<IHostedService>().OfType<PostgresEmailOutboxHostedService>(), Has.Exactly(1).Items);

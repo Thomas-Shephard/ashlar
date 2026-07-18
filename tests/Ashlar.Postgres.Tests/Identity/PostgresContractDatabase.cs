@@ -21,6 +21,7 @@ internal static class PostgresContractDatabase
         var services = new ServiceCollection();
         services.AddAshlarPostgres(GetConnectionString(databaseName));
         services.AddAshlarPostgresAuditSink();
+        services.AddPostgresProviderContractTestServices();
         configureServices(services);
         var provider = services.BuildServiceProvider();
         await provider.InitializeAshlarPostgresSchemaAsync();

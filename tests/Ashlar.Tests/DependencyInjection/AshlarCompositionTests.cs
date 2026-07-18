@@ -62,9 +62,9 @@ internal sealed class AshlarCompositionTests
         ordinary.AddScoped<ScopedDependency>();
         using var ordinaryProvider = ordinary.BuildServiceProvider();
 
-        Assert.That(AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<ScopedDependency>(providerServiceProvider), Is.Not.Null);
+        Assert.That(Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<ScopedDependency>(providerServiceProvider), Is.Not.Null);
         Assert.Throws<InvalidOperationException>(() =>
-            AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<ScopedDependency>(ordinaryProvider));
+            Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<ScopedDependency>(ordinaryProvider));
     }
 
     [Test]
@@ -75,7 +75,7 @@ internal sealed class AshlarCompositionTests
         using var provider = services.BuildServiceProvider();
 
         Assert.Throws<ArgumentNullException>(() =>
-            AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<ScopedDependency>(provider));
+            Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<ScopedDependency>(provider));
     }
 
     [Test]
@@ -95,8 +95,8 @@ internal sealed class AshlarCompositionTests
             Assert.That(provider.GetService<ICredentialRepository>(), Is.Null);
             Assert.That(services.Where(descriptor => descriptor.ServiceKey is not null)
                 .Select(descriptor => provider.GetKeyedService(typeof(IUserRepository), descriptor.ServiceKey!)), Is.All.Null);
-            Assert.That(AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<IUserRepository>(provider), Is.Not.Null);
-            Assert.That(AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<ICredentialRepository>(provider), Is.Not.Null);
+            Assert.That(Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<IUserRepository>(provider), Is.Not.Null);
+            Assert.That(Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<ICredentialRepository>(provider), Is.Not.Null);
         }
     }
 
@@ -113,9 +113,9 @@ internal sealed class AshlarCompositionTests
         await using (var provider = services.BuildServiceProvider())
         await using (var scope = provider.CreateAsyncScope())
         {
-            _ = AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<DisposableDependency>(scope.ServiceProvider);
-            _ = AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<AsyncDisposableDependency>(scope.ServiceProvider);
-            _ = AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<ScopedDependency>(scope.ServiceProvider);
+            _ = Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<DisposableDependency>(scope.ServiceProvider);
+            _ = Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<AsyncDisposableDependency>(scope.ServiceProvider);
+            _ = Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<ScopedDependency>(scope.ServiceProvider);
         }
 
         using (Assert.EnterMultipleScope())
@@ -133,7 +133,39 @@ internal sealed class AshlarCompositionTests
         services.AddAshlarProviderScoped(_ => dependency);
         using var provider = services.BuildServiceProvider();
         using (var scope = provider.CreateScope())
-            _ = AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<DisposableDependency>(scope.ServiceProvider);
+            _ = Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<DisposableDependency>(scope.ServiceProvider);
+
+        Assert.That(dependency.DisposeCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void ProviderAliasLeavesDisposalToOrdinaryRegistration()
+    {
+        var dependency = new DisposableDependency();
+        var services = new ServiceCollection();
+        services.AddScoped(_ => dependency);
+        services.AddAshlarDurableTransactionProvider<DisposableDependency>(provider =>
+            provider.GetRequiredService<DisposableDependency>());
+
+        using (var provider = services.BuildServiceProvider())
+        using (var scope = provider.CreateScope())
+            _ = Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<DisposableDependency>(scope.ServiceProvider);
+
+        Assert.That(dependency.DisposeCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task ProviderAliasLeavesAsyncDisposalToOrdinaryRegistration()
+    {
+        var dependency = new AsyncDisposableDependency();
+        var services = new ServiceCollection();
+        services.AddScoped(_ => dependency);
+        services.AddAshlarDurableTransactionProvider<AsyncDisposableDependency>(provider =>
+            provider.GetRequiredService<AsyncDisposableDependency>());
+
+        await using (var provider = services.BuildServiceProvider())
+        await using (var scope = provider.CreateAsyncScope())
+            _ = Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<AsyncDisposableDependency>(scope.ServiceProvider);
 
         Assert.That(dependency.DisposeCount, Is.EqualTo(1));
     }
@@ -146,7 +178,7 @@ internal sealed class AshlarCompositionTests
         services.AddAshlarProviderScoped(_ => dependency);
         using var provider = services.BuildServiceProvider();
         using (var scope = provider.CreateScope())
-            _ = AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<AsyncDisposableDependency>(scope.ServiceProvider);
+            _ = Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<AsyncDisposableDependency>(scope.ServiceProvider);
 
         Assert.That(dependency.DisposeCount, Is.EqualTo(1));
     }
@@ -165,7 +197,7 @@ internal sealed class AshlarCompositionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.GetRequiredService<IUserRepository>(), Is.SameAs(applicationRepository));
-            Assert.That(AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<IUserRepository>(provider), Is.SameAs(providerRepository));
+            Assert.That(Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<IUserRepository>(provider), Is.SameAs(providerRepository));
         }
     }
 
@@ -221,7 +253,7 @@ internal sealed class AshlarCompositionTests
         {
             Assert.That(scope.ServiceProvider.GetService<IFreshAuthenticationProofValidator>(), Is.Not.Null);
             Assert.That(scope.ServiceProvider.GetService<IAuthenticationSessionRepository>(), Is.Null);
-            Assert.That(AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>(scope.ServiceProvider), Is.Not.Null);
+            Assert.That(Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>(scope.ServiceProvider), Is.Not.Null);
         }
     }
 
@@ -266,7 +298,7 @@ internal sealed class AshlarCompositionTests
             Assert.That(scope.ServiceProvider.GetRequiredService<IEmailSender>(), Is.SameAs(emailSender));
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiter>(), Is.SameAs(rateLimiter));
             Assert.That(scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
-            Assert.That(AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<RecordingTransactionProvider>(scope.ServiceProvider), Is.Not.Null);
+            Assert.That(Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<RecordingTransactionProvider>(scope.ServiceProvider), Is.Not.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ICredentialLinkService>(),
                 Is.SameAs(scope.ServiceProvider.GetRequiredService<ICredentialService>()));
@@ -521,7 +553,7 @@ internal sealed class AshlarCompositionTests
 
     private sealed class ScopedDependency;
 
-    private sealed class DisposableDependency : IDisposable
+    private sealed class DisposableDependency : IAshlarTransactionProvider, IDisposable
     {
         public bool Disposed => DisposeCount != 0;
         public int DisposeCount { get; private set; }
@@ -530,9 +562,12 @@ internal sealed class AshlarCompositionTests
         {
             DisposeCount++;
         }
+
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
-    private sealed class AsyncDisposableDependency : IAsyncDisposable
+    private sealed class AsyncDisposableDependency : IAshlarTransactionProvider, IAsyncDisposable
     {
         public int DisposeCount { get; private set; }
 
@@ -541,6 +576,9 @@ internal sealed class AshlarCompositionTests
             DisposeCount++;
             return ValueTask.CompletedTask;
         }
+
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class ThrowingAsyncScopedDependency : IAsyncDisposable

@@ -3280,7 +3280,7 @@ internal sealed class PasskeyServiceTests
         services.AddAshlarIdentity();
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        return Ashlar.ProviderContracts.DependencyInjection.AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>(scope.ServiceProvider);
+        return scope.ServiceProvider.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>();
     }
 
     private static PasskeyService CreateVerifiedPasskeyService(

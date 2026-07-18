@@ -191,9 +191,11 @@ public static class AshlarPostgresServiceCollectionExtensions
 
     private static void AddPostgresTransactionServices(this IServiceCollection services)
     {
-        services.AddAshlarDurableTransactionProvider<PostgresTransactionManager>();
+        services.TryAddScoped<PostgresTransactionManagerOwner>();
         services.TryAddScoped<IPostgresConnectionProvider>(provider =>
-            new PostgresConnectionProvider(provider.GetRequiredAshlarProviderService<PostgresTransactionManager>()));
+            provider.GetRequiredService<PostgresTransactionManagerOwner>());
+        services.AddAshlarDurableTransactionProvider<PostgresTransactionManager>(provider =>
+            provider.GetRequiredService<PostgresTransactionManagerOwner>().Value);
     }
 
     /// <summary>
@@ -301,9 +303,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.ReplaceAshlarProviderScoped<IPersistentSecurityEventSink>(provider =>
             ActivatorUtilities.CreateInstance<PostgresSecurityEventSink>(provider));
         services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
-        services.Replace(ServiceDescriptor.Scoped<IUserSecurityEventSummaryRepository>(provider =>
-            new PostgresUserSecurityEventSummaryRepository(
-                (PostgresSecurityEventSink)provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>())));
+        services.Replace(ServiceDescriptor.Scoped<IUserSecurityEventSummaryRepository, PostgresUserSecurityEventSummaryRepository>());
 
         return services;
     }
@@ -408,11 +408,8 @@ public static class AshlarPostgresServiceCollectionExtensions
         }
 
         services.TryAddSingleton(TimeProvider.System);
-        services.TryAddAshlarProviderScoped<IAshlarSecurityEventWebhookEnqueuer, PostgresSecurityEventWebhookEnqueuer>();
-        services.AddAshlarProviderScoped(provider => new AshlarSecurityEventWebhookOutboxHandler(
-            provider.GetRequiredService<AshlarSecurityEventWebhookDeliveryFactory>(),
-            provider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>()));
-        services.AddAshlarDurableSecurityEventFanOutHandler<AshlarSecurityEventWebhookOutboxHandler>();
+        services.TryAddAshlarProviderScoped<PostgresSecurityEventWebhookEnqueuer, PostgresSecurityEventWebhookEnqueuer>();
+        services.AddAshlarDurableSecurityEventFanOutHandler<PostgresSecurityEventWebhookEnqueuer>();
         services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxOperations>(provider => new PostgresSecurityEventWebhookOutboxOperations(
             provider.GetRequiredService<IPostgresConnectionProvider>(),
             provider.GetRequiredService<TimeProvider>(),

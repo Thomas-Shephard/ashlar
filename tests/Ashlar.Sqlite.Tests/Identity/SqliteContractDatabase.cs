@@ -33,6 +33,7 @@ internal sealed class SqliteContractDatabase
 
         var services = new ServiceCollection();
         services.AddAshlarSqlite(connectionString);
+        services.AddSqliteProviderContractTestServices();
         configureServices(services);
         var provider = services.BuildServiceProvider();
         await provider.InitializeAshlarSqliteSchemaAsync();

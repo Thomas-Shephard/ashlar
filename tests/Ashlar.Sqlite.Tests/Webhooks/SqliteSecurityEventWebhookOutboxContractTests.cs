@@ -25,6 +25,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxContractTests : SecurityEv
                 });
             });
             services.AddAshlarSqliteSecurityEventWebhookOutbox();
+            services.AddSqliteWebhookProviderContractTestService();
         });
         return _database.ServiceProvider;
     }

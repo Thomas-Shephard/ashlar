@@ -15,6 +15,7 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
 
         var services = new ServiceCollection();
         services.AddAshlarPostgres(GetConnectionString());
+        services.AddPostgresProviderContractTestServices();
         _serviceProvider = services.BuildServiceProvider();
 
         await _serviceProvider.InitializeAshlarPostgresSchemaAsync();
@@ -560,11 +561,11 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         Assert.That(fetched, Is.Null);
     }
 
-    private IUserRepository GetUserRepository() => _serviceProvider.GetRequiredAshlarProviderService<IUserRepository>();
+    private IUserRepository GetUserRepository() => _serviceProvider.GetRequiredService<IUserRepository>();
 
     private PostgresAuthenticationSessionRepository GetSessionRepository()
     {
-        return (PostgresAuthenticationSessionRepository)_serviceProvider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>();
+        return (PostgresAuthenticationSessionRepository)_serviceProvider.GetRequiredService<IAuthenticationSessionRepository>();
     }
 
     private async Task DeleteUserAsync(Guid userId)

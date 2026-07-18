@@ -14,4 +14,3 @@ global using Ashlar.Identity.Models.Sessions;
 global using Ashlar.Identity.Models.Tenants;
 global using Ashlar.Operational.Diagnostics;
 global using Ashlar.Webhooks.SecurityEvents;
-global using Ashlar.ProviderContracts.DependencyInjection;

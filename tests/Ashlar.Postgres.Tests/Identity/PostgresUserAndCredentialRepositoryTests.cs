@@ -15,6 +15,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
 
         var services = new ServiceCollection();
         services.AddAshlarPostgres(GetConnectionString());
+        services.AddPostgresProviderContractTestServices();
         _serviceProvider = services.BuildServiceProvider();
 
         await _serviceProvider.InitializeAshlarPostgresSchemaAsync();
@@ -36,8 +37,8 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
     private RepositoryFacade GetRepository()
     {
         return new RepositoryFacade(
-            _serviceProvider!.GetRequiredAshlarProviderService<IUserRepository>(),
-            _serviceProvider!.GetRequiredAshlarProviderService<ICredentialRepository>());
+            _serviceProvider!.GetRequiredService<IUserRepository>(),
+            _serviceProvider!.GetRequiredService<ICredentialRepository>());
     }
 
     [Test]

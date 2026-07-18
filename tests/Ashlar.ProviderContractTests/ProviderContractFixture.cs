@@ -49,17 +49,17 @@ internal abstract class ProviderContractFixture
 
     protected static IUserRepository GetUserRepository(IServiceProvider serviceProvider)
     {
-        return serviceProvider.GetRequiredAshlarProviderService<IUserRepository>();
+        return serviceProvider.GetRequiredService<IUserRepository>();
     }
 
     protected static ICredentialRepository GetCredentialRepository(IServiceProvider serviceProvider)
     {
-        return serviceProvider.GetRequiredAshlarProviderService<ICredentialRepository>();
+        return serviceProvider.GetRequiredService<ICredentialRepository>();
     }
 
     protected static IAccountLockoutRepository GetAccountLockoutRepository(IServiceProvider serviceProvider)
     {
-        return serviceProvider.GetRequiredAshlarProviderService<IAccountLockoutRepository>();
+        return serviceProvider.GetRequiredService<IAccountLockoutRepository>();
     }
 
     protected static IUserAdministrationRepository GetUserAdministrationRepository(IServiceProvider serviceProvider)
@@ -74,22 +74,22 @@ internal abstract class ProviderContractFixture
 
     protected static IBootstrapStateRepository GetBootstrapStateRepository(IServiceProvider serviceProvider)
     {
-        return serviceProvider.GetRequiredAshlarProviderService<IBootstrapStateRepository>();
+        return serviceProvider.GetRequiredService<IBootstrapStateRepository>();
     }
 
     protected static IInvitationRepository GetInvitationRepository(IServiceProvider serviceProvider)
     {
-        return serviceProvider.GetRequiredAshlarProviderService<IInvitationRepository>();
+        return serviceProvider.GetRequiredService<IInvitationRepository>();
     }
 
     protected static IAuthenticationSessionRepository GetAuthenticationSessionRepository(IServiceProvider serviceProvider)
     {
-        return serviceProvider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>();
+        return serviceProvider.GetRequiredService<IAuthenticationSessionRepository>();
     }
 
     protected static IRememberedMfaDeviceRepository GetRememberedMfaDeviceRepository(IServiceProvider serviceProvider)
     {
-        return serviceProvider.GetRequiredAshlarProviderService<IRememberedMfaDeviceRepository>();
+        return serviceProvider.GetRequiredService<IRememberedMfaDeviceRepository>();
     }
 
     protected static IAuthenticationSessionAdministrationRepository GetAuthenticationSessionAdministrationRepository(IServiceProvider serviceProvider)
@@ -99,12 +99,12 @@ internal abstract class ProviderContractFixture
 
     protected static IAuthenticationHandshakeRepository GetAuthenticationHandshakeRepository(IServiceProvider serviceProvider)
     {
-        return serviceProvider.GetRequiredAshlarProviderService<IAuthenticationHandshakeRepository>();
+        return serviceProvider.GetRequiredService<IAuthenticationHandshakeRepository>();
     }
 
     protected static IAuthorizationGrantRepository GetAuthorizationGrantRepository(IServiceProvider serviceProvider)
     {
-        return serviceProvider.GetRequiredAshlarProviderService<IAuthorizationGrantRepository>();
+        return serviceProvider.GetRequiredService<IAuthorizationGrantRepository>();
     }
 
     protected static IAuthorizationGrantAdministrationRepository GetAuthorizationGrantAdministrationRepository(IServiceProvider serviceProvider)
@@ -119,7 +119,7 @@ internal abstract class ProviderContractFixture
 
     protected static IPersistentSecurityEventSink GetPersistentSecurityEventSink(IServiceProvider serviceProvider)
     {
-        return serviceProvider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>();
+        return serviceProvider.GetRequiredService<IPersistentSecurityEventSink>();
     }
 
     protected static IUserSecurityEventSummaryRepository GetUserSecurityEventSummaryRepository(IServiceProvider serviceProvider)
@@ -134,7 +134,7 @@ internal abstract class ProviderContractFixture
 
     protected static IPasskeyChallengeRepository GetPasskeyChallengeRepository(IServiceProvider serviceProvider)
     {
-        return serviceProvider.GetRequiredAshlarProviderService<IPasskeyChallengeRepository>();
+        return serviceProvider.GetRequiredService<IPasskeyChallengeRepository>();
     }
 
     protected static IAuthenticationRateLimiter GetAuthenticationRateLimiter(IServiceProvider serviceProvider)
@@ -169,7 +169,7 @@ internal abstract class ProviderContractFixture
 
     protected static IAshlarSecurityEventWebhookEnqueuer GetSecurityEventWebhookEnqueuer(IServiceProvider serviceProvider)
     {
-        return serviceProvider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>();
+        return serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>();
     }
 
     protected static IAshlarSecurityEventWebhookOutboxBrowser GetSecurityEventWebhookOutboxBrowser(IServiceProvider serviceProvider)

@@ -20,6 +20,7 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
 
         var services = new ServiceCollection();
         services.AddAshlarPostgres(GetConnectionString());
+        services.AddPostgresProviderContractTestServices();
         await services.BuildServiceProvider().InitializeAshlarPostgresSchemaAsync();
     }
 
@@ -128,13 +129,14 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
         var services = new ServiceCollection();
 
         services.AddAshlarPostgresAuthorization("Host=localhost;Database=ashlar;Username=ashlar;Password=ashlar");
+        Assert.That(services, Has.None.Matches<ServiceDescriptor>(descriptor =>
+            descriptor.ServiceType == typeof(IAuthorizationGrantRepository)));
+        services.AddPostgresProviderContractTestServices();
         var provider = services.BuildServiceProvider();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(services, Has.None.Matches<ServiceDescriptor>(descriptor =>
-                descriptor.ServiceType == typeof(Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository)));
-            Assert.That(provider.GetRequiredAshlarProviderService<Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository>(), Is.Not.Null);
+            Assert.That(provider.GetRequiredService<IAuthorizationGrantRepository>(), Is.Not.Null);
             Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
                 descriptor.ServiceType == typeof(IPostgresConnectionProvider)
                 && descriptor.Lifetime == ServiceLifetime.Scoped));
@@ -148,13 +150,14 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
         var services = new ServiceCollection();
 
         services.AddAshlarPostgresAuthorization(GetDataSource());
+        Assert.That(services, Has.None.Matches<ServiceDescriptor>(descriptor =>
+            descriptor.ServiceType == typeof(IAuthorizationGrantRepository)));
+        services.AddPostgresProviderContractTestServices();
         var provider = services.BuildServiceProvider();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(services, Has.None.Matches<ServiceDescriptor>(descriptor =>
-                descriptor.ServiceType == typeof(Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository)));
-            Assert.That(provider.GetRequiredAshlarProviderService<Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository>(), Is.Not.Null);
+            Assert.That(provider.GetRequiredService<IAuthorizationGrantRepository>(), Is.Not.Null);
         }
         provider.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }

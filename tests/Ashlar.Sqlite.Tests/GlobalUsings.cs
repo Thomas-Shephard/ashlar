@@ -23,6 +23,7 @@ global using Ashlar.Identity.Models.Passkeys;
 global using Ashlar.Identity.Models.Sessions;
 global using Ashlar.Identity.Models.Tenants;
 global using Ashlar.Sqlite.Tests.Identity;
+global using Ashlar.Sqlite.Tests.Support;
 
 global using Ashlar.ProviderContractTests.Auditing;
 global using Ashlar.ProviderContractTests.Identity.RateLimiting;
@@ -34,5 +35,6 @@ global using Ashlar.ProviderContractTests.Identity;
 
 global using Ashlar.ProviderContracts.DependencyInjection;
 global using Ashlar.Auditing;
+global using Ashlar.Authorization.Abstractions;
 
 [assembly: Parallelizable(ParallelScope.Fixtures)]

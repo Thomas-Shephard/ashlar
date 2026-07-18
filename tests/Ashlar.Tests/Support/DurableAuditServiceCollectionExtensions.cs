@@ -22,7 +22,7 @@ internal static class DurableAuditServiceCollectionExtensions
         if (HasProviderService<IAccountLockoutRepository>(services))
             services.AddAshlarDurableTransactionParticipant<IAccountLockoutRepository>();
         services.Replace(ServiceDescriptor.Scoped<SecurityEventFanOutSink>(provider => new SecurityEventFanOutSink(
-            AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(provider),
+            Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(provider),
             handlers: provider.GetServices<ISecurityEventHandler>(),
             transactionProvider: provider.GetRequiredService<AshlarDurableTransactionProvider>())));
         services.Replace(ServiceDescriptor.Scoped<ISecurityEventSink>(provider => provider.GetRequiredService<SecurityEventFanOutSink>()));
