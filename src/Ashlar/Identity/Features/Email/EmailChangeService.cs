@@ -84,6 +84,7 @@ internal sealed class EmailChangeService(
         var tenantMatches = user != null && UserTenantOwnership.Matches(user, tenantId);
         if (user == null || !user.CanSignIn() || !tenantMatches)
         {
+            var failureCode = UserUnavailableFailureCode(user, tenantMatches);
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.EmailChangeFailed,
@@ -92,13 +93,12 @@ internal sealed class EmailChangeService(
                 TenantId = tenantId,
                 SessionId = request.Session.Id,
                 Audit = request.Audit,
-                FailureReason = user is not null && !tenantMatches
-                    ? AshlarFailureCodes.TenantMismatch.Value
-                    : AshlarFailureCodes.UserNotFoundOrUnavailable.Value
+                FailureReason = failureCode.Value
             }, cancellationToken);
-            return user is not null && !tenantMatches
-                ? Result.Failure(AshlarFailureCodes.TenantMismatch)
-                : Result.Failure(AshlarFailureCodes.UserNotFoundOrUnavailable, "User was not found or cannot currently sign in.");
+
+            return failureCode == AshlarFailureCodes.TenantMismatch
+                ? Result.Failure(failureCode)
+                : Result.Failure(failureCode, "User was not found or cannot currently sign in.");
         }
 
         var newEmail = IdentityNormalization.SanitizeEmailForDelivery(request.NewEmail);
@@ -199,6 +199,11 @@ internal sealed class EmailChangeService(
 
         return Result.Success();
     }
+
+    private static AshlarFailureCode UserUnavailableFailureCode(IUser? user, bool tenantMatches) =>
+        user is not null && !tenantMatches
+            ? AshlarFailureCodes.TenantMismatch
+            : AshlarFailureCodes.UserNotFoundOrUnavailable;
 
     private async Task<Result> RejectRequestAsync(
         RequestEmailChangeRequest request,
