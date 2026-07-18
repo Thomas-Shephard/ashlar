@@ -59,7 +59,7 @@ internal sealed class EmailChangeServiceTests
         var user = CreateUser();
         var fixture = CreateFixture(user);
         fixture.UriValidator.Setup(v => v.IsValid(It.IsAny<Uri?>())).Returns(false);
-        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("https://evil.com") };
+        var request = new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("https://evil.com") };
 
         var result = await fixture.Service.RequestChangeAsync(request);
 
@@ -75,7 +75,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") };
+        var request = new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") };
 
         var result = await fixture.Service.RequestChangeAsync(request);
 
@@ -96,11 +96,10 @@ internal sealed class EmailChangeServiceTests
     [Test]
     public async Task RequestChangePropagatesAuditMetadataToSecurityEvent()
     {
-        var actorUserId = Guid.NewGuid();
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        var audit = new AuditContext(actorUserId, "203.0.113.20", "NUnit", "corr-change");
-        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm"), Audit = audit };
+        var audit = new AuditContext(user.Id, "203.0.113.20", "NUnit", "corr-change");
+        var request = new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm"), Audit = audit };
 
         var result = await fixture.Service.RequestChangeAsync(request);
         var securityEvent = fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.EmailChangeRequested);
@@ -108,7 +107,7 @@ internal sealed class EmailChangeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True, result.FailureReason);
-            Assert.That(securityEvent.ActorUserId, Is.EqualTo(actorUserId));
+            Assert.That(securityEvent.ActorUserId, Is.EqualTo(user.Id));
             Assert.That(securityEvent.IpAddress, Is.EqualTo(audit.IpAddress));
             Assert.That(securityEvent.UserAgent, Is.EqualTo(audit.UserAgent));
             Assert.That(securityEvent.CorrelationId, Is.EqualTo(audit.CorrelationId));
@@ -120,7 +119,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = " new@example.com\r\nBcc: attacker@example.com ", CallbackBaseUri = new Uri("http://localhost/confirm") };
+        var request = new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = " new@example.com\r\nBcc: attacker@example.com ", CallbackBaseUri = new Uri("http://localhost/confirm") };
 
         Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RequestChangeAsync(request));
     }
@@ -130,7 +129,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "old@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") };
+        var request = new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "old@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") };
 
         var result = await fixture.Service.RequestChangeAsync(request);
 
@@ -142,7 +141,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = new MetadataUser { Id = Guid.NewGuid(), DisplayEmail = "old@example.com", AccountState = UserAccountState.Active };
         var fixture = CreateFixture(user);
-        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "old@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") };
+        var request = new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "old@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") };
 
         var result = await fixture.Service.RequestChangeAsync(request);
 
@@ -157,8 +156,9 @@ internal sealed class EmailChangeServiceTests
     public async Task RequestChangeFailsIfUserNotFound()
     {
         var fixture = CreateFixture();
+        var userId = Guid.NewGuid();
 
-        var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = Guid.NewGuid(), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(userId), Audit = new(userId), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
 
         using (Assert.EnterMultipleScope())
         {
@@ -173,7 +173,7 @@ internal sealed class EmailChangeServiceTests
         var user = CreateUser();
         var fixture = CreateFixture(users: [user], requestAllowed: false);
 
-        var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
 
         using (Assert.EnterMultipleScope())
         {
@@ -189,7 +189,7 @@ internal sealed class EmailChangeServiceTests
         var user = new MetadataUser { Id = Guid.NewGuid(), DisplayEmail = "old@example.com", AccountState = UserAccountState.Active };
         var fixture = CreateFixture(users: [user], requestAllowed: false);
 
-        var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
 
         using (Assert.EnterMultipleScope())
         {
@@ -202,12 +202,11 @@ internal sealed class EmailChangeServiceTests
     public async Task RequestChangeSuppressesIfNewEmailIsAlreadyInUse()
     {
         var tenantId = Guid.NewGuid();
-        var actorUserId = Guid.NewGuid();
         var user = CreateUser() with { TenantId = tenantId };
         var existingUser = CreateUser("taken@example.com") with { TenantId = tenantId };
         var fixture = CreateFixture(users: [user, existingUser]);
-        var audit = new AuditContext(actorUserId, "203.0.113.30", "NUnit", "corr-suppress");
-        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "taken@example.com", CallbackBaseUri = new Uri("http://localhost/confirm"), Audit = audit };
+        var audit = new AuditContext(user.Id, "203.0.113.30", "NUnit", "corr-suppress");
+        var request = new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id, tenantId), NewEmail = "taken@example.com", CallbackBaseUri = new Uri("http://localhost/confirm"), Audit = audit };
 
         var result = await fixture.Service.RequestChangeAsync(request);
         var securityEvent = fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.EmailChangeRequestSuppressed);
@@ -219,7 +218,7 @@ internal sealed class EmailChangeServiceTests
             Assert.That(fixture.EmailSender.Messages.Single().TextBody, Contains.Substring("No changes were made"));
             Assert.That(fixture.EmailSender.Messages.Single().Sensitivity, Is.EqualTo(EmailMessageSensitivity.Normal));
             Assert.That(securityEvent.TenantId, Is.EqualTo(tenantId));
-            Assert.That(securityEvent.ActorUserId, Is.EqualTo(actorUserId));
+            Assert.That(securityEvent.ActorUserId, Is.EqualTo(user.Id));
             Assert.That(securityEvent.IpAddress, Is.EqualTo(audit.IpAddress));
         }
     }
@@ -230,7 +229,7 @@ internal sealed class EmailChangeServiceTests
         var tenantId = Guid.NewGuid();
         var user = CreateUser() with { TenantId = tenantId };
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = " New.User@Example.COM ", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id, tenantId), Audit = new(user.Id), NewEmail = " New.User@Example.COM ", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
         fixture.Audit.Events.Clear();
 
@@ -256,7 +255,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var credential = fixture.UserCredentialStore.Credentials.Single();
         credential.CredentialValue = fixture.SecretProtector.Protect(" changed@example.com\r\nBcc: attacker@example.com ");
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
@@ -275,7 +274,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
@@ -301,7 +300,7 @@ internal sealed class EmailChangeServiceTests
         var tenantId = Guid.NewGuid();
         var user = CreateUser() with { TenantId = tenantId };
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id, tenantId), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         // Now someone else takes the email
@@ -325,7 +324,7 @@ internal sealed class EmailChangeServiceTests
         var tenantId = Guid.NewGuid();
         var user = CreateUser() with { TenantId = tenantId };
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "New@Example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id, tenantId), Audit = new(user.Id), NewEmail = "New@Example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         fixture.UserCredentialStore.Users.Remove(user);
@@ -346,7 +345,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = new MetadataUser { Id = Guid.NewGuid(), DisplayEmail = "old@example.com", AccountState = UserAccountState.Active, CreatedAt = DateTimeOffset.UtcNow.AddDays(-1) };
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
@@ -380,7 +379,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
         fixture.RateLimiter.Attempts.Clear();
 
@@ -407,7 +406,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
         fixture.RateLimiter.Attempts.Clear();
         fixture.RateLimiter.BlockedVerifyCallNumber = 2;
@@ -429,7 +428,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
         fixture.RateLimiter.Attempts.Clear();
         fixture.RateLimiter.BlockedVerifyCallNumber = 3;
@@ -466,7 +465,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         fixture.Audit.Events.Clear();
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = new string('a', 257) });
@@ -489,7 +488,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         fixture.Audit.Events.Clear();
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token! });
@@ -511,7 +510,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(users: [user], secretProtector: new ThrowingSecretProtector());
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
@@ -528,7 +527,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
         fixture.UserCredentialStore.Users.Clear();
 
@@ -546,7 +545,7 @@ internal sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(users: [user], consumeSucceeds: false);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { Session = fixture.SessionRepository.Session(user.Id), Audit = new(user.Id), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
@@ -564,6 +563,133 @@ internal sealed class EmailChangeServiceTests
         var uri = new Uri(body.Split(": ").Last());
         return System.Web.HttpUtility.ParseQueryString(uri.Query)["t"]!;
     }
+
+    [Test]
+    public async Task RequestChangeRequiresSessionActorAndTenantOwnership()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = CreateUser() with { TenantId = tenantId };
+        var fixture = CreateFixture(user);
+        var callback = new Uri("http://localhost/confirm");
+
+        var wrongActor = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest
+        {
+            Session = fixture.SessionRepository.Session(user.Id, tenantId),
+            Audit = new(Guid.NewGuid()),
+            NewEmail = "new@example.com",
+            CallbackBaseUri = callback
+        });
+        var missingActor = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest
+        {
+            Session = fixture.SessionRepository.Session(user.Id, tenantId),
+            Audit = new(),
+            NewEmail = "new@example.com",
+            CallbackBaseUri = callback
+        });
+        var wrongTenant = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest
+        {
+            Session = fixture.SessionRepository.Session(user.Id, Guid.NewGuid()),
+            Audit = new(user.Id),
+            NewEmail = "new@example.com",
+            CallbackBaseUri = callback
+        });
+        var expired = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest
+        {
+            Session = fixture.SessionRepository.Session(user.Id, tenantId, DateTimeOffset.MinValue),
+            Audit = new(user.Id),
+            NewEmail = "new@example.com",
+            CallbackBaseUri = callback
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrongActor.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(missingActor.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(wrongTenant.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            Assert.That(expired.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
+            Assert.That(fixture.EmailSender.Messages, Is.Empty);
+            Assert.That(fixture.Audit.Events, Has.Some.Matches<AshlarSecurityEvent>(securityEvent =>
+                securityEvent.EventType == AshlarSecurityEventTypes.EmailChangeFailed
+                && securityEvent.UserId == user.Id
+                && securityEvent.ActorUserId == user.Id
+                && securityEvent.FailureReason == AshlarFailureCodes.ValidationErrorValue));
+            Assert.That(fixture.Audit.Events, Has.Some.Matches<AshlarSecurityEvent>(securityEvent =>
+                securityEvent.EventType == AshlarSecurityEventTypes.EmailChangeFailed
+                && securityEvent.UserId == user.Id
+                && securityEvent.TenantId == tenantId
+                && securityEvent.FailureReason == AshlarFailureCodes.SessionNotFoundOrInactiveValue));
+            Assert.That(fixture.Audit.Events.All(securityEvent => securityEvent.SessionId.HasValue), Is.True);
+        }
+    }
+
+    [Test]
+    public void RequestChangeRejectsNullSessionAndAudit()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        var callback = new Uri("http://localhost/confirm");
+
+        Assert.ThrowsAsync<ArgumentNullException>(() => fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest
+        {
+            Session = null!,
+            Audit = new(user.Id),
+            NewEmail = "new@example.com",
+            CallbackBaseUri = callback
+        }));
+        Assert.ThrowsAsync<ArgumentNullException>(() => fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest
+        {
+            Session = fixture.SessionRepository.Session(user.Id),
+            Audit = null!,
+            NewEmail = "new@example.com",
+            CallbackBaseUri = callback
+        }));
+    }
+
+    [Test]
+    public async Task RequestChangeRejectsStaleOrMismatchedDurableSession()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = CreateUser() with { TenantId = tenantId };
+        var fixture = CreateFixture(user);
+        var capability = fixture.SessionRepository.Session(user.Id, tenantId);
+
+        async Task<Result> RequestAsync() => await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest
+        {
+            Session = capability,
+            Audit = new(user.Id),
+            NewEmail = "new@example.com",
+            CallbackBaseUri = new Uri("http://localhost/confirm")
+        });
+
+        fixture.SessionRepository.Set(capability.Id, null);
+        var missing = await RequestAsync();
+        fixture.SessionRepository.Set(capability.Id, DurableSession(Guid.NewGuid(), user.Id, tenantId));
+        var wrongId = await RequestAsync();
+        fixture.SessionRepository.Set(capability.Id, DurableSession(capability.Id, Guid.NewGuid(), tenantId));
+        var wrongUser = await RequestAsync();
+        fixture.SessionRepository.Set(capability.Id, DurableSession(capability.Id, user.Id, Guid.NewGuid()));
+        var wrongTenant = await RequestAsync();
+        fixture.SessionRepository.Set(capability.Id, DurableSession(capability.Id, user.Id, tenantId, DateTimeOffset.UtcNow));
+        var revoked = await RequestAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new[] { missing, wrongId, wrongUser, wrongTenant, revoked }
+                .All(result => result.FailureCode == AshlarFailureCodes.SessionNotFoundOrInactive), Is.True);
+            Assert.That(fixture.EmailSender.Messages, Is.Empty);
+        }
+    }
+
+    private static AuthenticationSession DurableSession(Guid id, Guid userId, Guid? tenantId, DateTimeOffset? revokedAt = null) => new()
+    {
+        Id = id,
+        UserId = userId,
+        TenantId = tenantId,
+        TokenHash = "hash",
+        CreatedAt = DateTimeOffset.UtcNow,
+        ExpiresAt = DateTimeOffset.MaxValue,
+        RevokedAt = revokedAt
+    };
 
     private static Fixture CreateFixture(
         IUser? user = null,
@@ -671,6 +797,7 @@ internal sealed class EmailChangeServiceTests
 
     private sealed class StubSessionRepository : IAuthenticationSessionRepository
     {
+        private readonly Dictionary<Guid, AuthenticationSession?> _sessions = [];
         public Guid? RevokedUserId { get; private set; }
         public TenantContext? RevokedTenant { get; private set; }
         public bool RevokedIncludeAllTenants { get; private set; }
@@ -684,12 +811,29 @@ internal sealed class EmailChangeServiceTests
 
         public Task CreateSessionAsync(AuthenticationSession session, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<AuthenticationSession?> GetSessionByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<AuthenticationSession?> GetSessionAsync(Guid sessionId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<AuthenticationSession?> GetSessionAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(_sessions.GetValueOrDefault(sessionId));
+        public void Set(Guid sessionId, AuthenticationSession? session) => _sessions[sessionId] = session;
         public Task<bool> UpdateSessionLastSeenAsync(Guid sessionId, DateTimeOffset lastSeenAt, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<AuthenticationSession?> MarkStepUpVerifiedAsync(Guid sessionId, Guid userId, DateTimeOffset verifiedAt, AuthenticationProviderKey verifiedProvider, string verifiedFactor, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<IReadOnlyList<AuthenticationSession>> ListSessionsForUserAsync(Guid userId, bool activeOnly, DateTimeOffset now, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, bool includeAllTenants = false, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, bool includeAllTenants = false, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+
+        public ValidatedAuthenticationSession Session(Guid userId, Guid? tenantId = null, DateTimeOffset? expiresAt = null)
+        {
+            var session = new AuthenticationSession
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                TenantId = tenantId,
+                TokenHash = "hash",
+                CreatedAt = DateTimeOffset.UtcNow,
+                ExpiresAt = expiresAt ?? DateTimeOffset.MaxValue
+            };
+            _sessions.Add(session.Id, session);
+            return new(session);
+        }
     }
 
     private sealed class InMemoryUserCredentialStore : IUserRepository, ICredentialRepository

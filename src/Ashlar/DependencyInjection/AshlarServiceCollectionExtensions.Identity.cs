@@ -142,7 +142,9 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped<IAuthenticationFactorRateLimiter, AuthenticationFactorRateLimiter>();
         services.TryAddScoped<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>();
         services.TryAddScoped<IUserProfileService>(provider => new UserProfileService(
-            provider.GetRequiredAshlarProviderService<IUserRepository>()));
+            provider.GetRequiredAshlarProviderService<IUserRepository>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+            provider.GetService<TimeProvider>() ?? TimeProvider.System));
         services.TryAddScoped(provider =>
         {
             var sink = provider.GetRequiredService<SecurityEventFanOutSink>();
