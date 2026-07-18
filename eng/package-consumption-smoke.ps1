@@ -275,7 +275,7 @@ internal static class ForbiddenResolverSmoke
 }
 '@
 Set-Content -Path (Join-Path $providerProjectPath "Class1.cs") -Value $forbiddenResolverSource -Encoding utf8
-& dotnet build $providerProjectPath --configuration $Configuration --no-restore --nologo
+& dotnet build $providerProjectPath --configuration $Configuration --no-restore --nologo *> $null
 if ($LASTEXITCODE -eq 0) {
     throw "Ashlar.ProviderContracts must not expose generic provider-owned service resolution."
 }
