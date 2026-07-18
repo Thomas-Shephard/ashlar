@@ -6,6 +6,7 @@ using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Operational;
 using Ashlar.Operational.Configuration;
 using Ashlar.Operational.Diagnostics;
+using Ashlar.Passkeys;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 using Ashlar.Sqlite.Schema;
@@ -83,6 +84,12 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
         services.AddAuthenticationProvider<LocalPasswordProvider>();
         services.AddAshlarSqlite(GetConnectionString());
         services.AddAshlarAuthorization();
+        services.AddAshlarNoMfaPolicy();
+        services.AddAshlarPasskeys(options =>
+        {
+            options.RelyingPartyId = "localhost";
+            options.Origin = "https://localhost";
+        });
         services.AddAshlarSqliteAuditSink();
         services.AddAshlarSqliteRateLimiting();
         services.AddAshlarSqliteCleanup();
@@ -100,6 +107,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
         await using var provider = ServiceProviderValidation.BuildValidatedServiceProvider(
             services,
             typeof(IIdentityService),
+            typeof(IPasskeyService),
             typeof(IAuthorizationGrantService),
             typeof(IAshlarCleanupService),
             typeof(IEmailOutboxDispatcher),

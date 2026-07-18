@@ -1,4 +1,5 @@
 using Ashlar.Operational.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Ashlar.Passkeys;
 
@@ -11,10 +12,8 @@ internal sealed class PasskeyConfigurationCheck : IAshlarConfigurationCheck
         ArgumentNullException.ThrowIfNull(serviceProvider);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (serviceProvider.IsAshlarProviderServiceRegistered<IPasskeyChallengeRepository>())
-        {
+        if (serviceProvider.GetService<AshlarProviderService<IPasskeyChallengeRepository>>() is not null)
             return ValueTask.FromResult<IReadOnlyList<AshlarConfigurationIssue>>([]);
-        }
 
         return ValueTask.FromResult<IReadOnlyList<AshlarConfigurationIssue>>(
         [

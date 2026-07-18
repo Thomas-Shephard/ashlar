@@ -9,9 +9,11 @@ namespace Ashlar.Passkeys;
 public sealed class PasskeyOptions
 {
     /// <summary>
-    /// Gets or sets the authentication provider key used for stored credentials.
+    /// Gets or sets the provider name used for stored passkey credentials.
     /// </summary>
-    public AuthenticationProviderKey ProviderKey { get; set; } = AuthenticationProviderKey.Passkey;
+    public string ProviderName { get; set; } = ProviderType.Passkey.Value;
+
+    internal AuthenticationProviderKey ProviderKey => new(ProviderType.Passkey, ProviderName);
     /// <summary>
     /// Gets or sets the WebAuthn relying party id. This must be a host name matching the origin host or one of its parent domains.
     /// </summary>
@@ -61,8 +63,7 @@ public sealed class PasskeyOptions
     public static bool Validate(PasskeyOptions? options)
     {
         return options != null
-            && options.ProviderKey.Type != default
-            && !string.IsNullOrWhiteSpace(options.ProviderKey.Name)
+            && !string.IsNullOrWhiteSpace(options.ProviderName)
             && !string.IsNullOrWhiteSpace(options.RelyingPartyName)
             && Uri.TryCreate(options.Origin, UriKind.Absolute, out var origin)
             && IsOriginOnly(origin)

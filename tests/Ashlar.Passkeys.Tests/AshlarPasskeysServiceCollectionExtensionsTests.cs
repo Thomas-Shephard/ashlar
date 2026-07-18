@@ -14,6 +14,13 @@ namespace Ashlar.Passkeys.Tests;
 internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
 {
     [Test]
+    public void PasskeysAssemblyDoesNotReferenceProviderContracts()
+    {
+        Assert.That(typeof(Fido2PasskeyCeremonyValidator).Assembly.GetReferencedAssemblies().Select(name => name.Name),
+            Does.Not.Contain("Ashlar.ProviderContracts"));
+    }
+
+    [Test]
     public void AddAshlarPasskeysRegistersServicesAndAppliesOptions()
     {
         var services = new ServiceCollection();
@@ -95,8 +102,8 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(scope.ServiceProvider.GetRequiredService<IPasskeyService>(), Is.TypeOf<PasskeyService>());
-            Assert.That(scope.ServiceProvider.GetServices<IAuthenticationProvider>(), Has.Some.TypeOf<PasskeyAuthenticationProvider>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IPasskeyService>(), Is.Not.Null);
+            Assert.That(scope.ServiceProvider.GetServices<IAuthenticationProvider>().Any(x => x.GetType().Name == "PasskeyAuthenticationProvider"), Is.True);
         }
     }
 
@@ -170,7 +177,11 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
 
         var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
 
-        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.PasskeyChallengeRepositoryMissing));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.IsAshlarProviderServiceRegistered<IPasskeyChallengeRepository>(), Is.True);
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.PasskeyChallengeRepositoryMissing));
+        }
     }
 
     [Test]
@@ -212,6 +223,47 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
     public void PasskeyOptionsShouldRejectInvalidOriginOrRelyingPartyConfiguration(string origin, string? relyingPartyId)
     {
         var options = new PasskeyOptions { Origin = origin, RelyingPartyId = relyingPartyId! };
+
+        Assert.That(PasskeyOptions.Validate(options), Is.False);
+    }
+
+    [TestCase("user", "Passkey user persistence must be enlisted in the durable transaction composition.")]
+    [TestCase("credential", "Passkey credential persistence must be enlisted in the durable transaction composition.")]
+    [TestCase("challenge", "Passkey challenge persistence must be enlisted in the durable transaction composition.")]
+    [TestCase("session", "Passkey session persistence must be enlisted in the durable transaction composition.")]
+    [TestCase("audit", "Persistent security event storage and durable fan-out handlers must be enlisted in the durable transaction composition.")]
+    [TestCase("fanout", "Persistent security event storage and durable fan-out handlers must be enlisted in the durable transaction composition.")]
+    public void CorePasskeyCompositionRejectsMissingDurableParticipant(string omitted, string expectedMessage)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationHandshakeRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IPasskeyChallengeRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IPersistentSecurityEventSink>());
+        if (omitted == "fanout") services.AddScoped(_ => Mock.Of<IDurableSecurityEventFanOutHandler>());
+        services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>();
+        if (omitted != "user") services.AddAshlarDurableTransactionParticipant<IUserRepository>();
+        if (omitted != "credential") services.AddAshlarDurableTransactionParticipant<ICredentialRepository>();
+        if (omitted != "challenge") services.AddAshlarDurableTransactionParticipant<IPasskeyChallengeRepository>();
+        if (omitted != "session") services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionRepository>();
+        if (omitted != "audit") services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
+        services.AddAshlarPasskeys();
+        services.AddAshlarNoMfaPolicy();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var exception = Assert.Throws<InvalidOperationException>(() => scope.ServiceProvider.GetRequiredService<IPasskeyService>());
+        Assert.That(exception?.Message, Is.EqualTo(expectedMessage));
+    }
+
+    [Test]
+    public void PasskeyOptionsShouldRejectBlankProviderName()
+    {
+        var options = new PasskeyOptions { ProviderName = " " };
 
         Assert.That(PasskeyOptions.Validate(options), Is.False);
     }
