@@ -66,6 +66,28 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
     }
 
     [Test]
+    public async Task AuthenticateAsyncShouldUseValidatedCapabilityWhenRawResultDisagrees()
+    {
+        var validatedSession = CreateSession(Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow.AddHours(1));
+        var rawSession = CreateSession(Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow.AddHours(1));
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        sessionService.Setup(service => service.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSuccessfulValidation(rawSession, validatedSession));
+        await using var provider = CreateProvider(sessionService.Object);
+        var context = CreateContext(provider);
+        context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=raw-token";
+
+        var result = await AuthenticateAsync(provider, context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Principal?.FindFirstValue(ClaimTypes.NameIdentifier), Is.EqualTo(validatedSession.UserId.ToString("D")));
+            Assert.That(result.Principal?.FindFirstValue(AshlarClaimTypes.SessionId), Is.EqualTo(validatedSession.Id.ToString("D")));
+            Assert.That(context.Items.Values, Has.None.TypeOf<AuthenticationSession>());
+        }
+    }
+
+    [Test]
     public async Task AuthenticateAsyncShouldFailForExpiredSession()
     {
         var userId = Guid.NewGuid();
@@ -73,7 +95,7 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
         var sessionService = new Mock<IAuthenticationSessionService>();
         sessionService
             .Setup(s => s.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidateAuthenticationSessionResult(false, session, userId, AuthenticationSessionValidationStatus.Expired));
+            .ReturnsAsync(ValidateAuthenticationSessionResult.Expired);
         await using var provider = CreateProvider(sessionService.Object);
         var context = CreateContext(provider);
         context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=raw-token";
@@ -119,7 +141,7 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
         var sessionService = new Mock<IAuthenticationSessionService>();
         sessionService
             .Setup(s => s.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidateAuthenticationSessionResult(false, session, userId, AuthenticationSessionValidationStatus.Revoked));
+            .ReturnsAsync(ValidateAuthenticationSessionResult.Revoked);
         await using var provider = CreateProvider(sessionService.Object);
         var context = CreateContext(provider);
         context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=raw-token";
@@ -152,12 +174,12 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
     }
 
     [Test]
-    public async Task AuthenticateAsyncShouldAllowCustomValidationWithoutProofCapability()
+    public async Task AuthenticateAsyncShouldRejectCustomValidationWithoutProofCapability()
     {
         var session = CreateSession(Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow.AddHours(1));
         var sessionService = new Mock<IAuthenticationSessionService>();
         sessionService.Setup(service => service.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidateAuthenticationSessionResult(true, session, session.UserId, AuthenticationSessionValidationStatus.Succeeded));
+            .ReturnsAsync(ValidateAuthenticationSessionResult.Failed);
         await using var provider = CreateProvider(sessionService.Object);
         var context = CreateContext(provider);
         context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=raw-token";
@@ -166,7 +188,7 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Succeeded, Is.False);
             Assert.That(context.Items.ContainsKey(AshlarHttpContextItems.ValidatedAuthenticationSession), Is.False);
         }
     }
@@ -392,12 +414,14 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
         };
     }
 
-    private static ValidateAuthenticationSessionResult CreateSuccessfulValidation(AuthenticationSession session)
+    private static ValidateAuthenticationSessionResult CreateSuccessfulValidation(
+        AuthenticationSession session,
+        AuthenticationSession? validatedSession = null)
     {
-        var result = new ValidateAuthenticationSessionResult(true, session, session.UserId, AuthenticationSessionValidationStatus.Succeeded);
-        typeof(ValidateAuthenticationSessionResult).GetProperty(nameof(ValidateAuthenticationSessionResult.ValidatedSession))!
-            .SetValue(result, Activator.CreateInstance(typeof(ValidatedAuthenticationSession),
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [session], null));
-        return result;
+        var capability = Activator.CreateInstance(typeof(ValidatedAuthenticationSession),
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [validatedSession ?? session], null);
+        return (ValidateAuthenticationSessionResult)Activator.CreateInstance(typeof(ValidateAuthenticationSessionResult),
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null,
+            [AuthenticationSessionValidationStatus.Succeeded, capability], null)!;
     }
 }

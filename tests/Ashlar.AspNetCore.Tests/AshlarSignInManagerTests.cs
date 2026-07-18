@@ -565,9 +565,17 @@ internal sealed class AshlarSignInManagerTests
 
         public Task<ValidateAuthenticationSessionResult> ValidateSessionAsync(string? token, CancellationToken cancellationToken = default)
         {
-            return token == RawToken && repository.CreatedSession is { } session
-                ? Task.FromResult(new ValidateAuthenticationSessionResult(true, session, session.UserId, AuthenticationSessionValidationStatus.Succeeded))
-                : Task.FromResult(ValidateAuthenticationSessionResult.Failed);
+            if (token != RawToken || repository.CreatedSession is not { } session)
+            {
+                return Task.FromResult(ValidateAuthenticationSessionResult.Failed);
+            }
+
+            var capability = Activator.CreateInstance(typeof(ValidatedAuthenticationSession),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [session], null);
+            var result = (ValidateAuthenticationSessionResult)Activator.CreateInstance(typeof(ValidateAuthenticationSessionResult),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null,
+                [AuthenticationSessionValidationStatus.Succeeded, capability], null)!;
+            return Task.FromResult(result);
         }
 
         public Task<Result<AuthenticationSession>> MarkStepUpVerifiedAsync(MfaAuthenticationResult authenticationResult, MarkSessionStepUpVerifiedRequest request, CancellationToken cancellationToken = default)
@@ -607,8 +615,8 @@ internal sealed class AshlarSignInManagerTests
         public async Task<bool> RevokeCurrentSessionAsync(RevokeCurrentAuthenticationSessionRequest request, CancellationToken cancellationToken = default)
         {
             var validation = await ValidateSessionAsync(request.Token, cancellationToken);
-            return validation.Session != null && await repository.RevokeSessionByIdAsync(validation.Session.Id, validation.Session.UserId,
-                DateTimeOffset.UtcNow, request.Reason, validation.Session.TenantId is { } tenantId ? new TenantContext(tenantId) : TenantContext.Global,
+            return validation.ValidatedSession is { } session && await repository.RevokeSessionByIdAsync(session.Id, session.UserId,
+                DateTimeOffset.UtcNow, request.Reason, session.TenantId is { } tenantId ? new TenantContext(tenantId) : TenantContext.Global,
                 false, cancellationToken);
         }
 

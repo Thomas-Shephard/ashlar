@@ -284,7 +284,7 @@ internal sealed class AuthenticationSessionService(
                 SecurityEventFailureReasons.SessionExpired,
                 cancellationToken);
 
-            return new ValidateAuthenticationSessionResult(false, session, session.UserId, AuthenticationSessionValidationStatus.Expired);
+            return ValidateAuthenticationSessionResult.Expired;
         }
 
         if (session.RevokedAt != null)
@@ -295,7 +295,7 @@ internal sealed class AuthenticationSessionService(
                 SecurityEventFailureReasons.SessionRevoked,
                 cancellationToken);
 
-            return new ValidateAuthenticationSessionResult(false, session, session.UserId, AuthenticationSessionValidationStatus.Revoked);
+            return ValidateAuthenticationSessionResult.Revoked;
         }
 
         var user = await _userRepository.GetUserByIdAsync(session.UserId, cancellationToken);
@@ -307,7 +307,7 @@ internal sealed class AuthenticationSessionService(
                 user == null ? AshlarFailureCodes.UserNotFoundValue : user.AccountState.ToSecurityFailureReason(),
                 cancellationToken);
 
-            return new ValidateAuthenticationSessionResult(false, session, session.UserId, AuthenticationSessionValidationStatus.Failed);
+            return ValidateAuthenticationSessionResult.Failed;
         }
 
         if (!UserTenantOwnership.Matches(user, session.TenantId))
@@ -318,7 +318,7 @@ internal sealed class AuthenticationSessionService(
                 AshlarFailureCodes.TenantMismatchValue,
                 cancellationToken);
 
-            return new ValidateAuthenticationSessionResult(false, session, session.UserId, AuthenticationSessionValidationStatus.Failed);
+            return ValidateAuthenticationSessionResult.Failed;
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
@@ -336,10 +336,7 @@ internal sealed class AuthenticationSessionService(
         }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
-        return new ValidateAuthenticationSessionResult(true, session, session.UserId, AuthenticationSessionValidationStatus.Succeeded)
-        {
-            ValidatedSession = new ValidatedAuthenticationSession(session)
-        };
+        return ValidateAuthenticationSessionResult.Success(session);
     }
 
     public Task<Result<AuthenticationSession>> MarkStepUpVerifiedAsync(
@@ -533,8 +530,8 @@ internal sealed class AuthenticationSessionService(
         ValidateRevocationReason(request.Reason, nameof(request));
 
         var validation = await ValidateSessionAsync(request.Token, request.Audit.ActorUserId, cancellationToken);
-        if (!validation.Succeeded || validation.Session == null) return false;
-        var session = validation.Session;
+        if (validation.ValidatedSession == null) return false;
+        var session = validation.ValidatedSession;
 
         return await RevokeSessionForUserAsync(session.UserId, new RevokeAuthenticationSessionRequest
         {

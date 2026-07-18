@@ -16,9 +16,9 @@ public sealed record StepUpRequirement(
 /// <summary>
 /// Describes a step-up evaluation request.
 /// </summary>
-/// <param name="Session">Application session whose additional-verification metadata is evaluated.</param>
+/// <param name="Session">Ashlar-validated session capability whose additional-verification metadata is evaluated.</param>
 /// <param name="Requirement">Freshness and provider restrictions for the sensitive action.</param>
-public sealed record StepUpEvaluationRequest(AuthenticationSession? Session, StepUpRequirement Requirement);
+public sealed record StepUpEvaluationRequest(ValidatedAuthenticationSession? Session, StepUpRequirement Requirement);
 
 /// <summary>
 /// Describes the result of a step-up freshness evaluation.

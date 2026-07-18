@@ -74,7 +74,7 @@ public sealed class AshlarStepUpAuthorizationHandler(
             return null;
         }
 
-        if (currentHttpContext.Items[AshlarHttpContextItems.AuthenticationSession] is not AuthenticationSession currentSession)
+        if (currentHttpContext.Items[AshlarHttpContextItems.ValidatedAuthenticationSession] is not ValidatedAuthenticationSession currentSession)
         {
             return null;
         }
@@ -89,7 +89,7 @@ public sealed class AshlarStepUpAuthorizationHandler(
 
     private async Task<bool?> TryRequiresConditionalStepUpAsync(
         HttpContext httpContext,
-        AuthenticationSession session,
+        ValidatedAuthenticationSession session,
         AshlarStepUpRequirement requirement)
     {
         var accountSecurityService = _accountSecurity;
@@ -117,7 +117,7 @@ public sealed class AshlarStepUpAuthorizationHandler(
         return posture.Value.AdditionalVerificationFactors.Any(factor => IsEligibleFactor(factor, requirement));
     }
 
-    private static TenantContext? GetTenant(AuthenticationSession session)
+    private static TenantContext? GetTenant(ValidatedAuthenticationSession session)
     {
         if (!session.TenantId.HasValue)
         {
@@ -137,5 +137,5 @@ public sealed class AshlarStepUpAuthorizationHandler(
         return requirement.AllowedFactors.Contains(factor.FactorType, StringComparer.OrdinalIgnoreCase);
     }
 
-    private sealed record CurrentSessionContext(AuthenticationSession Session, HttpContext HttpContext);
+    private sealed record CurrentSessionContext(ValidatedAuthenticationSession Session, HttpContext HttpContext);
 }

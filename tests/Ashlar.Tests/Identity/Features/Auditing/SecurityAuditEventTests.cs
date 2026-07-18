@@ -348,7 +348,7 @@ internal sealed class SecurityAuditEventTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.ValidatedSession, Is.Not.Null);
             Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.SessionValidated));
             Assert.That(sink.Events.Single().SessionId, Is.EqualTo(session.Id));
             Assert.That(sink.Events.Single().UserId, Is.EqualTo(session.UserId));

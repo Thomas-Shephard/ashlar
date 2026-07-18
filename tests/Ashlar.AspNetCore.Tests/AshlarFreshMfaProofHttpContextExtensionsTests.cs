@@ -72,7 +72,7 @@ internal sealed class AshlarFreshMfaProofHttpContextExtensionsTests
     public void CreateFreshMfaProofShouldRejectManualSessionItem()
     {
         var context = new DefaultHttpContext();
-        context.Items[AshlarHttpContextItems.AuthenticationSession] = new AuthenticationSession
+        context.Items["Ashlar.AspNetCore.AuthenticationSession"] = new AuthenticationSession
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),

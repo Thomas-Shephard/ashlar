@@ -1018,11 +1018,8 @@ internal sealed class AuthenticationSessionServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Succeeded));
             Assert.That(result.ValidatedSession, Is.Not.Null);
-            Assert.That(result.Session, Is.EqualTo(session));
-            Assert.That(result.UserId, Is.EqualTo(session.UserId));
             Assert.That(proof.Value?.SessionId, Is.EqualTo(session.Id));
         }
     }
@@ -1083,13 +1080,7 @@ internal sealed class AuthenticationSessionServiceTests
 
         var result = await _service.ValidateSessionAsync("raw-token");
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Succeeded));
-            Assert.That(result.Session, Is.EqualTo(session));
-            Assert.That(result.UserId, Is.EqualTo(session.UserId));
-        }
+        Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Succeeded));
     }
 
     [TestCase(true, false)]
@@ -1119,10 +1110,7 @@ internal sealed class AuthenticationSessionServiceTests
         using (Assert.EnterMultipleScope())
         {
             var securityEvent = sink.Events.Single();
-            Assert.That(result.Succeeded, Is.False);
             Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Failed));
-            Assert.That(result.Session, Is.EqualTo(session));
-            Assert.That(result.UserId, Is.EqualTo(session.UserId));
             Assert.That(securityEvent.TenantId, Is.EqualTo(sessionTenantId));
             Assert.That(securityEvent.FailureReason, Is.EqualTo(AshlarFailureCodes.TenantMismatchValue));
         }
@@ -1138,7 +1126,6 @@ internal sealed class AuthenticationSessionServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.False);
             Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Failed));
             _repositoryMock.Verify(r => r.GetSessionByTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         }
@@ -1155,7 +1142,6 @@ internal sealed class AuthenticationSessionServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.False);
             Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Failed));
             _repositoryMock.Verify(r => r.GetSessionByTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         }
@@ -1170,11 +1156,7 @@ internal sealed class AuthenticationSessionServiceTests
 
         var result = await _service.ValidateSessionAsync("raw-token");
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Failed));
-        }
+        Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Failed));
     }
 
     [Test]
@@ -1187,13 +1169,7 @@ internal sealed class AuthenticationSessionServiceTests
 
         var result = await _service.ValidateSessionAsync("raw-token");
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Expired));
-            Assert.That(result.Session, Is.EqualTo(session));
-            Assert.That(result.UserId, Is.EqualTo(session.UserId));
-        }
+        Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Expired));
     }
 
     [Test]
@@ -1207,13 +1183,7 @@ internal sealed class AuthenticationSessionServiceTests
 
         var result = await _service.ValidateSessionAsync("raw-token");
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Revoked));
-            Assert.That(result.Session, Is.EqualTo(session));
-            Assert.That(result.UserId, Is.EqualTo(session.UserId));
-        }
+        Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Revoked));
     }
 
     [TestCase(UserAccountState.Disabled, SecurityEventFailureReasons.UserDisabled)]
@@ -1241,10 +1211,7 @@ internal sealed class AuthenticationSessionServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.False);
             Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Failed));
-            Assert.That(result.Session, Is.EqualTo(session));
-            Assert.That(result.UserId, Is.EqualTo(session.UserId));
             Assert.That(sink.Events.Single().FailureReason, Is.EqualTo(failureReason));
         }
 
@@ -1273,10 +1240,7 @@ internal sealed class AuthenticationSessionServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.False);
             Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Failed));
-            Assert.That(result.Session, Is.EqualTo(session));
-            Assert.That(result.UserId, Is.EqualTo(session.UserId));
             Assert.That(sink.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.UserNotFoundValue));
         }
 
@@ -1299,7 +1263,7 @@ internal sealed class AuthenticationSessionServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.ValidatedSession, Is.Not.Null);
             Assert.That(session.LastSeenAt, Is.EqualTo(now));
         }
     }
@@ -1321,7 +1285,7 @@ internal sealed class AuthenticationSessionServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.ValidatedSession, Is.Not.Null);
             Assert.That(session.LastSeenAt, Is.EqualTo(lastSeenAt));
         }
     }
@@ -1340,7 +1304,7 @@ internal sealed class AuthenticationSessionServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.ValidatedSession, Is.Not.Null);
             Assert.That(session.LastSeenAt, Is.EqualTo(lastSeenAt));
             _repositoryMock.Verify(r => r.UpdateSessionLastSeenAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
         }
@@ -1370,7 +1334,6 @@ internal sealed class AuthenticationSessionServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Succeeded));
             Assert.That(session.LastSeenAt, Is.Null);
         }

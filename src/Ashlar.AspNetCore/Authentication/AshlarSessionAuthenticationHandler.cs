@@ -37,29 +37,26 @@ public sealed class AshlarSessionAuthenticationHandler(
         }
 
         var validation = await _sessionService.ValidateSessionAsync(token, Context.RequestAborted);
-        if (!validation.Succeeded || validation.Session == null || validation.UserId == null)
+        if (validation.ValidatedSession == null)
         {
             Response.Cookies.Delete(Options.CookieName, Options.Cookie.Build(Context));
             return AuthenticateResult.Fail("Ashlar session validation failed.");
         }
 
+        var session = validation.ValidatedSession;
         var claims = new List<Claim>
         {
-            new Claim(ClaimTypes.NameIdentifier, validation.UserId.Value.ToString("D"), ClaimValueTypes.String, Options.ClaimsIssuer),
-            new Claim(AshlarClaimTypes.SessionId, validation.Session.Id.ToString("D"), ClaimValueTypes.String, Options.ClaimsIssuer),
+            new Claim(ClaimTypes.NameIdentifier, session.UserId.ToString("D"), ClaimValueTypes.String, Options.ClaimsIssuer),
+            new Claim(AshlarClaimTypes.SessionId, session.Id.ToString("D"), ClaimValueTypes.String, Options.ClaimsIssuer),
             new Claim(ClaimTypes.AuthenticationMethod, Scheme.Name, ClaimValueTypes.String, Options.ClaimsIssuer)
         };
-        if (validation.Session.TenantId.HasValue)
+        if (session.TenantId.HasValue)
         {
-            claims.Add(new Claim(AshlarClaimTypes.TenantId, validation.Session.TenantId.Value.ToString("D"), ClaimValueTypes.String, Options.ClaimsIssuer));
+            claims.Add(new Claim(AshlarClaimTypes.TenantId, session.TenantId.Value.ToString("D"), ClaimValueTypes.String, Options.ClaimsIssuer));
         }
 
-        AddSessionAuthenticationClaims(claims, validation.Session);
-        Context.Items[AshlarHttpContextItems.AuthenticationSession] = validation.Session;
-        if (validation.ValidatedSession != null)
-        {
-            Context.Items[AshlarHttpContextItems.ValidatedAuthenticationSession] = validation.ValidatedSession;
-        }
+        AddSessionAuthenticationClaims(claims, session);
+        Context.Items[AshlarHttpContextItems.ValidatedAuthenticationSession] = session;
 
         var identity = new ClaimsIdentity(claims, Scheme.Name, ClaimTypes.NameIdentifier, ClaimTypes.Role);
         var principal = new ClaimsPrincipal(identity);
@@ -127,7 +124,7 @@ public sealed class AshlarSessionAuthenticationHandler(
             || Request.Headers.Accept.ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void AddSessionAuthenticationClaims(List<Claim> claims, AuthenticationSession session)
+    private static void AddSessionAuthenticationClaims(List<Claim> claims, ValidatedAuthenticationSession session)
     {
         if (session.AuthenticatedAt.HasValue)
         {
