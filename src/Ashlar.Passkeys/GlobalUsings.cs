@@ -1,13 +1,3 @@
-global using Ashlar.Identity.Abstractions.Authentication;
-global using Ashlar.Identity.Abstractions.Repositories;
-global using Ashlar.Identity.Abstractions.Services;
 global using Ashlar.Identity.Abstractions.Tenancy;
-global using Ashlar.Identity.Abstractions.Transactions;
-global using Ashlar.Identity.Features.Infrastructure;
-global using Ashlar.Identity.Models.Authentication;
 global using Ashlar.Identity.Models.Credentials;
-global using Ashlar.Identity.Models.Handshakes;
-global using Ashlar.Identity.Models.Mfa;
 global using Ashlar.Identity.Models.Passkeys;
-global using Ashlar.Identity.Models.Tenants;
-global using Ashlar.ProviderContracts.DependencyInjection;

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using Ashlar.Identity.Passkeys;
 using Fido2NetLib;
 using Fido2NetLib.Objects;
 using Moq;
@@ -11,22 +12,24 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
 {
     private static readonly string[] ExpectedTransports = ["usb", "internal"];
     private static readonly string[] ExpectedVerifiedTransports = ["Usb", "Internal"];
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Test]
     public void ConstructorShouldRejectNullRepository()
     {
-        Assert.Throws<ArgumentNullException>(() => _ = new Fido2PasskeyCeremonyValidator(null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new Fido2PasskeyCeremonyValidator((IPasskeyCredentialLookup)null!));
     }
 
     [Test]
     public void ConstructorShouldRejectNullTestDelegates()
     {
-        var repository = new Mock<IUserRepository>().Object;
+        var repository = new Mock<IPasskeyCredentialLookup>().Object;
         Func<Fido2NetLib.Fido2, MakeNewCredentialParams, CancellationToken, Task<RegisteredPublicKeyCredential>> makeCredential = (_, _, _) => Task.FromResult(new RegisteredPublicKeyCredential());
         Func<Fido2NetLib.Fido2, MakeAssertionParams, CancellationToken, Task<VerifyAssertionResult>> makeAssertion = (_, _, _) => Task.FromResult(new VerifyAssertionResult());
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.Throws<ArgumentNullException>(() => _ = new Fido2PasskeyCeremonyValidator(null!, makeCredential, makeAssertion));
             Assert.Throws<ArgumentNullException>(() => _ = new Fido2PasskeyCeremonyValidator(repository, null!, makeAssertion));
             Assert.Throws<ArgumentNullException>(() => _ = new Fido2PasskeyCeremonyValidator(repository, makeCredential, null!));
         }
@@ -51,7 +54,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         };
         var existingCredentialId = Base64Url.Encode(RandomNumberGenerator.GetBytes(32));
         var credential = CreateCredential(userId, existingCredentialId);
-        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object);
 
         using var document = JsonDocument.Parse(validator.CreateRegistrationOptions(options, user.Object, "Work laptop", challenge, [credential]));
         var root = document.RootElement;
@@ -85,7 +88,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         };
         var credentialId = Base64Url.Encode(RandomNumberGenerator.GetBytes(32));
         var credential = CreateCredential(userId, credentialId);
-        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object);
 
         using var document = JsonDocument.Parse(validator.CreateAuthenticationOptions(options, challenge, [credential], PasskeyUserVerificationRequirement.Discouraged));
         var root = document.RootElement;
@@ -118,12 +121,12 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         {
             PublicKey = Base64Url.Encode(RandomNumberGenerator.GetBytes(32)),
             Transports = ["not-a-transport"]
-        }, PasskeyJson.Options);
+        }, JsonOptions);
         var withNullMetadata = CreateCredential(userId, Base64Url.Encode(RandomNumberGenerator.GetBytes(32)));
         withNullMetadata.Metadata = "null";
         var withMalformedMetadata = CreateCredential(userId, Base64Url.Encode(RandomNumberGenerator.GetBytes(32)));
         withMalformedMetadata.Metadata = "{";
-        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object);
 
         using var document = JsonDocument.Parse(validator.CreateAuthenticationOptions(options, challenge, [withoutMetadata, withInvalidTransport, withNullMetadata, withMalformedMetadata], options.AuthenticationUserVerification));
         var allowCredentials = document.RootElement.GetProperty("allowCredentials").EnumerateArray().ToArray();
@@ -142,7 +145,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
     public void CreateAuthenticationOptionsShouldDefaultNullUserVerificationToPreferred()
     {
         var challenge = Base64Url.Encode(RandomNumberGenerator.GetBytes(32));
-        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object);
 
         using var document = JsonDocument.Parse(validator.CreateAuthenticationOptions(CreateOptions(), challenge, [], null!));
 
@@ -165,7 +168,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             AttestationConveyancePreference = "direct",
             RequireResidentKey = false
         };
-        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object);
 
         using var document = JsonDocument.Parse(validator.CreateRegistrationOptions(options, user.Object, "", challenge, []));
         var root = document.RootElement;
@@ -194,7 +197,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             Origin = "https://login.example.com",
             AttestationConveyancePreference = configuredAttestation
         };
-        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object);
 
         using var document = JsonDocument.Parse(validator.CreateRegistrationOptions(options, user.Object, "Laptop", Base64Url.Encode(RandomNumberGenerator.GetBytes(32)), []));
 
@@ -214,7 +217,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             Origin = "https://login.example.com",
             AttestationConveyancePreference = null!
         };
-        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object);
 
         using var document = JsonDocument.Parse(validator.CreateRegistrationOptions(options, user.Object, "Laptop", Base64Url.Encode(RandomNumberGenerator.GetBytes(32)), []));
 
@@ -224,7 +227,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
     [Test]
     public void VerifyRegistrationAsyncShouldRejectNullResponse()
     {
-        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object);
         var challenge = CreateChallenge("passkey-registration");
 
         var ex = Assert.ThrowsAsync<InvalidOperationException>(() => validator.VerifyRegistrationAsync(CreateOptions(), challenge, JsonDocument.Parse("null").RootElement));
@@ -235,7 +238,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
     [Test]
     public void VerifyRegistrationAsyncShouldInvokeFidoValidationForNonNullResponses()
     {
-        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object);
         var challenge = CreateChallenge("passkey-registration");
 
         Assert.That(async () => await validator.VerifyRegistrationAsync(CreateOptions(), challenge, JsonDocument.Parse("{}").RootElement), Throws.Exception);
@@ -247,7 +250,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         var credentialId = RandomNumberGenerator.GetBytes(32);
         var publicKey = RandomNumberGenerator.GetBytes(65);
         var aaGuid = Guid.NewGuid();
-        var repository = new Mock<IUserRepository>();
+        var repository = new Mock<IPasskeyCredentialLookup>();
         var validator = new Fido2PasskeyCeremonyValidator(
             repository.Object,
             async (_, parameters, ct) =>
@@ -287,7 +290,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         var credentialId = RandomNumberGenerator.GetBytes(32);
         var publicKey = RandomNumberGenerator.GetBytes(65);
         var validator = new Fido2PasskeyCeremonyValidator(
-            new Mock<IUserRepository>().Object,
+            new Mock<IPasskeyCredentialLookup>().Object,
             (_, _, _) => Task.FromResult(new RegisteredPublicKeyCredential
             {
                 Id = credentialId,
@@ -310,7 +313,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         var credentialId = RandomNumberGenerator.GetBytes(32);
         var publicKey = RandomNumberGenerator.GetBytes(65);
         var validator = new Fido2PasskeyCeremonyValidator(
-            new Mock<IUserRepository>().Object,
+            new Mock<IPasskeyCredentialLookup>().Object,
             (_, _, _) => Task.FromResult(new RegisteredPublicKeyCredential
             {
                 Id = credentialId,
@@ -337,7 +340,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
     [Test]
     public void VerifyAuthenticationAsyncShouldRejectMissingMetadata()
     {
-        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object);
         var challenge = CreateChallenge("passkey-authentication");
         var credential = CreateCredential(Guid.NewGuid(), Base64Url.Encode(RandomNumberGenerator.GetBytes(32)));
         credential.Metadata = null;
@@ -350,7 +353,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
     [Test]
     public void VerifyAuthenticationAsyncShouldRejectInvalidMetadata()
     {
-        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object);
         var challenge = CreateChallenge("passkey-authentication");
         var credential = CreateCredential(Guid.NewGuid(), Base64Url.Encode(RandomNumberGenerator.GetBytes(32)));
         credential.Metadata = "null";
@@ -363,7 +366,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
     [Test]
     public void VerifyAuthenticationAsyncShouldRejectNullResponse()
     {
-        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object);
         var challenge = CreateChallenge("passkey-authentication");
         var credential = CreateCredential(Guid.NewGuid(), Base64Url.Encode(RandomNumberGenerator.GetBytes(32)));
 
@@ -375,7 +378,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
     [Test]
     public void VerifyAuthenticationAsyncShouldInvokeFidoValidationForNonNullResponses()
     {
-        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object);
         var challenge = CreateChallenge("passkey-authentication");
         var credential = CreateCredential(challenge.UserId!.Value, Base64Url.Encode(RandomNumberGenerator.GetBytes(32)));
 
@@ -392,7 +395,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         var credential = CreateCredential(userId, Base64Url.Encode(credentialIdBytes));
         var callbackChecks = 0;
         var validator = new Fido2PasskeyCeremonyValidator(
-            new Mock<IUserRepository>().Object,
+            new Mock<IPasskeyCredentialLookup>().Object,
             (_, _, _) => throw new InvalidOperationException("Registration should not be invoked."),
             async (_, parameters, ct) =>
             {
@@ -431,7 +434,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         var challenge = CreateChallenge("passkey-authentication", userId);
         var credential = CreateCredential(userId, Base64Url.Encode(credentialIdBytes));
         var validator = new Fido2PasskeyCeremonyValidator(
-            new Mock<IUserRepository>().Object,
+            new Mock<IPasskeyCredentialLookup>().Object,
             (_, _, _) => throw new InvalidOperationException("Registration should not be invoked."),
             (_, _, _) => Task.FromResult(new VerifyAssertionResult
             {
@@ -452,7 +455,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         var challenge = CreateChallenge("passkey-authentication", userId);
         var credential = CreateCredential(userId, Base64Url.Encode(credentialIdBytes));
         var validator = new Fido2PasskeyCeremonyValidator(
-            new Mock<IUserRepository>().Object,
+            new Mock<IPasskeyCredentialLookup>().Object,
             (_, _, _) => throw new InvalidOperationException("Registration should not be invoked."),
             (_, _, _) => Task.FromResult(new VerifyAssertionResult
             {
@@ -473,7 +476,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         var challenge = CreateChallenge("passkey-authentication", userId);
         var credential = CreateCredential(userId, Base64Url.Encode(credentialIdBytes));
         var validator = new Fido2PasskeyCeremonyValidator(
-            new Mock<IUserRepository>().Object,
+            new Mock<IPasskeyCredentialLookup>().Object,
             (_, _, _) => throw new InvalidOperationException("Registration should not be invoked."),
             (_, _, _) => Task.FromResult(new VerifyAssertionResult
             {
@@ -497,10 +500,10 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         {
             PublicKey = Base64Url.Encode(RandomNumberGenerator.GetBytes(32)),
             SignCount = -1
-        }, PasskeyJson.Options);
+        }, JsonOptions);
         uint? storedSignCount = null;
         var validator = new Fido2PasskeyCeremonyValidator(
-            new Mock<IUserRepository>().Object,
+            new Mock<IPasskeyCredentialLookup>().Object,
             (_, _, _) => throw new InvalidOperationException("Registration should not be invoked."),
             (_, parameters, _) =>
             {
@@ -533,7 +536,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             {
                 PublicKey = Base64Url.Encode(RandomNumberGenerator.GetBytes(32)),
                 Transports = ExpectedTransports
-            }, PasskeyJson.Options)
+            }, JsonOptions)
         };
     }
 
@@ -558,8 +561,8 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             UserId = userId ?? Guid.NewGuid(),
             Challenge = challengeValue,
             OptionsJson = purpose == "passkey-registration"
-                ? new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object).CreateRegistrationOptions(CreateOptions(), new TestUser(Guid.NewGuid(), "pat@example.com"), "Laptop", challengeValue, [])
-                : new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object).CreateAuthenticationOptions(CreateOptions(), challengeValue, [], PasskeyUserVerificationRequirement.Preferred),
+                ? new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object).CreateRegistrationOptions(CreateOptions(), new TestUser(Guid.NewGuid(), "pat@example.com"), "Laptop", challengeValue, [])
+                : new Fido2PasskeyCeremonyValidator(new Mock<IPasskeyCredentialLookup>().Object).CreateAuthenticationOptions(CreateOptions(), challengeValue, [], PasskeyUserVerificationRequirement.Preferred),
             RelyingPartyId = "example.com",
             Origin = "https://login.example.com",
             CreatedAt = DateTimeOffset.UtcNow,

@@ -1,9 +1,10 @@
 using System.Text.Json;
 using System.Reflection;
+using Ashlar.Passkeys;
 using Microsoft.Extensions.Options;
 using Moq;
 
-namespace Ashlar.Passkeys.Tests;
+namespace Ashlar.Tests.Passkeys;
 
 internal sealed class PasskeyAuthenticationProviderTests
 {
@@ -22,6 +23,7 @@ internal sealed class PasskeyAuthenticationProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exportedTypes, Has.None.Matches<Type>(type =>
+                type.Namespace == typeof(PasskeyService).Namespace &&
                 typeof(IAuthenticationAssertion).IsAssignableFrom(type)));
             Assert.That(capabilityType?.IsNestedPrivate, Is.True);
         }

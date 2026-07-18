@@ -13,6 +13,7 @@ using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
+using Ashlar.Passkeys;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 using Ashlar.Security.Tokens;
@@ -24,6 +25,20 @@ namespace Ashlar.Tests.DependencyInjection;
 
 internal sealed class AshlarServiceCollectionExtensionsTests
 {
+    [Test]
+    public void AddAshlarPasskeyCoreValidatesOptionsOnStart()
+    {
+        var services = new ServiceCollection();
+        services.Configure<PasskeyOptions>(options => options.RelyingPartyId = "evil.test");
+        services.AddAshlarPasskeyCore();
+        services.Configure<PasskeyOptions>(options => options.RelyingPartyId = "evil.test");
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(PasskeyOptions)));
+    }
+
     [Test]
     public void AddAshlarIdentityRegistersCoreServicesWithExpectedLifetimes()
     {

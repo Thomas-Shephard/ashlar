@@ -12,30 +12,37 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
     // WebAuthn authenticator data stores flags at byte 32, after the 32-byte RP ID hash.
     private const int AuthenticatorDataFlagsOffset = 32;
     private const byte UserVerifiedFlag = 0x04;
-    private readonly IUserLookup _users;
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly Func<string, CancellationToken, Task<bool>> _isCredentialRegisteredAsync;
     private readonly Func<Fido2NetLib.Fido2, MakeNewCredentialParams, CancellationToken, Task<RegisteredPublicKeyCredential>> _makeCredentialAsync;
     private readonly Func<Fido2NetLib.Fido2, MakeAssertionParams, CancellationToken, Task<VerifyAssertionResult>> _makeAssertionAsync;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="Fido2PasskeyCeremonyValidator" /> class.
-    /// </summary>
-    /// <param name="users">The read-only lookup used to resolve users during passkey ceremonies.</param>
-    public Fido2PasskeyCeremonyValidator(IUserLookup users)
-        : this(users, static (fido, parameters, ct) => fido.MakeNewCredentialAsync(parameters, ct), static (fido, parameters, ct) => fido.MakeAssertionAsync(parameters, ct))
+    /// <summary>Initializes the validator with the passkey-specific core lookup.</summary>
+    /// <param name="credentials">The passkey-specific credential lookup.</param>
+    public Fido2PasskeyCeremonyValidator(Ashlar.Identity.Passkeys.IPasskeyCredentialLookup credentials) : this(
+        credentials,
+        static (fido, parameters, ct) => fido.MakeNewCredentialAsync(parameters, ct),
+        static (fido, parameters, ct) => fido.MakeAssertionAsync(parameters, ct))
     {
     }
 
     internal Fido2PasskeyCeremonyValidator(
-        IUserLookup users,
+        Ashlar.Identity.Passkeys.IPasskeyCredentialLookup credentials,
         Func<Fido2NetLib.Fido2, MakeNewCredentialParams, CancellationToken, Task<RegisteredPublicKeyCredential>> makeCredentialAsync,
         Func<Fido2NetLib.Fido2, MakeAssertionParams, CancellationToken, Task<VerifyAssertionResult>> makeAssertionAsync)
     {
-        _users = users ?? throw new ArgumentNullException(nameof(users));
+        _isCredentialRegisteredAsync = (credentials ?? throw new ArgumentNullException(nameof(credentials))).IsCredentialRegisteredAsync;
         _makeCredentialAsync = makeCredentialAsync ?? throw new ArgumentNullException(nameof(makeCredentialAsync));
         _makeAssertionAsync = makeAssertionAsync ?? throw new ArgumentNullException(nameof(makeAssertionAsync));
     }
 
-    /// <inheritdoc />
+    /// <summary>Creates registration options for a browser WebAuthn ceremony.</summary>
+    /// <param name="options">The passkey options.</param>
+    /// <param name="user">The user registering a passkey.</param>
+    /// <param name="displayName">The passkey display name.</param>
+    /// <param name="challenge">The Ashlar-managed challenge.</param>
+    /// <param name="existingCredentials">Existing passkey credentials for exclusion.</param>
+    /// <returns>The serialized registration options.</returns>
     public string CreateRegistrationOptions(PasskeyOptions options, IUser user, string displayName, string challenge, IReadOnlyList<UserCredential> existingCredentials)
     {
         var fido = CreateFido2(options);
@@ -59,11 +66,16 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
         return credentialOptions.ToJson();
     }
 
-    /// <inheritdoc />
+    /// <summary>Verifies a registration ceremony response.</summary>
+    /// <param name="options">The passkey options.</param>
+    /// <param name="challenge">The stored challenge.</param>
+    /// <param name="credentialResponse">The browser credential response.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The verified registration result.</returns>
     public async Task<PasskeyRegistrationVerificationResult> VerifyRegistrationAsync(PasskeyOptions options, PasskeyChallenge challenge, JsonElement credentialResponse, CancellationToken cancellationToken = default)
     {
         var fido = CreateFido2(options);
-        var response = credentialResponse.Deserialize<AuthenticatorAttestationRawResponse>(PasskeyJson.Options)
+        var response = credentialResponse.Deserialize<AuthenticatorAttestationRawResponse>(JsonOptions)
             ?? throw new InvalidOperationException("Passkey registration response was empty.");
         var originalOptions = CredentialCreateOptions.FromJson(challenge.OptionsJson);
         originalOptions.Challenge = Base64Url.Decode(challenge.Challenge);
@@ -72,7 +84,7 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
             AttestationResponse = response,
             OriginalOptions = originalOptions,
             IsCredentialIdUniqueToUserCallback = async (args, ct) =>
-                await _users.GetUserByProviderKeyAsync(options.ProviderKey.Type, options.ProviderKey.Name, Base64Url.Encode(args.CredentialId), ct) == null
+                !await _isCredentialRegisteredAsync(Base64Url.Encode(args.CredentialId), ct)
         }, cancellationToken);
 
         return new PasskeyRegistrationVerificationResult(
@@ -85,7 +97,12 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
             UserVerified: HasUserVerification(response));
     }
 
-    /// <inheritdoc />
+    /// <summary>Creates authentication options for a browser WebAuthn ceremony.</summary>
+    /// <param name="options">The passkey options.</param>
+    /// <param name="challenge">The Ashlar-managed challenge.</param>
+    /// <param name="allowedCredentials">Allowed credentials for user-scoped flows.</param>
+    /// <param name="userVerification">The WebAuthn user verification requirement.</param>
+    /// <returns>The serialized authentication options.</returns>
     public string CreateAuthenticationOptions(PasskeyOptions options, string challenge, IReadOnlyList<UserCredential> allowedCredentials, string userVerification)
     {
         var fido = CreateFido2(options);
@@ -98,14 +115,20 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
         return assertionOptions.ToJson();
     }
 
-    /// <inheritdoc />
+    /// <summary>Verifies an authentication ceremony response.</summary>
+    /// <param name="options">The passkey options.</param>
+    /// <param name="challenge">The stored challenge.</param>
+    /// <param name="credential">The stored credential.</param>
+    /// <param name="assertionResponse">The browser assertion response.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The verified authentication result.</returns>
     public async Task<PasskeyAuthenticationVerificationResult> VerifyAuthenticationAsync(PasskeyOptions options, PasskeyChallenge challenge, UserCredential credential, JsonElement assertionResponse, CancellationToken cancellationToken = default)
     {
         var metadata = string.IsNullOrWhiteSpace(credential.Metadata)
             ? throw new InvalidOperationException("Passkey credential metadata was empty.")
-            : JsonSerializer.Deserialize<PasskeyCredentialMetadata>(credential.Metadata, PasskeyJson.Options) ?? throw new InvalidOperationException("Passkey credential metadata was invalid.");
+            : JsonSerializer.Deserialize<PasskeyCredentialMetadata>(credential.Metadata, JsonOptions) ?? throw new InvalidOperationException("Passkey credential metadata was invalid.");
         var fido = CreateFido2(options);
-        var response = assertionResponse.Deserialize<AuthenticatorAssertionRawResponse>(PasskeyJson.Options)
+        var response = assertionResponse.Deserialize<AuthenticatorAssertionRawResponse>(JsonOptions)
             ?? throw new InvalidOperationException("Passkey authentication response was empty.");
         var originalOptions = AssertionOptions.FromJson(challenge.OptionsJson);
         originalOptions.Challenge = Base64Url.Decode(challenge.Challenge);
@@ -137,9 +160,23 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
 
     private static PublicKeyCredentialDescriptor ToDescriptor(UserCredential credential)
     {
-        var metadata = PasskeyCredentialMetadataOperations.ReadOrDefault(credential.Metadata);
+        var metadata = ReadMetadata(credential.Metadata);
         var transports = metadata.Transports.Select(ParseTransport).Where(t => t.HasValue).Select(t => t!.Value).ToArray();
         return new PublicKeyCredentialDescriptor(PublicKeyCredentialType.PublicKey, Base64Url.Decode(credential.ProviderKey), transports);
+    }
+
+    private static PasskeyCredentialMetadata ReadMetadata(string? value)
+    {
+        try
+        {
+            return string.IsNullOrWhiteSpace(value)
+                ? new PasskeyCredentialMetadata()
+                : JsonSerializer.Deserialize<PasskeyCredentialMetadata>(value, JsonOptions) ?? new PasskeyCredentialMetadata();
+        }
+        catch (JsonException)
+        {
+            return new PasskeyCredentialMetadata();
+        }
     }
 
     private static UserVerificationRequirement ParseUserVerification(string? value)

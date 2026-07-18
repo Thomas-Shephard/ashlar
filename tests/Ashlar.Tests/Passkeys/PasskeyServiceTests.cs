@@ -1,20 +1,21 @@
 using Ashlar.Testing;
+using Ashlar.Passkeys;
 using System.Text.Json;
 using Ashlar.Auditing;
-using Ashlar.Identity.Features.Mfa;
+using Ashlar.Identity.Models.Passkeys;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
-using Ashlar.Identity.Models.Sessions;
 using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 
-namespace Ashlar.Passkeys.Tests;
+namespace Ashlar.Tests.Passkeys;
 
 internal sealed class PasskeyServiceTests
 {
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<PasskeyServiceDependencies, TestStoreInfrastructure> StoreInfrastructure = [];
     private readonly Dictionary<Guid, AuthenticationSession> _proofSessions = [];
     private static readonly Guid RegistrationSessionId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly TimeSpan RegistrationFreshnessWindow = TimeSpan.FromMinutes(10);
@@ -368,48 +369,19 @@ internal sealed class PasskeyServiceTests
     [Test]
     public void ConstructorShouldThrowWhenDependenciesAreNull()
     {
-        Assert.Throws<ArgumentNullException>(() => _ = CreateVerifiedPasskeyService(
-            null!,
-            new Mock<ICredentialRepository>().Object,
-            new Mock<IPasskeyChallengeRepository>().Object,
-            new Mock<IPasskeyCeremonyValidator>().Object,
-            CreateDependencies()));
-
-        Assert.Throws<ArgumentNullException>(() => _ = CreateVerifiedPasskeyService(
-            new Mock<IUserRepository>().Object,
-            null!,
-            new Mock<IPasskeyChallengeRepository>().Object,
-            new Mock<IPasskeyCeremonyValidator>().Object,
-            CreateDependencies()));
-
-        Assert.Throws<ArgumentNullException>(() => _ = CreateVerifiedPasskeyService(
-            new Mock<IUserRepository>().Object,
-            new Mock<ICredentialRepository>().Object,
-            null!,
-            new Mock<IPasskeyCeremonyValidator>().Object,
-            CreateDependencies()));
-
-        Assert.Throws<ArgumentNullException>(() => _ = CreateVerifiedPasskeyService(
-            new Mock<IUserRepository>().Object,
-            new Mock<ICredentialRepository>().Object,
-            new Mock<IPasskeyChallengeRepository>().Object,
-            null!,
-            CreateDependencies()));
-
-        Assert.Throws<ArgumentNullException>(() => _ = CreateVerifiedPasskeyService(
-            new Mock<IUserRepository>().Object,
-            new Mock<ICredentialRepository>().Object,
-            new Mock<IPasskeyChallengeRepository>().Object,
-            new Mock<IPasskeyCeremonyValidator>().Object,
-            null!));
+        var validator = new Mock<IPasskeyCeremonyValidator>().Object;
+        var dependencies = CreateDependencies();
+        var store = CreateStore(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IPasskeyChallengeRepository>().Object, dependencies);
+        var proofValidator = StoreInfrastructure.GetValue(dependencies, _ => throw new InvalidOperationException()).ProofValidator;
+        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyService(null!, store, proofValidator, validator, [], dependencies));
+        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyService(store, null!, proofValidator, validator, [], dependencies));
+        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyService(store, store, null!, validator, [], dependencies));
+        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyService(store, store, proofValidator, null!, [], dependencies));
+        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyService(store, store, proofValidator, validator, null!, dependencies));
+        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyService(store, store, proofValidator, validator, [], null!));
 
         var valid = CreateDependencies();
-        var infrastructure = new PasskeyServiceInfrastructure(
-            valid.TimeProvider,
-            valid.SecurityEventSink,
-            valid.TransactionProvider,
-            valid.SessionRepository,
-            valid.ProofValidator);
+        var infrastructure = new PasskeyServiceInfrastructure(valid.TimeProvider, valid.SecurityEventSink, valid.TransactionProvider);
         var options = Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" });
         var orchestrator = new Mock<IAuthenticationOrchestrator>().Object;
         var handshakes = new Mock<IAuthenticationHandshakeService>().Object;
@@ -424,10 +396,6 @@ internal sealed class PasskeyServiceTests
             options, orchestrator, handshakes, new TestTokenHasher(), null!, infrastructure));
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceDependencies(
             options, orchestrator, handshakes, new TestTokenHasher(), AllowRateLimiter.Instance, null!));
-        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceInfrastructure(
-            valid.TimeProvider, valid.SecurityEventSink, valid.TransactionProvider, null!, valid.ProofValidator));
-        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyServiceInfrastructure(
-            valid.TimeProvider, valid.SecurityEventSink, valid.TransactionProvider, valid.SessionRepository, null!));
     }
 
     [Test]
@@ -1240,6 +1208,7 @@ internal sealed class PasskeyServiceTests
     [Test]
     public async Task CompleteAuthenticationAsyncShouldRejectMismatchedTenantBeforeConsumingChallenge()
     {
+        var transactionProvider = new RecordingTransactionProvider();
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var challenge = CreateAuthenticationChallenge(now, tenantId: Guid.NewGuid());
         var challenges = new Mock<IPasskeyChallengeRepository>();
@@ -1251,13 +1220,14 @@ internal sealed class PasskeyServiceTests
             new Mock<ICredentialRepository>().Object,
             challenges.Object,
             validator.Object,
-            CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+            CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), transactionProvider: transactionProvider));
 
         var result = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, Guid.NewGuid()));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+            Assert.That(transactionProvider.BeginCount, Is.Zero);
             challenges.Verify(r => r.ConsumeAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
             validator.Verify(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), It.IsAny<PasskeyChallenge>(), It.IsAny<UserCredential>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()), Times.Never);
             orchestrator.Verify(o => o.AuthenticateAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<MfaOrchestrationOptions?>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -1320,6 +1290,9 @@ internal sealed class PasskeyServiceTests
     [Test]
     public async Task CompleteAuthenticationAsyncShouldBuildSummaryWithoutListingCredentials()
     {
+        var transactionProvider = new RecordingTransactionProvider();
+        var consumeWithinTransaction = false;
+        var counterWithinTransaction = false;
         var user = new TestUser(Guid.NewGuid(), "test@example.com");
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var challenge = new PasskeyChallenge
@@ -1352,15 +1325,19 @@ internal sealed class PasskeyServiceTests
         var validator = new Mock<IPasskeyCeremonyValidator>();
         var pipeline = new Mock<IAuthenticationOrchestrator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
-        challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .Callback(() => consumeWithinTransaction = transactionProvider.BeginCount == 1 && !transactionProvider.Transaction.Committed)
+            .ReturnsAsync(true);
         repo.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>())).ReturnsAsync(user);
         credentials.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>())).ReturnsAsync(credential);
-        credentials.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), credential.Version, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        credentials.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), credential.Version, It.IsAny<CancellationToken>()))
+            .Callback(() => counterWithinTransaction = transactionProvider.BeginCount == 1 && !transactionProvider.Transaction.Committed)
+            .ReturnsAsync(true);
         validator.Setup(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), challenge, credential, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PasskeyAuthenticationVerificationResult("cred", 2, true));
         pipeline.Setup(p => p.AuthenticateAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<MfaOrchestrationOptions?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user));
-        var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: pipeline.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+        var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: pipeline.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), transactionProvider: transactionProvider));
 
         var result = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement));
 
@@ -1370,6 +1347,9 @@ internal sealed class PasskeyServiceTests
             Assert.That(result.Credential?.CredentialId, Is.EqualTo("cred"));
             Assert.That(result.Credential?.LastUsedAt, Is.EqualTo(now));
             Assert.That(result.Credential?.SignCount, Is.EqualTo(2));
+            Assert.That(consumeWithinTransaction, Is.True);
+            Assert.That(counterWithinTransaction, Is.True);
+            Assert.That(transactionProvider.Transaction.Committed, Is.True);
         }
 
         credentials.Verify(r => r.ListCredentialsForUserAsync(It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -1649,7 +1629,7 @@ internal sealed class PasskeyServiceTests
             .ReturnsAsync(new PasskeyAuthenticationVerificationResult("cred", 2, true));
         orchestrator.Setup(p => p.AuthenticateAsync(It.Is<AuthenticationContext>(c => c.UserId == user.Id && c.TenantId == tenantId), It.IsAny<IAuthenticationAssertion>(), It.IsAny<MfaOrchestrationOptions?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user));
-        var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), options: new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com", ProviderKey = providerKey }));
+        var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), options: new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com", ProviderName = providerKey.Name }));
 
         var result = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, tenantId));
 
@@ -1810,6 +1790,7 @@ internal sealed class PasskeyServiceTests
     [Test]
     public async Task CompleteAuthenticationAsyncShouldConsumeChallengeBeforeRejectingMalformedAssertion()
     {
+        var transactionProvider = new RecordingTransactionProvider();
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var challenge = CreateAuthenticationChallenge(now);
         var challenges = new Mock<IPasskeyChallengeRepository>();
@@ -1818,11 +1799,15 @@ internal sealed class PasskeyServiceTests
         var repo = new Mock<IUserRepository>();
         var credentials = new Mock<ICredentialRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
-        var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+        var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), transactionProvider: transactionProvider));
 
         var result = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement));
 
-        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyValidationFailed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyValidationFailed));
+            Assert.That(transactionProvider.Transaction.Committed, Is.True);
+        }
         challenges.Verify(r => r.ConsumeAsync(challenge.Id, challenge.Version, now, It.IsAny<CancellationToken>()), Times.Once);
         repo.Verify(r => r.GetUserByProviderKeyAsync(It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         validator.Verify(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), It.IsAny<PasskeyChallenge>(), It.IsAny<UserCredential>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -2267,6 +2252,9 @@ internal sealed class PasskeyServiceTests
     [Test]
     public async Task CompleteFactorAsyncShouldVerifyMfaFactor()
     {
+        var transactionProvider = new RecordingTransactionProvider();
+        var consumeWithinTransaction = false;
+        var counterWithinTransaction = false;
         var user = new TestUser(Guid.NewGuid(), "test@example.com");
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var challenge = new PasskeyChallenge
@@ -2302,10 +2290,14 @@ internal sealed class PasskeyServiceTests
         var validator = new Mock<IPasskeyCeremonyValidator>();
         var orchestrator = new Mock<IAuthenticationOrchestrator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
-        challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .Callback(() => consumeWithinTransaction = transactionProvider.BeginCount == 1 && !transactionProvider.Transaction.Committed)
+            .ReturnsAsync(true);
         repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
         credentials.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>())).ReturnsAsync(credential);
-        credentials.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), credential.Version, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        credentials.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), credential.Version, It.IsAny<CancellationToken>()))
+            .Callback(() => counterWithinTransaction = transactionProvider.BeginCount == 1 && !transactionProvider.Transaction.Committed)
+            .ReturnsAsync(true);
         validator.Setup(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), challenge, credential, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PasskeyAuthenticationVerificationResult("cred", 2, true));
         orchestrator.Setup(o => o.VerifyFactorAsync(
@@ -2315,7 +2307,7 @@ internal sealed class PasskeyServiceTests
                 It.IsAny<IAuthenticationAssertion>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user));
-        var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+        var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), transactionProvider: transactionProvider));
         var audit = new AuditContext(null, "198.51.100.2", "Browser", "corr-factor-complete");
 
         var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, "token", Audit: audit));
@@ -2324,6 +2316,9 @@ internal sealed class PasskeyServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Credential?.SignCount, Is.EqualTo(2));
+            Assert.That(consumeWithinTransaction, Is.True);
+            Assert.That(counterWithinTransaction, Is.True);
+            Assert.That(transactionProvider.Transaction.Committed, Is.True);
         }
         orchestrator.Verify(o => o.VerifyFactorAsync(
             "token",
@@ -2514,7 +2509,7 @@ internal sealed class PasskeyServiceTests
             .ReturnsAsync(new PasskeyAuthenticationVerificationResult("cred", 2, true));
         orchestrator.Setup(o => o.VerifyFactorAsync("token", "passkey", It.Is<AuthenticationContext>(c => c.UserId == user.Id && c.TenantId == tenantId), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user));
-        var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), options: new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com", ProviderKey = providerKey }));
+        var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), options: new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com", ProviderName = providerKey.Name }));
 
         var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, "token", TenantId: tenantId));
 
@@ -2610,6 +2605,7 @@ internal sealed class PasskeyServiceTests
     [Test]
     public async Task CompleteFactorAsyncShouldConsumeChallengeBeforeRejectingMalformedAssertion()
     {
+        var transactionProvider = new RecordingTransactionProvider();
         var userId = Guid.NewGuid();
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var challenge = CreateAuthenticationChallenge(now, userId, "hashed:token", "passkey");
@@ -2620,11 +2616,15 @@ internal sealed class PasskeyServiceTests
         challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var repo = new Mock<IUserRepository>();
         var credentials = new Mock<ICredentialRepository>();
-        var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+        var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), transactionProvider: transactionProvider));
 
         var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, "token"));
 
-        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyValidationFailed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyValidationFailed));
+            Assert.That(transactionProvider.Transaction.Committed, Is.True);
+        }
         challenges.Verify(r => r.ConsumeAsync(challenge.Id, challenge.Version, now, It.IsAny<CancellationToken>()), Times.Once);
         repo.Verify(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         validator.Verify(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), It.IsAny<PasskeyChallenge>(), It.IsAny<UserCredential>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -2645,6 +2645,7 @@ internal sealed class PasskeyServiceTests
     [Test]
     public async Task CompleteFactorAsyncShouldRejectMismatchedTenantBeforeConsumingChallenge()
     {
+        var transactionProvider = new RecordingTransactionProvider();
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var challenge = CreateAuthenticationChallenge(now, Guid.NewGuid(), "hashed:token", "passkey", Guid.NewGuid());
         var challenges = new Mock<IPasskeyChallengeRepository>();
@@ -2656,13 +2657,14 @@ internal sealed class PasskeyServiceTests
             new Mock<ICredentialRepository>().Object,
             challenges.Object,
             validator.Object,
-            CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+            CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), transactionProvider: transactionProvider));
 
         var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, "token", TenantId: Guid.NewGuid()));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+            Assert.That(transactionProvider.BeginCount, Is.Zero);
             challenges.Verify(r => r.ConsumeAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
             validator.Verify(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), It.IsAny<PasskeyChallenge>(), It.IsAny<UserCredential>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()), Times.Never);
             orchestrator.Verify(o => o.VerifyFactorAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -3257,13 +3259,15 @@ internal sealed class PasskeyServiceTests
         var fanOut = securityEventSink as SecurityEventFanOutSink
             ?? new SecurityEventFanOutSink(persistent, transactionProvider: transactions);
         var sessions = sessionRepository ?? ActiveSessionRepository();
-        return new PasskeyServiceDependencies(
+        var dependencies = new PasskeyServiceDependencies(
             Options.Create(options ?? new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }),
             authenticationOrchestrator ?? new Mock<IAuthenticationOrchestrator>().Object,
             handshakeService ?? new Mock<IAuthenticationHandshakeService>().Object,
             tokenHasher ?? new TestTokenHasher(),
             rateLimiter ?? AllowRateLimiter.Instance,
-            new PasskeyServiceInfrastructure(timeProvider, fanOut, transactions, sessions, ProofValidator(sessions, timeProvider)));
+            new PasskeyServiceInfrastructure(timeProvider, fanOut, transactions));
+        StoreInfrastructure.Add(dependencies, new(sessions, ProofValidator(sessions, timeProvider)));
+        return dependencies;
     }
 
     private static IFreshAuthenticationProofValidator ProofValidator(
@@ -3276,66 +3280,8 @@ internal sealed class PasskeyServiceTests
         services.AddAshlarIdentity();
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        return scope.ServiceProvider.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>();
+        return Ashlar.ProviderContracts.DependencyInjection.AshlarProviderServiceCollectionExtensions.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>(scope.ServiceProvider);
     }
-
-    [Test]
-    public void ConstructorRejectsMissingOrMismatchedDurableAuditComposition()
-    {
-        var transactions = new RecordingTransactionProvider();
-        var mismatchedSink = new ForwardingPersistentSink(new RecordingSecurityEventSink());
-        var mismatchedTransactions = DurableTransactionComposition.Create(new RecordingTransactionProvider(), mismatchedSink);
-
-        Assert.Throws<ArgumentException>(() => CreatePasskeyService(
-            CreateDependencies(securityEventSink: new SecurityEventFanOutSink(), transactionProvider: transactions)));
-        Assert.Throws<ArgumentException>(() => CreatePasskeyService(
-            CreateDependencies(
-                securityEventSink: new SecurityEventFanOutSink(mismatchedSink, transactionProvider: mismatchedTransactions),
-                transactionProvider: transactions)));
-        Assert.Throws<ArgumentException>(() => CreatePasskeyService(CreateDependencies()));
-    }
-
-    [Test]
-    public void ConstructorRejectsEveryRepositoryOutsideTheDurableComposition()
-    {
-        var users = new Mock<IUserRepository>().Object;
-        var credentials = new Mock<ICredentialRepository>().Object;
-        var challenges = new Mock<IPasskeyChallengeRepository>().Object;
-        var validator = new Mock<IPasskeyCeremonyValidator>().Object;
-        var sessions = ActiveSessionRepository();
-        var persistent = new ForwardingPersistentSink(new RecordingSecurityEventSink());
-        var raw = new RecordingTransactionProvider();
-
-        var noDurability = DurableTransactionComposition.Create(raw, users, credentials, challenges, sessions);
-        Assert.Throws<ArgumentException>(() => new PasskeyService(users, credentials, challenges, validator,
-            CreateDependencies(securityEventSink: new SecurityEventFanOutSink(transactionProvider: noDurability), sessionRepository: sessions, transactionProvider: noDurability)));
-
-        var first = DurableTransactionComposition.Create(raw, persistent, users, credentials, challenges, sessions);
-        var second = DurableTransactionComposition.Create(raw, persistent, users, credentials, challenges, sessions);
-        Assert.Throws<ArgumentException>(() => new PasskeyService(users, credentials, challenges, validator,
-            CreateDependencies(securityEventSink: new SecurityEventFanOutSink(persistent, transactionProvider: first), sessionRepository: sessions, transactionProvider: second)));
-
-        foreach (var participants in new object[][]
-        {
-            [persistent, credentials, challenges, sessions],
-            [persistent, users, challenges, sessions],
-            [persistent, users, credentials, sessions],
-            [persistent, users, credentials, challenges]
-        })
-        {
-            var composition = DurableTransactionComposition.Create(raw, participants);
-            var fanOut = new SecurityEventFanOutSink(persistent, transactionProvider: composition);
-            Assert.Throws<ArgumentException>(() => new PasskeyService(users, credentials, challenges, validator,
-                CreateDependencies(securityEventSink: fanOut, sessionRepository: sessions, transactionProvider: composition)));
-        }
-    }
-
-    private static PasskeyService CreatePasskeyService(PasskeyServiceDependencies dependencies) => new(
-        new Mock<IUserRepository>().Object,
-        new Mock<ICredentialRepository>().Object,
-        new Mock<IPasskeyChallengeRepository>().Object,
-        new Mock<IPasskeyCeremonyValidator>().Object,
-        dependencies);
 
     private static PasskeyService CreateVerifiedPasskeyService(
         IUserRepository users,
@@ -3345,7 +3291,8 @@ internal sealed class PasskeyServiceTests
         PasskeyServiceDependencies dependencies)
     {
         var composed = ComposeDependencies(users, credentials, challenges, validator, dependencies);
-        return new PasskeyService(users, credentials, challenges, validator, composed);
+        var store = CreateStore(users, credentials, challenges, composed);
+        return new PasskeyService(store, store, StoreInfrastructure.GetValue(composed, _ => throw new InvalidOperationException()).ProofValidator, validator, [], composed);
     }
 
     private static PasskeyService CreateVerifiedPasskeyService(
@@ -3357,7 +3304,8 @@ internal sealed class PasskeyServiceTests
         PasskeyServiceDependencies dependencies)
     {
         var composed = ComposeDependencies(users, credentials, challenges, validator, dependencies);
-        return new PasskeyService(users, credentials, challenges, validator, providers, composed);
+        var store = CreateStore(users, credentials, challenges, composed);
+        return new PasskeyService(store, store, StoreInfrastructure.GetValue(composed, _ => throw new InvalidOperationException()).ProofValidator, validator, providers, composed);
     }
 
     private static PasskeyServiceDependencies ComposeDependencies(
@@ -3376,20 +3324,25 @@ internal sealed class PasskeyServiceTests
             users,
             credentials,
             challenges,
-            dependencies.SessionRepository);
-        return new PasskeyServiceDependencies(
+            StoreInfrastructure.GetValue(dependencies, _ => throw new InvalidOperationException()).Sessions);
+        var composed = new PasskeyServiceDependencies(
             dependencies.Options,
             dependencies.AuthenticationOrchestrator,
             dependencies.HandshakeService,
             dependencies.TokenHasher,
             dependencies.RateLimiter,
-            new PasskeyServiceInfrastructure(
-                dependencies.TimeProvider,
-                new SecurityEventFanOutSink(persistent, transactionProvider: transactions),
-                transactions,
-                dependencies.SessionRepository,
-                dependencies.ProofValidator));
+            new PasskeyServiceInfrastructure(dependencies.TimeProvider, new SecurityEventFanOutSink(persistent, transactionProvider: transactions), transactions));
+        StoreInfrastructure.Add(composed, StoreInfrastructure.GetValue(dependencies, _ => throw new InvalidOperationException()));
+        return composed;
     }
+
+    private static RepositoryPasskeyPersistence CreateStore(IUserRepository users, ICredentialRepository credentials, IPasskeyChallengeRepository challenges, PasskeyServiceDependencies dependencies)
+    {
+        var infrastructure = StoreInfrastructure.GetValue(dependencies, _ => throw new InvalidOperationException());
+        return new(users, credentials, challenges, dependencies.Options.Value.ProviderName);
+    }
+
+    private sealed record TestStoreInfrastructure(IAuthenticationSessionRepository Sessions, IFreshAuthenticationProofValidator ProofValidator);
 
     private sealed class ForwardingPersistentSink(ISecurityEventSink sink) : IPersistentSecurityEventSink
     {
@@ -3565,9 +3518,11 @@ internal sealed class ThrowingSecurityEventSink : ISecurityEventSink
 internal sealed class RecordingTransactionProvider : IAshlarTransactionProvider
 {
     public RecordingTransaction Transaction { get; } = new();
+    public int BeginCount { get; private set; }
 
     public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
     {
+        BeginCount++;
         return Task.FromResult<IAshlarTransaction>(Transaction);
     }
 }

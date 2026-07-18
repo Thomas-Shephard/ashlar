@@ -1,10 +1,5 @@
-using Ashlar.Auditing;
-using Ashlar.Identity.RateLimiting.Abstractions;
-using Ashlar.Operational.Configuration;
 using Ashlar.Passkeys;
-using Ashlar.Security.Tokens;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
 
 // ReSharper disable CheckNamespace
 #pragma warning disable IDE0130
@@ -34,44 +29,13 @@ public static class AshlarPasskeysServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddAshlarMfaOrchestration();
-        services.AddOptions<PasskeyOptions>()
-            .Validate(PasskeyOptions.Validate, "Passkey options are invalid.")
-            .ValidateOnStart();
+        services.AddAshlarPasskeyCore();
         if (configure != null)
         {
             services.Configure(configure);
         }
 
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, PasskeyAuthenticationProvider>());
-        services.TryAddScoped<IPasskeyCeremonyValidator>(provider => new Fido2PasskeyCeremonyValidator(
-            provider.GetRequiredAshlarProviderService<IUserRepository>()));
-        services.TryAddScoped(provider =>
-        {
-            var sink = provider.GetRequiredService<SecurityEventFanOutSink>();
-            var transactions = provider.GetRequiredService<AshlarDurableTransactionProvider>();
-            if (!sink.RequiresDurableTransaction || !ReferenceEquals(transactions, sink.TransactionProvider))
-                throw new InvalidOperationException("Passkey mutations require durable audit using the same transaction provider.");
-            return new PasskeyServiceDependencies(
-                provider.GetRequiredService<IOptions<PasskeyOptions>>(),
-                provider.GetRequiredService<IAuthenticationOrchestrator>(),
-                provider.GetRequiredService<IAuthenticationHandshakeService>(),
-                provider.GetRequiredService<ISecureTokenHasher>(),
-                provider.GetRequiredService<IAuthenticationRateLimiter>(),
-                new PasskeyServiceInfrastructure(
-                    provider.GetService<TimeProvider>(),
-                    sink,
-                    transactions,
-                    provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
-                    provider.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>()));
-        });
-        services.TryAddScoped<IPasskeyService>(provider => ActivatorUtilities.CreateInstance<PasskeyService>(provider,
-            provider.GetRequiredAshlarProviderService<IUserRepository>(),
-            provider.GetRequiredAshlarProviderService<ICredentialRepository>(),
-            provider.GetRequiredAshlarProviderService<IPasskeyChallengeRepository>()));
-        services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<PasskeyOptions>>().Value);
-        services.AddAshlarConfigurationValidation();
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAshlarConfigurationCheck, PasskeyConfigurationCheck>());
+        services.TryAddScoped<IPasskeyCeremonyValidator, Fido2PasskeyCeremonyValidator>();
         return services;
     }
 }

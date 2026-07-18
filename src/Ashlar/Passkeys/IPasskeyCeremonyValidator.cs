@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Ashlar.Identity.Models.Passkeys;
 
 namespace Ashlar.Passkeys;
 
