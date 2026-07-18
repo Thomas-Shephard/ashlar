@@ -279,5 +279,6 @@ Set-Content -Path (Join-Path $providerProjectPath "Class1.cs") -Value $forbidden
 if ($LASTEXITCODE -eq 0) {
     throw "Ashlar.ProviderContracts must not expose generic provider-owned service resolution."
 }
+$global:LASTEXITCODE = 0
 
 Write-Host "Package consumption smoke test passed."
