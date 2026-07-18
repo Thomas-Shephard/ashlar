@@ -37,7 +37,9 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddAshlarPostgres(GetConnectionString());
+        services.AddPostgresProviderContractTestServices();
         services.AddAshlarPostgresSecurityEventWebhookOutbox();
+        services.AddPostgresWebhookProviderContractTestService();
         services.AddSingleton<TimeProvider>(_timeProvider);
         _serviceProvider = services.BuildServiceProvider();
 
@@ -110,7 +112,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     public async Task EnqueueStoresSafeBodyHeadersAndSignatureWithoutSecret()
     {
         var delivery = CreateDelivery("shared-secret");
-        var enqueuer = _serviceProvider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>();
+        var enqueuer = _serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>();
 
         await enqueuer.EnqueueAsync(delivery);
 
@@ -147,7 +149,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     {
         var firstSecret = "first-secret";
         var delivery = CreateDelivery(firstSecret);
-        var enqueuer = _serviceProvider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>();
+        var enqueuer = _serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>();
 
         await enqueuer.EnqueueAsync(delivery);
 
@@ -167,7 +169,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     public async Task EnqueueRollsBackInsideAshlarTransaction()
     {
         var txProvider = _serviceProvider.GetRequiredService<AshlarDurableTransactionProvider>();
-        var enqueuer = _serviceProvider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>();
+        var enqueuer = _serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>();
 
         await using (await txProvider.BeginTransactionAsync())
         {
@@ -661,6 +663,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     public void OptionsValidateAndNullArguments()
     {
         var connectionProvider = _serviceProvider.GetRequiredService<IPostgresConnectionProvider>();
+        var deliveryFactory = _serviceProvider.GetRequiredService<AshlarSecurityEventWebhookDeliveryFactory>();
         var destinationValidator = CreateDestinationValidator();
         using (Assert.EnterMultipleScope())
         {
@@ -671,8 +674,9 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             Assert.That(PostgresSecurityEventWebhookOutboxOptions.Validate(new PostgresSecurityEventWebhookOutboxOptions { InitialRetryDelay = TimeSpan.Zero }), Is.False);
             Assert.That(PostgresSecurityEventWebhookOutboxOptions.Validate(new PostgresSecurityEventWebhookOutboxOptions { PollingInterval = TimeSpan.Zero }), Is.False);
             Assert.Throws<ArgumentNullException>(() => PostgresSecurityEventWebhookOutboxOptions.Validate(null!));
-            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookEnqueuer(null!, _timeProvider));
-            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookEnqueuer(connectionProvider, null!));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookEnqueuer(null!, _timeProvider, deliveryFactory));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookEnqueuer(connectionProvider, null!, deliveryFactory));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookEnqueuer(connectionProvider, _timeProvider, null!));
             Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(null!, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator));
             Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(_serviceProvider, null!, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator));
             Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(_serviceProvider, _timeProvider, null!, Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator));
@@ -878,6 +882,8 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         services.AddAshlarPostgres(GetConnectionString());
         services.AddAshlarPostgresSecurityEventWebhookOutbox();
         services.AddAshlarSecurityEventWebhookOutbox();
+        services.AddPostgresProviderContractTestServices();
+        services.AddPostgresWebhookProviderContractTestService();
 
         await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         await using var scope = provider.CreateAsyncScope();
@@ -885,9 +891,9 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
-            Assert.That(scope.ServiceProvider.GetServices<IDurableSecurityEventFanOutHandler>().Single(), Is.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+            Assert.That(scope.ServiceProvider.GetServices<IDurableSecurityEventFanOutHandler>().Single(), Is.TypeOf<PostgresSecurityEventWebhookEnqueuer>());
             Assert.That(scope.ServiceProvider.GetServices<ISecurityEventHandler>(), Is.Empty);
-            Assert.That(scope.ServiceProvider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>(), Is.TypeOf<PostgresSecurityEventWebhookEnqueuer>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>(), Is.TypeOf<PostgresSecurityEventWebhookEnqueuer>());
         }
     }
 
@@ -915,7 +921,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
 
     private async Task EnqueueAsync(AshlarSecurityEventWebhookDelivery delivery)
     {
-        await _serviceProvider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>().EnqueueAsync(delivery);
+        await _serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>().EnqueueAsync(delivery);
     }
 
     private async Task ExpireSingleWebhookLockAsync()

@@ -32,6 +32,7 @@ internal sealed class PostgresAspNetCoreAuthenticationIntegrationTests : Postgre
         services.AddSingleton<IEmailSender>(_emailSender);
         services.AddSingleton<IAccountSecurityOperationAuthorizer, PermitAccountSecurityOperationAuthorizer>();
         services.AddAshlarPostgres(GetConnectionString());
+        services.AddPostgresProviderContractTestServices();
         services.AddAshlarPostgresAuditSink();
         services.AddAshlarDataProtectionSecretProtector();
         services.AddAshlarMagicLinkSignIn();
@@ -71,7 +72,7 @@ internal sealed class PostgresAspNetCoreAuthenticationIntegrationTests : Postgre
         };
 
         await using var setupScope = ServiceProvider.CreateAsyncScope();
-        await setupScope.ServiceProvider.GetRequiredAshlarProviderService<IUserRepository>().CreateUserAsync(user);
+        await setupScope.ServiceProvider.GetRequiredService<IUserRepository>().CreateUserAsync(user);
 
         var magicLinks = setupScope.ServiceProvider.GetRequiredService<IMagicLinkSignInService>();
         await magicLinks.RequestLinkAsync(user.DisplayEmail, new Uri("https://example.test/sign-in/callback"));

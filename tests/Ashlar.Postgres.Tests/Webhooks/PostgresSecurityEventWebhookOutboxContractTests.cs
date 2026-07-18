@@ -24,6 +24,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxContractTests : Security
                 });
             });
             services.AddAshlarPostgresSecurityEventWebhookOutbox();
+            services.AddPostgresWebhookProviderContractTestService();
         });
         return _database.ServiceProvider;
     }

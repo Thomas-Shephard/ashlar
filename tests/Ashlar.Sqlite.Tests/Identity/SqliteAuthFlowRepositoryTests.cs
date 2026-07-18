@@ -13,6 +13,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
     {
         var services = new ServiceCollection();
         services.AddAshlarSqlite(GetConnectionString());
+        services.AddSqliteProviderContractTestServices();
         _serviceProvider = services.BuildServiceProvider();
         await _serviceProvider.InitializeAshlarSqliteSchemaAsync();
     }
@@ -374,7 +375,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         await using (var scope = _serviceProvider.CreateAsyncScope())
         {
             var transactionProvider = scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>();
-            var repository = scope.ServiceProvider.GetRequiredAshlarProviderService<IInvitationRepository>();
+            var repository = scope.ServiceProvider.GetRequiredService<IInvitationRepository>();
             await using var transaction = await transactionProvider.BeginTransactionAsync();
             await repository.CreateInvitationAsync(invitation);
             await transaction.RollbackAsync();
@@ -383,13 +384,13 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         Assert.That(await GetInvitationRepository().GetInvitationByTokenHashAsync(invitation.TokenHash), Is.Null);
     }
 
-    private IInvitationRepository GetInvitationRepository() => _serviceProvider.GetRequiredAshlarProviderService<IInvitationRepository>();
+    private IInvitationRepository GetInvitationRepository() => _serviceProvider.GetRequiredService<IInvitationRepository>();
 
-    private IAuthenticationSessionRepository GetSessionRepository() => _serviceProvider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>();
+    private IAuthenticationSessionRepository GetSessionRepository() => _serviceProvider.GetRequiredService<IAuthenticationSessionRepository>();
 
-    private IAuthenticationHandshakeRepository GetHandshakeRepository() => _serviceProvider.GetRequiredAshlarProviderService<IAuthenticationHandshakeRepository>();
+    private IAuthenticationHandshakeRepository GetHandshakeRepository() => _serviceProvider.GetRequiredService<IAuthenticationHandshakeRepository>();
 
-    private IPasskeyChallengeRepository GetPasskeyRepository() => _serviceProvider.GetRequiredAshlarProviderService<IPasskeyChallengeRepository>();
+    private IPasskeyChallengeRepository GetPasskeyRepository() => _serviceProvider.GetRequiredService<IPasskeyChallengeRepository>();
 
     private async Task<AshlarUser> CreateUserAsync()
     {
@@ -399,7 +400,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
             DisplayEmail = $"{Guid.NewGuid():N}@example.com",
             AccountState = UserAccountState.Active
         };
-        await _serviceProvider.GetRequiredAshlarProviderService<IUserRepository>().CreateUserAsync(user);
+        await _serviceProvider.GetRequiredService<IUserRepository>().CreateUserAsync(user);
         return user;
     }
 

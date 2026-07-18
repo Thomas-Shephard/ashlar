@@ -1,4 +1,3 @@
-using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -16,6 +15,7 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
     {
         var services = new ServiceCollection();
         services.AddAshlarSqlite(GetConnectionString());
+        services.AddSqliteProviderContractTestServices();
         _serviceProvider = services.BuildServiceProvider();
         await _serviceProvider.InitializeAshlarSqliteSchemaAsync();
         _userId = (await CreateUserAsync()).Id;
@@ -115,7 +115,7 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
         await using (var scope = _serviceProvider.CreateAsyncScope())
         {
             var transactions = scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>();
-            var repository = scope.ServiceProvider.GetRequiredAshlarProviderService<IAuthorizationGrantRepository>();
+            var repository = scope.ServiceProvider.GetRequiredService<IAuthorizationGrantRepository>();
             await using var transaction = await transactions.BeginTransactionAsync();
             await repository.CreateGrantAsync(grant);
             await transaction.RollbackAsync();
@@ -163,7 +163,7 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
             AccountState = UserAccountState.Active,
             TenantId = tenantId
         };
-        await _serviceProvider.GetRequiredAshlarProviderService<IUserRepository>().CreateUserAsync(user);
+        await _serviceProvider.GetRequiredService<IUserRepository>().CreateUserAsync(user);
         return user;
     }
 

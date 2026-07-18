@@ -1,4 +1,3 @@
-using Ashlar.Authorization.Abstractions;
 using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.Providers.Local;
 using Ashlar.Messaging;
@@ -22,20 +21,19 @@ namespace Ashlar.Sqlite.Tests.DependencyInjection;
 internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestBase
 {
     [Test]
-    public async Task AddAshlarSqliteRegistersMinimalPersistenceServices()
+    public void AddAshlarSqliteRegistersMinimalPersistenceServices()
     {
         var services = new ServiceCollection();
 
         services.AddAshlarSqlite(GetConnectionString());
 
-        await using var provider = services.BuildServiceProvider();
-        await using var scope = provider.CreateAsyncScope();
-
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(typeof(ISqliteConnectionProvider).IsNotPublic, Is.True);
             Assert.That(scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>(), Is.TypeOf<SqliteConnectionProvider>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>(), Is.TypeOf<SqliteTransactionManagerOwner>());
             Assert.That(scope.ServiceProvider.GetService<SqliteTransactionManager>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<SqliteSchemaManager>(), Is.Not.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarSchemaDiagnostics>(), Is.TypeOf<SqliteSchemaDiagnostics>());
@@ -83,6 +81,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
         services.AddPasswordHasher<PasswordHasherV1>();
         services.AddAuthenticationProvider<LocalPasswordProvider>();
         services.AddAshlarSqlite(GetConnectionString());
+        services.AddSqliteProviderContractTestServices();
         services.AddAshlarAuthorization();
         services.AddAshlarNoMfaPolicy();
         services.AddAshlarPasskeys(options =>
@@ -115,6 +114,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             typeof(IAuthenticationRateLimiter),
             typeof(IAshlarSchemaDiagnostics));
         await using var scope = provider.CreateAsyncScope();
+        scope.ServiceProvider.AssertSqliteProviderContractsRegistered();
 
         using (Assert.EnterMultipleScope())
         {
@@ -123,7 +123,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiter>(), Is.TypeOf<SqliteAuthenticationRateLimiter>());
             Assert.That(scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
-            Assert.That(scope.ServiceProvider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(), Is.TypeOf<SqliteSecurityEventSink>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IPersistentSecurityEventSink>(), Is.TypeOf<SqliteSecurityEventSink>());
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
         }
     }

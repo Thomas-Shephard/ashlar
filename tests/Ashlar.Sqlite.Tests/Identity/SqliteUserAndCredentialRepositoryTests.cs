@@ -13,6 +13,7 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
     {
         var services = new ServiceCollection();
         services.AddAshlarSqlite(GetConnectionString());
+        services.AddSqliteProviderContractTestServices();
         _serviceProvider = services.BuildServiceProvider();
         await _serviceProvider.InitializeAshlarSqliteSchemaAsync();
     }
@@ -264,8 +265,8 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
     private static RepositoryFacade GetRepository(IServiceProvider serviceProvider)
     {
         return new RepositoryFacade(
-            serviceProvider.GetRequiredAshlarProviderService<IUserRepository>(),
-            serviceProvider.GetRequiredAshlarProviderService<ICredentialRepository>());
+            serviceProvider.GetRequiredService<IUserRepository>(),
+            serviceProvider.GetRequiredService<ICredentialRepository>());
     }
 
     private static async Task<AshlarUser> CreateUserAsync(RepositoryFacade repo)

@@ -4,12 +4,24 @@ using System.Text.Json;
 
 namespace Ashlar.Postgres.Webhooks;
 
-internal sealed class PostgresSecurityEventWebhookEnqueuer(
-    IPostgresConnectionProvider connectionProvider,
-    TimeProvider timeProvider) : IAshlarSecurityEventWebhookEnqueuer
+internal sealed class PostgresSecurityEventWebhookEnqueuer : IAshlarSecurityEventWebhookEnqueuer, IDurableSecurityEventFanOutHandler
 {
-    private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
-    private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+    private readonly IPostgresConnectionProvider _connectionProvider;
+    private readonly TimeProvider _timeProvider;
+    private readonly AshlarSecurityEventWebhookOutboxHandler _handler;
+
+    public PostgresSecurityEventWebhookEnqueuer(
+        IPostgresConnectionProvider connectionProvider,
+        TimeProvider timeProvider,
+        AshlarSecurityEventWebhookDeliveryFactory deliveryFactory)
+    {
+        _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _handler = new AshlarSecurityEventWebhookOutboxHandler(deliveryFactory, this);
+    }
+
+    public Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default) =>
+        _handler.HandleAsync(securityEvent, cancellationToken);
 
     public async Task EnqueueAsync(AshlarSecurityEventWebhookDelivery delivery, CancellationToken cancellationToken = default)
     {

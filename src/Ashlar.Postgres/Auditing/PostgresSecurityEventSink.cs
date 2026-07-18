@@ -14,19 +14,6 @@ internal sealed class PostgresSecurityEventSink : PersistentSecurityEventSink
         _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     }
 
-    public async Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default)
-    {
-        const string sql = """
-            SELECT COUNT(*)::int
-            FROM ashlar_security_events
-            WHERE user_id = @UserId AND occurred_at >= @Since
-            """;
-
-        await using var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        var command = new CommandDefinition(sql, new { UserId = userId, Since = since }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-        return await connectionHandle.Connection.ExecuteScalarAsync<int>(command);
-    }
-
     protected override async Task PersistAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken)
     {
         const string sql = """
@@ -67,8 +54,18 @@ internal sealed class PostgresSecurityEventSink : PersistentSecurityEventSink
     }
 }
 
-internal sealed class PostgresUserSecurityEventSummaryRepository(PostgresSecurityEventSink sink) : IUserSecurityEventSummaryRepository
+internal sealed class PostgresUserSecurityEventSummaryRepository(IPostgresConnectionProvider connectionProvider) : IUserSecurityEventSummaryRepository
 {
-    public Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default) =>
-        sink.CountSecurityEventsForUserAsync(userId, since, cancellationToken);
+    public async Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            SELECT COUNT(*)::int
+            FROM ashlar_security_events
+            WHERE user_id = @UserId AND occurred_at >= @Since
+            """;
+
+        await using var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken);
+        var command = new CommandDefinition(sql, new { UserId = userId, Since = since }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+        return await connectionHandle.Connection.ExecuteScalarAsync<int>(command);
+    }
 }

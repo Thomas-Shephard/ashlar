@@ -12,6 +12,7 @@ internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
 
         var services = new ServiceCollection();
         services.AddAshlarPostgres(GetConnectionString());
+        services.AddPostgresProviderContractTestServices();
         _serviceProvider = services.BuildServiceProvider();
 
         await _serviceProvider.InitializeAshlarPostgresSchemaAsync();
@@ -30,7 +31,7 @@ internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
         }
     }
 
-    private PostgresInvitationRepository GetRepository() => (PostgresInvitationRepository)_serviceProvider.GetRequiredAshlarProviderService<IInvitationRepository>();
+    private PostgresInvitationRepository GetRepository() => (PostgresInvitationRepository)_serviceProvider.GetRequiredService<IInvitationRepository>();
 
     [Test]
     public async Task CreateAndFetchInvitationShouldSucceed()

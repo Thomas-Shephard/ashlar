@@ -11,6 +11,7 @@ internal sealed class SqliteBootstrapStateRepositoryTests : SqliteTestBase
     {
         var services = new ServiceCollection();
         services.AddAshlarSqlite(GetConnectionString());
+        services.AddSqliteProviderContractTestServices();
         _serviceProvider = services.BuildServiceProvider();
         await _serviceProvider.InitializeAshlarSqliteSchemaAsync();
     }
@@ -31,8 +32,8 @@ internal sealed class SqliteBootstrapStateRepositoryTests : SqliteTestBase
     public async Task BootstrapStatusStartsUninitializedThenInitializesOnce()
     {
         await using var scope = _serviceProvider.CreateAsyncScope();
-        var identity = scope.ServiceProvider.GetRequiredAshlarProviderService<IUserRepository>();
-        var repository = scope.ServiceProvider.GetRequiredAshlarProviderService<IBootstrapStateRepository>();
+        var identity = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+        var repository = scope.ServiceProvider.GetRequiredService<IBootstrapStateRepository>();
         var user = new AshlarUser { Id = Guid.NewGuid(), DisplayEmail = "admin@example.com", AccountState = UserAccountState.Active };
         await identity.CreateUserAsync(user);
 
@@ -55,8 +56,8 @@ internal sealed class SqliteBootstrapStateRepositoryTests : SqliteTestBase
     {
         await using (var scope = _serviceProvider.CreateAsyncScope())
         {
-            var identity = scope.ServiceProvider.GetRequiredAshlarProviderService<IUserRepository>();
-            var repository = scope.ServiceProvider.GetRequiredAshlarProviderService<IBootstrapStateRepository>();
+            var identity = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+            var repository = scope.ServiceProvider.GetRequiredService<IBootstrapStateRepository>();
             var transactions = scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>();
             var user = new AshlarUser { Id = Guid.NewGuid(), DisplayEmail = "rollback-admin@example.com", AccountState = UserAccountState.Active };
             await identity.CreateUserAsync(user);
@@ -67,7 +68,7 @@ internal sealed class SqliteBootstrapStateRepositoryTests : SqliteTestBase
         }
 
         await using var verificationScope = _serviceProvider.CreateAsyncScope();
-        var verificationRepository = verificationScope.ServiceProvider.GetRequiredAshlarProviderService<IBootstrapStateRepository>();
+        var verificationRepository = verificationScope.ServiceProvider.GetRequiredService<IBootstrapStateRepository>();
         Assert.That(await verificationRepository.GetBootstrapStatusAsync(), Is.EqualTo(BootstrapStatus.Uninitialized));
     }
 }

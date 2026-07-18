@@ -43,7 +43,9 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddAshlarSqlite(GetConnectionString());
+        services.AddSqliteProviderContractTestServices();
         services.AddAshlarSqliteSecurityEventWebhookOutbox();
+        services.AddSqliteWebhookProviderContractTestService();
         services.AddSingleton<TimeProvider>(_timeProvider);
         _serviceProvider = services.BuildServiceProvider();
 
@@ -94,7 +96,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     public async Task EnqueueStoresSafeBodyHeadersAndSignatureWithoutSecret()
     {
         var delivery = CreateDelivery("shared-secret");
-        var enqueuer = _serviceProvider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>();
+        var enqueuer = _serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>();
 
         await enqueuer.EnqueueAsync(delivery);
 
@@ -125,7 +127,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     public async Task EnqueueRollsBackInsideAshlarTransaction()
     {
         var txProvider = _serviceProvider.GetRequiredService<AshlarDurableTransactionProvider>();
-        var enqueuer = _serviceProvider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>();
+        var enqueuer = _serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>();
 
         await using (await txProvider.BeginTransactionAsync())
         {
@@ -611,6 +613,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         var connectionProvider = _serviceProvider.GetRequiredService<ISqliteConnectionProvider>();
         var options = Options.Create(new SqliteSecurityEventWebhookOutboxOptions());
         var destinationValidator = CreateDestinationValidator();
+        var deliveryFactory = _serviceProvider.GetRequiredService<AshlarSecurityEventWebhookDeliveryFactory>();
 
         using (Assert.EnterMultipleScope())
         {
@@ -621,8 +624,9 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.That(SqliteSecurityEventWebhookOutboxOptions.Validate(new SqliteSecurityEventWebhookOutboxOptions { InitialRetryDelay = TimeSpan.Zero }), Is.False);
             Assert.That(SqliteSecurityEventWebhookOutboxOptions.Validate(new SqliteSecurityEventWebhookOutboxOptions { PollingInterval = TimeSpan.Zero }), Is.False);
             Assert.Throws<ArgumentNullException>(() => SqliteSecurityEventWebhookOutboxOptions.Validate(null!));
-            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookEnqueuer(null!, _timeProvider));
-            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookEnqueuer(connectionProvider, null!));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookEnqueuer(null!, _timeProvider, deliveryFactory));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookEnqueuer(connectionProvider, null!, deliveryFactory));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookEnqueuer(connectionProvider, _timeProvider, null!));
             Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(null!, _timeProvider, options, Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator));
             Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(_serviceProvider, null!, options, Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator));
             Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(_serviceProvider, _timeProvider, null!, Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator));
@@ -749,6 +753,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         services.AddAshlarSqlite(GetConnectionString());
         services.AddAshlarSqliteSecurityEventWebhookOutbox();
         services.AddAshlarSecurityEventWebhookOutbox();
+        services.AddSqliteProviderContractTestServices();
+        services.AddSqliteWebhookProviderContractTestService();
 
         await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         await using var scope = provider.CreateAsyncScope();
@@ -756,9 +762,9 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
-            Assert.That(scope.ServiceProvider.GetServices<IDurableSecurityEventFanOutHandler>().Single(), Is.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+            Assert.That(scope.ServiceProvider.GetServices<IDurableSecurityEventFanOutHandler>().Single(), Is.TypeOf<SqliteSecurityEventWebhookEnqueuer>());
             Assert.That(scope.ServiceProvider.GetServices<ISecurityEventHandler>(), Is.Empty);
-            Assert.That(scope.ServiceProvider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>(), Is.TypeOf<SqliteSecurityEventWebhookEnqueuer>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>(), Is.TypeOf<SqliteSecurityEventWebhookEnqueuer>());
         }
     }
 
@@ -840,7 +846,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
 
     private async Task EnqueueAsync(AshlarSecurityEventWebhookDelivery delivery)
     {
-        await _serviceProvider.GetRequiredAshlarProviderService<IAshlarSecurityEventWebhookEnqueuer>().EnqueueAsync(delivery);
+        await _serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>().EnqueueAsync(delivery);
     }
 
     private SqliteSecurityEventWebhookOutboxDispatcher CreateDispatcher(

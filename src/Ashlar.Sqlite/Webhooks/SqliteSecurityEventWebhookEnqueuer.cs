@@ -3,12 +3,24 @@ using System.Text.Json;
 
 namespace Ashlar.Sqlite.Webhooks;
 
-internal sealed class SqliteSecurityEventWebhookEnqueuer(
-    ISqliteConnectionProvider connectionProvider,
-    TimeProvider timeProvider) : IAshlarSecurityEventWebhookEnqueuer
+internal sealed class SqliteSecurityEventWebhookEnqueuer : IAshlarSecurityEventWebhookEnqueuer, IDurableSecurityEventFanOutHandler
 {
-    private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
-    private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+    private readonly ISqliteConnectionProvider _connectionProvider;
+    private readonly TimeProvider _timeProvider;
+    private readonly AshlarSecurityEventWebhookOutboxHandler _handler;
+
+    public SqliteSecurityEventWebhookEnqueuer(
+        ISqliteConnectionProvider connectionProvider,
+        TimeProvider timeProvider,
+        AshlarSecurityEventWebhookDeliveryFactory deliveryFactory)
+    {
+        _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _handler = new AshlarSecurityEventWebhookOutboxHandler(deliveryFactory, this);
+    }
+
+    public Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default) =>
+        _handler.HandleAsync(securityEvent, cancellationToken);
 
     public async Task EnqueueAsync(AshlarSecurityEventWebhookDelivery delivery, CancellationToken cancellationToken = default)
     {

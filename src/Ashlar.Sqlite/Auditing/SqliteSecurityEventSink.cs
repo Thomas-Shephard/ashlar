@@ -23,7 +23,6 @@ internal sealed class SqliteSecurityEventSink : PersistentSecurityEventSink
     private const string OutcomeParameter = "$outcome";
     private const string FailureReasonParameter = "$failureReason";
     private const string PropertiesParameter = "$properties";
-    private const string SinceParameter = "$since";
 
     private readonly ISqliteConnectionProvider _connectionProvider;
 
@@ -31,25 +30,6 @@ internal sealed class SqliteSecurityEventSink : PersistentSecurityEventSink
         : base(logger ?? NullLogger<SqliteSecurityEventSink>.Instance)
     {
         _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
-    }
-
-    public async Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default)
-    {
-        const string sql = """
-            SELECT COUNT(*)
-            FROM ashlar_security_events
-            WHERE user_id = $userId AND occurred_at >= $since;
-            """;
-
-        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using var command = handle.Connection.CreateCommand();
-        command.Transaction = handle.Transaction;
-        command.CommandText = sql;
-        command.AddGuidParameter(UserIdParameter, userId);
-        command.AddDateTimeOffsetParameter(SinceParameter, since);
-
-        var result = await command.ExecuteScalarAsync(cancellationToken);
-        return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     protected override async Task PersistAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken)
@@ -91,8 +71,27 @@ internal sealed class SqliteSecurityEventSink : PersistentSecurityEventSink
     }
 }
 
-internal sealed class SqliteUserSecurityEventSummaryRepository(SqliteSecurityEventSink sink) : IUserSecurityEventSummaryRepository
+internal sealed class SqliteUserSecurityEventSummaryRepository(ISqliteConnectionProvider connectionProvider) : IUserSecurityEventSummaryRepository
 {
-    public Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default) =>
-        sink.CountSecurityEventsForUserAsync(userId, since, cancellationToken);
+    private const string UserIdParameter = "$userId";
+    private const string SinceParameter = "$since";
+
+    public async Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            SELECT COUNT(*)
+            FROM ashlar_security_events
+            WHERE user_id = $userId AND occurred_at >= $since;
+            """;
+
+        await using var handle = await connectionProvider.GetConnectionAsync(cancellationToken);
+        await using var command = handle.Connection.CreateCommand();
+        command.Transaction = handle.Transaction;
+        command.CommandText = sql;
+        command.AddGuidParameter(UserIdParameter, userId);
+        command.AddDateTimeOffsetParameter(SinceParameter, since);
+
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
+    }
 }

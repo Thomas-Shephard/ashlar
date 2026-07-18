@@ -264,4 +264,20 @@ Set-Content -Path (Join-Path $providerProjectPath "Class1.cs") -Value $providerS
 Invoke-DotNet restore $providerProjectPath --configfile (Join-Path $smokeProjectPath "nuget.config")
 Invoke-DotNet build $providerProjectPath --configuration $Configuration --no-restore
 
+$forbiddenResolverSource = @'
+using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.ProviderContracts.DependencyInjection;
+
+internal static class ForbiddenResolverSmoke
+{
+    public static IUserRepository Resolve(IServiceProvider provider) =>
+        provider.GetRequiredAshlarProviderService<IUserRepository>();
+}
+'@
+Set-Content -Path (Join-Path $providerProjectPath "Class1.cs") -Value $forbiddenResolverSource -Encoding utf8
+& dotnet build $providerProjectPath --configuration $Configuration --no-restore --nologo
+if ($LASTEXITCODE -eq 0) {
+    throw "Ashlar.ProviderContracts must not expose generic provider-owned service resolution."
+}
+
 Write-Host "Package consumption smoke test passed."

@@ -116,7 +116,8 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "OtherTenant", UserId = userId, TenantId = otherTenantId, OccurredAt = now });
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "NoUser", TenantId = tenantId, OccurredAt = now });
 
-        var count = await new SqliteUserSecurityEventSummaryRepository(CreateSink())
+        var count = await new SqliteUserSecurityEventSummaryRepository(
+                _serviceProvider.GetRequiredService<ISqliteConnectionProvider>())
             .CountSecurityEventsForUserAsync(userId, since);
         var eventTypeCount = await CountEventsByTypeAsync("Recent");
         var tenantCount = await CountEventsByTenantAsync(tenantId);
