@@ -22,7 +22,10 @@ internal static class ExternalIdentityClaimFilter
         var claims = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         foreach (var claim in principal.Claims)
         {
-            if (string.IsNullOrWhiteSpace(claim.Type) || string.IsNullOrWhiteSpace(claim.Value) || SensitiveClaimTypes.Contains(claim.Type))
+            if (string.IsNullOrWhiteSpace(claim.Type)
+                || string.IsNullOrWhiteSpace(claim.Value)
+                || SensitiveClaimTypes.Contains(claim.Type)
+                || claim.Type == AshlarOAuthAuthenticationProperties.OidcIssuerClaim)
             {
                 continue;
             }

@@ -51,7 +51,7 @@ public static class GoogleOidcExtensions
         ArgumentNullException.ThrowIfNull(options);
         var normalizedHostedDomains = NormalizeHostedDomains(hostedDomains);
 
-        return options.AddOidcProvider(providerName, AshlarOidcProviderKeyMode.Subject, oidcOptions =>
+        return options.AddOidcProvider(providerName, oidcOptions =>
         {
             oidcOptions.Authority = GoogleOidcDefaults.Authority;
             oidcOptions.ResponseType = "code";

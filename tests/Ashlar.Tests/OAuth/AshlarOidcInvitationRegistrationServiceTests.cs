@@ -4,7 +4,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Ashlar.Auditing;
-using Ashlar.OAuth.Providers.Google;
 using Ashlar.OAuth.Providers.Microsoft;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
@@ -35,7 +34,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
             Assert.That(result.Registered, Is.True);
             Assert.That(result.UserId, Is.EqualTo(userId));
-            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("subject"));
+            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo(CreateExpectedIssuerSubjectKey("https://issuer.example", "subject")));
             Assert.That(observedRequest?.ProviderKey, Is.EqualTo(result.Assertion?.ProviderKey));
             Assert.That(observedRequest?.UserId, Is.EqualTo(userId));
             Assert.That(result.Assertion?.Claims, Does.Not.ContainKey("access_token"));
@@ -89,6 +88,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var service = CreateService(invitations.Object);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
         [
+            new Claim("iss", "https://issuer.example"),
             new Claim("sub", "subject"),
             new Claim("name", "Principal Name"),
             new Claim("email", "invitee@example.com"),
@@ -173,7 +173,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var service = CreateService(
             invitations.Object,
             linkService: linker.Object,
-            provider: new AshlarOidcProviderOptions("Google", "Google", _ => { }, AshlarOidcProviderKeyMode.IssuerAndSubject));
+            provider: new AshlarOidcProviderOptions("Google", "Google", _ => { }));
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -191,9 +191,10 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     [Test]
     public async Task RegisterShouldReturnInvalidPrincipalWhenIssuerQualifiedProviderKeyMissingIssuer()
     {
-        var service = CreateService(provider: new AshlarOidcProviderOptions("Google", "Google", _ => { }, AshlarOidcProviderKeyMode.IssuerAndSubject));
+        var service = CreateService(provider: new AshlarOidcProviderOptions("Google", "Google", _ => { }));
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", "subject"), new Claim("email", "invitee@example.com"), new Claim("email_verified", "true")], "oidc"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, principal));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidPrincipal));
     }
@@ -256,7 +257,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
-            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("subject"));
+            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo(CreateExpectedIssuerSubjectKey("https://issuer.example", "subject")));
         }
 
         invitations.Verify(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -1050,7 +1051,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     private static AshlarOAuthOptions CreateOptions(AshlarOidcProviderOptions? provider = null)
     {
         var options = new AshlarOAuthOptions();
-        options.AddGoogle();
+        options.AddOidcProvider("Google", _ => { });
         if (provider != null)
         {
             var providers = (Dictionary<string, AshlarOidcProviderOptions>)typeof(AshlarOAuthOptions)
@@ -1061,7 +1062,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         return options;
     }
 
-    private static ClaimsPrincipal CreatePrincipal(string? subject, string? email, string? emailVerified, string? issuer = null)
+    private static ClaimsPrincipal CreatePrincipal(string? subject, string? email, string? emailVerified, string? issuer = "https://issuer.example")
     {
         var claims = new List<Claim>();
         if (issuer != null)
@@ -1087,6 +1088,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     private static ClaimsPrincipal CreatePrincipalWithClaim(string subject, string claimType, string claimValue)
     {
         return new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("iss", "https://issuer.example"),
             new Claim("sub", subject),
             new Claim(claimType, claimValue)
         ], "oidc"));
