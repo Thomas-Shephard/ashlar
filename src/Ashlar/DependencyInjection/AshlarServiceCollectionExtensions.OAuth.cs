@@ -43,7 +43,8 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped(provider => new AshlarExternalAccountLinkService(
             provider.GetRequiredService<IValidatedExternalCredentialLinkService>(),
             provider.GetRequiredService<IFreshAuthenticationProofValidator>(),
-            provider.GetRequiredService<IAccountSecurityAdministrationService>(),
+            provider.GetRequiredService<ActiveSessionFreshProofValidator>(),
+            provider.GetRequiredService<IAccountSecurityMutationExecutor>(),
             provider.GetRequiredService<global::Microsoft.Extensions.Options.IOptionsMonitor<AshlarOAuthOptions>>(),
             provider.GetService<TimeProvider>() ?? TimeProvider.System,
             provider.GetService<ISecurityEventSink>()));

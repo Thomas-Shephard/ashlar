@@ -19,7 +19,8 @@ public sealed class AshlarExternalAccountLinkService
 
     private readonly IValidatedExternalCredentialLinkService _credentialLinkService;
     private readonly IFreshAuthenticationProofValidator _proofValidator;
-    private readonly IAccountSecurityAdministrationService _accountSecurityAdministration;
+    private readonly ActiveSessionFreshProofValidator _unlinkProofValidator;
+    private readonly IAccountSecurityMutationExecutor _accountSecurityMutationExecutor;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _options;
     private readonly TimeProvider _timeProvider;
     private readonly ISecurityEventSink _securityEvents;
@@ -27,14 +28,16 @@ public sealed class AshlarExternalAccountLinkService
     internal AshlarExternalAccountLinkService(
         IValidatedExternalCredentialLinkService credentialLinkService,
         IFreshAuthenticationProofValidator proofValidator,
-        IAccountSecurityAdministrationService accountSecurityAdministration,
+        ActiveSessionFreshProofValidator unlinkProofValidator,
+        IAccountSecurityMutationExecutor accountSecurityMutationExecutor,
         IOptionsMonitor<AshlarOAuthOptions> options,
         TimeProvider timeProvider,
         ISecurityEventSink? securityEventSink = null)
     {
         _credentialLinkService = credentialLinkService ?? throw new ArgumentNullException(nameof(credentialLinkService));
         _proofValidator = proofValidator ?? throw new ArgumentNullException(nameof(proofValidator));
-        _accountSecurityAdministration = accountSecurityAdministration ?? throw new ArgumentNullException(nameof(accountSecurityAdministration));
+        _unlinkProofValidator = unlinkProofValidator ?? throw new ArgumentNullException(nameof(unlinkProofValidator));
+        _accountSecurityMutationExecutor = accountSecurityMutationExecutor ?? throw new ArgumentNullException(nameof(accountSecurityMutationExecutor));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _securityEvents = securityEventSink ?? new NullSecurityEventSink();
@@ -212,13 +215,16 @@ public sealed class AshlarExternalAccountLinkService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (currentUserId == Guid.Empty)
+        if (!request.Audit.ActorUserId.Equals(currentUserId))
         {
+            await RecordUnlinkFailureAsync(currentUserId, request, AshlarFailureCodes.ValidationErrorValue);
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
         }
 
-        if (!request.Audit.ActorUserId.Equals(currentUserId))
+        if (await _unlinkProofValidator.ValidateAsync(
+                currentUserId, request.Tenant, freshMfaProof, currentSessionId, UnlinkPurpose, cancellationToken) is { } proofFailure)
         {
+            await RecordUnlinkFailureAsync(currentUserId, request, proofFailure.Value);
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
         }
 
@@ -229,29 +235,11 @@ public sealed class AshlarExternalAccountLinkService
         }
         var provider = new AuthenticationProviderKey(providerOptions.Type, providerOptions.ProviderName);
 
-        if (FreshVerificationProofValidator.ValidateMfaProof(currentUserId, request.Tenant, freshMfaProof, currentSessionId, _timeProvider.GetUtcNow(), UnlinkPurpose) is { } proofFailure)
-        {
-            await _securityEvents.RecordAsync(new AshlarSecurityEvent
-            {
-                Id = Guid.NewGuid(),
-                EventType = AshlarSecurityEventTypes.UserCredentialsRevoked,
-                OccurredAt = _timeProvider.GetUtcNow(),
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = currentUserId,
-                TenantId = request.Tenant.TenantId,
-                ActorUserId = request.Audit.ActorUserId,
-                Provider = provider,
-                IpAddress = request.Audit.IpAddress,
-                UserAgent = request.Audit.UserAgent,
-                CorrelationId = request.Audit.CorrelationId,
-                FailureReason = proofFailure.Value
-            }, cancellationToken);
-            return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
-        }
-
-        var actor = new AccountSecurityActorContext(currentUserId, request.Tenant, currentSessionId!.Value, freshMfaProof!, request.Audit);
-        var revokeResult = await _accountSecurityAdministration.RevokeCredentialsAsync(new RevokeAccountCredentialsRequest(
-            currentUserId, provider, actor, request.Tenant, reason: request.Reason, preservePrimarySignInMethod: true), cancellationToken);
+        var revokeResult = await _accountSecurityMutationExecutor.RevokeCredentialsAsync(
+            currentUserId,
+            provider,
+            new AccountSecurityOperationRequest(request.Audit, request.Tenant, request.Reason, PreservePrimarySignInMethod: true),
+            cancellationToken);
         if (!revokeResult.Succeeded)
         {
             return new AshlarExternalAccountUnlinkResult(MapRevokeFailure(revokeResult), revokeResult);
@@ -263,6 +251,22 @@ public sealed class AshlarExternalAccountLinkService
                 : AshlarExternalAccountUnlinkStatus.NotLinked,
             revokeResult);
     }
+
+    private Task RecordUnlinkFailureAsync(Guid userId, AshlarExternalAccountUnlinkRequest request, string failureReason) =>
+        _securityEvents.RecordAsync(new AshlarSecurityEvent
+        {
+            Id = Guid.NewGuid(),
+            EventType = AshlarSecurityEventTypes.UserCredentialsRevoked,
+            OccurredAt = _timeProvider.GetUtcNow(),
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = userId,
+            TenantId = request.Tenant.TenantId,
+            ActorUserId = userId,
+            IpAddress = request.Audit.IpAddress,
+            UserAgent = request.Audit.UserAgent,
+            CorrelationId = request.Audit.CorrelationId,
+            FailureReason = failureReason
+        }, CancellationToken.None);
 
     private static AshlarExternalAccountUnlinkStatus MapRevokeFailure(Result<AccountSecurityOperationResult> result)
     {

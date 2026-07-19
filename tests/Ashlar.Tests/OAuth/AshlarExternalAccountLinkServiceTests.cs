@@ -10,9 +10,6 @@ using Moq;
 
 namespace Ashlar.Tests.OAuth;
 
-/// <summary>Combines account-security test surfaces for a single mock proxy.</summary>
-public interface ITestAccountSecurityService : IAccountSecurityService, IAccountSecurityAdministrationService;
-
 internal sealed class AshlarExternalAccountLinkServiceTests
 {
 
@@ -20,17 +17,19 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public void ConstructorShouldRejectNullDependencies()
     {
         var credentialService = new ValidatedExternalCredentialLinkServiceMock().Object;
-        var accountSecurityAdministration = Mock.Of<IAccountSecurityAdministrationService>();
+        var accountSecurityAdministration = CreateAccountSecurityService();
         var options = new TestOptionsMonitor(new AshlarOAuthOptions());
         var proofValidator = new StubProofValidator();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(null!, proofValidator, accountSecurityAdministration, options, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, null!, accountSecurityAdministration, options, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, proofValidator, null!, options, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, proofValidator, accountSecurityAdministration, null!, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, proofValidator, accountSecurityAdministration, options, null!));
+            var unlinkProofValidator = CreateUnlinkProofValidator(TimeProvider.System);
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(null!, proofValidator, unlinkProofValidator, accountSecurityAdministration, options, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, null!, unlinkProofValidator, accountSecurityAdministration, options, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, proofValidator, null!, accountSecurityAdministration, options, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, proofValidator, unlinkProofValidator, null!, options, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, proofValidator, unlinkProofValidator, accountSecurityAdministration, null!, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, proofValidator, unlinkProofValidator, accountSecurityAdministration, options, null!));
         }
     }
 
@@ -105,19 +104,20 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
-    public async Task UnlinkExternalAccountShouldDelegateAuthorizationAndTargetLookupToAdministrationBoundary()
+    public async Task UnlinkExternalAccountShouldPreservePrimarySignInMethodThroughMutationExecutor()
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(revokeResult:
             Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.ValidationError));
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(actorUserId: userId));
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
-        accountSecurity.Verify(s => s.RevokeCredentialsAsync(
-            It.Is<RevokeAccountCredentialsRequest>(request => request.PreservePrimarySignInMethod),
-            It.IsAny<CancellationToken>()), Times.Once);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
+            Assert.That(accountSecurity.Request?.PreservePrimarySignInMethod, Is.True);
+        }
     }
 
     [Test]
@@ -896,16 +896,10 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var tenant = new TenantContext(Guid.NewGuid());
-        RevokeAccountCredentialsRequest? observedRequest = null;
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
-            revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
-        accountSecurity
-            .Setup(s => s.RevokeCredentialsAsync(It.Is<RevokeAccountCredentialsRequest>(r => r.TargetUserId == userId && r.Provider == new AuthenticationProviderKey(ProviderType.Oidc, "Google")), It.IsAny<CancellationToken>()))
-            .Callback<RevokeAccountCredentialsRequest, CancellationToken>((request, _) => observedRequest = request)
-            .ReturnsAsync(Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
+            Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         var request = CreateRequest(tenant, userId);
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", request);
 
@@ -913,8 +907,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Unlinked));
             Assert.That(result.AccountSecurityOperation?.Value?.CredentialsRevoked, Is.EqualTo(1));
-            Assert.That(observedRequest!.Audit, Is.SameAs(request.Audit));
-            Assert.That(observedRequest.Tenant, Is.EqualTo(request.Tenant));
+            Assert.That(accountSecurity.Request!.Audit, Is.SameAs(request.Audit));
+            Assert.That(accountSecurity.Request.Tenant, Is.EqualTo(request.Tenant));
         }
     }
 
@@ -925,14 +919,31 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService();
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, providerName, CreateRequest(actorUserId: userId));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.UnsupportedProvider));
-            accountSecurity.Verify(s => s.RevokeCredentialsAsync(It.IsAny<RevokeAccountCredentialsRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+            Assert.That(accountSecurity.RevokeCredentialsCallCount, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task UnlinkExternalAccountShouldRequireProofBeforeRevealingUnsupportedProvider()
+    {
+        var userId = Guid.NewGuid();
+        var accountSecurity = CreateAccountSecurityService();
+        var service = CreateService(accountSecurityService: accountSecurity);
+
+        var result = await service.UnlinkExternalAccountAsync(
+            userId, "NotConfigured", null, null, CreateRequest(actorUserId: userId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
+            Assert.That(accountSecurity.RevokeCredentialsCallCount, Is.Zero);
         }
     }
 
@@ -941,7 +952,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var service = CreateService(accountSecurityService: CreateAccountSecurityService(revokeResult:
-            Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound)).Object);
+            Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound)));
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(actorUserId: userId));
 
@@ -968,10 +979,10 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var sessionId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(revokeResult:
             Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
-        var service = CreateService(accountSecurityService: accountSecurity.Object, timeProvider: timeProvider);
+        var service = CreateService(accountSecurityService: accountSecurity, timeProvider: timeProvider);
 
         var result = await service.UnlinkExternalAccountAsync(userId, "Google",
-            ExternalAccountLinkServiceTestExtensions.CreateProof(userId, tenant, sessionId, "external-account-unlinking", now), sessionId,
+            ExternalAccountLinkServiceTestExtensions.CreateProof(userId, tenant, sessionId, "external-account-unlinking", now, registerSession: true), sessionId,
             CreateRequest(tenant, userId));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Unlinked));
@@ -980,11 +991,24 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     [Test]
     public async Task UnlinkExternalAccountShouldRejectAuditActorMismatch()
     {
-        var service = CreateService();
+        var currentUserId = Guid.NewGuid();
+        var events = new Mock<ISecurityEventSink>();
+        var service = CreateService(securityEventSink: events.Object);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
 
-        var result = await service.UnlinkWithFreshProofAsync(Guid.NewGuid(), "Google", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(currentUserId, "Google", CreateRequest(), cancellation.Token);
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
+            events.Verify(sink => sink.RecordAsync(It.Is<AshlarSecurityEvent>(securityEvent =>
+                securityEvent.EventType == AshlarSecurityEventTypes.UserCredentialsRevoked &&
+                securityEvent.Outcome == SecurityEventOutcomes.Failure &&
+                securityEvent.UserId == currentUserId &&
+                securityEvent.ActorUserId == currentUserId &&
+                securityEvent.FailureReason == AshlarFailureCodes.ValidationErrorValue), CancellationToken.None), Times.Once);
+        }
     }
 
     [Test]
@@ -993,14 +1017,14 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(revokeResult:
             Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.TenantMismatch));
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(new TenantContext(Guid.NewGuid()), userId));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.TenantMismatch));
-            accountSecurity.Verify(s => s.GetUserSecurityPostureAsync(It.IsAny<Guid>(), It.IsAny<AccountSecurityPostureRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+            Assert.That(accountSecurity.RevokeCredentialsCallCount, Is.EqualTo(1));
         }
     }
 
@@ -1010,14 +1034,14 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(revokeResult:
             Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 0)));
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(actorUserId: userId));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.NotLinked));
-            accountSecurity.Verify(s => s.RevokeCredentialsAsync(It.IsAny<RevokeAccountCredentialsRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            Assert.That(accountSecurity.RevokeCredentialsCallCount, Is.EqualTo(1));
         }
     }
 
@@ -1026,25 +1050,17 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(
-                userId,
-                CreateCredentialItem(ProviderType.Oidc, "Google"),
-                CreateCredentialItem(ProviderType.Oidc, "Microsoft"),
-                CreateCredentialItem(ProviderType.OAuth, "Google"),
-                CreateCredentialItem(ProviderType.Local, "Local"),
-                CreateCredentialItem(ProviderType.Passkey, "Passkey", isAdditionalVerification: true),
-                CreateCredentialItem(ProviderType.Mfa, "totp", isPrimary: false, isAdditionalVerification: true)),
-            revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
+            Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         var events = new Mock<ISecurityEventSink>();
-        var service = CreateService(accountSecurityService: accountSecurity.Object, securityEventSink: events.Object);
+        var service = CreateService(accountSecurityService: accountSecurity, securityEventSink: events.Object);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(actorUserId: userId));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Unlinked));
-            accountSecurity.Verify(s => s.RevokeCredentialsAsync(It.Is<RevokeAccountCredentialsRequest>(r => r.TargetUserId == userId && r.Provider == new AuthenticationProviderKey(ProviderType.Oidc, "Google")), It.IsAny<CancellationToken>()), Times.Once);
-            accountSecurity.Verify(s => s.RevokeCredentialsAsync(It.Is<RevokeAccountCredentialsRequest>(r => r.TargetUserId == userId && (r.Provider.Type != ProviderType.Oidc || r.Provider.Name != "Google")), It.IsAny<CancellationToken>()), Times.Never);
+            Assert.That(accountSecurity.RevokeCredentialsCallCount, Is.EqualTo(1));
+            Assert.That(accountSecurity.Provider, Is.EqualTo(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
         }
     }
 
@@ -1054,14 +1070,14 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(revokeResult:
             Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.LastPrimarySignInMethod));
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(actorUserId: userId));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.WouldRemoveLastSignInMethod));
-            accountSecurity.Verify(s => s.RevokeCredentialsAsync(It.Is<RevokeAccountCredentialsRequest>(request => request.PreservePrimarySignInMethod), It.IsAny<CancellationToken>()), Times.Once);
+            Assert.That(accountSecurity.Request?.PreservePrimarySignInMethod, Is.True);
         }
     }
 
@@ -1070,21 +1086,109 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
-            revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
+            Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         var events = new Mock<ISecurityEventSink>();
-        var service = CreateService(accountSecurityService: accountSecurity.Object, securityEventSink: events.Object);
+        var service = CreateService(accountSecurityService: accountSecurity, securityEventSink: events.Object);
 
         var result = await service.UnlinkExternalAccountAsync(userId, "Google", null, null, CreateRequest(actorUserId: userId));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
-            accountSecurity.Verify(s => s.RevokeCredentialsAsync(It.IsAny<RevokeAccountCredentialsRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+            Assert.That(accountSecurity.RevokeCredentialsCallCount, Is.Zero);
             events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
                 e.EventType == AshlarSecurityEventTypes.UserCredentialsRevoked && e.Outcome == SecurityEventOutcomes.Failure &&
                 e.UserId == userId && e.ActorUserId == userId && e.FailureReason == AshlarFailureCodes.StepUpRequiredValue &&
-                e.Provider == new AuthenticationProviderKey(ProviderType.Oidc, "Google")), It.IsAny<CancellationToken>()), Times.Once);
+                e.Provider == null), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [TestCase(true, AshlarExternalAccountUnlinkStatus.Unlinked, 1)]
+    [TestCase(false, AshlarExternalAccountUnlinkStatus.Failed, 0)]
+    public async Task UnlinkExternalAccountShouldRequireActiveSourceSessionBeforeMutation(
+        bool sourceSessionExists, AshlarExternalAccountUnlinkStatus expectedStatus, int expectedMutations)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var session = new AuthenticationSession
+        {
+            Id = sessionId,
+            UserId = userId,
+            TokenHash = "hash",
+            CreatedAt = now,
+            AdditionalVerificationAt = now,
+            ExpiresAt = now.AddHours(1)
+        };
+        var sessions = new Mock<IAuthenticationSessionRepository>();
+        sessions.Setup(repository => repository.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(sourceSessionExists ? session : null);
+        var executor = CreateAccountSecurityService(revokeResult:
+            Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
+        var clock = new FixedTimeProvider(now);
+        var service = CreateService(accountSecurityService: executor, timeProvider: clock,
+            unlinkProofValidator: new ActiveSessionFreshProofValidator(sessions.Object, clock));
+
+        var result = await service.UnlinkExternalAccountAsync(userId, "Google",
+            ExternalAccountLinkServiceTestExtensions.CreateProof(userId, TenantContext.Global, sessionId, "external-account-unlinking", now),
+            sessionId, CreateRequest(actorUserId: userId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(expectedStatus));
+            Assert.That(executor.RevokeCredentialsCallCount, Is.EqualTo(expectedMutations));
+        }
+    }
+
+    [Test]
+    public async Task UnlinkExternalAccountShouldRejectDifferentSessionReturnedForSourceSessionLookup()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var sessions = new Mock<IAuthenticationSessionRepository>();
+        sessions.Setup(repository => repository.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationSession
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                TokenHash = "hash",
+                CreatedAt = now,
+                AdditionalVerificationAt = now,
+                ExpiresAt = now.AddHours(1)
+            });
+        var executor = CreateAccountSecurityService();
+        var clock = new FixedTimeProvider(now);
+        var service = CreateService(accountSecurityService: executor, timeProvider: clock,
+            unlinkProofValidator: new ActiveSessionFreshProofValidator(sessions.Object, clock));
+
+        var result = await service.UnlinkExternalAccountAsync(userId, "Google",
+            ExternalAccountLinkServiceTestExtensions.CreateProof(userId, TenantContext.Global, sessionId, "external-account-unlinking", now),
+            sessionId, CreateRequest(actorUserId: userId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
+            Assert.That(executor.RevokeCredentialsCallCount, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task UnlinkExternalAccountShouldRejectAccountSecurityAdministrationProof()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var executor = CreateAccountSecurityService();
+        var service = CreateService(accountSecurityService: executor);
+
+        var result = await service.UnlinkExternalAccountAsync(userId, "Google",
+            ExternalAccountLinkServiceTestExtensions.CreateProof(userId, TenantContext.Global, sessionId, "account-security-administration"),
+            sessionId, CreateRequest(actorUserId: userId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
+            Assert.That(executor.RevokeCredentialsCallCount, Is.Zero);
         }
     }
 
@@ -1105,21 +1209,20 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var verifiedAt = proofCase == "expired" ? DateTimeOffset.UtcNow.AddMinutes(-20) : DateTimeOffset.UtcNow;
         var proof = ExternalAccountLinkServiceTestExtensions.CreateProof(proofUserId, proofTenant, proofSessionId, purpose, verifiedAt, TimeSpan.FromMinutes(10));
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
-            revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
+            Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         var events = new Mock<ISecurityEventSink>();
-        var service = CreateService(accountSecurityService: accountSecurity.Object, securityEventSink: events.Object);
+        var service = CreateService(accountSecurityService: accountSecurity, securityEventSink: events.Object);
 
         var result = await service.UnlinkExternalAccountAsync(userId, "Google", proof, sessionId, CreateRequest(tenant, userId));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
-            accountSecurity.Verify(s => s.RevokeCredentialsAsync(It.IsAny<RevokeAccountCredentialsRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+            Assert.That(accountSecurity.RevokeCredentialsCallCount, Is.Zero);
             events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
                 e.EventType == AshlarSecurityEventTypes.UserCredentialsRevoked && e.Outcome == SecurityEventOutcomes.Failure &&
                 e.UserId == userId && e.ActorUserId == userId && e.TenantId == null &&
-                e.Provider == new AuthenticationProviderKey(ProviderType.Oidc, "Google") && e.FailureReason != null),
+                e.Provider == null && e.FailureReason != null),
                 It.IsAny<CancellationToken>()), Times.Once);
         }
     }
@@ -1128,10 +1231,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task UnlinkExternalAccountShouldReturnNotLinkedWhenRevocationFindsNoCredentials()
     {
         var userId = Guid.NewGuid();
-        var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
-            revokeResult: Result.Success(new AccountSecurityOperationResult(userId)));
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+        var accountSecurity = CreateAccountSecurityService(Result.Success(new AccountSecurityOperationResult(userId)));
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(actorUserId: userId));
 
@@ -1142,10 +1243,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task UnlinkExternalAccountShouldReturnNotLinkedWhenRevocationSucceedsWithoutValue()
     {
         var userId = Guid.NewGuid();
-        var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
-            revokeResult: new Result<AccountSecurityOperationResult>(true));
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+        var accountSecurity = CreateAccountSecurityService(new Result<AccountSecurityOperationResult>(true));
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(actorUserId: userId));
 
@@ -1157,9 +1256,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
-            revokeResult: Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound));
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+            Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound));
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(actorUserId: userId));
 
@@ -1171,9 +1269,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
-            revokeResult: Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.ValidationError));
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+            Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.ValidationError));
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(actorUserId: userId));
 
@@ -1184,10 +1281,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task UnlinkExternalAccountShouldReturnFailedForRevocationFailureWithoutDetails()
     {
         var userId = Guid.NewGuid();
-        var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
-            revokeResult: new Result<AccountSecurityOperationResult>(false));
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+        var accountSecurity = CreateAccountSecurityService(new Result<AccountSecurityOperationResult>(false));
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(actorUserId: userId));
 
@@ -1199,9 +1294,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
-            revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+            Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(TenantContext.Global, userId));
 
@@ -1213,7 +1307,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(revokeResult: Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.TenantMismatch));
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(TenantContext.Global, userId));
 
@@ -1225,9 +1319,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
-            revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+            Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(TenantContext.Global, userId));
 
@@ -1239,7 +1332,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(revokeResult: Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.TenantMismatch));
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(new TenantContext(Guid.NewGuid()), userId));
 
@@ -1251,7 +1344,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(revokeResult: Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.TenantMismatch));
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(new TenantContext(Guid.NewGuid()), userId));
 
@@ -1262,22 +1355,16 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task UnlinkExternalAccountShouldRevokeGitHubOAuthCredentials()
     {
         var userId = Guid.NewGuid();
-        AuthenticationProviderKey? observedProvider = null;
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, CreateCredentialItem(ProviderType.OAuth, "GitHub"), CreateCredentialItem(ProviderType.Local, "Local")),
-            revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
-        accountSecurity
-            .Setup(s => s.RevokeCredentialsAsync(It.Is<RevokeAccountCredentialsRequest>(r => r.TargetUserId == userId), It.IsAny<CancellationToken>()))
-            .Callback<RevokeAccountCredentialsRequest, CancellationToken>((request, _) => observedProvider = request.Provider)
-            .ReturnsAsync(Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
-        var service = CreateService(accountSecurityService: accountSecurity.Object, includeGitHub: true);
+            Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
+        var service = CreateService(accountSecurityService: accountSecurity, includeGitHub: true);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "GitHub", CreateRequest(actorUserId: userId));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Unlinked));
-            Assert.That(observedProvider, Is.EqualTo(new AuthenticationProviderKey(ProviderType.OAuth, "GitHub")));
+            Assert.That(accountSecurity.Provider, Is.EqualTo(new AuthenticationProviderKey(ProviderType.OAuth, "GitHub")));
         }
     }
 
@@ -1285,20 +1372,22 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public void UnlinkExternalAccountShouldRejectNullRequestBeforeOtherValidation()
     {
         var accountSecurity = CreateAccountSecurityService();
-        var service = CreateService(accountSecurityService: accountSecurity.Object);
+        var service = CreateService(accountSecurityService: accountSecurity);
 
         Assert.ThrowsAsync<ArgumentNullException>(() => service.UnlinkExternalAccountAsync(Guid.Empty, "Microsoft", null, null, null!));
-        accountSecurity.Verify(s => s.GetUserSecurityPostureAsync(It.IsAny<Guid>(), It.IsAny<AccountSecurityPostureRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.That(accountSecurity.RevokeCredentialsCallCount, Is.Zero);
     }
 
     private static AshlarExternalAccountLinkService CreateService(
         IValidatedExternalCredentialLinkService? credentialService = null,
-        IAccountSecurityService? accountSecurityService = null,
+        IAccountSecurityMutationExecutor? accountSecurityService = null,
         bool includeGitHub = false,
         Action<AshlarOAuthOptions>? configureOptions = null,
         TimeProvider? timeProvider = null,
         ISecurityEventSink? securityEventSink = null,
-        AshlarFailureCode? proofFailure = null)
+        AshlarFailureCode? proofFailure = null,
+        IFreshAuthenticationProofValidator? proofValidator = null,
+        ActiveSessionFreshProofValidator? unlinkProofValidator = null)
     {
         var options = new AshlarOAuthOptions();
         options.AddOidcProvider("Google", _ => { });
@@ -1320,8 +1409,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
 
         return new AshlarExternalAccountLinkService(
             credentialService,
-            new StubProofValidator(proofFailure),
-            accountSecurityService as IAccountSecurityAdministrationService ?? CreateAccountSecurityService().Object,
+            proofValidator ?? new StubProofValidator(proofFailure, timeProvider),
+            unlinkProofValidator ?? CreateUnlinkProofValidator(timeProvider ?? TimeProvider.System),
+            accountSecurityService ?? CreateAccountSecurityService(),
             new TestOptionsMonitor(options),
             timeProvider ?? TimeProvider.System,
             securityEventSink);
@@ -1338,71 +1428,30 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         return new AshlarExternalAccountLinkService(
             new ValidatedExternalCredentialLinkServiceMock().Object,
             new StubProofValidator(),
-            CreateAccountSecurityService().Object,
+            CreateUnlinkProofValidator(TimeProvider.System),
+            CreateAccountSecurityService(),
             new TestOptionsMonitor(options),
             TimeProvider.System);
     }
 
-    private static Mock<ITestAccountSecurityService> CreateAccountSecurityService(
-        AccountSecurityPosture? posture = null,
-        Result<AccountSecurityOperationResult>? revokeResult = null)
+    private static TestAccountSecurityMutationExecutor CreateAccountSecurityService(Result<AccountSecurityOperationResult>? revokeResult = null)
     {
-        var accountSecurity = new Mock<ITestAccountSecurityService>();
-        accountSecurity
-            .Setup(s => s.GetUserSecurityPostureAsync(It.IsAny<Guid>(), It.IsAny<AccountSecurityPostureRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid userId, AccountSecurityPostureRequest request, CancellationToken _) =>
-                Result.Success(posture ?? CreatePosture(userId, CreateCredentialItem(ProviderType.Local, "Local"))));
-        accountSecurity
-            .Setup(s => s.RevokeCredentialsAsync(It.IsAny<RevokeAccountCredentialsRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(revokeResult ?? Result.Success(new AccountSecurityOperationResult(Guid.NewGuid(), CredentialsRevoked: 1)));
-        return accountSecurity;
+        return new TestAccountSecurityMutationExecutor(
+            revokeResult ?? Result.Success(new AccountSecurityOperationResult(Guid.NewGuid(), CredentialsRevoked: 1)));
+    }
+
+    private static ActiveSessionFreshProofValidator CreateUnlinkProofValidator(TimeProvider timeProvider)
+    {
+        var sessions = new Mock<IAuthenticationSessionRepository>();
+        sessions.Setup(repository => repository.GetSessionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid sessionId, CancellationToken _) => ExternalAccountLinkServiceTestExtensions.TakeSession(sessionId));
+        return new ActiveSessionFreshProofValidator(sessions.Object, timeProvider);
     }
 
 
     private static AshlarExternalAccountUnlinkRequest CreateRequest(TenantContext? tenant = null, Guid? actorUserId = null)
     {
         return new AshlarExternalAccountUnlinkRequest(new AuditContext(actorUserId ?? Guid.NewGuid(), "127.0.0.1", "NUnit", "corr"), tenant ?? TenantContext.Global, "unlink");
-    }
-
-    private static AccountSecurityPosture CreatePosture(Guid userId, params CredentialPostureItem[] credentials)
-    {
-        var primary = credentials.Where(c => c.IsPrimaryCredential && c.IsAvailable).ToArray();
-        return new AccountSecurityPosture(
-            userId,
-            UserAccountState.Active,
-            true,
-            primary.Length > 0,
-            primary,
-            credentials.Where(c => c.IsAdditionalVerificationFactor).Select(c => new AdditionalVerificationFactorPosture(c.FactorType ?? c.Provider.Name, c.DisplayName, true, c.IsAvailable, [c.Provider])).ToArray(),
-            new AccountSecurityPolicyPosture(false, [], [], false, true, [], [], false),
-            credentials,
-            0,
-            null);
-    }
-
-    private static CredentialPostureItem CreateCredentialItem(
-        ProviderType type,
-        string providerName,
-        bool isPrimary = true,
-        bool isAdditionalVerification = false,
-        bool isAvailable = true)
-    {
-        var provider = new AuthenticationProviderKey(type, providerName);
-        return new CredentialPostureItem(
-            Guid.NewGuid(),
-            provider,
-            providerName,
-            isPrimary ? CredentialPosturePurpose.Primary : CredentialPosturePurpose.AdditionalVerification,
-            isAdditionalVerification ? providerName : null,
-            isPrimary,
-            isAdditionalVerification,
-            isAvailable,
-            true,
-            false,
-            DateTimeOffset.UtcNow,
-            null,
-            null,
-            isAvailable ? CredentialStatus.Active : CredentialStatus.Revoked);
     }
 
     private static ClaimsPrincipal CreatePrincipal(string subject, string email = "person@example.com", bool tokenClaims = false)
@@ -1485,19 +1534,50 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         }
     }
 
-    private sealed class StubProofValidator(AshlarFailureCode? failure = null) : IFreshAuthenticationProofValidator
+    private sealed class StubProofValidator(AshlarFailureCode? failure = null, TimeProvider? timeProvider = null) : IFreshAuthenticationProofValidator
     {
         public ValueTask<AshlarFailureCode?> ValidateAsync(Guid userId, TenantContext tenant, FreshMfaVerificationProof? proof,
-            Guid? currentSessionId, string? purpose, CancellationToken cancellationToken) => ValueTask.FromResult(failure);
+            Guid? currentSessionId, string? purpose, CancellationToken cancellationToken) => ValueTask.FromResult(
+                failure ?? FreshVerificationProofValidator.ValidateMfaProof(
+                    userId, tenant, proof, currentSessionId, (timeProvider ?? TimeProvider.System).GetUtcNow(), purpose));
 
         public ValueTask<AshlarFailureCode?> ValidateAsync(Guid userId, TenantContext tenant, FreshPrimaryAuthenticationProof? proof,
             Guid? currentSessionId, string? purpose, CancellationToken cancellationToken) =>
             ValueTask.FromResult(failure);
     }
+
+    private sealed class TestAccountSecurityMutationExecutor(Result<AccountSecurityOperationResult> result) : IAccountSecurityMutationExecutor
+    {
+        public int RevokeCredentialsCallCount { get; private set; }
+        public Guid UserId { get; private set; }
+        public AuthenticationProviderKey Provider { get; private set; }
+        public AccountSecurityOperationRequest? Request { get; private set; }
+
+        public Task<Result<AccountSecurityOperationResult>> RevokeCredentialsAsync(Guid userId, AuthenticationProviderKey provider,
+            AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
+        {
+            RevokeCredentialsCallCount++;
+            UserId = userId;
+            Provider = provider;
+            Request = request;
+            return Task.FromResult(result);
+        }
+
+        public Task<Result<AccountSecurityOperationResult>> SetUserAccountStateAsync(Guid userId, SetUserAccountStateRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Result<AccountSecurityOperationResult>> RevokeSessionsAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Result<AccountSecurityOperationResult>> ResetMfaAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Result<AccountSecurityOperationResult>> RevokeRememberedMfaDeviceAsync(Guid userId, Guid deviceId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Result<AccountSecurityOperationResult>> RevokeRememberedMfaDevicesAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
 }
 
 internal static class ExternalAccountLinkServiceTestExtensions
 {
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, AuthenticationSession> Sessions = new();
+
+    internal static AuthenticationSession? TakeSession(Guid sessionId) =>
+        Sessions.TryRemove(sessionId, out var session) ? session : null;
+
     public static Task<AshlarExternalAccountLinkResult> LinkWithFreshProofAsync(
         this AshlarExternalAccountLinkService service,
         Guid currentUserId,
@@ -1558,7 +1638,7 @@ internal static class ExternalAccountLinkServiceTestExtensions
         return service.UnlinkExternalAccountAsync(
             currentUserId,
             providerName,
-            CreateProof(currentUserId, tenant, sessionId, "external-account-unlinking"),
+            CreateProof(currentUserId, tenant, sessionId, "external-account-unlinking", registerSession: true),
             sessionId,
             request,
             cancellationToken);
@@ -1570,7 +1650,8 @@ internal static class ExternalAccountLinkServiceTestExtensions
         Guid sessionId,
         string purpose = "external-account-linking",
         DateTimeOffset? verifiedAt = null,
-        TimeSpan? freshnessWindow = null)
+        TimeSpan? freshnessWindow = null,
+        bool registerSession = false)
     {
         var resolvedVerifiedAt = verifiedAt ?? DateTimeOffset.UtcNow;
         var resolvedFreshnessWindow = freshnessWindow ?? TimeSpan.FromMinutes(10);
@@ -1584,6 +1665,10 @@ internal static class ExternalAccountLinkServiceTestExtensions
             AdditionalVerificationAt = resolvedVerifiedAt,
             ExpiresAt = resolvedVerifiedAt.AddHours(1)
         };
+        if (registerSession)
+        {
+            Sessions[sessionId] = session;
+        }
         var validatedSession = (ValidatedAuthenticationSession)Activator.CreateInstance(
             typeof(ValidatedAuthenticationSession),
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,

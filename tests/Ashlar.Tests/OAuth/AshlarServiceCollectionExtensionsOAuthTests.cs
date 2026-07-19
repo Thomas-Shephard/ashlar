@@ -14,6 +14,7 @@ using System.IdentityModel.Tokens.Jwt;
 using Ashlar.Auditing;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
+using Ashlar.Identity.Providers.Local;
 using Ashlar.Testing.DependencyInjection;
 using Ashlar.OAuth.Providers.Apple;
 using Ashlar.OAuth.Providers.GitHub;
@@ -59,33 +60,50 @@ internal sealed class AshlarServiceCollectionExtensionsOAuthTests
     }
 
     [Test]
-    public void CoreOAuthCompositionBuildsWithStrictValidation()
+    public async Task CoreOAuthCompositionShouldUnlinkWithExternalAccountProof()
     {
+        var now = DateTimeOffset.UtcNow;
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var user = new User { Id = userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Active };
+        var externalCredential = CreateCredential(userId, ProviderType.OAuth, "GitHub", now);
+        var localCredential = CreateCredential(userId, AuthenticationProviderKey.Local.Type, AuthenticationProviderKey.Local.Name, now);
         var services = new ServiceCollection();
         services.AddLogging();
-        var users = Mock.Of<IUserRepository>();
-        var credentials = Mock.Of<ICredentialRepository>();
-        var sessions = Mock.Of<IAuthenticationSessionRepository>();
-        services.AddAshlarProviderScoped(_ => users);
-        services.AddAshlarProviderScoped(_ => credentials);
+        var users = new Mock<IUserRepository>();
+        users.Setup(repository => repository.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        var credentials = new Mock<ICredentialRepository>();
+        credentials.Setup(repository => repository.ListCredentialsForUserAsync(userId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([externalCredential, localCredential]);
+        credentials.Setup(repository => repository.RevokeCredentialsAsync(userId, ProviderType.OAuth, "GitHub", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        var sessions = new Mock<IAuthenticationSessionRepository>();
+        sessions.Setup(repository => repository.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => ExternalAccountLinkServiceTestExtensions.TakeSession(sessionId));
+        sessions.Setup(repository => repository.ListSessionsForUserAsync(userId, true, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        services.AddAshlarProviderScoped(_ => users.Object);
+        services.AddAshlarProviderScoped(_ => credentials.Object);
         services.AddSingleton(Mock.Of<IUserAdministrationRepository>());
         services.AddSingleton(Mock.Of<ICredentialAdministrationRepository>());
-        services.AddAshlarProviderScoped(_ => sessions);
+        services.AddAshlarProviderScoped(_ => sessions.Object);
         services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
         services.AddAshlarProviderScoped(_ => Mock.Of<IInvitationRepository>());
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        var persistent = Mock.Of<IPersistentSecurityEventSink>();
-        services.AddAshlarProviderScoped<IPersistentSecurityEventSink>(_ => persistent);
+        var persistent = new Mock<IPersistentSecurityEventSink>();
+        persistent.Setup(sink => sink.RecordAsync(It.IsAny<AshlarSecurityEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        services.AddAshlarProviderScoped<IPersistentSecurityEventSink>(_ => persistent.Object);
         services.AddScoped(provider => DurableTransactionComposition.Create(
-            Mock.Of<IAshlarTransactionProvider>(),
-            users,
-            credentials,
-            sessions,
-            persistent));
+            new NullTransactionProvider(),
+            users.Object,
+            credentials.Object,
+            sessions.Object,
+            persistent.Object));
         services.AddPermissiveAccountSecurityGuard();
         services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services.AddPasswordHasher<PasswordHasherV1>();
+        services.AddAuthenticationProvider<LocalPasswordProvider>();
         services.AddAshlarOAuth(options => options.AddGitHub(oauth =>
         {
             oauth.ClientId = "client";
@@ -98,14 +116,44 @@ internal sealed class AshlarServiceCollectionExtensionsOAuthTests
             typeof(AshlarExternalAccountLinkService),
             typeof(AshlarOidcInvitationRegistrationService));
         using var scope = provider.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<AshlarExternalAccountLinkService>();
+        var proof = ExternalAccountLinkServiceTestExtensions.CreateProof(
+            userId, TenantContext.Global, sessionId, "external-account-unlinking", now, registerSession: true);
+
+        var result = await service.UnlinkExternalAccountAsync(
+            userId, "GitHub", proof, sessionId,
+            new AshlarExternalAccountUnlinkRequest(new AuditContext(userId), TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<AshlarExternalCredentialAuthenticationService>(), Is.Not.Null);
-            Assert.That(scope.ServiceProvider.GetRequiredService<AshlarExternalAccountLinkService>(), Is.Not.Null);
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Unlinked));
+            credentials.Verify(repository => repository.RevokeCredentialsAsync(
+                userId, ProviderType.OAuth, "GitHub", It.IsAny<CancellationToken>()), Times.Once);
+            credentials.Verify(repository => repository.AcquireUserMutationLockAsync(
+                userId, It.IsAny<CancellationToken>()), Times.Once);
+            persistent.Verify(sink => sink.RecordAsync(It.Is<AshlarSecurityEvent>(securityEvent =>
+                securityEvent.EventType == AshlarSecurityEventTypes.UserCredentialsRevoked &&
+                securityEvent.Outcome == SecurityEventOutcomes.Success &&
+                securityEvent.UserId == userId && securityEvent.ActorUserId == userId &&
+                securityEvent.Provider == new AuthenticationProviderKey(ProviderType.OAuth, "GitHub")),
+                It.IsAny<CancellationToken>()), Times.Once);
             Assert.That(scope.ServiceProvider.GetServices<IAuthenticationProvider>().Select(provider => provider.Key), Does.Contain(new AuthenticationProviderKey(ProviderType.OAuth, "GitHub")));
         }
     }
+
+    private static UserCredential CreateCredential(Guid userId, ProviderType providerType, string providerName, DateTimeOffset now) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            ProviderType = providerType,
+            ProviderName = providerName,
+            ProviderKey = Guid.NewGuid().ToString("N"),
+            Version = "1",
+            CreatedAt = now,
+            Status = CredentialStatus.Active
+        };
 
     [Test]
     public void AddGoogleShouldRegisterExpectedProviderAndDefaults()
