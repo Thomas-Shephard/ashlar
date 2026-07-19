@@ -16,7 +16,11 @@ internal sealed class RememberedMfaDeviceServiceTests
         var fixture = CreateFixture(generator: new SequenceTokenGenerator("selector-token", "verifier-token"));
         var user = fixture.Users.AddUser();
 
-        var result = await fixture.Service.CreateAfterSuccessfulMfaAsync(SuccessfulMfa(user), new CreateRememberedMfaDeviceRequest { DisplayName = " laptop " });
+        var result = await fixture.Service.CreateAfterSuccessfulMfaAsync(SuccessfulMfa(user), new CreateRememberedMfaDeviceRequest
+        {
+            DisplayName = " laptop ",
+            Audit = new AuditContext(user.Id)
+        });
 
         Assert.That(result.Succeeded, Is.True);
         var stored = fixture.Repository.Devices.Single();
@@ -206,8 +210,8 @@ internal sealed class RememberedMfaDeviceServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
-            Assert.That(fixture.Events.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.TenantMismatchValue));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(fixture.Events.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.ValidationErrorValue));
             Assert.That(fixture.Repository.Devices, Is.Empty);
         }
     }
@@ -418,6 +422,21 @@ internal sealed class RememberedMfaDeviceServiceTests
         var missingUser = await fixture.Service.CreateAfterSuccessfulMfaAsync(
             new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, FreshMfaSatisfied: true),
             new CreateRememberedMfaDeviceRequest());
+        var proofWithoutFreshSignal = await fixture.Service.CreateAfterSuccessfulMfaAsync(
+            AshlarFreshMfa(user) with { FreshMfaSatisfied = false },
+            new CreateRememberedMfaDeviceRequest());
+        var proofForAnotherUser = await fixture.Service.CreateAfterSuccessfulMfaAsync(
+            AshlarFreshMfa(user) with
+            {
+                RememberedDeviceCreationProof = new RememberedMfaDeviceCreationProof(Guid.NewGuid(), null, Guid.NewGuid())
+            },
+            new CreateRememberedMfaDeviceRequest());
+        var proofWithoutCeremony = await fixture.Service.CreateAfterSuccessfulMfaAsync(
+            AshlarFreshMfa(user) with
+            {
+                RememberedDeviceCreationProof = new RememberedMfaDeviceCreationProof(user.Id, null, Guid.Empty)
+            },
+            new CreateRememberedMfaDeviceRequest());
 
         using (Assert.EnterMultipleScope())
         {
@@ -425,11 +444,45 @@ internal sealed class RememberedMfaDeviceServiceTests
             Assert.That(failed.Succeeded, Is.False);
             Assert.That(notFresh.Succeeded, Is.False);
             Assert.That(missingUser.Succeeded, Is.False);
+            Assert.That(proofWithoutFreshSignal.Succeeded, Is.False);
+            Assert.That(proofForAnotherUser.Succeeded, Is.False);
+            Assert.That(proofWithoutCeremony.Succeeded, Is.False);
             Assert.That(fixture.Repository.Devices, Is.Empty);
             Assert.That(fixture.Events.Events, Has.All.Matches<AshlarSecurityEvent>(e =>
                 e.EventType == AshlarSecurityEventTypes.RememberedMfaDeviceCreated &&
                 e.Outcome == SecurityEventOutcomes.Failure &&
                 e.FailureReason == AshlarFailureCodes.ValidationErrorValue));
+        }
+    }
+
+    [Test]
+    public async Task CreateAfterSuccessfulMfaAsyncRejectsMismatchedProofScope()
+    {
+        var tenantId = Guid.NewGuid();
+        var fixture = CreateFixture();
+        var user = fixture.Users.AddUser(tenantId);
+        var mfa = AshlarFreshMfa(user, tenantId);
+
+        var wrongTenant = await fixture.Service.CreateAfterSuccessfulMfaAsync(mfa,
+            new CreateRememberedMfaDeviceRequest { Tenant = new TenantContext(Guid.NewGuid()) });
+        var wrongActor = await fixture.Service.CreateAfterSuccessfulMfaAsync(mfa,
+            new CreateRememberedMfaDeviceRequest { Tenant = new TenantContext(tenantId), Audit = new AuditContext(Guid.NewGuid()) });
+        var missingActor = await fixture.Service.CreateAfterSuccessfulMfaAsync(mfa,
+            new CreateRememberedMfaDeviceRequest { Tenant = new TenantContext(tenantId), Audit = new AuditContext() });
+        var missingUser = new User { Id = Guid.NewGuid(), DisplayEmail = "missing@example.com" };
+        var missing = await fixture.Service.CreateAfterSuccessfulMfaAsync(AshlarFreshMfa(missingUser), new CreateRememberedMfaDeviceRequest());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrongTenant.Succeeded, Is.False);
+            Assert.That(wrongActor.Succeeded, Is.False);
+            Assert.That(missingActor.Succeeded, Is.False);
+            Assert.That(missing.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(fixture.Repository.Devices, Is.Empty);
+            Assert.That(fixture.Events.Events.Take(3), Has.All.Matches<AshlarSecurityEvent>(e =>
+                e.UserId == user.Id && e.TenantId == tenantId));
+            Assert.That(fixture.Events.Events.Skip(1).Take(2), Has.All.Matches<AshlarSecurityEvent>(e =>
+                e.ActorUserId == user.Id));
         }
     }
 
@@ -584,14 +637,14 @@ internal sealed class RememberedMfaDeviceServiceTests
 
     private static MfaAuthenticationResult SuccessfulMfa(IUser user)
     {
-        return AshlarFreshMfa(user);
+        return AshlarFreshMfa(user, (user as User)?.TenantId);
     }
 
-    private static MfaAuthenticationResult AshlarFreshMfa(IUser user)
+    private static MfaAuthenticationResult AshlarFreshMfa(IUser user, Guid? tenantId = null)
     {
         return new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, User: user, FreshMfaSatisfied: true)
         {
-            RememberedDeviceCreationProof = FreshMfaProof.Instance
+            RememberedDeviceCreationProof = new RememberedMfaDeviceCreationProof(user.Id, tenantId, Guid.NewGuid())
         };
     }
 

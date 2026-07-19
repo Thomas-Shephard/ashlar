@@ -807,9 +807,10 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task VerifyFactorAsyncSucceedsAndReturnsSucceededWhenHandshakeCompleted()
     {
         var handshakeId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
         var userId = _userMock.Object.Id;
         var metadata = new Dictionary<string, string> { ["claim:role"] = "[\"admin\"]" };
-        var handshake = new AuthenticationHandshake(handshakeId, userId, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>(), metadata);
+        var handshake = new AuthenticationHandshake(handshakeId, userId, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>(), metadata) { TenantId = tenantId };
 
         _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
@@ -835,6 +836,7 @@ internal sealed class AuthenticationOrchestratorTests
             Assert.That(result.Claims?["new_claim"], Is.EqualTo(["new_val"]));
             Assert.That(result.FreshMfaSatisfied, Is.True);
             Assert.That(result.CredentialUpdatePersisted, Is.True);
+            Assert.That(result.RememberedDeviceCreationProof, Is.EqualTo(new RememberedMfaDeviceCreationProof(userId, tenantId, handshakeId)));
         }
     }
 

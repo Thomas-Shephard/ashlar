@@ -228,7 +228,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
                 FreshMfaSatisfied: true,
                 CredentialUpdatePersisted: credentialUpdatePersisted)
             {
-                RememberedDeviceCreationProof = FreshMfaProof.Instance,
+                RememberedDeviceCreationProof = new RememberedMfaDeviceCreationProof(handshake.UserId, handshake.TenantId, handshake.Id),
                 SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance,
                 StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
             };

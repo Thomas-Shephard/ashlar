@@ -34,7 +34,7 @@ public sealed class AshlarRememberedMfaDeviceCookieManager(
 
         if (mfaResult.User.Id == Guid.Empty) throw new ArgumentException("The MFA authentication result user ID cannot be empty.", nameof(mfaResult));
 
-        var creationRequest = request ?? CreateRequestFromAuthenticationContext(context, mfaResult.User.Id);
+        var creationRequest = CreateRequestFromAuthenticationContext(context, mfaResult.User.Id, request);
         var result = await _rememberedMfaDevices.CreateAfterSuccessfulMfaAsync(mfaResult, creationRequest, cancellationToken);
         if (!result.Succeeded || result.Value == null)
         {
@@ -89,9 +89,12 @@ public sealed class AshlarRememberedMfaDeviceCookieManager(
         return revoked;
     }
 
-    private static CreateRememberedMfaDeviceRequest CreateRequestFromAuthenticationContext(AuthenticationContext context, Guid userId)
+    private static CreateRememberedMfaDeviceRequest CreateRequestFromAuthenticationContext(
+        AuthenticationContext context,
+        Guid userId,
+        CreateRememberedMfaDeviceRequest? request)
     {
-        return new CreateRememberedMfaDeviceRequest
+        return (request ?? new CreateRememberedMfaDeviceRequest()) with
         {
             Tenant = context.TenantId.HasValue ? new TenantContext(context.TenantId.Value) : null,
             Audit = new AuditContext(

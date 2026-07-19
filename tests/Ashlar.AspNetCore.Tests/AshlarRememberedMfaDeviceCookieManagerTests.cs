@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Ashlar.Auditing;
 using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Mfa;
 using Ashlar.Identity.Abstractions.Tenancy;
@@ -145,12 +146,22 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
         var manager = CreateManager(service.Object);
         var context = CreateContext();
         var authenticationContext = CreateAuthenticationContext(tenantId);
+        var lifetime = TimeSpan.FromDays(7);
 
-        await manager.IssueAfterSuccessfulMfaAsync(context, authenticationContext, mfaResult);
+        await manager.IssueAfterSuccessfulMfaAsync(context, authenticationContext, mfaResult,
+            new CreateRememberedMfaDeviceRequest
+            {
+                Tenant = new TenantContext(Guid.NewGuid()),
+                DisplayName = "laptop",
+                Lifetime = lifetime,
+                Audit = new AuditContext(Guid.NewGuid())
+            });
 
         service.Verify(s => s.CreateAfterSuccessfulMfaAsync(mfaResult, It.Is<CreateRememberedMfaDeviceRequest>(r =>
             r.Tenant != null &&
             r.Tenant.TenantId == tenantId &&
+            r.DisplayName == "laptop" &&
+            r.Lifetime == lifetime &&
             r.Audit != null &&
             r.Audit.ActorUserId == userId &&
             r.Audit.IpAddress == "127.0.0.1" &&
