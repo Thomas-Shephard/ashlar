@@ -40,10 +40,10 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(scope.ServiceProvider.GetService<IUserRepository>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetService<ICredentialRepository>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetService<IAccountLockoutRepository>(), Is.Null);
-            Assert.That(scope.ServiceProvider.GetRequiredService<IUserAdministrationRepository>(), Is.TypeOf<SqliteUserAdministrationRepository>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<ICredentialAdministrationRepository>(), Is.TypeOf<SqliteCredentialAdministrationRepository>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventAdministrationRepository>(), Is.TypeOf<SqliteSecurityEventAdministrationRepository>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationSessionAdministrationRepository>(), Is.TypeOf<SqliteAuthenticationSessionAdministrationRepository>());
+            Assert.That(scope.ServiceProvider.GetService<IUserAdministrationRepository>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetService<ICredentialAdministrationRepository>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetService<ISecurityEventAdministrationRepository>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetService<IAuthenticationSessionAdministrationRepository>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetService<IBootstrapStateRepository>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetService<IAuthenticationSessionRepository>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetService<IAuthenticationHandshakeRepository>(), Is.Null);
@@ -51,7 +51,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(scope.ServiceProvider.GetService<IRememberedMfaDeviceRepository>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetService<IPasskeyChallengeRepository>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetService<IAuthorizationGrantRepository>(), Is.Null);
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantAdministrationRepository>(), Is.TypeOf<SqliteAuthorizationGrantAdministrationRepository>());
+            Assert.That(scope.ServiceProvider.GetService<IAuthorizationGrantAdministrationRepository>(), Is.Null);
             Assert.That(provider.GetRequiredService<TimeProvider>(), Is.EqualTo(TimeProvider.System));
         }
     }

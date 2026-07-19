@@ -7,11 +7,13 @@ namespace Ashlar.Identity.Models.Administration;
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
 /// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
 /// <param name="RecentSecurityEventWindow">Optional recent security event window for the embedded account-security posture.</param>
+/// <param name="Actor">Authenticated actor, active session, fresh proof, and audit metadata.</param>
 public sealed record AccountRecoveryOptionsRequest(
     Guid UserId,
     TenantContext? Tenant = null,
     bool IncludeAllTenants = false,
-    TimeSpan? RecentSecurityEventWindow = null)
+    TimeSpan? RecentSecurityEventWindow = null,
+    AccountSecurityActorContext? Actor = null)
 {
     /// <summary>
     /// Throws when the account recovery options request is not safe to execute.

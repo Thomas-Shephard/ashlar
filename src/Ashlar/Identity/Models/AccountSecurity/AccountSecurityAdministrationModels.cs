@@ -38,13 +38,29 @@ public enum AccountSecurityOperation
     /// <summary>Searches authorization grants in an explicit scope.</summary>
     SearchAuthorizationGrants,
     /// <summary>Reads one authorization grant in an explicit scope.</summary>
-    ReadAuthorizationGrant
+    ReadAuthorizationGrant,
+    /// <summary>Searches users in an explicit scope.</summary>
+    SearchUsers,
+    /// <summary>Reads one user in an explicit scope.</summary>
+    ReadUser,
+    /// <summary>Searches credentials in an explicit scope.</summary>
+    SearchCredentials,
+    /// <summary>Reads one credential in an explicit scope.</summary>
+    ReadCredential,
+    /// <summary>Searches authentication sessions in an explicit scope.</summary>
+    SearchAuthenticationSessions,
+    /// <summary>Reads one authentication session in an explicit scope.</summary>
+    ReadAuthenticationSession,
+    /// <summary>Searches security events in an explicit scope.</summary>
+    SearchSecurityEvents,
+    /// <summary>Reads one security event in an explicit scope.</summary>
+    ReadSecurityEvent
 }
 
 /// <summary>Context supplied to the required host authorizer.</summary>
 /// <param name="ActorUserId">The authenticated actor.</param>
 /// <param name="ActorTenant">The actor's authenticated tenant or global scope.</param>
-/// <param name="TargetUserId">The user targeted by the <paramref name="Operation" />.</param>
+/// <param name="TargetUserId">The user targeted by the <paramref name="Operation" />, or empty for a broad search.</param>
 /// <param name="TargetTenant">The explicit target tenant or global scope.</param>
 /// <param name="IncludeAllTenants">Whether the <paramref name="Operation" /> crosses all target tenant scopes.</param>
 /// <param name="Operation">The destructive operation being authorized.</param>
@@ -73,6 +89,9 @@ public sealed record AccountSecurityAuthorizationContext(
 /// <summary>Authenticated actor context required by destructive account-security requests.</summary>
 public sealed record AccountSecurityActorContext
 {
+    /// <summary>Fresh MFA proof purpose required by administration reads.</summary>
+    public const string AdministrationReadProofPurpose = "administration-read";
+
     /// <summary>Creates actor context bound to a current session and fresh MFA proof.</summary>
     /// <param name="actorUserId">The authenticated actor.</param>
     /// <param name="actorTenant">The actor's authenticated tenant or global scope.</param>

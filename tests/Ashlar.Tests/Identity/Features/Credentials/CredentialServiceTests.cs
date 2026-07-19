@@ -285,18 +285,22 @@ internal sealed class CredentialServiceTests
         var credential = CreateCredential(userId);
         var assertionMock = new Mock<IAuthenticationAssertion>();
         var providerMock = new Mock<IAuthenticationProvider>();
+        ICredentialLookup? capturedLookup = null;
 
         providerMock.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode"));
         providerMock.Setup(p => p.GetProviderKey(assertionMock.Object, userId)).Returns("not-used");
         providerMock.As<IAuthenticationCredentialResolver>()
             .Setup(p => p.ResolveCredentialAsync(userId, assertionMock.Object, It.IsAny<AuthenticationContext?>(), It.Is<ICredentialLookup>(lookup => !typeof(ICredentialRepository).IsInstanceOfType(lookup)), It.IsAny<CancellationToken>()))
+            .Callback((Guid _, IAuthenticationAssertion _, AuthenticationContext? _, ICredentialLookup lookup, CancellationToken _) => capturedLookup = lookup)
             .ReturnsAsync(credential);
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
 
         var (_, resolvedCredential, _, _) = await _service.ResolveAsync(new AuthenticationContext(UserId: userId), assertionMock.Object, providerMock.Object);
+        await capturedLookup!.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", "captured");
 
         Assert.That(resolvedCredential, Is.SameAs(credential));
         _credentialRepositoryMock.Verify(r => r.GetCredentialForUserAsync(userId, It.IsAny<ProviderType>(), It.IsAny<string>(), "not-used", It.IsAny<CancellationToken>()), Times.Never);
+        _credentialRepositoryMock.Verify(r => r.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", "captured", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]

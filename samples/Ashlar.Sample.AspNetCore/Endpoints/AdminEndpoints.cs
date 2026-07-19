@@ -4,6 +4,7 @@ using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.AspNetCore.Mfa;
 using Ashlar.Identity.Features.Mfa;
+using Ashlar.Identity.Models.Administration;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
 using Dapper;
@@ -19,6 +20,7 @@ internal static partial class AdminEndpoints
 {
     private const string AdminPolicy = "admin";
     private static readonly StepUpRequirement AdminSecurityRequirement = new(TimeSpan.FromMinutes(5), Purpose: "account-security-administration");
+    private static readonly StepUpRequirement AdminReadRequirement = new(TimeSpan.FromMinutes(5), Purpose: AccountSecurityActorContext.AdministrationReadProofPurpose);
     private static readonly StepUpRequirement GrantAdministrationRequirement = new(TimeSpan.FromMinutes(5), Purpose: IAuthorizationGrantService.AdministrationProofPurpose);
 
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app)
@@ -30,7 +32,7 @@ internal static partial class AdminEndpoints
 
     private static void MapAdminUserEndpoints(IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/admin/users", ListAdminUsersAsync).RequireAuthorization();
+        app.MapGet("/api/admin/users", ListAdminUsersAsync).RequireAuthorization().RequireFreshMfa();
 
         app.MapGet("/api/admin/users/{userId:guid}/security", async (
             Guid userId,
@@ -134,28 +136,28 @@ internal static partial class AdminEndpoints
 
     private static async Task<IResult> ListAdminUsersAsync(
         IAuthorizationEvaluator auth,
-        NpgsqlDataSource dataSource,
+        IUserAdministrationService users,
+        StepUpAuthenticationService stepUp,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
-        if (tenant == null)
+        if (tenant == null || !httpContext.TryGetAshlarSessionContext(out var actorUserId, out var sessionId, out var actorTenant) || actorTenant == null)
         {
             return Results.Forbid();
         }
 
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        var command = tenant.TenantId.HasValue
-            ? new CommandDefinition(
-                "SELECT id, display_email AS displayEmail, name FROM ashlar_users WHERE tenant_id = @TenantId ORDER BY display_email, id LIMIT 100",
-                new { tenant.TenantId },
-                cancellationToken: cancellationToken)
-            : new CommandDefinition(
-                "SELECT id, display_email AS displayEmail, name FROM ashlar_users WHERE tenant_id IS NULL ORDER BY display_email, id LIMIT 100",
-                cancellationToken: cancellationToken);
-        var users = await connection.QueryAsync(command);
-
-        return Results.Ok(users);
+        var proof = httpContext.CreateFreshMfaProof(stepUp, AdminReadRequirement);
+        if (!proof.TryGetValue(out var freshProof)) return Results.Forbid();
+        var result = await users.SearchUsersAsync(new SearchUsersRequest
+        {
+            Actor = new AccountSecurityActorContext(actorUserId, actorTenant, sessionId, freshProof, httpContext.ToAuditContext()),
+            Tenant = tenant,
+            Limit = 100
+        }, cancellationToken);
+        return result.Succeeded
+            ? Results.Ok(result.Value!.Items.Select(user => new { id = user.UserId, user.DisplayEmail, user.Name }))
+            : Results.Forbid();
     }
 
     private static void MapAdminProjectEndpoints(IEndpointRouteBuilder app)

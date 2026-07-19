@@ -41,10 +41,10 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.TryAddAshlarProviderScoped<IUserRepository, SqliteUserRepository>();
         services.TryAddAshlarProviderScoped<ICredentialRepository, SqliteCredentialRepository>();
         services.TryAddAshlarProviderScoped<IAccountLockoutRepository, SqliteAccountLockoutRepository>();
-        services.TryAddScoped<IUserAdministrationRepository, SqliteUserAdministrationRepository>();
-        services.TryAddScoped<ICredentialAdministrationRepository, SqliteCredentialAdministrationRepository>();
-        services.TryAddScoped<ISecurityEventAdministrationRepository, SqliteSecurityEventAdministrationRepository>();
-        services.TryAddScoped<IAuthenticationSessionAdministrationRepository, SqliteAuthenticationSessionAdministrationRepository>();
+        services.TryAddAshlarProviderScoped<IUserAdministrationRepository, SqliteUserAdministrationRepository>();
+        services.TryAddAshlarProviderScoped<ICredentialAdministrationRepository, SqliteCredentialAdministrationRepository>();
+        services.TryAddAshlarProviderScoped<ISecurityEventAdministrationRepository, SqliteSecurityEventAdministrationRepository>();
+        services.TryAddAshlarProviderScoped<IAuthenticationSessionAdministrationRepository, SqliteAuthenticationSessionAdministrationRepository>();
         services.TryAddAshlarProviderScoped<IBootstrapStateRepository, SqliteBootstrapStateRepository>();
         services.TryAddAshlarProviderScoped<IInvitationRepository, SqliteInvitationRepository>();
         services.TryAddAshlarProviderScoped<IAuthenticationSessionRepository, SqliteAuthenticationSessionRepository>();
@@ -52,7 +52,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.TryAddAshlarProviderScoped<IRememberedMfaDeviceRepository, SqliteRememberedMfaDeviceRepository>();
         services.TryAddAshlarProviderScoped<IPasskeyChallengeRepository, SqlitePasskeyChallengeRepository>();
         services.TryAddAshlarProviderScoped<IAuthorizationGrantRepository, SqliteAuthorizationGrantRepository>();
-        services.TryAddScoped<IAuthorizationGrantAdministrationRepository, SqliteAuthorizationGrantAdministrationRepository>();
+        services.TryAddAshlarProviderScoped<IAuthorizationGrantAdministrationRepository, SqliteAuthorizationGrantAdministrationRepository>();
         services.AddAshlarIdentityDurableTransactionParticipants();
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarSchemaDiagnostics, SqliteSchemaDiagnostics>();
@@ -71,7 +71,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarIdentity();
-        services.TryAddScoped<ISecurityEventAdministrationRepository, SqliteSecurityEventAdministrationRepository>();
+        services.TryAddAshlarProviderScoped<ISecurityEventAdministrationRepository, SqliteSecurityEventAdministrationRepository>();
         services.ReplaceAshlarProviderScoped<IPersistentSecurityEventSink>(provider =>
             ActivatorUtilities.CreateInstance<SqliteSecurityEventSink>(provider));
         services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();

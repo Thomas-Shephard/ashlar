@@ -34,7 +34,8 @@ public sealed class AccountRecoveryAdministrationService(
                 request.UserId,
                 request.Tenant,
                 request.IncludeAllTenants,
-                request.RecentSecurityEventWindow),
+                request.RecentSecurityEventWindow,
+                request.Actor),
             cancellationToken);
         if (!detailResult.Succeeded || detailResult.Value == null)
         {

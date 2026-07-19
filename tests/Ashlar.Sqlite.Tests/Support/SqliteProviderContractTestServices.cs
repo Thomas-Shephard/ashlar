@@ -18,6 +18,11 @@ internal static class SqliteProviderContractTestServices
         services.AddScoped<IRememberedMfaDeviceRepository, SqliteRememberedMfaDeviceRepository>();
         services.AddScoped<IAuthenticationHandshakeRepository, SqliteAuthenticationHandshakeRepository>();
         services.AddScoped<IAuthorizationGrantRepository, SqliteAuthorizationGrantRepository>();
+        services.AddScoped<IUserAdministrationRepository, SqliteUserAdministrationRepository>();
+        services.AddScoped<ICredentialAdministrationRepository, SqliteCredentialAdministrationRepository>();
+        services.AddScoped<IAuthenticationSessionAdministrationRepository, SqliteAuthenticationSessionAdministrationRepository>();
+        services.AddScoped<IAuthorizationGrantAdministrationRepository, SqliteAuthorizationGrantAdministrationRepository>();
+        services.AddScoped<ISecurityEventAdministrationRepository, SqliteSecurityEventAdministrationRepository>();
         services.AddScoped<IPersistentSecurityEventSink, SqliteSecurityEventSink>();
         services.AddScoped<IPasskeyChallengeRepository, SqlitePasskeyChallengeRepository>();
         services.AddScoped<IAuthenticationRateLimitAdministrationRepository, SqliteAuthenticationRateLimitAdministrationRepository>();

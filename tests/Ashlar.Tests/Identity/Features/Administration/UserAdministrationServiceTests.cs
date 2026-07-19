@@ -1,5 +1,7 @@
 namespace Ashlar.Tests.Identity.Features.Administration;
 
+using Ashlar.Tests.Support;
+
 internal sealed class UserAdministrationServiceTests
 {
     [Test]
@@ -15,8 +17,8 @@ internal sealed class UserAdministrationServiceTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => new UserAdministrationService(null!, new RecordingAccountSecurityService()));
-            Assert.Throws<ArgumentNullException>(() => new UserAdministrationService(new RecordingUserAdministrationRepository(), null!));
+            Assert.Throws<ArgumentNullException>(() => new UserAdministrationService(null!, new RecordingAccountSecurityService(), null!, null!, null!));
+            Assert.Throws<ArgumentNullException>(() => new UserAdministrationService(new RecordingUserAdministrationRepository(), null!, null!, null!, null!));
         }
     }
 
@@ -124,7 +126,7 @@ internal sealed class UserAdministrationServiceTests
             Assert.That(result.Value?.User.UserId, Is.EqualTo(userId));
             Assert.That(result.Value?.SecurityPosture, Is.SameAs(posture));
             Assert.That(accountSecurity.LastPostureUserId, Is.EqualTo(userId));
-            Assert.That(repository.LastGetRequest, Is.SameAs(detailRequest));
+            Assert.That(repository.LastGetRequest, Is.EqualTo(detailRequest));
             Assert.That(accountSecurity.LastPostureRequest?.Tenant, Is.EqualTo(TenantContext.Global));
             Assert.That(accountSecurity.LastPostureRequest?.RecentSecurityEventWindow, Is.EqualTo(eventWindow));
         }
@@ -305,13 +307,71 @@ internal sealed class UserAdministrationServiceTests
         }
     }
 
-    private static UserAdministrationService CreateService(
+    [Test]
+    public void SearchUsersAsyncAuditsProviderFailure()
+    {
+        var repository = new RecordingUserAdministrationRepository { SearchException = new InvalidOperationException() };
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository).SearchUsersAsync(
+            new SearchUsersRequest { Tenant = TenantContext.Global }));
+    }
+
+    [Test]
+    public void SearchUsersAsyncRejectsOutOfScopePaginationSentinel()
+    {
+        var tenant = new TenantContext(Guid.NewGuid());
+        var repository = new RecordingUserAdministrationRepository();
+        repository.SearchResults.Add(CreateSummary("allowed@example.com", tenant.TenantId));
+        repository.SearchResults.Add(CreateSummary("hidden@example.com", Guid.NewGuid()));
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository).SearchUsersAsync(
+            new SearchUsersRequest { Tenant = tenant, Limit = 1 }));
+    }
+
+    [Test]
+    public async Task GetUserDetailAsyncRejectsMismatchedProviderIdentities()
+    {
+        var requestedUserId = Guid.NewGuid();
+        var returnedUserId = Guid.NewGuid();
+        var repository = new RecordingUserAdministrationRepository
+        {
+            UserSummary = CreateSummary("wrong@example.com") with { UserId = returnedUserId }
+        };
+        var wrongUser = await CreateService(repository).GetUserDetailAsync(
+            new UserAdministrationDetailRequest(requestedUserId, TenantContext.Global));
+
+        repository = new RecordingUserAdministrationRepository
+        {
+            UserSummary = CreateSummary("right@example.com") with { UserId = requestedUserId }
+        };
+        var accountSecurity = new RecordingAccountSecurityService { PostureResult = Result.Success(CreatePosture(returnedUserId)) };
+        var wrongPosture = await CreateService(repository, accountSecurity).GetUserDetailAsync(
+            new UserAdministrationDetailRequest(requestedUserId, TenantContext.Global));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrongUser.Succeeded, Is.False);
+            Assert.That(wrongPosture.Succeeded, Is.False);
+        }
+    }
+
+    private static AuthorizedUserAdministrationService CreateService(
         RecordingUserAdministrationRepository? repository = null,
         RecordingAccountSecurityService? accountSecurityService = null)
     {
-        return new UserAdministrationService(
+        var boundary = new AdminReadTestBoundary(DateTimeOffset.UtcNow);
+        return new AuthorizedUserAdministrationService(new UserAdministrationService(
             repository ?? new RecordingUserAdministrationRepository(),
-            accountSecurityService ?? new RecordingAccountSecurityService());
+            accountSecurityService ?? new RecordingAccountSecurityService(), boundary.Sessions,
+            boundary.Authorizer, boundary.Sink, boundary.TimeProvider), boundary.Actor);
+    }
+
+    private sealed class AuthorizedUserAdministrationService(UserAdministrationService service, AccountSecurityActorContext actor)
+    {
+        public Task<Result<UserSearchResult>> SearchUsersAsync(SearchUsersRequest request) =>
+            service.SearchUsersAsync(request is null ? null! : request with { Actor = actor });
+        public Task<Result<UserAdministrationDetail>> GetUserDetailAsync(UserAdministrationDetailRequest request) =>
+            service.GetUserDetailAsync(request with { Actor = actor });
     }
 
     private static UserSummary CreateSummary(string email, Guid? tenantId = null)
@@ -340,9 +400,11 @@ internal sealed class UserAdministrationServiceTests
         public SearchUsersRequest? LastSearchRequest { get; private set; }
         public UserAdministrationDetailRequest? LastGetRequest { get; private set; }
         public UserSummary? UserSummary { get; init; }
+        public Exception? SearchException { get; init; }
 
         public Task<IReadOnlyList<UserSummary>> SearchUsersAsync(SearchUsersRequest request, CancellationToken cancellationToken = default)
         {
+            if (SearchException is not null) throw SearchException;
             LastSearchRequest = request;
             return Task.FromResult<IReadOnlyList<UserSummary>>(SearchResults.AsReadOnly());
         }

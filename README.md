@@ -922,16 +922,17 @@ Use `IUserAdministrationService` for read-only admin and operations tooling that
 var users = await userAdministration.SearchUsersAsync(
     new SearchUsersRequest
     {
+        Actor = adminReadActor,
         Tenant = new TenantContext(tenantId), // or TenantContext.Global, or IncludeAllTenants = true
         Query = "alex@example.com",
         Limit = 50
     });
 
 var detail = await userAdministration.GetUserDetailAsync(
-    new UserAdministrationDetailRequest(userId, new TenantContext(tenantId)));
+    new UserAdministrationDetailRequest(userId, new TenantContext(tenantId), Actor: adminReadActor));
 ```
 
-Search, lookup, and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. User admin detail includes the safe user summary and account security posture only; credential secrets and provider raw identifiers are never returned.
+Search, lookup, and detail requests require `AccountSecurityActorContext` with the authenticated actor, actor tenant, current active session, matching `AuditContext`, and an Ashlar-issued fresh MFA proof for the `administration-read` purpose. They also require an explicit tenant/global/all-tenant scope and host `IAccountSecurityOperationAuthorizer` approval; all-tenant requests carry a distinct authorization decision. Successes and failures are durably audited and fail closed when audit persistence fails. User admin detail includes safe projections only.
 
 #### Admin Session Browsing
 Use `IAuthenticationSessionAdministrationService` for read-only admin and operations tooling that needs to browse sessions across users and tenants without querying provider tables directly:
@@ -940,6 +941,7 @@ Use `IAuthenticationSessionAdministrationService` for read-only admin and operat
 var result = await sessionAdministration.SearchAuthenticationSessionsAsync(
     new SearchAuthenticationSessionsRequest
     {
+        Actor = adminReadActor,
         Tenant = new TenantContext(tenantId), // or TenantContext.Global, or IncludeAllTenants = true
         UserId = userId,
         Active = true,
@@ -955,10 +957,10 @@ if (result.Succeeded)
 }
 
 var session = await sessionAdministration.GetAuthenticationSessionAsync(
-    new AuthenticationSessionAdministrationLookupRequest(sessionId, new TenantContext(tenantId)));
+    new AuthenticationSessionAdministrationLookupRequest(sessionId, new TenantContext(tenantId), Actor: adminReadActor));
 ```
 
-Search and single-session requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. The single-session lookup returns the same safe projection shape as search. Raw session tokens and token hashes are never returned, and session metadata is not included in the admin read model.
+Search and single-session requests require the shared actor-bound admin-read context and an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. The single-session lookup returns the same safe projection shape as search. Raw session tokens and token hashes are never returned, and session metadata is not included in the admin read model.
 
 #### Admin Credential Inventory
 Use `ICredentialAdministrationService` for read-only admin and operations tooling that needs to browse credential inventory across users or tenants without querying provider tables directly:
@@ -967,6 +969,7 @@ Use `ICredentialAdministrationService` for read-only admin and operations toolin
 var result = await credentialAdministration.SearchCredentialsAsync(
     new SearchCredentialsRequest
     {
+        Actor = adminReadActor,
         Tenant = new TenantContext(tenantId), // or TenantContext.Global, or IncludeAllTenants = true
         UserId = userId,
         Provider = AuthenticationProviderKey.Passkey,
@@ -983,19 +986,19 @@ if (result.Succeeded)
 }
 ```
 
-Call `GetCredentialAsync(new CredentialAdministrationLookupRequest(credentialId, new TenantContext(tenantId)))` for the same safe projection shape for a single credential. Single-credential requests also require `TenantContext.Global` or `IncludeAllTenants = true` when appropriate. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. Raw credential values, provider keys, metadata, password hashes, token hashes, passkey payloads, recovery codes, OAuth/OIDC subject identifiers, provider-specific raw identifiers, and other secrets are never returned.
+Call `GetCredentialAsync(new CredentialAdministrationLookupRequest(credentialId, new TenantContext(tenantId), Actor: adminReadActor))` for the same safe projection shape for a single credential. Single-credential requests also require `TenantContext.Global` or `IncludeAllTenants = true` when appropriate. Raw credential values, provider keys, metadata, password hashes, token hashes, passkey payloads, recovery codes, OAuth/OIDC subject identifiers, provider-specific raw identifiers, and other secrets are never returned.
 
 #### Admin Account Recovery Options
 Use `IAccountRecoveryAdministrationService` when admin tooling needs a display-safe preview of account recovery actions before presenting destructive controls:
 
 ```csharp
 var options = await accountRecoveryAdministration.GetAccountRecoveryOptionsAsync(
-    new AccountRecoveryOptionsRequest(userId, new TenantContext(tenantId)));
+    new AccountRecoveryOptionsRequest(userId, new TenantContext(tenantId), Actor: adminReadActor));
 ```
 
 Requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`; missing or conflicting scope returns a validation failure, and missing or out-of-scope users return `UserNotFound`. The result carries the existing user detail and account-security posture in `Detail`, plus action previews in `Actions`: whether MFA reset or session revocation would currently do anything, provider-grouped credential revocation options, and warnings such as removing the last active primary sign-in method.
 
-This service is read-only and does not authorize callers or execute recovery operations. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing it. Results are previews derived from existing account security posture and intentionally omit credential secrets, token hashes, session tokens, metadata payloads, audit internals, and raw provider identifiers beyond safe public provider keys.
+This service is read-only and delegates its actor-bound authorization and durable audit decision to the protected user-detail read. It does not execute recovery operations. Results are previews derived from existing account security posture and intentionally omit credential secrets, token hashes, session tokens, metadata payloads, audit internals, and raw provider identifiers beyond safe public provider keys.
 
 Execute destructive recovery actions through `IAccountSecurityAdministrationService`. The public boundary requires the target user, exact target scope, audit metadata, authenticated actor and actor scope, current session, Ashlar-issued fresh-MFA proof, and a host `IAccountSecurityOperationAuthorizer` decision:
 
@@ -1105,6 +1108,8 @@ Lockout reset attempts emit a safe security event, including no-op resets where 
 
 ## Authorization Grants
 Ashlar includes framework-neutral authorization primitives for durable grants. Grants are generic: they can assign one normalized role or one normalized permission to a user, optionally within a tenant and explicit scope. Ashlar evaluates these grants, but it does not replace ASP.NET Core Authorization policies or requirements.
+
+Authorization-grant administration reads use the same actor-bound `administration-read` proof, authoritative active-session validation, explicit scope, host authorization, and durable normalized read auditing as general administration reads. Audit persistence failures fail closed. Grant mutations retain their separate purpose-bound contract.
 
 ```csharp
 services.AddAshlarAuthorization();
@@ -1404,6 +1409,7 @@ Ashlar also exposes provider-neutral read APIs for admin and operations tooling:
 ```csharp
 var result = await securityEventAdministration.SearchSecurityEventsAsync(new SearchSecurityEventsRequest
 {
+    Actor = adminReadActor,
     Tenant = new TenantContext(tenantId), // or TenantContext.Global, or IncludeAllTenants = true
     UserId = userId,
     EventTypes = new HashSet<string> { AshlarSecurityEventTypes.SessionCreated },
@@ -1412,12 +1418,12 @@ var result = await securityEventAdministration.SearchSecurityEventsAsync(new Sea
 });
 
 var detail = await securityEventAdministration.GetSecurityEventAsync(
-    new SecurityEventAdministrationDetailRequest(eventId, new TenantContext(tenantId)));
+    new SecurityEventAdministrationDetailRequest(eventId, new TenantContext(tenantId), Actor: adminReadActor));
 ```
 
 Use `ISecurityEventAdministrationService` from application code and install a persistence provider with security-event administration support. `Ashlar.Postgres` and `Ashlar.Sqlite` provide read-only repository implementations that query `ashlar_security_events` without exposing provider-specific row ids or JSON storage details; custom provider integrations may supply the same safe read contract.
 
-Search, lookup, and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. These APIs do not authorize callers by themselves. Host applications must protect any endpoint or job that uses them with admin authorization and an appropriate step-up policy. Event properties are intended only for operational diagnostics and must never contain secrets.
+Search, lookup, and detail requests require the shared actor-bound admin-read context and an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. Event properties are intended only for operational diagnostics and must never contain secrets.
 
 ## Security Notifications
 Ashlar includes generic opt-in security notifications to notify users about important account and security events, such as new sign-ins, session revocations, and MFA changes.

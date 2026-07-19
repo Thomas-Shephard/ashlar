@@ -1,0 +1,86 @@
+using Ashlar.Auditing;
+
+namespace Ashlar.Identity.Features.Administration;
+
+internal sealed class AdminReadBoundary(
+    IAuthenticationSessionRepository sessions,
+    IAccountSecurityOperationAuthorizer authorizer,
+    IPersistentSecurityEventSink auditSink,
+    TimeProvider timeProvider)
+{
+    internal const string ProofPurpose = AccountSecurityActorContext.AdministrationReadProofPurpose;
+    internal const string EventType = "administration.read";
+    private readonly ActiveSessionFreshProofValidator _proof = new(
+        sessions ?? throw new ArgumentNullException(nameof(sessions)),
+        timeProvider ?? throw new ArgumentNullException(nameof(timeProvider)));
+    private readonly IAccountSecurityOperationAuthorizer _authorizer = authorizer ?? throw new ArgumentNullException(nameof(authorizer));
+    private readonly SecurityEventEmitter _audit = new(auditSink ?? throw new ArgumentNullException(nameof(auditSink)), timeProvider);
+
+    internal async ValueTask<bool> AuthorizeAsync(AccountSecurityActorContext? actor, TenantContext? tenant,
+        bool includeAllTenants, Guid targetUserId, AccountSecurityOperation operation, CancellationToken cancellationToken,
+        bool recordSuccess = true)
+    {
+        if (actor is null) return false;
+        if (actor.Audit.ActorUserId != actor.ActorUserId)
+        {
+            await RecordAsync(actor, tenant, includeAllTenants, operation, false);
+            return false;
+        }
+        AshlarFailureCode? proofFailure;
+        try
+        {
+            proofFailure = await _proof.ValidateAsync(actor.ActorUserId, actor.ActorTenant, actor.FreshMfaProof,
+                actor.CurrentSessionId, ProofPurpose, cancellationToken);
+        }
+        catch
+        {
+            await RecordAsync(actor, tenant, includeAllTenants, operation, false);
+            throw;
+        }
+        if (proofFailure is not null)
+        {
+            await RecordAsync(actor, tenant, includeAllTenants, operation, false);
+            return false;
+        }
+        bool authorized;
+        try
+        {
+            authorized = await _authorizer.AuthorizeAsync(new AccountSecurityAuthorizationContext(
+                actor.ActorUserId, actor.ActorTenant, targetUserId, tenant, includeAllTenants, operation,
+                CurrentSessionId: actor.CurrentSessionId), cancellationToken);
+        }
+        catch
+        {
+            await RecordAsync(actor, tenant, includeAllTenants, operation, false);
+            throw;
+        }
+        if (!authorized || recordSuccess)
+            await RecordAsync(actor, tenant, includeAllTenants, operation, authorized);
+        return authorized;
+    }
+
+    internal Task RecordSuccessAsync(AccountSecurityActorContext actor, TenantContext? tenant, bool includeAllTenants,
+        AccountSecurityOperation operation) =>
+        RecordAsync(actor, tenant, includeAllTenants, operation, true);
+
+    internal Task RecordFailureAsync(AccountSecurityActorContext actor, TenantContext? tenant, bool includeAllTenants,
+        AccountSecurityOperation operation) =>
+        RecordAsync(actor, tenant, includeAllTenants, operation, false);
+
+    private Task RecordAsync(AccountSecurityActorContext actor, TenantContext? tenant, bool includeAllTenants,
+        AccountSecurityOperation operation, bool succeeded) =>
+        _audit.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = EventType,
+            Outcome = succeeded ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
+            TenantId = tenant?.TenantId,
+            SessionId = actor.CurrentSessionId,
+            Audit = actor.Audit with { ActorUserId = actor.ActorUserId },
+            FailureReason = succeeded ? null : AshlarFailureCodes.ValidationError.Value,
+            Properties = new Dictionary<string, string>
+            {
+                ["operation"] = operation.ToString(),
+                ["scope"] = includeAllTenants ? "all-tenants" : tenant!.TenantId is null ? "global" : "tenant"
+            }
+        }, CancellationToken.None);
+}
