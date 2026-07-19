@@ -72,7 +72,7 @@ internal sealed class AdminReadBoundary(
     {
         var scope = "all-tenants";
         if (!includeAllTenants)
-            scope = tenant is { TenantId: null } ? "global" : "tenant";
+            scope = tenant == TenantContext.Global ? "global" : "tenant";
         return _audit.RecordAsync(new SecurityEventDescriptor
         {
             EventType = EventType,
