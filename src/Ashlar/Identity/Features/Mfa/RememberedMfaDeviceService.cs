@@ -58,9 +58,22 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
         ArgumentNullException.ThrowIfNull(request);
         var tenant = request.Tenant ?? TenantContext.Global;
         var userId = mfaResult.User?.Id ?? Guid.Empty;
-        if (mfaResult.Status != MfaAuthenticationStatus.Succeeded || !mfaResult.CanCreateRememberedMfaDevice || userId == Guid.Empty)
+        var proof = mfaResult.RememberedDeviceCreationProof;
+        if (proof is null || !mfaResult.CanCreateRememberedMfaDevice)
         {
             await RecordCreateRejectedAsync(userId, tenant, request.Audit, AshlarFailureCodes.ValidationError, cancellationToken);
+            return Result.Failure<RememberedMfaDeviceCreated>(AshlarFailureCodes.ValidationError);
+        }
+
+        if (tenant.TenantId != proof.TenantId
+            || request.Audit is { } audit && audit.ActorUserId != proof.UserId)
+        {
+            await RecordCreateRejectedAsync(
+                proof.UserId,
+                new TenantContext(proof.TenantId),
+                request.Audit is null ? null : request.Audit with { ActorUserId = proof.UserId },
+                AshlarFailureCodes.ValidationError,
+                cancellationToken);
             return Result.Failure<RememberedMfaDeviceCreated>(AshlarFailureCodes.ValidationError);
         }
 

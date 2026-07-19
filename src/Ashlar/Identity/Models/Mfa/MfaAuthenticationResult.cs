@@ -72,9 +72,15 @@ public sealed record MfaAuthenticationResult(
     {
     }
 
-    internal FreshMfaProof? RememberedDeviceCreationProof { get; init; }
+    internal RememberedMfaDeviceCreationProof? RememberedDeviceCreationProof { get; init; }
 
-    internal bool CanCreateRememberedMfaDevice => FreshMfaSatisfied && RememberedDeviceCreationProof != null;
+    internal bool CanCreateRememberedMfaDevice => Status == MfaAuthenticationStatus.Succeeded
+        && FreshMfaSatisfied
+        && User is { Id: var userId }
+        && userId != Guid.Empty
+        && RememberedDeviceCreationProof is { } proof
+        && proof.UserId == userId
+        && proof.SourceHandshakeId != Guid.Empty;
 
     internal AuthenticationSessionIssuanceProof? SessionIssuanceProof { get; init; }
 
@@ -94,14 +100,7 @@ public sealed record MfaAuthenticationResult(
     }
 }
 
-internal sealed class FreshMfaProof
-{
-    internal static FreshMfaProof Instance { get; } = new();
-
-    private FreshMfaProof()
-    {
-    }
-}
+internal sealed record RememberedMfaDeviceCreationProof(Guid UserId, Guid? TenantId, Guid SourceHandshakeId);
 
 internal sealed class AuthenticationSessionIssuanceProof
 {
