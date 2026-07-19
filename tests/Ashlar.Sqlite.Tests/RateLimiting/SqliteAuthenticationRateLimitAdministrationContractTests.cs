@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using Ashlar.Identity.Abstractions.Services;
+using Ashlar.Testing;
 
 namespace Ashlar.Sqlite.Tests.RateLimiting;
 
@@ -19,6 +21,7 @@ internal sealed class SqliteAuthenticationRateLimitAdministrationContractTests :
             services.AddAshlarIdentity();
             services.AddAshlarSqliteAuditSink();
             services.AddAshlarSqliteRateLimiting();
+            services.AddScoped<IAccountSecurityOperationAuthorizer, AllowAccountSecurityOperationAuthorizer>();
             services.AddSingleton<TimeProvider>(_timeProvider);
         });
         return _database.ServiceProvider;

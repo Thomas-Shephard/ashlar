@@ -48,8 +48,7 @@ public sealed class CredentialAdministrationService(
         }
 
         if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchCredentials, cancellationToken,
-                recordSuccess: false))
+                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchCredentials, cancellationToken))
             return Result.Failure<CredentialSearchResult>(AshlarFailureCodes.ValidationError);
 
         var limit = Math.Min(request.Limit, MaximumLimit);
@@ -88,8 +87,7 @@ public sealed class CredentialAdministrationService(
         }
 
         if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                Guid.Empty, AccountSecurityOperation.ReadCredential, cancellationToken,
-                recordSuccess: false))
+                Guid.Empty, AccountSecurityOperation.ReadCredential, cancellationToken))
             return Result.Failure<CredentialAdministrationSummary>(AshlarFailureCodes.ValidationError);
 
         CredentialAdministrationSummary? credential;
@@ -111,6 +109,9 @@ public sealed class CredentialAdministrationService(
         else if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
                 credential.UserId, AccountSecurityOperation.ReadCredential, cancellationToken))
             credential = null;
+        else
+            await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants,
+                AccountSecurityOperation.ReadCredential);
         return credential == null
             ? Result.Failure<CredentialAdministrationSummary>(AshlarFailureCodes.CredentialNotFound, "Credential was not found.")
             : Result.Success(credential);

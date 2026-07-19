@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using Ashlar.Testing;
 
 namespace Ashlar.Postgres.Tests.RateLimiting;
 
@@ -18,6 +19,7 @@ internal sealed class PostgresAuthenticationRateLimitAdministrationContractTests
         {
             services.AddAshlarIdentity();
             services.AddAshlarPostgresRateLimiting();
+            services.AddScoped<IAccountSecurityOperationAuthorizer, AllowAccountSecurityOperationAuthorizer>();
             services.AddSingleton<TimeProvider>(_timeProvider);
         });
         return _database.ServiceProvider;

@@ -4,11 +4,12 @@ using Moq;
 
 namespace Ashlar.Tests.Support;
 
-internal sealed class AdminReadTestBoundary(DateTimeOffset now, bool authorized = true)
+internal sealed class AdminReadTestBoundary(DateTimeOffset now, bool authorized = true,
+    string proofPurpose = AccountSecurityActorContext.AdministrationReadProofPurpose)
 {
     private readonly Mock<IAuthenticationSessionRepository> _sessions = new();
 
-    public AccountSecurityActorContext Actor { get; } = CreateActor(now);
+    public AccountSecurityActorContext Actor { get; } = CreateActor(now, proofPurpose);
     public IAccountSecurityOperationAuthorizer Authorizer { get; } = new FixedAuthorizer(authorized);
     public RecordingSink Sink { get; } = new();
     public TimeProvider TimeProvider { get; } = new FakeTimeProvider(now);
@@ -31,12 +32,12 @@ internal sealed class AdminReadTestBoundary(DateTimeOffset now, bool authorized 
         }
     }
 
-    private static AccountSecurityActorContext CreateActor(DateTimeOffset now)
+    private static AccountSecurityActorContext CreateActor(DateTimeOffset now, string proofPurpose)
     {
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         return new AccountSecurityActorContext(userId, TenantContext.Global, sessionId,
-            new FreshMfaVerificationProof(userId, null, sessionId, now, now.AddMinutes(5), AccountSecurityActorContext.AdministrationReadProofPurpose),
+            new FreshMfaVerificationProof(userId, null, sessionId, now, now.AddMinutes(5), proofPurpose),
             new AuditContext(userId));
     }
 

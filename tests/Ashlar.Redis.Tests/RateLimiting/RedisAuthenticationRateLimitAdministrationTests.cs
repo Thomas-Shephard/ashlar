@@ -1,6 +1,12 @@
 using Ashlar.Testing;
 using Ashlar.Auditing;
 using Ashlar.Identity.Models.Administration;
+using Ashlar.Identity.Models.AccountSecurity;
+using Ashlar.Identity.Abstractions.Services;
+using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.Identity.Models.Sessions;
+using Ashlar.Identity.Models.Tenants;
+using Ashlar.ProviderContracts.DependencyInjection;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Identity.Abstractions.Transactions;
@@ -8,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
+using Moq;
 using StackExchange.Redis;
 
 namespace Ashlar.Redis.Tests.RateLimiting;
@@ -18,6 +25,7 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     private FakeTimeProvider _timeProvider = null!;
     private ServiceProvider _provider = null!;
     private string _keyPrefix = null!;
+    private AccountSecurityActorContext _actor = null!;
 
     public override async Task OneTimeSetUp()
     {
@@ -25,7 +33,24 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
         _timeProvider = new FakeTimeProvider(Start);
         _keyPrefix = $"ashlar:test:{Guid.NewGuid():N}";
         var services = new ServiceCollection();
+        var actorId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        _actor = new AccountSecurityActorContext(actorId, TenantContext.Global, sessionId,
+            FreshMfaVerificationProofFactory.Create(actorId, null, sessionId, Start, Start.AddMinutes(5),
+                AccountSecurityActorContext.AdministrationReadProofPurpose), new AuditContext(actorId));
+        var sessions = new Mock<IAuthenticationSessionRepository>();
+        sessions.Setup(repository => repository.GetSessionAsync(sessionId, It.IsAny<CancellationToken>())).ReturnsAsync(new AuthenticationSession
+        {
+            Id = sessionId,
+            UserId = actorId,
+            TokenHash = "test",
+            CreatedAt = Start,
+            ExpiresAt = Start.AddYears(1)
+        });
         services.AddAshlarIdentity();
+        services.AddAshlarProviderScoped(_ => sessions.Object);
+        services.AddSingleton<IAccountSecurityOperationAuthorizer, AllowOperations>();
+        services.AddAshlarProviderScoped<IPersistentSecurityEventSink>(_ => new NoOpPersistentSecurityEventSink());
         services.AddAshlarRedisRateLimiting(GetConnection(), options => options.KeyPrefix = _keyPrefix);
         services.AddSingleton<TimeProvider>(_timeProvider);
         ConfigureDurableSecurityComposition(services, new NoOpPersistentSecurityEventSink());
@@ -62,14 +87,14 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "login", Key = activeKey }, rule);
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "reset", Key = UniqueKey() }, rule);
 
-        var blocked = await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest
+        var blocked = await administration.SearchBucketsAsync(_actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest
         {
             Purpose = "login",
             Status = AuthenticationRateLimitBucketStatus.Blocked,
             BlockedUntilFrom = Start + TimeSpan.FromMinutes(29),
             BlockedUntilTo = Start + TimeSpan.FromMinutes(31)
         });
-        var active = await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest
+        var active = await administration.SearchBucketsAsync(_actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest
         {
             Purpose = "login",
             Status = AuthenticationRateLimitBucketStatus.Active,
@@ -98,10 +123,10 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
         await limiter.CheckAsync(
             new RateLimitAttempt { Purpose = "detail", Key = rawKey },
             new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
-        var bucket = (await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" })).Value!.Items.Single();
+        var bucket = (await administration.SearchBucketsAsync(_actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" })).Value!.Items.Single();
 
-        var wrongPurposeLookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "other"));
-        var lookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "detail"));
+        var wrongPurposeLookup = await administration.GetBucketAsync(_actor, TenantContext.Global, false, new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "other"));
+        var lookup = await administration.GetBucketAsync(_actor, TenantContext.Global, false, new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "detail"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -126,7 +151,7 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     {
         var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
 
-        var lookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucketId, "detail"));
+        var lookup = await administration.GetBucketAsync(_actor, TenantContext.Global, false, new AuthenticationRateLimitBucketLookupRequest(bucketId, "detail"));
 
         Assert.That(lookup.Succeeded, Is.False);
     }
@@ -180,12 +205,12 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
             new RateLimitAttempt { Purpose = "range", Key = UniqueKey() },
             new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
 
-        var futureWindow = await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest
+        var futureWindow = await administration.SearchBucketsAsync(_actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest
         {
             Purpose = "range",
             WindowStartFrom = Start + TimeSpan.FromMinutes(1)
         });
-        var blockedRange = await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest
+        var blockedRange = await administration.SearchBucketsAsync(_actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest
         {
             Purpose = "range",
             BlockedUntilFrom = Start
@@ -226,7 +251,20 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     private ServiceProvider CreateProviderWithPersistentAudit(IPersistentSecurityEventSink sink)
     {
         var services = new ServiceCollection();
+        var sessions = new Mock<IAuthenticationSessionRepository>();
+        sessions.Setup(repository => repository.GetSessionAsync(_actor.CurrentSessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationSession
+            {
+                Id = _actor.CurrentSessionId,
+                UserId = _actor.ActorUserId,
+                TokenHash = "test",
+                CreatedAt = Start,
+                ExpiresAt = Start.AddYears(1)
+            });
         services.AddAshlarIdentity();
+        services.AddAshlarProviderScoped<IAuthenticationSessionRepository>(_ => sessions.Object);
+        services.AddSingleton<IAccountSecurityOperationAuthorizer, AllowOperations>();
+        services.AddAshlarProviderScoped<IPersistentSecurityEventSink>(_ => sink);
         services.AddAshlarRedisRateLimiting(GetConnection(), options => options.KeyPrefix = $"{_keyPrefix}:durable:{Guid.NewGuid():N}");
         services.AddSingleton<TimeProvider>(_timeProvider);
         ConfigureDurableSecurityComposition(services, sink);
@@ -259,5 +297,11 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     private sealed class NoOpPersistentSecurityEventSink : IPersistentSecurityEventSink
     {
         public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class AllowOperations : IAccountSecurityOperationAuthorizer
+    {
+        public ValueTask<bool> AuthorizeAsync(AccountSecurityAuthorizationContext context, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(true);
     }
 }

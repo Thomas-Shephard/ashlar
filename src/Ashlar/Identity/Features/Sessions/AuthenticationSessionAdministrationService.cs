@@ -48,8 +48,7 @@ public sealed class AuthenticationSessionAdministrationService(
         }
 
         if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchAuthenticationSessions, cancellationToken,
-                recordSuccess: false))
+                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchAuthenticationSessions, cancellationToken))
             return Result.Failure<AuthenticationSessionSearchResult>(AshlarFailureCodes.ValidationError);
 
         var limit = Math.Min(request.Limit, MaximumLimit);
@@ -89,8 +88,7 @@ public sealed class AuthenticationSessionAdministrationService(
         }
 
         if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                Guid.Empty, AccountSecurityOperation.ReadAuthenticationSession, cancellationToken,
-                recordSuccess: false))
+                Guid.Empty, AccountSecurityOperation.ReadAuthenticationSession, cancellationToken))
             return Result.Failure<AuthenticationSessionAdministrationSummary>(AshlarFailureCodes.ValidationError);
 
         AuthenticationSessionAdministrationSummary? session;
@@ -112,6 +110,9 @@ public sealed class AuthenticationSessionAdministrationService(
         else if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
                 session.UserId, AccountSecurityOperation.ReadAuthenticationSession, cancellationToken))
             session = null;
+        else
+            await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants,
+                AccountSecurityOperation.ReadAuthenticationSession);
         return session == null
             ? Result.Failure<AuthenticationSessionAdministrationSummary>(AshlarFailureCodes.SessionNotFound, "Session was not found.")
             : Result.Success(session);

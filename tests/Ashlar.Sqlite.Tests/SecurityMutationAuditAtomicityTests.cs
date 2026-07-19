@@ -75,14 +75,19 @@ internal sealed class SecurityMutationAuditAtomicityTests
     [Test]
     public async Task InvitationAdminRevokeRollsBackWhenRequiredAuditFails()
     {
-        _database = await CreateDatabaseAsync(services => services.AddAshlarInvitations());
+        _database = await CreateDatabaseAsync(services =>
+        {
+            services.AddAshlarInvitations();
+            services.AddScoped<IAccountSecurityOperationAuthorizer, AllowOperations>();
+        });
         var provider = _database.ServiceProvider;
+        var actor = await CreateActorAsync(provider, IAccountSecurityAdministrationService.ProofPurpose);
         var invitation = CreateInvitation();
         await provider.GetRequiredService<IInvitationRepository>().CreateInvitationAsync(invitation);
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IInvitationAdministrationService>().RevokeInvitationAsync(
-                new RevokeInvitationAdministrationRequest(invitation.Id, IncludeAllTenants: true, Audit: Audit())));
+                actor, new RevokeInvitationAdministrationRequest(invitation.Id, IncludeAllTenants: true, Audit: actor.Audit)));
 
         var stored = await provider.GetRequiredService<IInvitationRepository>().GetInvitationByTokenHashAsync(invitation.TokenHash);
         Assert.That(stored?.RevokedAt, Is.Null);
@@ -91,7 +96,11 @@ internal sealed class SecurityMutationAuditAtomicityTests
     [Test]
     public async Task InvitationServiceRevokeRollsBackWhenRequiredAuditFails()
     {
-        _database = await CreateDatabaseAsync(services => services.AddAshlarInvitations());
+        _database = await CreateDatabaseAsync(services =>
+        {
+            services.AddAshlarInvitations();
+            services.AddScoped<IAccountSecurityOperationAuthorizer, AllowOperations>();
+        });
         var provider = _database.ServiceProvider;
         var invitation = CreateInvitation();
         await provider.GetRequiredService<IInvitationRepository>().CreateInvitationAsync(invitation);
@@ -110,7 +119,11 @@ internal sealed class SecurityMutationAuditAtomicityTests
         const string token = "known-invitation-token";
         var email = $"{Guid.NewGuid():N}@example.test";
 
-        _database = await CreateDatabaseAsync(services => services.AddAshlarInvitations());
+        _database = await CreateDatabaseAsync(services =>
+        {
+            services.AddAshlarInvitations();
+            services.AddScoped<IAccountSecurityOperationAuthorizer, AllowOperations>();
+        });
         var provider = _database.ServiceProvider;
         await provider.GetRequiredService<IUserRepository>().CreateUserAsync(new AshlarUser
         {
@@ -178,8 +191,13 @@ internal sealed class SecurityMutationAuditAtomicityTests
     [Test]
     public async Task AccountLockoutResetRollsBackWhenRequiredAuditFails()
     {
-        _database = await CreateDatabaseAsync(services => services.AddAshlarIdentity());
+        _database = await CreateDatabaseAsync(services =>
+        {
+            services.AddAshlarIdentity();
+            services.AddScoped<IAccountSecurityOperationAuthorizer, AllowOperations>();
+        });
         var provider = _database.ServiceProvider;
+        var actor = await CreateActorAsync(provider, IAccountSecurityAdministrationService.ProofPurpose);
         var repository = provider.GetRequiredService<IAccountLockoutRepository>();
         var tenant = new TenantContext(Guid.NewGuid());
         var userId = (await CreateUserAsync(provider, tenant.TenantId)).Id;
@@ -188,7 +206,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IAccountLockoutAdministrationService>()
-                .ResetLockoutAsync(userId, authProvider, new ResetAccountLockoutRequest(tenant, Audit())));
+                .ResetLockoutAsync(actor, userId, authProvider, new ResetAccountLockoutRequest(tenant, actor.Audit)));
 
         var stored = await repository.GetAsync(userId, tenant.TenantId, authProvider);
         Assert.That(stored, Is.Not.Null);
@@ -197,8 +215,14 @@ internal sealed class SecurityMutationAuditAtomicityTests
     [Test]
     public async Task SqliteRateLimitResetRollsBackWhenRequiredAuditFails()
     {
-        _database = await CreateDatabaseAsync(services => services.AddAshlarSqliteRateLimiting());
+        _database = await CreateDatabaseAsync(services =>
+        {
+            services.AddAshlarIdentity();
+            services.AddAshlarSqliteRateLimiting();
+            services.AddScoped<IAccountSecurityOperationAuthorizer, AllowOperations>();
+        });
         var provider = _database.ServiceProvider;
+        var actor = await CreateActorAsync(provider, IAccountSecurityAdministrationService.ProofPurpose);
         await provider.GetRequiredService<IAuthenticationRateLimiter>().CheckAsync(
             new RateLimitAttempt { Purpose = "login", Key = "203.0.113.10" },
             new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(5) });
@@ -208,7 +232,8 @@ internal sealed class SecurityMutationAuditAtomicityTests
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>().ResetBucketAsync(
-                new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, bucket.Purpose, Audit())));
+                actor, TenantContext.Global, false,
+                new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, bucket.Purpose, actor.Audit)));
 
         var stored = await provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>().GetBucketAsync(
             new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, bucket.Purpose),
@@ -263,7 +288,8 @@ internal sealed class SecurityMutationAuditAtomicityTests
         return new AuditContext(ActorUserId: Guid.NewGuid(), IpAddress: "203.0.113.10", UserAgent: "atomicity-test");
     }
 
-    private static async Task<AccountSecurityActorContext> CreateActorAsync(IServiceProvider provider)
+    private static async Task<AccountSecurityActorContext> CreateActorAsync(IServiceProvider provider,
+        string purpose = IAuthorizationGrantService.AdministrationProofPurpose)
     {
         const string token = "grant-atomicity-session-token";
         var actor = await CreateUserAsync(provider);
@@ -280,7 +306,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
         await provider.GetRequiredService<IAuthenticationSessionRepository>().CreateSessionAsync(session);
         var validated = await provider.GetRequiredService<IAuthenticationSessionService>().ValidateSessionAsync(token);
         var proof = provider.GetRequiredService<StepUpAuthenticationService>().CreateFreshMfaProof(
-            validated.ValidatedSession!, new StepUpRequirement(TimeSpan.FromMinutes(5)), IAuthorizationGrantService.AdministrationProofPurpose).Value!;
+            validated.ValidatedSession!, new StepUpRequirement(TimeSpan.FromMinutes(5)), purpose).Value!;
         var audit = new AuditContext(actor.Id, UserAgent: "atomicity-test");
         return new AccountSecurityActorContext(actor.Id, TenantContext.Global, session.Id, proof, audit);
     }

@@ -46,8 +46,7 @@ public sealed class UserAdministrationService(IUserAdministrationRepository repo
         }
 
         if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                Guid.Empty, AccountSecurityOperation.SearchUsers, cancellationToken,
-                recordSuccess: false))
+                Guid.Empty, AccountSecurityOperation.SearchUsers, cancellationToken))
             return Result.Failure<UserSearchResult>(AshlarFailureCodes.ValidationError);
 
         var limit = Math.Min(request.Limit, MaximumLimit);
@@ -85,7 +84,7 @@ public sealed class UserAdministrationService(IUserAdministrationRepository repo
         }
 
         if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                request.UserId, AccountSecurityOperation.ReadUser, cancellationToken, recordSuccess: false))
+                request.UserId, AccountSecurityOperation.ReadUser, cancellationToken))
             return Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.ValidationError);
 
         UserSummary? user;

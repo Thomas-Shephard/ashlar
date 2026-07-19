@@ -6,7 +6,7 @@ namespace Ashlar.Identity.RateLimiting.Abstractions;
 /// <remarks>
 /// Bucket identifiers returned by this service are opaque operational identifiers derived from stored hashed keys.
 /// They are not raw rate-limit inputs and must not be treated as IP addresses, email addresses, user identifiers, tokens, or Redis key names.
-/// Host applications must protect usage of this service with appropriate administrator authorization and step-up policy.
+/// Operations require an active actor session, fresh administration proof, explicit scope, host authorization, and durable audit.
 /// The service is registered by provider-backed rate limiter packages that support administration; the default in-memory limiter does not expose an administration implementation.
 /// Searches are capped at 100 buckets per page. Redis-backed searches use a bounded key scan, so paging can be approximate while Redis keys change concurrently.
 /// Use <see cref="IAuthenticationRateLimitAdministrationReader" /> for browsing operations.
@@ -16,8 +16,11 @@ public interface IAuthenticationRateLimitAdministrationService
     /// <summary>
     /// Resets a selected authentication rate-limit bucket.
     /// </summary>
+    /// <param name="actor">Authenticated administrator context.</param>
+    /// <param name="tenant">Explicit tenant or global scope.</param>
+    /// <param name="includeAllTenants">Whether all tenant scopes are included.</param>
     /// <param name="request">Reset request containing the bucket identifier, purpose, and audit context.</param>
     /// <param name="cancellationToken">Token for aborting administration storage work.</param>
     /// <returns>A result describing whether the selected bucket was reset.</returns>
-    Task<Result<AuthenticationRateLimitBucketResetResult>> ResetBucketAsync(ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default);
+    Task<Result<AuthenticationRateLimitBucketResetResult>> ResetBucketAsync(AccountSecurityActorContext actor, TenantContext? tenant, bool includeAllTenants, ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default);
 }

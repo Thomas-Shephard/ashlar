@@ -21,7 +21,7 @@ public enum InvitationAdministrationStatus
 /// Request for administrator invitation search.
 /// </summary>
 /// <remarks>
-/// Host applications must authorize callers and apply any required step-up policy before executing this read-only operation.
+/// The administration reader enforces actor session, proof, scope, and host authorization before executing this operation.
 /// Searches require an explicit <see cref="Tenant" /> scope or <see cref="IncludeAllTenants" /> for intentional cross-tenant operations views.
 /// Raw invitation tokens and token hashes are never returned.
 /// </remarks>
@@ -135,7 +135,7 @@ public sealed record InvitationSearchResult(
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global invitations; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
 /// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
 /// <remarks>
-/// Host applications must authorize callers and apply any required step-up policy before executing this read-only operation.
+/// The administration reader enforces actor session, proof, scope, and host authorization before executing this operation.
 /// Raw invitation tokens and token hashes are never returned.
 /// </remarks>
 public sealed record InvitationAdministrationLookupRequest(
@@ -167,7 +167,7 @@ public sealed record InvitationAdministrationLookupRequest(
 /// <param name="Audit">Actor and request metadata required for the emitted <paramref name="Audit" /> event context.</param>
 /// <param name="Reason">Optional display-safe reason to include in security event properties.</param>
 /// <remarks>
-/// Host applications must authorize callers and apply any required step-up policy before executing this mutating operation.
+/// The administration service enforces actor session, proof, scope, host authorization, and durable security-event recording before executing this operation.
 /// The operation never returns raw invitation tokens or token hashes.
 /// </remarks>
 public sealed record RevokeInvitationAdministrationRequest(

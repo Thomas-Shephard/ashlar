@@ -10,14 +10,20 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
     private readonly IAuthenticationRateLimitAdministrationRepository _repository;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly AshlarDurableTransactionProvider _transactionProvider;
+    private readonly AdminReadBoundary _boundary;
+    private readonly TimeProvider _timeProvider;
 
     public AuthenticationRateLimitAdministrationService(
         IAuthenticationRateLimitAdministrationRepository repository,
-        AuthenticationRateLimitAdministrationServiceDependencies dependencies)
+        AuthenticationRateLimitAdministrationServiceDependencies dependencies,
+        IAuthenticationSessionRepository sessions,
+        IAccountSecurityOperationAuthorizer authorizer,
+        IPersistentSecurityEventSink auditSink)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         ArgumentNullException.ThrowIfNull(dependencies);
         _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
+        _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
         _securityEvents = new SecurityEventEmitter(
             DurableSecurityMutationComposition.Require(
                 dependencies.SecurityEventSink,
@@ -25,32 +31,62 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
                 "Authentication rate-limit resets",
                 repository),
             dependencies.TimeProvider);
+        _boundary = new(sessions, authorizer, auditSink, _timeProvider,
+            IAccountSecurityAdministrationService.ProofPurpose, AshlarSecurityEventTypes.AuthenticationRateLimitBucketReset);
     }
 
-    public async Task<Result<AuthenticationRateLimitBucketResetResult>> ResetBucketAsync(ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<AuthenticationRateLimitBucketResetResult>> ResetBucketAsync(AccountSecurityActorContext actor, TenantContext? tenant,
+        bool includeAllTenants, ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
 
         if (!TryValidateResetRequest(request, out var validationFailure))
         {
             return validationFailure;
         }
+        try { AdministrationScopeValidation.ThrowIfInvalidScope(tenant, includeAllTenants); }
+        catch (ArgumentException exception) { return Result.Failure<AuthenticationRateLimitBucketResetResult>(AshlarFailureCodes.ValidationError, exception.Message); }
+        if (request.Audit.ActorUserId != actor.ActorUserId)
+        {
+            await _boundary.RecordFailureAsync(actor, tenant, includeAllTenants, AccountSecurityOperation.ResetAuthenticationRateLimitBucket);
+            return Result.Failure<AuthenticationRateLimitBucketResetResult>(AshlarFailureCodes.ValidationError);
+        }
+        if (!await _boundary.AuthorizeAsync(actor, tenant, includeAllTenants, Guid.Empty,
+                AccountSecurityOperation.ResetAuthenticationRateLimitBucket, cancellationToken))
+            return Result.Failure<AuthenticationRateLimitBucketResetResult>(AshlarFailureCodes.ValidationError);
+
+        var bucket = await _repository.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(request.BucketId, request.Purpose),
+            _timeProvider.GetUtcNow(), cancellationToken);
+        if (bucket is not null && (!string.Equals(bucket.BucketId, request.BucketId, StringComparison.Ordinal)
+            || !string.Equals(bucket.Purpose, request.Purpose, StringComparison.Ordinal)))
+        {
+            await _boundary.RecordFailureAsync(actor, tenant, includeAllTenants, AccountSecurityOperation.ResetAuthenticationRateLimitBucket);
+            return Result.Failure<AuthenticationRateLimitBucketResetResult>(AshlarFailureCodes.RateLimitBucketNotFound);
+        }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-
         AuthenticationRateLimitBucketResetResult result;
-        try
+        if (bucket is null)
         {
-            var reset = await _repository.ResetBucketAsync(request, cancellationToken);
-            var status = reset ? AuthenticationRateLimitBucketResetStatus.Reset : AuthenticationRateLimitBucketResetStatus.NotFound;
-            result = new AuthenticationRateLimitBucketResetResult(request.BucketId, request.Purpose, status);
+            result = new AuthenticationRateLimitBucketResetResult(request.BucketId, request.Purpose,
+                AuthenticationRateLimitBucketResetStatus.NotFound);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        else
         {
-            result = new AuthenticationRateLimitBucketResetResult(
-                request.BucketId,
-                request.Purpose,
-                AuthenticationRateLimitBucketResetStatus.Failed);
+            try
+            {
+                var reset = await _repository.ResetBucketAsync(request, cancellationToken);
+                var status = reset ? AuthenticationRateLimitBucketResetStatus.Reset : AuthenticationRateLimitBucketResetStatus.NotFound;
+                result = new AuthenticationRateLimitBucketResetResult(request.BucketId, request.Purpose, status);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                result = new AuthenticationRateLimitBucketResetResult(
+                    request.BucketId,
+                    request.Purpose,
+                    AuthenticationRateLimitBucketResetStatus.Failed);
+            }
         }
 
         await RecordResetAttemptAsync(request, result.Status, cancellationToken);

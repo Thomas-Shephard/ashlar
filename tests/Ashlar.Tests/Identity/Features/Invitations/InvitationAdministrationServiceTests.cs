@@ -6,11 +6,13 @@ namespace Ashlar.Tests.Identity.Features.Invitations;
 internal sealed class InvitationAdministrationServiceTests
 {
     private static readonly DateTimeOffset Now = new(2026, 6, 4, 12, 0, 0, TimeSpan.Zero);
+    private static readonly AdminReadTestBoundary ReadBoundary = new(Now);
+    private static readonly AdminReadTestBoundary MutationBoundary = new(Now, proofPurpose: IAccountSecurityAdministrationService.ProofPurpose);
 
     [Test]
     public void ConstructorRejectsNullRepository()
     {
-        Assert.Throws<ArgumentNullException>(() => new InvitationAdministrationService(null!, null!));
+        Assert.Throws<ArgumentNullException>(() => CreateRawService(null!, null!));
     }
 
     [Test]
@@ -22,16 +24,16 @@ internal sealed class InvitationAdministrationServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new InvitationAdministrationService(repository, null!));
-            Assert.Throws<ArgumentNullException>(() => _ = new InvitationAdministrationService(repository,
+            Assert.Throws<ArgumentNullException>(() => _ = CreateRawService(repository, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = CreateRawService(repository,
                 new InvitationAdministrationServiceDependencies(TransactionProvider: transactions)));
-            Assert.Throws<ArgumentNullException>(() => _ = new InvitationAdministrationService(repository,
+            Assert.Throws<ArgumentNullException>(() => _ = CreateRawService(repository,
                 new InvitationAdministrationServiceDependencies(SecurityEventSink: composition.Events)));
-            Assert.Throws<ArgumentException>(() => _ = new InvitationAdministrationService(repository,
+            Assert.Throws<ArgumentException>(() => _ = CreateRawService(repository,
                 new InvitationAdministrationServiceDependencies(SecurityEventSink: new SecurityEventFanOutSink(), TransactionProvider: transactions)));
-            Assert.Throws<InvalidOperationException>(() => _ = new InvitationAdministrationService(repository,
+            Assert.Throws<InvalidOperationException>(() => _ = CreateRawService(repository,
                 new InvitationAdministrationServiceDependencies(SecurityEventSink: new SecurityEventFanOutSink(Mock.Of<IPersistentSecurityEventSink>(), transactionProvider: new RecordingTransactionProvider()), TransactionProvider: transactions)));
-            Assert.DoesNotThrow(() => _ = new InvitationAdministrationService(repository,
+            Assert.DoesNotThrow(() => _ = CreateRawService(repository,
                 new InvitationAdministrationServiceDependencies(SecurityEventSink: composition.Events, TransactionProvider: composition.Transactions)));
         }
     }
@@ -39,16 +41,18 @@ internal sealed class InvitationAdministrationServiceTests
     [Test]
     public void ReaderConstructorValidatesRepositoryAndDefaultsClock()
     {
-        Assert.Throws<ArgumentNullException>(() => _ = new InvitationAdministrationReader(null!));
-        Assert.DoesNotThrow(() => _ = new InvitationAdministrationReader(new RecordingInvitationRepository(), null));
+        Assert.Throws<ArgumentNullException>(() => _ = CreateRawReader(null!));
+        Assert.DoesNotThrow(() => _ = CreateRawReader(new RecordingInvitationRepository(), null));
     }
 
     [Test]
     public async Task ConstructorUsesSystemTimeProviderByDefault()
     {
         var repository = new RecordingInvitationRepository();
+        var boundary = new AdminReadTestBoundary(TimeProvider.System.GetUtcNow());
         var before = TimeProvider.System.GetUtcNow();
-        var result = await new InvitationAdministrationReader(repository).SearchInvitationsAsync(new SearchInvitationsRequest { IncludeAllTenants = true });
+        var result = await new InvitationAdministrationReader(repository, boundary.Sessions, boundary.Authorizer, boundary.Sink)
+            .SearchInvitationsAsync(boundary.Actor, new SearchInvitationsRequest { IncludeAllTenants = true });
         var after = TimeProvider.System.GetUtcNow();
 
         using (Assert.EnterMultipleScope())
@@ -64,10 +68,10 @@ internal sealed class InvitationAdministrationServiceTests
     {
         var service = CreateReader();
 
-        var missingScope = await service.SearchInvitationsAsync(new SearchInvitationsRequest());
-        var conflictingScope = await service.SearchInvitationsAsync(new SearchInvitationsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true });
-        var badLimit = await service.SearchInvitationsAsync(new SearchInvitationsRequest { IncludeAllTenants = true, Limit = 0 });
-        var badOffset = await service.SearchInvitationsAsync(new SearchInvitationsRequest { IncludeAllTenants = true, Offset = -1 });
+        var missingScope = await service.SearchInvitationsAsync(ReadBoundary.Actor, new SearchInvitationsRequest());
+        var conflictingScope = await service.SearchInvitationsAsync(ReadBoundary.Actor, new SearchInvitationsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true });
+        var badLimit = await service.SearchInvitationsAsync(ReadBoundary.Actor, new SearchInvitationsRequest { IncludeAllTenants = true, Limit = 0 });
+        var badOffset = await service.SearchInvitationsAsync(ReadBoundary.Actor, new SearchInvitationsRequest { IncludeAllTenants = true, Offset = -1 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -82,14 +86,15 @@ internal sealed class InvitationAdministrationServiceTests
     public async Task SearchInvitationsAsyncCapsLimitAndDelegatesFilters()
     {
         var repository = new RecordingInvitationRepository();
+        var tenantId = Guid.NewGuid();
         for (var i = 0; i < 101; i++)
         {
-            repository.SearchResults.Add(CreateSummary());
+            repository.SearchResults.Add(CreateSummary() with { TenantId = tenantId, DisplayEmail = "admin@example.com" });
         }
 
         var request = new SearchInvitationsRequest
         {
-            Tenant = new TenantContext(Guid.NewGuid()),
+            Tenant = new TenantContext(tenantId),
             EmailQuery = "admin",
             Email = "admin@example.com",
             Status = InvitationAdministrationStatus.Pending,
@@ -105,7 +110,7 @@ internal sealed class InvitationAdministrationServiceTests
             Offset = 7
         };
 
-        var result = await CreateReader(repository).SearchInvitationsAsync(request);
+        var result = await CreateReader(repository).SearchInvitationsAsync(ReadBoundary.Actor, request);
 
         using (Assert.EnterMultipleScope())
         {
@@ -127,9 +132,9 @@ internal sealed class InvitationAdministrationServiceTests
     {
         var service = CreateReader();
 
-        var missingScope = await service.GetInvitationAsync(new InvitationAdministrationLookupRequest(Guid.NewGuid()));
-        var conflictingScope = await service.GetInvitationAsync(new InvitationAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global, IncludeAllTenants: true));
-        var emptyId = await service.GetInvitationAsync(new InvitationAdministrationLookupRequest(Guid.Empty, TenantContext.Global));
+        var missingScope = await service.GetInvitationAsync(ReadBoundary.Actor, new InvitationAdministrationLookupRequest(Guid.NewGuid()));
+        var conflictingScope = await service.GetInvitationAsync(ReadBoundary.Actor, new InvitationAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global, IncludeAllTenants: true));
+        var emptyId = await service.GetInvitationAsync(ReadBoundary.Actor, new InvitationAdministrationLookupRequest(Guid.Empty, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -146,9 +151,9 @@ internal sealed class InvitationAdministrationServiceTests
         var repository = new RecordingInvitationRepository { SingleResult = CreateSingleResult() with { TenantId = tenantId } };
         var service = CreateReader(repository);
 
-        var missing = await CreateReader().GetInvitationAsync(new InvitationAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
-        var crossTenant = await service.GetInvitationAsync(new InvitationAdministrationLookupRequest(repository.SingleResult.Id, TenantContext.Global));
-        var allTenants = await service.GetInvitationAsync(new InvitationAdministrationLookupRequest(repository.SingleResult.Id, IncludeAllTenants: true));
+        var missing = await CreateReader().GetInvitationAsync(ReadBoundary.Actor, new InvitationAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
+        var crossTenant = await service.GetInvitationAsync(ReadBoundary.Actor, new InvitationAdministrationLookupRequest(repository.SingleResult.Id, TenantContext.Global));
+        var allTenants = await service.GetInvitationAsync(ReadBoundary.Actor, new InvitationAdministrationLookupRequest(repository.SingleResult.Id, IncludeAllTenants: true));
 
         using (Assert.EnterMultipleScope())
         {
@@ -159,13 +164,81 @@ internal sealed class InvitationAdministrationServiceTests
     }
 
     [Test]
+    public async Task ReaderRejectsHostileSearchFiltersAndMismatchedLookupId()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantMismatch = new RecordingInvitationRepository();
+        tenantMismatch.SearchResults.Add(CreateSummary() with { TenantId = Guid.NewGuid(), DisplayEmail = "admin@example.com" });
+        var emailMismatch = new RecordingInvitationRepository();
+        emailMismatch.SearchResults.Add(CreateSummary() with { TenantId = tenantId, DisplayEmail = "other@example.com" });
+        var queryMismatch = new RecordingInvitationRepository();
+        queryMismatch.SearchResults.Add(CreateSummary() with { TenantId = tenantId, DisplayEmail = "other@example.com" });
+        var lookupId = Guid.NewGuid();
+
+        var wrongTenant = await CreateReader(tenantMismatch).SearchInvitationsAsync(ReadBoundary.Actor,
+            new() { Tenant = new TenantContext(tenantId), Email = "admin@example.com" });
+        var wrongEmail = await CreateReader(emailMismatch).SearchInvitationsAsync(ReadBoundary.Actor,
+            new() { Tenant = new TenantContext(tenantId), Email = "admin@example.com" });
+        var wrongQuery = await CreateReader(queryMismatch).SearchInvitationsAsync(ReadBoundary.Actor,
+            new() { Tenant = new TenantContext(tenantId), EmailQuery = "admin" });
+        var wrongId = await CreateReader(new RecordingInvitationRepository { SingleResult = CreateSummary() with { TenantId = tenantId } })
+            .GetInvitationAsync(ReadBoundary.Actor, new(lookupId, new TenantContext(tenantId)));
+
+        Assert.That(new[] { wrongTenant.Succeeded, wrongEmail.Succeeded, wrongQuery.Succeeded, wrongId.Succeeded }, Is.All.False);
+    }
+
+    [Test]
+    public async Task ReaderAndMutationRejectHostDenialAndAuditActorMismatch()
+    {
+        var denied = new AdminReadTestBoundary(Now, authorized: false);
+        var repository = new RecordingInvitationRepository();
+        var deniedReader = new InvitationAdministrationReader(repository, denied.Sessions, denied.Authorizer, denied.Sink, denied.TimeProvider);
+        var search = await deniedReader.SearchInvitationsAsync(denied.Actor, new() { IncludeAllTenants = true });
+        var lookup = await deniedReader.GetInvitationAsync(denied.Actor, new(Guid.NewGuid(), IncludeAllTenants: true));
+
+        var composition = new DurableSecurityMutationTestComposition(null, repository);
+        var deniedMutationBoundary = new AdminReadTestBoundary(Now, authorized: false,
+            proofPurpose: IAccountSecurityAdministrationService.ProofPurpose);
+        var deniedService = new InvitationAdministrationService(repository,
+            new(new StaticTimeProvider(Now), composition.Events, composition.Transactions), deniedMutationBoundary.Sessions,
+            deniedMutationBoundary.Authorizer, deniedMutationBoundary.Sink);
+        var request = new RevokeInvitationAdministrationRequest(Guid.NewGuid(), IncludeAllTenants: true, Audit: deniedMutationBoundary.Actor.Audit);
+        var hostDenied = await deniedService.RevokeInvitationAsync(deniedMutationBoundary.Actor, request);
+        var auditMismatch = await CreateService(repository).RevokeInvitationAsync(MutationBoundary.Actor,
+            request with { Audit = new AuditContext(Guid.NewGuid()) });
+        var missingAuditActor = await CreateService(repository).RevokeInvitationAsync(MutationBoundary.Actor,
+            request with { Audit = new AuditContext() });
+
+        Assert.That(new[] { search.Succeeded, lookup.Succeeded, hostDenied.Succeeded, auditMismatch.Succeeded, missingAuditActor.Succeeded }, Is.All.False);
+    }
+
+    [Test]
+    public async Task ReaderAndMutationRejectProofForWrongPurpose()
+    {
+        var wrongRead = new AdminReadTestBoundary(Now, proofPurpose: IAccountSecurityAdministrationService.ProofPurpose);
+        var reader = new InvitationAdministrationReader(new RecordingInvitationRepository(), wrongRead.Sessions,
+            wrongRead.Authorizer, wrongRead.Sink, wrongRead.TimeProvider);
+        var read = await reader.SearchInvitationsAsync(wrongRead.Actor, new() { IncludeAllTenants = true });
+
+        var repository = new RecordingInvitationRepository();
+        var composition = new DurableSecurityMutationTestComposition(null, repository);
+        var mutation = new InvitationAdministrationService(repository,
+            new(new StaticTimeProvider(Now), composition.Events, composition.Transactions), ReadBoundary.Sessions,
+            ReadBoundary.Authorizer, ReadBoundary.Sink);
+        var write = await mutation.RevokeInvitationAsync(ReadBoundary.Actor,
+            new(Guid.NewGuid(), IncludeAllTenants: true, Audit: ReadBoundary.Actor.Audit));
+
+        Assert.That(new[] { read.Succeeded, write.Succeeded }, Is.All.False);
+    }
+
+    [Test]
     public async Task RevokeInvitationAsyncRequiresAuditMetadataAndValidReason()
     {
         var service = CreateService();
 
-        var noAudit = await service.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(Guid.NewGuid(), TenantContext.Global));
-        var emptyId = await service.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(Guid.Empty, TenantContext.Global, Audit: CreateAudit()));
-        var longReason = await service.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(Guid.NewGuid(), TenantContext.Global, Audit: CreateAudit(), Reason: new string('x', 513)));
+        var noAudit = await service.RevokeInvitationAsync(MutationBoundary.Actor, new RevokeInvitationAdministrationRequest(Guid.NewGuid(), TenantContext.Global));
+        var emptyId = await service.RevokeInvitationAsync(MutationBoundary.Actor, new RevokeInvitationAdministrationRequest(Guid.Empty, TenantContext.Global, Audit: CreateAudit()));
+        var longReason = await service.RevokeInvitationAsync(MutationBoundary.Actor, new RevokeInvitationAdministrationRequest(Guid.NewGuid(), TenantContext.Global, Audit: CreateAudit(), Reason: new string('x', 513)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -176,7 +249,7 @@ internal sealed class InvitationAdministrationServiceTests
     }
 
     [Test]
-    public async Task RevokeInvitationAsyncReturnsTerminalStatusWithoutAuditEvent()
+    public async Task RevokeInvitationAsyncDurablyAuditsTerminalStatus()
     {
         var invitationId = Guid.NewGuid();
         var repository = new RecordingInvitationRepository
@@ -185,7 +258,7 @@ internal sealed class InvitationAdministrationServiceTests
         };
 
         var events = new RecordingSecurityEventSink();
-        var result = await CreateService(repository, events).RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitationId, TenantContext.Global, Audit: CreateAudit(), Reason: "operator request"));
+        var result = await CreateService(repository, events).RevokeInvitationAsync(MutationBoundary.Actor, new RevokeInvitationAdministrationRequest(invitationId, TenantContext.Global, Audit: CreateAudit(), Reason: "operator request"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -194,14 +267,16 @@ internal sealed class InvitationAdministrationServiceTests
             Assert.That(result.Value?.Status, Is.EqualTo(InvitationAdministrationStatus.Accepted));
             Assert.That(repository.LastRevokeRequest?.InvitationId, Is.EqualTo(invitationId));
             Assert.That(repository.LastRevokeNow, Is.EqualTo(Now));
-            Assert.That(events.Events, Is.Empty);
+            Assert.That(events.Events, Has.Count.EqualTo(1));
+            Assert.That(events.Events[0].Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+            Assert.That(events.Events[0].Properties?["revocation_status"], Is.EqualTo(InvitationAdministrationRevocationStatus.AlreadyAccepted.ToString()));
         }
     }
 
     [Test]
     public async Task RevokeInvitationAsyncMapsMissingInvitationSafely()
     {
-        var result = await CreateService().RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(Guid.NewGuid(), TenantContext.Global, Audit: CreateAudit()));
+        var result = await CreateService().RevokeInvitationAsync(MutationBoundary.Actor, new RevokeInvitationAdministrationRequest(Guid.NewGuid(), TenantContext.Global, Audit: CreateAudit()));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvitationNotFound));
     }
@@ -217,7 +292,7 @@ internal sealed class InvitationAdministrationServiceTests
             RevokeResult = new RevokeInvitationAdministrationResult(invitationId, tenantId, InvitationAdministrationRevocationStatus.Revoked, InvitationAdministrationStatus.Revoked, Now)
         };
 
-        await CreateService(repository, events).RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitationId, new TenantContext(tenantId), Audit: CreateAudit()));
+        await CreateService(repository, events).RevokeInvitationAsync(MutationBoundary.Actor, new RevokeInvitationAdministrationRequest(invitationId, new TenantContext(tenantId), Audit: CreateAudit()));
 
         var securityEvent = events.Events.Single();
         using (Assert.EnterMultipleScope())
@@ -239,7 +314,7 @@ internal sealed class InvitationAdministrationServiceTests
             RevokeResult = new RevokeInvitationAdministrationResult(invitationId, null, InvitationAdministrationRevocationStatus.Revoked, InvitationAdministrationStatus.Revoked, Now)
         };
 
-        await CreateService(repository, events).RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitationId, TenantContext.Global, Audit: CreateAudit(), Reason: "cleanup"));
+        await CreateService(repository, events).RevokeInvitationAsync(MutationBoundary.Actor, new RevokeInvitationAdministrationRequest(invitationId, TenantContext.Global, Audit: CreateAudit(), Reason: "cleanup"));
 
         var securityEvent = events.Events.Single();
         using (Assert.EnterMultipleScope())
@@ -262,7 +337,7 @@ internal sealed class InvitationAdministrationServiceTests
             RevokeResult = new RevokeInvitationAdministrationResult(invitationId, tenantId, InvitationAdministrationRevocationStatus.Revoked, InvitationAdministrationStatus.Revoked, Now)
         };
 
-        await CreateService(repository, events).RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitationId, IncludeAllTenants: true, Audit: CreateAudit()));
+        await CreateService(repository, events).RevokeInvitationAsync(MutationBoundary.Actor, new RevokeInvitationAdministrationRequest(invitationId, IncludeAllTenants: true, Audit: CreateAudit()));
 
         var securityEvent = events.Events.Single();
         using (Assert.EnterMultipleScope())
@@ -284,7 +359,7 @@ internal sealed class InvitationAdministrationServiceTests
         };
 
         var result = await CreateService(repository, transactionProvider: transactionProvider)
-            .RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitationId, TenantContext.Global, Audit: CreateAudit()));
+            .RevokeInvitationAsync(MutationBoundary.Actor, new RevokeInvitationAdministrationRequest(invitationId, TenantContext.Global, Audit: CreateAudit()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -306,8 +381,14 @@ internal sealed class InvitationAdministrationServiceTests
         }
     }
 
+    private static InvitationAdministrationReader CreateRawReader(IInvitationRepository repository, TimeProvider? timeProvider = null) =>
+        new(repository, ReadBoundary.Sessions, ReadBoundary.Authorizer, ReadBoundary.Sink, timeProvider);
+
+    private static InvitationAdministrationService CreateRawService(IInvitationRepository repository, InvitationAdministrationServiceDependencies dependencies) =>
+        new(repository, dependencies, MutationBoundary.Sessions, MutationBoundary.Authorizer, MutationBoundary.Sink);
+
     private static InvitationAdministrationReader CreateReader(RecordingInvitationRepository? repository = null) =>
-        new(repository ?? new RecordingInvitationRepository(), new StaticTimeProvider(Now));
+        new(repository ?? new RecordingInvitationRepository(), ReadBoundary.Sessions, ReadBoundary.Authorizer, ReadBoundary.Sink, new StaticTimeProvider(Now));
 
     private static InvitationAdministrationService CreateService(
         RecordingInvitationRepository? repository = null,
@@ -318,7 +399,7 @@ internal sealed class InvitationAdministrationServiceTests
         var composition = transactionProvider is null
             ? new DurableSecurityMutationTestComposition(events, repository)
             : DurableSecurityMutationTestComposition.Create(transactionProvider, events, repository);
-        return new InvitationAdministrationService(
+        return CreateRawService(
             repository,
             new InvitationAdministrationServiceDependencies(new StaticTimeProvider(Now), composition.Events, composition.Transactions));
     }
@@ -336,7 +417,7 @@ internal sealed class InvitationAdministrationServiceTests
 
     private static AuditContext CreateAudit()
     {
-        return new AuditContext(Guid.NewGuid(), "127.0.0.1");
+        return MutationBoundary.Actor.Audit with { IpAddress = "127.0.0.1" };
     }
 
     private sealed class RecordingInvitationRepository : IInvitationRepository
