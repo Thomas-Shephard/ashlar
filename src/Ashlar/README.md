@@ -51,6 +51,8 @@ services.AddAshlarOAuth(options => options.AddGoogle(google =>
 }));
 ```
 
+All OIDC providers key external credentials by the validated issuer and subject claims. Ashlar preserves the validated security token issuer in its temporary external ticket, so provider claim mapping cannot remove it; tokens with missing or blank issuers fail closed.
+
 Account linking consumes Ashlar-validated temporary external tickets and requires an Ashlar-issued fresh MFA proof bound to the target user, tenant, session, and linking purpose. Applications cannot submit raw authentication providers or assertions to credential mutation.
 
 ## Account Security Posture

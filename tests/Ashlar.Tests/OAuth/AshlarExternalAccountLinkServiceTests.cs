@@ -2,7 +2,6 @@ using System.Security.Claims;
 using System.Reflection;
 using Ashlar.Auditing;
 using Ashlar.OAuth.Providers.GitHub;
-using Ashlar.OAuth.Providers.Google;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,7 +15,6 @@ public interface ITestAccountSecurityService : IAccountSecurityService, IAccount
 
 internal sealed class AshlarExternalAccountLinkServiceTests
 {
-    private static readonly string[] SameSubjectTwice = ["same-sub", "same-sub"];
 
     [Test]
     public void ConstructorShouldRejectNullDependencies()
@@ -182,8 +180,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
-            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("stable-sub"));
-            Assert.That(observedRequest?.ProviderKey, Is.EqualTo("stable-sub"));
+            Assert.That(result.Assertion?.ProviderKey, Does.StartWith("oidc-sha256:"));
+            Assert.That(observedRequest?.ProviderKey, Is.EqualTo(result.Assertion?.ProviderKey));
             Assert.That(new AuthenticationProviderKey(observedRequest!.ProviderType, observedRequest.ProviderName), Is.EqualTo(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
             Assert.That(observedAudit?.ActorUserId, Is.EqualTo(userId));
         }
@@ -452,7 +450,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(assertions.Select(a => a.ProviderKey), Is.EqualTo(SameSubjectTwice));
+            Assert.That(assertions.Select(a => a.ProviderKey).Distinct().Count(), Is.EqualTo(1));
         }
     }
 
@@ -1303,7 +1301,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         AshlarFailureCode? proofFailure = null)
     {
         var options = new AshlarOAuthOptions();
-        options.AddGoogle();
+        options.AddOidcProvider("Google", _ => { });
         if (includeGitHub)
         {
             options.AddGitHub();
@@ -1409,7 +1407,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
 
     private static ClaimsPrincipal CreatePrincipal(string subject, string email = "person@example.com", bool tokenClaims = false)
     {
-        var claims = new List<Claim> { new("sub", subject), new("email", email) };
+        var claims = new List<Claim> { new("iss", "https://issuer.example"), new("sub", subject), new("email", email) };
         if (tokenClaims)
         {
             claims.Add(new Claim("access_token", "access-secret"));

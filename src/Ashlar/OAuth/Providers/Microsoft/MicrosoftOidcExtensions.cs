@@ -51,7 +51,7 @@ public static class MicrosoftOidcExtensions
         var allowedEmailLikeClaimTypes = invitationEmailMatchOptions.AllowedEmailLikeClaimTypes.ToArray();
         options.AddInvitationEmailMatchPolicyDecorator(policy => new MicrosoftOidcInvitationEmailMatchPolicy(normalizedProviderName, policy, allowedEmailLikeClaimTypes));
 
-        return options.AddMicrosoftProvider(providerName, authority, configure, AshlarOidcProviderKeyMode.Subject);
+        return options.AddMicrosoftProvider(providerName, authority, configure);
     }
 
     /// <summary>
@@ -67,7 +67,7 @@ public static class MicrosoftOidcExtensions
         Action<OpenIdConnectOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return options.AddMicrosoftProvider(providerName, MicrosoftOidcDefaults.BuildSignInAuthority(MicrosoftOidcDefaults.PersonalAccountsTenant), configure, AshlarOidcProviderKeyMode.IssuerAndSubject);
+        return options.AddMicrosoftProvider(providerName, MicrosoftOidcDefaults.BuildSignInAuthority(MicrosoftOidcDefaults.PersonalAccountsTenant), configure);
     }
 
     /// <summary>
@@ -90,26 +90,14 @@ public static class MicrosoftOidcExtensions
             {
                 configure?.Invoke(oidcOptions);
                 ConfigureCommonAuthorityIssuerValidator(oidcOptions);
-            },
-            AshlarOidcProviderKeyMode.IssuerAndSubject);
+            });
     }
 
     private static AshlarOAuthOptions AddMicrosoftProvider(
         this AshlarOAuthOptions options,
         string providerName,
         string authority,
-        Action<OpenIdConnectOptions>? configure,
-        AshlarOidcProviderKeyMode providerKeyMode)
-    {
-        return options.AddMicrosoftProviderCore(providerName, authority, configure, providerKeyMode);
-    }
-
-    private static AshlarOAuthOptions AddMicrosoftProviderCore(
-        this AshlarOAuthOptions options,
-        string providerName,
-        string authority,
-        Action<OpenIdConnectOptions>? configure,
-        AshlarOidcProviderKeyMode providerKeyMode)
+        Action<OpenIdConnectOptions>? configure)
     {
         var normalizedProviderName = AshlarOAuthOptions.NormalizeProviderName(providerName);
         return options.AddOidcProvider(new AshlarOidcProviderOptions(normalizedProviderName, normalizedProviderName, oidcOptions =>
@@ -120,7 +108,7 @@ public static class MicrosoftOidcExtensions
             oidcOptions.AddIfMissing("profile");
             oidcOptions.AddIfMissing("email");
             configure?.Invoke(oidcOptions);
-        }, providerKeyMode));
+        }));
     }
 
     private static void ConfigureCommonAuthorityIssuerValidator(OpenIdConnectOptions options)

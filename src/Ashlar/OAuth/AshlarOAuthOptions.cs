@@ -59,31 +59,16 @@ public sealed class AshlarOAuthOptions
     /// </summary>
     /// <param name="providerName">The Ashlar provider name.</param>
     /// <param name="configure">The OpenID Connect handler configuration callback.</param>
-    /// <returns>The options instance.</returns>
-    public AshlarOAuthOptions AddOidcProvider(string providerName, Action<OpenIdConnectOptions> configure)
-    {
-        return AddOidcProvider(providerName, AshlarOidcProviderKeyMode.IssuerAndSubject, configure);
-    }
-
-    /// <summary>
-    /// Adds a generic OpenID Connect provider.
-    /// </summary>
-    /// <param name="providerName">The Ashlar provider name.</param>
-    /// <param name="providerKeyMode">How Ashlar composes the stable provider key from validated OIDC claims.</param>
-    /// <param name="configure">The OpenID Connect handler configuration callback.</param>
     /// <param name="getClaimsFromUserInfoEndpoint">Whether the handler should request claims from the provider user-info endpoint.</param>
     /// <returns>The options instance.</returns>
     public AshlarOAuthOptions AddOidcProvider(
         string providerName,
-        AshlarOidcProviderKeyMode providerKeyMode,
         Action<OpenIdConnectOptions> configure,
         bool getClaimsFromUserInfoEndpoint = true)
     {
         var normalizedName = NormalizeProviderName(providerName);
         ArgumentNullException.ThrowIfNull(configure);
-        ValidateProviderKeyMode(providerKeyMode);
-
-        return AddOidcProvider(new AshlarOidcProviderOptions(normalizedName, normalizedName, configure, providerKeyMode, getClaimsFromUserInfoEndpoint));
+        return AddOidcProvider(new AshlarOidcProviderOptions(normalizedName, normalizedName, configure, getClaimsFromUserInfoEndpoint));
     }
 
     /// <summary>
@@ -138,8 +123,6 @@ public sealed class AshlarOAuthOptions
     internal AshlarOAuthOptions AddOidcProvider(AshlarOidcProviderOptions provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
-        ValidateProviderKeyMode(provider.ProviderKeyMode);
-
         var normalizedName = NormalizeProviderName(provider.ProviderName);
         if (_oauth2Providers.ContainsKey(normalizedName))
         {
@@ -205,14 +188,6 @@ public sealed class AshlarOAuthOptions
         }
     }
 
-    private static void ValidateProviderKeyMode(AshlarOidcProviderKeyMode providerKeyMode)
-    {
-        if (!Enum.IsDefined(providerKeyMode))
-        {
-            throw new ArgumentOutOfRangeException(nameof(providerKeyMode), providerKeyMode, "The OpenID Connect provider key mode is not supported.");
-        }
-    }
-
     internal void AddInvitationEmailMatchPolicyDecorator(Func<IOidcInvitationEmailMatchPolicy, IOidcInvitationEmailMatchPolicy> decorator)
     {
         ArgumentNullException.ThrowIfNull(decorator);
@@ -226,13 +201,11 @@ public sealed class AshlarOAuthOptions
 /// <param name="ProviderName">The normalized Ashlar provider name.</param>
 /// <param name="SchemeName">The ASP.NET Core authentication scheme name.</param>
 /// <param name="Configure">The OpenID Connect handler configuration callback.</param>
-/// <param name="ProviderKeyMode">How Ashlar composes the stable provider key from validated OIDC claims.</param>
 /// <param name="GetClaimsFromUserInfoEndpoint">Whether the handler should request claims from the provider user-info endpoint.</param>
 public sealed record AshlarOidcProviderOptions(
     string ProviderName,
     string SchemeName,
     Action<OpenIdConnectOptions> Configure,
-    AshlarOidcProviderKeyMode ProviderKeyMode = AshlarOidcProviderKeyMode.IssuerAndSubject,
     bool GetClaimsFromUserInfoEndpoint = true);
 
 /// <summary>
@@ -249,19 +222,3 @@ public sealed record AshlarOAuth2ProviderOptions(
     Action<OAuthOptions> Configure,
     string ProviderKeyClaimType = "id",
     bool AllowUnsafeProviderKeyClaimType = false);
-
-/// <summary>
-/// Defines how an OpenID Connect provider key is composed from validated claims.
-/// </summary>
-public enum AshlarOidcProviderKeyMode
-{
-    /// <summary>
-    /// Uses the OIDC subject claim as the provider key.
-    /// </summary>
-    Subject = 0,
-
-    /// <summary>
-    /// Uses the OIDC issuer and subject claims as the provider key.
-    /// </summary>
-    IssuerAndSubject = 1
-}

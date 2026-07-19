@@ -60,8 +60,8 @@ internal sealed class PostgresOidcInvitationRegistrationAtomicityTests
 
         var invitation = await invitations.GetInvitationByTokenHashAsync(services.GetRequiredService<ISecureTokenHasher>().HashToken(token));
         var invitee = await users.GetUserByEmailAsync(inviteeEmail);
-        var existingCredential = await credentials.GetCredentialForUserAsync(existingUserId, ProviderType.Oidc, "Google", subject);
-        var retryCredential = await credentials.GetCredentialForUserAsync(retryResult.UserId ?? Guid.Empty, ProviderType.Oidc, "Google", retrySubject);
+        var existingCredential = await credentials.GetCredentialForUserAsync(existingUserId, ProviderType.Oidc, "Google", CreateProviderKey(subject));
+        var retryCredential = await credentials.GetCredentialForUserAsync(retryResult.UserId ?? Guid.Empty, ProviderType.Oidc, "Google", CreateProviderKey(retrySubject));
 
         using (Assert.EnterMultipleScope())
         {
@@ -83,7 +83,7 @@ internal sealed class PostgresOidcInvitationRegistrationAtomicityTests
         services.AddSingleton<TimeProvider>(new FakeTimeProvider(Now));
         services.AddSingleton<ISecretProtector, TestSecretProtector>();
         services.Replace(ServiceDescriptor.Singleton<IEmailSender, NullEmailSender>());
-        services.AddAshlarOAuth(options => options.AddOidcProvider("Google", AshlarOidcProviderKeyMode.Subject, oidc =>
+        services.AddAshlarOAuth(options => options.AddOidcProvider("Google", oidc =>
         {
             oidc.Authority = "https://accounts.example";
             oidc.ClientId = "client";
@@ -119,7 +119,7 @@ internal sealed class PostgresOidcInvitationRegistrationAtomicityTests
             UserId = userId,
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
-            ProviderKey = subject,
+            ProviderKey = CreateProviderKey(subject),
             Version = Guid.NewGuid().ToString("N"),
             CreatedAt = Now,
             Status = CredentialStatus.Active
@@ -130,11 +130,14 @@ internal sealed class PostgresOidcInvitationRegistrationAtomicityTests
     {
         return new ClaimsPrincipal(new ClaimsIdentity(
         [
+            new Claim("iss", "https://accounts.example"),
             new Claim("sub", subject),
             new Claim("email", email),
             new Claim("email_verified", "true")
         ], "oidc"));
     }
+
+    private static string CreateProviderKey(string subject) => OidcExternalIdentityAssertionMapper.Map("Google", CreatePrincipal(subject, "unused@example.com")).ProviderKey;
 
     private static AuthenticateResult CreateTicket(string subject, string email)
     {

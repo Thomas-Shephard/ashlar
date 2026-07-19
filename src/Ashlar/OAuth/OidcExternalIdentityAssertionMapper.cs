@@ -16,20 +16,19 @@ public static class OidcExternalIdentityAssertionMapper
     /// </summary>
     /// <param name="providerName">The configured Ashlar provider name.</param>
     /// <param name="principal">The validated external principal.</param>
-    /// <param name="providerKeyMode">How Ashlar composes the stable provider key from validated OIDC claims.</param>
-    /// <returns>An Ashlar assertion backed by the principal's stable OIDC issuer and subject claims by default.</returns>
-    public static ExternalIdentityAssertion Map(string providerName, ClaimsPrincipal principal, AshlarOidcProviderKeyMode providerKeyMode = AshlarOidcProviderKeyMode.IssuerAndSubject)
+    /// <returns>An Ashlar assertion backed by the principal's stable OIDC issuer and subject claims.</returns>
+    public static ExternalIdentityAssertion Map(string providerName, ClaimsPrincipal principal)
     {
         var normalizedProviderName = AshlarOAuthOptions.NormalizeProviderName(providerName);
         ArgumentNullException.ThrowIfNull(principal);
 
-        var subject = principal.FindFirstValue("sub")?.Trim();
+        var subject = principal.FindFirstValue("sub");
         if (string.IsNullOrWhiteSpace(subject))
         {
             throw new InvalidOperationException("The external OpenID Connect principal did not contain a subject claim.");
         }
 
-        var providerKey = CreateProviderKey(principal, subject, providerKeyMode);
+        var providerKey = CreateProviderKey(principal, subject);
 
         return new ExternalIdentityAssertion(
             ProviderType.Oidc,
@@ -38,19 +37,9 @@ public static class OidcExternalIdentityAssertionMapper
             ExternalIdentityClaimFilter.CreateSafeClaimsDictionary(principal));
     }
 
-    private static string CreateProviderKey(ClaimsPrincipal principal, string subject, AshlarOidcProviderKeyMode providerKeyMode)
+    private static string CreateProviderKey(ClaimsPrincipal principal, string subject)
     {
-        return providerKeyMode switch
-        {
-            AshlarOidcProviderKeyMode.Subject => subject,
-            AshlarOidcProviderKeyMode.IssuerAndSubject => CreateIssuerQualifiedProviderKey(principal, subject),
-            _ => throw new InvalidOperationException("The configured OpenID Connect provider key mode is not supported.")
-        };
-    }
-
-    private static string CreateIssuerQualifiedProviderKey(ClaimsPrincipal principal, string subject)
-    {
-        var issuer = principal.FindFirstValue("iss")?.Trim();
+        var issuer = principal.FindAll(AshlarOAuthAuthenticationProperties.OidcIssuerClaim).LastOrDefault()?.Value ?? principal.FindFirstValue("iss");
         if (string.IsNullOrWhiteSpace(issuer))
         {
             throw new InvalidOperationException("The external OpenID Connect principal did not contain an issuer claim.");

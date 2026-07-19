@@ -28,7 +28,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.Succeeded));
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Assertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
-            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("subject"));
+            Assert.That(result.Assertion?.ProviderKey, Does.StartWith("oidc-sha256:"));
         }
 
         limiter.VerifyNoOtherCalls();
@@ -517,7 +517,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
         ISecurityEventSink? securityEventSink)
     {
         var options = new AshlarOAuthOptions();
-        options.AddGoogle();
+        options.AddOidcProvider("Google", _ => { });
         configureOptions?.Invoke(options);
 
         var monitor = new TestOptionsMonitor(options);
@@ -563,7 +563,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
 
     private static ClaimsPrincipal CreatePrincipal(string subject)
     {
-        return new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", subject), new Claim("email", "person@example.com")], "oidc"));
+        return new ClaimsPrincipal(new ClaimsIdentity([new Claim("iss", "https://issuer.example"), new Claim("sub", subject), new Claim("email", "person@example.com")], "oidc"));
     }
 
     private static ClaimsPrincipal CreateGitHubPrincipal(string id)

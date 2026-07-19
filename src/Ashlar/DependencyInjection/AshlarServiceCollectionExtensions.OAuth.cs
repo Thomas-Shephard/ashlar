@@ -3,6 +3,7 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Providers.External;
 using Ashlar.OAuth;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Http;
@@ -102,6 +103,24 @@ public static partial class AshlarServiceCollectionExtensions
         options.SaveTokens = false;
         options.GetClaimsFromUserInfoEndpoint = provider.GetClaimsFromUserInfoEndpoint;
         options.MapInboundClaims = false;
+
+        var onTokenValidated = options.Events.OnTokenValidated;
+        options.Events.OnTokenValidated = async context =>
+        {
+            var issuer = context.SecurityToken?.Issuer;
+            if (onTokenValidated != null)
+            {
+                await onTokenValidated(context);
+            }
+
+            if (string.IsNullOrWhiteSpace(issuer) || context.Principal?.Identity is not ClaimsIdentity identity)
+            {
+                context.Fail("The validated OpenID Connect token did not contain an issuer.");
+                return;
+            }
+
+            identity.AddClaim(new Claim(AshlarOAuthAuthenticationProperties.OidcIssuerClaim, issuer));
+        };
 
         if (!options.CallbackPath.HasValue || string.Equals(options.CallbackPath.Value, "/signin-oidc", StringComparison.Ordinal))
         {

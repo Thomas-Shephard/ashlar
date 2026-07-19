@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using System.IdentityModel.Tokens.Jwt;
 using Ashlar.Auditing;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
@@ -49,7 +50,6 @@ internal sealed class AshlarServiceCollectionExtensionsOAuthTests
             Assert.That(oauthOptions.OidcProviders, Does.ContainKey("Google"));
             Assert.That(directOptions.OidcProviders, Does.ContainKey("Google"));
             Assert.That(snapshotOptions.OidcProviders, Does.ContainKey("Google"));
-            Assert.That(oauthOptions.OidcProviders["Google"].ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.IssuerAndSubject));
             Assert.That(authProviders.Select(p => p.Key), Does.Contain(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
             Assert.That(services.Any(d => d.ServiceType == typeof(AshlarExternalCredentialAuthenticationService)), Is.True);
             Assert.That(services.Any(d => d.ServiceType == typeof(AshlarExternalAccountLinkService)), Is.True);
@@ -121,7 +121,6 @@ internal sealed class AshlarServiceCollectionExtensionsOAuthTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.ProviderName, Is.EqualTo("Google"));
-            Assert.That(provider.ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.Subject));
             Assert.That(oidc.Authority, Is.EqualTo(GoogleOidcDefaults.Authority));
             Assert.That(oidc.ResponseType, Is.EqualTo("code"));
             Assert.That(oidc.Scope, Does.Contain("openid"));
@@ -159,7 +158,6 @@ internal sealed class AshlarServiceCollectionExtensionsOAuthTests
         {
             Assert.That(provider.ProviderName, Is.EqualTo("Apple"));
             Assert.That(provider.SchemeName, Is.EqualTo("Apple"));
-            Assert.That(provider.ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.Subject));
             Assert.That(provider.GetClaimsFromUserInfoEndpoint, Is.False);
             Assert.That(oidc.Authority, Is.EqualTo(AppleOidcDefaults.Authority));
             Assert.That(oidc.ResponseType, Is.EqualTo("code"));
@@ -403,41 +401,13 @@ internal sealed class AshlarServiceCollectionExtensionsOAuthTests
     }
 
     [Test]
-    public void AddOidcProviderShouldSupportCustomProviderKeyMode()
-    {
-        var options = new AshlarOAuthOptions();
-
-        options.AddOidcProvider("FixedIssuer", AshlarOidcProviderKeyMode.Subject, _ => { });
-
-        Assert.That(options.OidcProviders["FixedIssuer"].ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.Subject));
-    }
-
-    [Test]
-    public void AddOidcProviderShouldDefaultToIssuerAndSubjectProviderKeyMode()
-    {
-        var options = new AshlarOAuthOptions();
-
-        options.AddOidcProvider("SharedIssuer", _ => { });
-
-        Assert.That(options.OidcProviders["SharedIssuer"].ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.IssuerAndSubject));
-    }
-
-    [Test]
     public void AddOidcProviderShouldSupportUserInfoEndpointOptOut()
     {
         var options = new AshlarOAuthOptions();
 
-        options.AddOidcProvider("NoUserInfo", AshlarOidcProviderKeyMode.Subject, _ => { }, getClaimsFromUserInfoEndpoint: false);
+        options.AddOidcProvider("NoUserInfo", _ => { }, getClaimsFromUserInfoEndpoint: false);
 
         Assert.That(options.OidcProviders["NoUserInfo"].GetClaimsFromUserInfoEndpoint, Is.False);
-    }
-
-    [Test]
-    public void AddOidcProviderShouldRejectUnsupportedProviderKeyMode()
-    {
-        var options = new AshlarOAuthOptions();
-
-        Assert.Throws<ArgumentOutOfRangeException>(() => options.AddOidcProvider("SharedIssuer", (AshlarOidcProviderKeyMode)42, _ => { }));
     }
 
     [Test]
@@ -1075,7 +1045,6 @@ internal sealed class AshlarServiceCollectionExtensionsOAuthTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(options.OidcProviders["MicrosoftPersonal"].ProviderName, Is.EqualTo("MicrosoftPersonal"));
-            Assert.That(options.OidcProviders["MicrosoftPersonal"].ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.IssuerAndSubject));
             Assert.That(oidc.Authority, Is.EqualTo(MicrosoftOidcDefaults.BuildSignInAuthority("consumers")));
         }
     }
@@ -1093,20 +1062,96 @@ internal sealed class AshlarServiceCollectionExtensionsOAuthTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(options.OidcProviders["MicrosoftAll"].ProviderName, Is.EqualTo("MicrosoftAll"));
-            Assert.That(options.OidcProviders["MicrosoftAll"].ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.IssuerAndSubject));
             Assert.That(oidc.Authority, Is.EqualTo(MicrosoftOidcDefaults.BuildSignInAuthority("common")));
             Assert.That(oidc.TokenValidationParameters.IssuerValidator, Is.Not.Null);
         }
     }
 
     [Test]
-    public void AddMicrosoftShouldUseUnqualifiedProviderKeyForExplicitTenantAuthority()
+    public void AddMicrosoftShouldUseIssuerQualifiedProviderKeyForExplicitTenantAuthority()
     {
         var options = new AshlarOAuthOptions();
 
         options.AddMicrosoft("contoso.onmicrosoft.com");
 
-        Assert.That(options.OidcProviders["Microsoft"].ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.Subject));
+        Assert.That(options.OidcProviders, Does.ContainKey("Microsoft"));
+    }
+
+    [Test]
+    public async Task AddAshlarOAuthShouldPreserveValidatedTokenIssuerWhenCallbackReplacesSecurityToken()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarOAuth(options => options.AddOidcProvider("Custom", oidc =>
+        {
+            oidc.Authority = "https://issuer.example";
+            oidc.ClientId = "client";
+            oidc.Events.OnTokenValidated = context =>
+            {
+                context.SecurityToken = new JwtSecurityToken(issuer: "https://callback-replacement.example");
+                return Task.CompletedTask;
+            };
+        }));
+        using var provider = services.BuildServiceProvider();
+        var oidc = provider.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>().Get("Custom");
+        var context = CreateTokenValidatedContext(oidc, hostedDomain: null);
+        context.SecurityToken = new JwtSecurityToken(issuer: "https://validated.example");
+
+        await oidc.Events.OnTokenValidated(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Principal!.FindFirstValue(AshlarOAuthAuthenticationProperties.OidcIssuerClaim), Is.EqualTo("https://validated.example"));
+            Assert.That(
+                OidcExternalIdentityAssertionMapper.Map("Custom", context.Principal!).ProviderKey,
+                Is.EqualTo(OidcExternalIdentityAssertionMapper.Map("Custom", new ClaimsPrincipal(new ClaimsIdentity([new Claim("iss", "https://validated.example"), new Claim("sub", "subject")], "oidc"))).ProviderKey));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task AddAshlarOAuthShouldFailWhenValidatedTokenIssuerOrPrincipalIsMissing(bool missingPrincipal)
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarOAuth(options => options.AddOidcProvider("Custom", oidc =>
+        {
+            oidc.Authority = "https://issuer.example";
+            oidc.ClientId = "client";
+        }));
+        using var provider = services.BuildServiceProvider();
+        var oidc = provider.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>().Get("Custom");
+        var context = CreateTokenValidatedContext(oidc, hostedDomain: null);
+        context.SecurityToken = new JwtSecurityToken(issuer: missingPrincipal ? "https://validated.example" : " ");
+        if (missingPrincipal)
+        {
+            context.Principal = null!;
+        }
+
+        await oidc.Events.OnTokenValidated(context);
+
+        Assert.That(context.Result?.Failure, Is.Not.Null);
+    }
+
+    [Test]
+    public void OidcPresetsShouldRequireIssuerAndSeparateMatchingSubjectsAcrossIssuers()
+    {
+        var options = new AshlarOAuthOptions();
+        options.AddGoogle();
+        options.AddApple();
+        options.AddMicrosoft("contoso.onmicrosoft.com");
+
+        foreach (var providerName in new[] { "Google", "Apple", "Microsoft" })
+        {
+            var provider = AshlarExternalProviderResolver.GetProvider(options, providerName)!;
+            var first = new ClaimsPrincipal(new ClaimsIdentity([new Claim("iss", "https://issuer-one.example"), new Claim("sub", "same-subject")], "oidc"));
+            var second = new ClaimsPrincipal(new ClaimsIdentity([new Claim("iss", "https://issuer-two.example"), new Claim("sub", "same-subject")], "oidc"));
+
+            using var scope = Assert.EnterMultipleScope();
+            Assert.That(AshlarExternalProviderResolver.TryMapAssertion(provider, first, out var firstAssertion), Is.True);
+            Assert.That(AshlarExternalProviderResolver.TryMapAssertion(provider, second, out var secondAssertion), Is.True);
+            Assert.That(firstAssertion!.ProviderKey, Is.Not.EqualTo(secondAssertion!.ProviderKey));
+            Assert.That(AshlarExternalProviderResolver.TryMapAssertion(provider, new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", "same-subject")], "oidc")), out _), Is.False);
+            Assert.That(AshlarExternalProviderResolver.TryMapAssertion(provider, new ClaimsPrincipal(new ClaimsIdentity([new Claim("iss", " "), new Claim("sub", "same-subject")], "oidc")), out _), Is.False);
+        }
     }
 
     [Test]
