@@ -205,8 +205,19 @@ public static partial class AshlarServiceCollectionExtensions
                     provider.GetRequiredService<IOptions<AccountLockoutOptions>>(),
                     provider.GetService<AccountLockoutServiceDependencies>());
         });
-        services.TryAddScoped<IUserAdministrationService, UserAdministrationService>();
-        services.TryAddScoped<ICredentialAdministrationService, CredentialAdministrationService>();
+        services.TryAddScoped<IUserAdministrationService>(provider => new UserAdministrationService(
+            provider.GetRequiredAshlarProviderService<IUserAdministrationRepository>(),
+            provider.GetRequiredService<IAccountSecurityService>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(),
+            provider.GetService<TimeProvider>()));
+        services.TryAddScoped<ICredentialAdministrationService>(provider => new CredentialAdministrationService(
+            provider.GetRequiredAshlarProviderService<ICredentialAdministrationRepository>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(),
+            provider.GetService<TimeProvider>()));
         services.TryAddScoped<IAccountRecoveryAdministrationService>(provider => new AccountRecoveryAdministrationService(
             provider.GetRequiredService<IUserAdministrationService>(),
             provider.GetService<IRememberedMfaDeviceReader>()));
@@ -221,8 +232,18 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredAshlarProviderService<IAccountLockoutRepository>(), provider.GetService<TimeProvider>()));
         services.TryAddScoped<IRememberedMfaDeviceReader>(provider => new RememberedMfaDeviceReader(
             provider.GetRequiredAshlarProviderService<IRememberedMfaDeviceRepository>(), provider.GetService<TimeProvider>()));
-        services.TryAddScoped<ISecurityEventAdministrationService, SecurityEventAdministrationService>();
-        services.TryAddScoped<IAuthenticationSessionAdministrationService, AuthenticationSessionAdministrationService>();
+        services.TryAddScoped<ISecurityEventAdministrationService>(provider => new SecurityEventAdministrationService(
+            provider.GetRequiredAshlarProviderService<ISecurityEventAdministrationRepository>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(),
+            provider.GetService<TimeProvider>()));
+        services.TryAddScoped<IAuthenticationSessionAdministrationService>(provider => new AuthenticationSessionAdministrationService(
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionAdministrationRepository>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(),
+            provider.GetService<TimeProvider>()));
         services.TryAddScoped(provider => new AuthenticationSessionServiceDependencies(
             provider.GetRequiredAshlarProviderService<IUserRepository>(),
             Options: provider.GetService<AuthenticationSessionOptions>(),

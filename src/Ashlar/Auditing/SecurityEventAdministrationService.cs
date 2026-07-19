@@ -4,15 +4,21 @@ namespace Ashlar.Auditing;
 /// Implements read-only administrator security event search and detail operations.
 /// </summary>
 /// <param name="repository">Repository used for safe administrator security event lookup.</param>
+/// <param name="sessions">Authoritative session repository.</param>
+/// <param name="authorizer">Required host authorization policy.</param>
+/// <param name="auditSink">Required durable audit sink.</param>
+/// <param name="timeProvider">Clock used for proof validation and auditing.</param>
 /// <remarks>
-/// These operations are intended for administrative diagnostics and do not authorize the caller.
-/// Host applications must protect usage of this service with appropriate admin authorization and step-up policy.
+/// Every operation enforces actor-bound active-session proof, scope, host authorization, and durable audit requirements.
 /// </remarks>
-public sealed class SecurityEventAdministrationService(ISecurityEventAdministrationRepository repository) : ISecurityEventAdministrationService
+public sealed class SecurityEventAdministrationService(ISecurityEventAdministrationRepository repository,
+    IAuthenticationSessionRepository sessions, IAccountSecurityOperationAuthorizer authorizer,
+    IPersistentSecurityEventSink auditSink, TimeProvider? timeProvider = null) : ISecurityEventAdministrationService
 {
     internal const int MaximumLimit = 100;
 
     private readonly ISecurityEventAdministrationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+    private readonly AdminReadBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
 
     /// <inheritdoc />
     public async Task<Result<SecurityEventSearchResult>> SearchSecurityEventsAsync(SearchSecurityEventsRequest request, CancellationToken cancellationToken = default)
@@ -34,9 +40,30 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
             return Result.Failure<SecurityEventSearchResult>(AshlarFailureCodes.ValidationError, "Limit must be greater than zero.");
         }
 
+        if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchSecurityEvents, cancellationToken,
+                recordSuccess: false))
+            return Result.Failure<SecurityEventSearchResult>(AshlarFailureCodes.ValidationError);
+
         var limit = Math.Min(request.Limit, MaximumLimit);
-        var repositoryRequest = request with { Limit = limit + 1 };
-        var events = await _repository.SearchSecurityEventsAsync(repositoryRequest, cancellationToken);
+        var repositoryRequest = request with { Actor = null, Limit = limit + 1 };
+        List<SecurityEventSummary> events;
+        try
+        {
+            events = (await _repository.SearchSecurityEventsAsync(repositoryRequest, cancellationToken)).ToList();
+        }
+        catch
+        {
+            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchSecurityEvents);
+            throw;
+        }
+        if (events.Any(securityEvent => !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants,
+                securityEvent.TenantId, request.UserId, securityEvent.UserId)))
+        {
+            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchSecurityEvents);
+            throw new InvalidOperationException("The security-event administration provider returned a result outside the authorized scope.");
+        }
+        await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchSecurityEvents);
         var hasMore = events.Count > limit;
         var page = events.Take(limit).ToList().AsReadOnly();
 
@@ -53,8 +80,31 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
             return validationFailure;
         }
 
-        var securityEvent = await _repository.GetSecurityEventAsync(request, cancellationToken);
-        return securityEvent == null || (!request.IncludeAllTenants && !AdministrationScopeValidation.IncludesTenant(request.Tenant!, securityEvent.TenantId))
+        if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                Guid.Empty, AccountSecurityOperation.ReadSecurityEvent, cancellationToken,
+                recordSuccess: false))
+            return Result.Failure<SecurityEventSummary>(AshlarFailureCodes.ValidationError);
+
+        SecurityEventSummary? securityEvent;
+        try
+        {
+            securityEvent = await _repository.GetSecurityEventAsync(request with { Actor = null }, cancellationToken);
+        }
+        catch
+        {
+            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadSecurityEvent);
+            throw;
+        }
+        if (securityEvent is null || securityEvent.EventId != request.EventId
+            || !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants, securityEvent.TenantId))
+        {
+            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadSecurityEvent);
+            securityEvent = null;
+        }
+        else if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                securityEvent.UserId ?? Guid.Empty, AccountSecurityOperation.ReadSecurityEvent, cancellationToken))
+            securityEvent = null;
+        return securityEvent == null
             ? Result.Failure<SecurityEventSummary>(AshlarFailureCodes.SecurityEventNotFound, "Security event was not found.")
             : Result.Success(securityEvent);
     }

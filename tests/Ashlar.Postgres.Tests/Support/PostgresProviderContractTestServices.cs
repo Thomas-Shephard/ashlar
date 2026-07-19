@@ -18,6 +18,11 @@ internal static class PostgresProviderContractTestServices
         services.AddScoped<IRememberedMfaDeviceRepository, PostgresRememberedMfaDeviceRepository>();
         services.AddScoped<IAuthenticationHandshakeRepository, PostgresAuthenticationHandshakeRepository>();
         services.AddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
+        services.AddScoped<IUserAdministrationRepository, PostgresUserAdministrationRepository>();
+        services.AddScoped<ICredentialAdministrationRepository, PostgresCredentialAdministrationRepository>();
+        services.AddScoped<IAuthenticationSessionAdministrationRepository, PostgresAuthenticationSessionAdministrationRepository>();
+        services.AddScoped<IAuthorizationGrantAdministrationRepository, PostgresAuthorizationGrantAdministrationRepository>();
+        services.AddScoped<ISecurityEventAdministrationRepository, PostgresSecurityEventAdministrationRepository>();
         services.AddScoped<IPersistentSecurityEventSink, PostgresSecurityEventSink>();
         services.AddScoped<IPasskeyChallengeRepository, PostgresPasskeyChallengeRepository>();
         services.AddScoped<IAuthenticationRateLimitAdministrationRepository, PostgresAuthenticationRateLimitAdministrationRepository>();

@@ -1,3 +1,5 @@
+using Ashlar.Auditing;
+
 namespace Ashlar.Identity.Features.Administration;
 
 /// <summary>
@@ -5,16 +7,22 @@ namespace Ashlar.Identity.Features.Administration;
 /// </summary>
 /// <param name="repository">Repository used for safe administrator user lookup.</param>
 /// <param name="accountSecurityService">Service used to attach account security posture details.</param>
+/// <param name="sessions">Authoritative session repository.</param>
+/// <param name="authorizer">Required host authorization policy.</param>
+/// <param name="auditSink">Required durable audit sink.</param>
+/// <param name="timeProvider">Clock used for proof validation and auditing.</param>
 /// <remarks>
-/// These operations are intended for administrative diagnostics and operations tooling and do not authorize the caller.
-/// Host applications must protect usage of this service with appropriate admin authorization and step-up policy.
+/// Every operation enforces actor-bound active-session proof, scope, host authorization, and durable audit requirements.
 /// </remarks>
-public sealed class UserAdministrationService(IUserAdministrationRepository repository, IAccountSecurityService accountSecurityService) : IUserAdministrationService
+public sealed class UserAdministrationService(IUserAdministrationRepository repository, IAccountSecurityService accountSecurityService,
+    IAuthenticationSessionRepository sessions, IAccountSecurityOperationAuthorizer authorizer, IPersistentSecurityEventSink auditSink,
+    TimeProvider? timeProvider = null) : IUserAdministrationService
 {
     internal const int MaximumLimit = 100;
 
     private readonly IUserAdministrationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly IAccountSecurityService _accountSecurityService = accountSecurityService ?? throw new ArgumentNullException(nameof(accountSecurityService));
+    private readonly AdminReadBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
 
 
     /// <inheritdoc />
@@ -37,9 +45,29 @@ public sealed class UserAdministrationService(IUserAdministrationRepository repo
             return Result.Failure<UserSearchResult>(AshlarFailureCodes.ValidationError, "Limit must be greater than zero.");
         }
 
+        if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                Guid.Empty, AccountSecurityOperation.SearchUsers, cancellationToken,
+                recordSuccess: false))
+            return Result.Failure<UserSearchResult>(AshlarFailureCodes.ValidationError);
+
         var limit = Math.Min(request.Limit, MaximumLimit);
-        var repositoryRequest = request with { Limit = limit + 1 };
-        var users = await _repository.SearchUsersAsync(repositoryRequest, cancellationToken);
+        var repositoryRequest = request with { Actor = null, Limit = limit + 1 };
+        List<UserSummary> users;
+        try
+        {
+            users = (await _repository.SearchUsersAsync(repositoryRequest, cancellationToken)).ToList();
+        }
+        catch
+        {
+            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchUsers);
+            throw;
+        }
+        if (users.Any(user => !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants, user.TenantId)))
+        {
+            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchUsers);
+            throw new InvalidOperationException("The user administration provider returned a result outside the authorized scope.");
+        }
+        await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchUsers);
         var hasMore = users.Count > limit;
         var page = users.Take(limit).ToList().AsReadOnly();
 
@@ -56,19 +84,44 @@ public sealed class UserAdministrationService(IUserAdministrationRepository repo
             return validationFailure;
         }
 
-        var user = await _repository.GetUserSummaryAsync(request, cancellationToken);
-        if (user == null || (!request.IncludeAllTenants && !AdministrationScopeValidation.IncludesTenant(request.Tenant!, user.TenantId)))
+        if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                request.UserId, AccountSecurityOperation.ReadUser, cancellationToken, recordSuccess: false))
+            return Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.ValidationError);
+
+        UserSummary? user;
+        try
         {
+            user = await _repository.GetUserSummaryAsync(request with { Actor = null }, cancellationToken);
+        }
+        catch
+        {
+            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadUser);
+            throw;
+        }
+        if (user == null || user.UserId != request.UserId
+            || !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants, user.TenantId))
+        {
+            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadUser);
             return Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.UserNotFound);
         }
 
-        var postureRequest = new AccountSecurityPostureRequest(new TenantContext(user.TenantId), request.RecentSecurityEventWindow);
-        var posture = await _accountSecurityService.GetUserSecurityPostureAsync(request.UserId, postureRequest, cancellationToken);
-        if (!posture.Succeeded || posture.Value == null)
+        Result<AccountSecurityPosture> posture;
+        try
         {
+            var postureRequest = new AccountSecurityPostureRequest(new TenantContext(user.TenantId), request.RecentSecurityEventWindow);
+            posture = await _accountSecurityService.GetUserSecurityPostureAsync(request.UserId, postureRequest, cancellationToken);
+        }
+        catch
+        {
+            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadUser);
+            throw;
+        }
+        if (!posture.Succeeded || posture.Value == null || posture.Value.UserId != user.UserId)
+        {
+            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadUser);
             return Result.Failure<UserAdministrationDetail>(posture.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.UserNotFound));
         }
-
+        await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadUser);
         return Result.Success(new UserAdministrationDetail(user, posture.Value));
     }
 

@@ -7,7 +7,9 @@ namespace Ashlar.Authorization.Abstractions;
 /// </summary>
 /// <remarks>
 /// Every operation requires an explicit tenant, global, or all-tenant scope, an Ashlar-issued purpose-bound fresh MFA proof,
-/// its active source session, matching audit identity, and approval from the configured host authorizer.
+/// its active source session, actor-bound audit identity, and approval from the configured host authorizer.
+/// Grant reads use the shared administration-read proof contract and durably audit normalized success and failure events.
+/// Audit persistence failures fail closed. Grant mutations retain their separate purpose-bound contract.
 /// Raw grant metadata is not returned because metadata is application-defined and may not be safe for broad display.
 /// </remarks>
 public interface IAuthorizationGrantAdministrationService

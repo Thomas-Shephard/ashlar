@@ -61,15 +61,13 @@ Use `PrimaryCredentials` for sign-in methods, `AdditionalVerificationFactors` fo
 
 ## Admin User Reads
 
-`IUserAdministrationService` provides reusable read-only operations for admin and operations UIs: `SearchUsersAsync` returns safe `UserSummary` rows, and `GetUserDetailAsync` combines a summary with `AccountSecurityPosture`. Search and lookup requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. Provider packages implement the required `IUserAdministrationRepository`, so hosts do not need to query Ashlar provider tables directly.
-
-These APIs do not authorize callers by themselves. Host applications must protect any endpoints that expose them with their own admin authorization, audit policy, and step-up requirements.
+`IUserAdministrationService` provides reusable read-only operations for admin and operations UIs. Every request requires `AccountSecurityActorContext`, an explicit tenant/global/all-tenant scope, an active-session-bound fresh MFA proof for `administration-read`, matching audit identity, and host authorizer approval. Reads are durably audited and fail closed when audit persistence fails. Provider repositories remain provider-facing and results are safe projections.
 
 ## Admin Session Reads
 
-`IAuthenticationSessionAdministrationService` provides read-only session and device browsing for admin and operations UIs. Use `SearchAuthenticationSessionsAsync` to filter by tenant, user, provider, active/revoked state, and timestamp ranges, or `GetAuthenticationSessionAsync` for a single safe projection. Search and single-session requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`.
+`IAuthenticationSessionAdministrationService` uses the same actor-bound `administration-read` proof, scope, host authorization, and durable audit boundary as other administration reads.
 
-Provider packages implement `IAuthenticationSessionAdministrationRepository`, so hosts do not need to query session tables directly. These APIs do not authorize callers by themselves; protect endpoints with admin authorization and step-up policy. Raw session tokens, token hashes, and session metadata are not exposed.
+Provider packages implement `IAuthenticationSessionAdministrationRepository`; raw session tokens, token hashes, and session metadata are not exposed.
 
 ## Related Packages
 

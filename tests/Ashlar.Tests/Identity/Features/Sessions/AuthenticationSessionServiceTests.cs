@@ -173,6 +173,28 @@ internal sealed class AuthenticationSessionServiceTests
             c.Operation == AccountSecurityOperation.RevokeOwnSession), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Test]
+    public async Task RevokeOtherSessionsForCurrentUserAsyncShouldValidateAuthorizeAndRevoke()
+    {
+        var actor = Guid.NewGuid();
+        var currentSession = Guid.NewGuid();
+        var audit = new AuditContext(actor);
+        var proof = CreateProof(actor, currentSession);
+        var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
+        authorizer.Setup(value => value.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), _composition.Transactions,
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, TimeProvider: _timeProvider,
+                OperationAuthorizer: authorizer.Object, SecurityEventSink: _composition.Events));
+        _repositoryMock.Setup(repository => repository.RevokeOtherSessionsForUserAsync(actor, currentSession,
+            _timeProvider.GetUtcNow(), "cleanup", TenantContext.Global, false, It.IsAny<CancellationToken>())).ReturnsAsync(2);
+
+        var revoked = await service.RevokeOtherSessionsForCurrentUserAsync(
+            new RevokeOwnOtherAuthenticationSessionsRequest(actor, TenantContext.Global, currentSession, proof, audit, "cleanup"));
+
+        Assert.That(revoked, Is.EqualTo(2));
+    }
+
     private FreshMfaVerificationProof CreateProof(Guid userId, Guid sessionId)
     {
         var now = _timeProvider.GetUtcNow();

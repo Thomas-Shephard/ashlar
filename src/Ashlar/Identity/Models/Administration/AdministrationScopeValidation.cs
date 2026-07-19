@@ -19,4 +19,12 @@ internal static class AdministrationScopeValidation
     {
         return tenant.TenantId == itemTenantId;
     }
+
+    public static bool IncludesResult(TenantContext? tenant, bool includeAllTenants, Guid? itemTenantId,
+        Guid? requestedUserId = null, Guid? itemUserId = null)
+    {
+        if (!includeAllTenants && !IncludesTenant(tenant!, itemTenantId)) return false;
+        if (!requestedUserId.HasValue) return true;
+        return itemUserId.HasValue && requestedUserId.Value == itemUserId.Value;
+    }
 }

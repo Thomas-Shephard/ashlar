@@ -1,5 +1,7 @@
 namespace Ashlar.Tests.Identity.Features.Administration;
 
+using Ashlar.Tests.Support;
+
 internal sealed class CredentialAdministrationServiceTests
 {
     private static readonly DateTimeOffset Now = new(2026, 6, 2, 12, 0, 0, TimeSpan.Zero);
@@ -7,7 +9,7 @@ internal sealed class CredentialAdministrationServiceTests
     [Test]
     public void ConstructorRejectsNullRepository()
     {
-        Assert.Throws<ArgumentNullException>(() => new CredentialAdministrationService(null!));
+        Assert.Throws<ArgumentNullException>(() => new CredentialAdministrationService(null!, null!, null!, null!));
     }
 
     [Test]
@@ -15,7 +17,7 @@ internal sealed class CredentialAdministrationServiceTests
     {
         var repository = new RecordingCredentialAdministrationRepository();
         var before = TimeProvider.System.GetUtcNow();
-        var result = await new CredentialAdministrationService(repository).SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true });
+        var result = await CreateService(repository, TimeProvider.System).SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true });
         var after = TimeProvider.System.GetUtcNow();
 
         using (Assert.EnterMultipleScope())
@@ -120,13 +122,13 @@ internal sealed class CredentialAdministrationServiceTests
         var tenant = new TenantContext(Guid.NewGuid());
         var provider = AuthenticationProviderKey.Passkey;
         var repository = new RecordingCredentialAdministrationRepository();
-        var expected = CreateSummary();
+        var expected = CreateSummary() with { TenantId = tenant.TenantId };
         repository.SearchResults.Add(expected);
 
         var request = new SearchCredentialsRequest
         {
             Tenant = tenant,
-            UserId = Guid.NewGuid(),
+            UserId = expected.UserId,
             Provider = provider,
             Purpose = "mfa",
             Status = CredentialStatus.Active,
@@ -227,7 +229,7 @@ internal sealed class CredentialAdministrationServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value, Is.EqualTo(expected));
-            Assert.That(repository.LastGetRequest, Is.SameAs(request));
+            Assert.That(repository.LastGetRequest, Is.EqualTo(request));
             Assert.That(repository.LastGetNow, Is.EqualTo(Now));
         }
     }
@@ -288,9 +290,41 @@ internal sealed class CredentialAdministrationServiceTests
         }
     }
 
-    private static CredentialAdministrationService CreateService(RecordingCredentialAdministrationRepository? repository = null)
+    [Test]
+    public void SearchCredentialsAsyncAuditsProviderFailure()
     {
-        return new CredentialAdministrationService(repository ?? new RecordingCredentialAdministrationRepository(), new StaticTimeProvider(Now));
+        var repository = new RecordingCredentialAdministrationRepository { SearchException = new InvalidOperationException() };
+        Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository).SearchCredentialsAsync(
+            new SearchCredentialsRequest { Tenant = TenantContext.Global }));
+    }
+
+    [Test]
+    public void SearchCredentialsAsyncRejectsOutOfScopePaginationSentinel()
+    {
+        var tenant = new TenantContext(Guid.NewGuid());
+        var userId = Guid.NewGuid();
+        var repository = new RecordingCredentialAdministrationRepository();
+        repository.SearchResults.Add(CreateSummary() with { TenantId = tenant.TenantId, UserId = userId });
+        repository.SearchResults.Add(CreateSummary() with { TenantId = tenant.TenantId, UserId = Guid.NewGuid() });
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository).SearchCredentialsAsync(
+            new SearchCredentialsRequest { Tenant = tenant, UserId = userId, Limit = 1 }));
+    }
+
+    private static AuthorizedCredentialAdministrationService CreateService(RecordingCredentialAdministrationRepository? repository = null, TimeProvider? timeProvider = null)
+    {
+        var boundary = new AdminReadTestBoundary(timeProvider?.GetUtcNow() ?? Now);
+        return new AuthorizedCredentialAdministrationService(new CredentialAdministrationService(
+            repository ?? new RecordingCredentialAdministrationRepository(), boundary.Sessions, boundary.Authorizer,
+            boundary.Sink, timeProvider ?? new StaticTimeProvider(Now)), boundary.Actor);
+    }
+
+    private sealed class AuthorizedCredentialAdministrationService(CredentialAdministrationService service, AccountSecurityActorContext actor)
+    {
+        public Task<Result<CredentialSearchResult>> SearchCredentialsAsync(SearchCredentialsRequest request) =>
+            service.SearchCredentialsAsync(request is null ? null! : request with { Actor = actor });
+        public Task<Result<CredentialAdministrationSummary>> GetCredentialAsync(CredentialAdministrationLookupRequest request) =>
+            service.GetCredentialAsync(request with { Actor = actor });
     }
 
     private static CredentialAdministrationSummary CreateSummary(DateTimeOffset? expiresAt = null, bool isAvailable = true)
@@ -337,9 +371,11 @@ internal sealed class CredentialAdministrationServiceTests
         public CredentialAdministrationLookupRequest? LastGetRequest { get; private set; }
         public DateTimeOffset? LastGetNow { get; private set; }
         public CredentialAdministrationSummary? GetResult { get; init; }
+        public Exception? SearchException { get; init; }
 
         public Task<IReadOnlyList<CredentialAdministrationSummary>> SearchCredentialsAsync(SearchCredentialsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
+            if (SearchException is not null) throw SearchException;
             LastSearchRequest = request;
             LastSearchNow = now;
             return Task.FromResult(SearchFactory?.Invoke(now) ?? SearchResults.AsReadOnly());

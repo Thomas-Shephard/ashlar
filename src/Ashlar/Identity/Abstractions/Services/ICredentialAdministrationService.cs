@@ -4,8 +4,7 @@ namespace Ashlar.Identity.Abstractions.Services;
 /// Provides read-only administrator credential browsing operations.
 /// </summary>
 /// <remarks>
-/// These operations are intended for administrative and operations tooling and do not authorize the caller.
-/// Host applications must protect usage of this service with appropriate admin authorization and step-up policy.
+/// Every operation enforces actor, active-session proof, scope, host authorization, and durable audit requirements.
 /// </remarks>
 public interface ICredentialAdministrationService
 {

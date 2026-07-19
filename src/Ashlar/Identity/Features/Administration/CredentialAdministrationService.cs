@@ -1,16 +1,23 @@
+using Ashlar.Auditing;
+
 namespace Ashlar.Identity.Features.Administration;
 
 /// <summary>
 /// Implements read-only administrator credential search and single-item lookup operations.
 /// </summary>
 /// <param name="repository">Repository used for safe administrator credential lookup.</param>
+/// <param name="sessions">Authoritative session repository.</param>
+/// <param name="authorizer">Required host authorization policy.</param>
+/// <param name="auditSink">Required durable audit sink.</param>
 /// <param name="timeProvider">Clock used for credential availability projection.</param>
 /// <remarks>
-/// These operations are intended for administrative diagnostics and operations tooling and do not authorize the caller.
-/// Host applications must protect usage of this service with appropriate admin authorization and step-up policy.
+/// Every operation enforces actor-bound active-session proof, scope, host authorization, and durable audit requirements.
 /// </remarks>
 public sealed class CredentialAdministrationService(
     ICredentialAdministrationRepository repository,
+    IAuthenticationSessionRepository sessions,
+    IAccountSecurityOperationAuthorizer authorizer,
+    IPersistentSecurityEventSink auditSink,
     TimeProvider? timeProvider = null)
     : ICredentialAdministrationService
 {
@@ -18,6 +25,7 @@ public sealed class CredentialAdministrationService(
 
     private readonly ICredentialAdministrationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly AdminReadBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
 
     /// <inheritdoc />
     public async Task<Result<CredentialSearchResult>> SearchCredentialsAsync(SearchCredentialsRequest request, CancellationToken cancellationToken = default)
@@ -39,9 +47,30 @@ public sealed class CredentialAdministrationService(
             return Result.Failure<CredentialSearchResult>(AshlarFailureCodes.ValidationError, "Limit must be greater than zero.");
         }
 
+        if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchCredentials, cancellationToken,
+                recordSuccess: false))
+            return Result.Failure<CredentialSearchResult>(AshlarFailureCodes.ValidationError);
+
         var limit = Math.Min(request.Limit, MaximumLimit);
-        var repositoryRequest = request with { Limit = limit + 1 };
-        var credentials = await _repository.SearchCredentialsAsync(repositoryRequest, _timeProvider.GetUtcNow(), cancellationToken);
+        var repositoryRequest = request with { Actor = null, Limit = limit + 1 };
+        List<CredentialAdministrationSummary> credentials;
+        try
+        {
+            credentials = (await _repository.SearchCredentialsAsync(repositoryRequest, _timeProvider.GetUtcNow(), cancellationToken)).ToList();
+        }
+        catch
+        {
+            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchCredentials);
+            throw;
+        }
+        if (credentials.Any(credential => !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants,
+                credential.TenantId, request.UserId, credential.UserId)))
+        {
+            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchCredentials);
+            throw new InvalidOperationException("The credential administration provider returned a result outside the authorized scope.");
+        }
+        await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchCredentials);
         var hasMore = credentials.Count > limit;
         var page = credentials.Take(limit).ToList().AsReadOnly();
 
@@ -58,8 +87,31 @@ public sealed class CredentialAdministrationService(
             return validationFailure;
         }
 
-        var credential = await _repository.GetCredentialAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
-        return credential == null || (!request.IncludeAllTenants && !AdministrationScopeValidation.IncludesTenant(request.Tenant!, credential.TenantId))
+        if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                Guid.Empty, AccountSecurityOperation.ReadCredential, cancellationToken,
+                recordSuccess: false))
+            return Result.Failure<CredentialAdministrationSummary>(AshlarFailureCodes.ValidationError);
+
+        CredentialAdministrationSummary? credential;
+        try
+        {
+            credential = await _repository.GetCredentialAsync(request with { Actor = null }, _timeProvider.GetUtcNow(), cancellationToken);
+        }
+        catch
+        {
+            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadCredential);
+            throw;
+        }
+        if (credential is null || credential.CredentialId != request.CredentialId
+            || !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants, credential.TenantId))
+        {
+            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadCredential);
+            credential = null;
+        }
+        else if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                credential.UserId, AccountSecurityOperation.ReadCredential, cancellationToken))
+            credential = null;
+        return credential == null
             ? Result.Failure<CredentialAdministrationSummary>(AshlarFailureCodes.CredentialNotFound, "Credential was not found.")
             : Result.Success(credential);
     }

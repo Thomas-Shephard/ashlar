@@ -1,3 +1,5 @@
+using Ashlar.Auditing;
+
 namespace Ashlar.Tests.Identity.Features.Administration;
 
 internal sealed class AccountRecoveryAdministrationServiceTests
@@ -90,15 +92,27 @@ internal sealed class AccountRecoveryAdministrationServiceTests
         var userAdministration = new RecordingUserAdministrationService(Result.Success(CreateDetail(userId)));
         var service = CreateService(userAdministration: userAdministration);
         var eventWindow = TimeSpan.FromDays(3);
+        var actor = CreateActor();
 
-        await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, TenantContext.Global, RecentSecurityEventWindow: eventWindow));
+        await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, TenantContext.Global, RecentSecurityEventWindow: eventWindow, Actor: actor));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(userAdministration.LastRequest?.Tenant, Is.EqualTo(TenantContext.Global));
             Assert.That(userAdministration.LastRequest?.IncludeAllTenants, Is.False);
             Assert.That(userAdministration.LastRequest?.RecentSecurityEventWindow, Is.EqualTo(eventWindow));
+            Assert.That(userAdministration.LastRequest?.Actor, Is.SameAs(actor));
         }
+    }
+
+    private static AccountSecurityActorContext CreateActor()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        return new AccountSecurityActorContext(userId, TenantContext.Global, sessionId,
+            new FreshMfaVerificationProof(userId, null, sessionId, now, now.AddMinutes(5), AdminReadBoundary.ProofPurpose),
+            new AuditContext(userId));
     }
 
     [Test]

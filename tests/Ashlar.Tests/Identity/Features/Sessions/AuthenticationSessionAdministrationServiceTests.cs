@@ -1,5 +1,7 @@
 namespace Ashlar.Tests.Identity.Features.Sessions;
 
+using Ashlar.Tests.Support;
+
 internal sealed class AuthenticationSessionAdministrationServiceTests
 {
     private static readonly DateTimeOffset Now = new(2026, 6, 2, 12, 0, 0, TimeSpan.Zero);
@@ -7,7 +9,7 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
     [Test]
     public void ConstructorRejectsNullRepository()
     {
-        Assert.Throws<ArgumentNullException>(() => new AuthenticationSessionAdministrationService(null!));
+        Assert.Throws<ArgumentNullException>(() => new AuthenticationSessionAdministrationService(null!, null!, null!, null!));
     }
 
     [Test]
@@ -15,7 +17,7 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
     {
         var repository = new RecordingAuthenticationSessionAdministrationRepository();
         var before = TimeProvider.System.GetUtcNow();
-        var result = await new AuthenticationSessionAdministrationService(repository).SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true });
+        var result = await CreateService(repository, TimeProvider.System).SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true });
         var after = TimeProvider.System.GetUtcNow();
 
         using (Assert.EnterMultipleScope())
@@ -104,13 +106,13 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
         var tenant = new TenantContext(Guid.NewGuid());
         var provider = AuthenticationProviderKey.Local;
         var repository = new RecordingAuthenticationSessionAdministrationRepository();
-        var expected = CreateSummary();
+        var expected = CreateSummary() with { TenantId = tenant.TenantId };
         repository.SearchResults.Add(expected);
 
         var request = new SearchAuthenticationSessionsRequest
         {
             Tenant = tenant,
-            UserId = Guid.NewGuid(),
+            UserId = expected.UserId,
             PrimaryProvider = provider,
             Active = true,
             Revoked = false,
@@ -182,7 +184,7 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value, Is.EqualTo(expected));
-            Assert.That(repository.LastGetRequest, Is.SameAs(request));
+            Assert.That(repository.LastGetRequest, Is.EqualTo(request));
             Assert.That(repository.LastGetNow, Is.EqualTo(Now));
         }
     }
@@ -236,9 +238,41 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
         }
     }
 
-    private static AuthenticationSessionAdministrationService CreateService(RecordingAuthenticationSessionAdministrationRepository? repository = null)
+    [Test]
+    public void SearchAuthenticationSessionsAsyncAuditsProviderFailure()
     {
-        return new AuthenticationSessionAdministrationService(repository ?? new RecordingAuthenticationSessionAdministrationRepository(), new StaticTimeProvider(Now));
+        var repository = new RecordingAuthenticationSessionAdministrationRepository { SearchException = new InvalidOperationException() };
+        Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository).SearchAuthenticationSessionsAsync(
+            new SearchAuthenticationSessionsRequest { Tenant = TenantContext.Global }));
+    }
+
+    [Test]
+    public void SearchAuthenticationSessionsAsyncRejectsOutOfScopePaginationSentinel()
+    {
+        var tenant = new TenantContext(Guid.NewGuid());
+        var userId = Guid.NewGuid();
+        var repository = new RecordingAuthenticationSessionAdministrationRepository();
+        repository.SearchResults.Add(CreateSummary() with { TenantId = tenant.TenantId, UserId = userId });
+        repository.SearchResults.Add(CreateSummary() with { TenantId = Guid.NewGuid(), UserId = userId });
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository).SearchAuthenticationSessionsAsync(
+            new SearchAuthenticationSessionsRequest { Tenant = tenant, UserId = userId, Limit = 1 }));
+    }
+
+    private static AuthorizedSessionAdministrationService CreateService(RecordingAuthenticationSessionAdministrationRepository? repository = null, TimeProvider? timeProvider = null)
+    {
+        var boundary = new AdminReadTestBoundary(timeProvider?.GetUtcNow() ?? Now);
+        return new AuthorizedSessionAdministrationService(new AuthenticationSessionAdministrationService(
+            repository ?? new RecordingAuthenticationSessionAdministrationRepository(), boundary.Sessions,
+            boundary.Authorizer, boundary.Sink, timeProvider ?? new StaticTimeProvider(Now)), boundary.Actor);
+    }
+
+    private sealed class AuthorizedSessionAdministrationService(AuthenticationSessionAdministrationService service, AccountSecurityActorContext actor)
+    {
+        public Task<Result<AuthenticationSessionSearchResult>> SearchAuthenticationSessionsAsync(SearchAuthenticationSessionsRequest request) =>
+            service.SearchAuthenticationSessionsAsync(request is null ? null! : request with { Actor = actor });
+        public Task<Result<AuthenticationSessionAdministrationSummary>> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationLookupRequest request) =>
+            service.GetAuthenticationSessionAsync(request with { Actor = actor });
     }
 
     private static AuthenticationSessionAdministrationSummary CreateSummary()
@@ -292,9 +326,11 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
         public AuthenticationSessionAdministrationLookupRequest? LastGetRequest { get; private set; }
         public DateTimeOffset? LastGetNow { get; private set; }
         public AuthenticationSessionAdministrationSummary? GetResult { get; init; }
+        public Exception? SearchException { get; init; }
 
         public Task<IReadOnlyList<AuthenticationSessionAdministrationSummary>> SearchAuthenticationSessionsAsync(SearchAuthenticationSessionsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
+            if (SearchException is not null) throw SearchException;
             LastSearchRequest = request;
             LastSearchNow = now;
             return Task.FromResult<IReadOnlyList<AuthenticationSessionAdministrationSummary>>(SearchResults.AsReadOnly());

@@ -2,12 +2,14 @@ using Ashlar.Auditing;
 
 namespace Ashlar.Tests.Auditing;
 
+using Ashlar.Tests.Support;
+
 internal sealed class SecurityEventAdministrationServiceTests
 {
     [Test]
     public void ConstructorRejectsNullRepository()
     {
-        Assert.Throws<ArgumentNullException>(() => new SecurityEventAdministrationService(null!));
+        Assert.Throws<ArgumentNullException>(() => new SecurityEventAdministrationService(null!, null!, null!, null!));
     }
 
     [Test]
@@ -88,13 +90,13 @@ internal sealed class SecurityEventAdministrationServiceTests
         var provider = AuthenticationProviderKey.Local;
         var eventTypes = new HashSet<string>(StringComparer.Ordinal) { "SignInSucceeded" };
         var repository = new RecordingSecurityEventAdministrationRepository();
-        var expected = CreateSummary();
+        var expected = CreateSummary() with { TenantId = tenant.TenantId };
         repository.SearchResults.Add(expected);
 
         var request = new SearchSecurityEventsRequest
         {
             Tenant = tenant,
-            UserId = Guid.NewGuid(),
+            UserId = expected.UserId,
             ActorUserId = Guid.NewGuid(),
             SessionId = Guid.NewGuid(),
             EventTypes = eventTypes,
@@ -154,7 +156,7 @@ internal sealed class SecurityEventAdministrationServiceTests
     [Test]
     public async Task GetSecurityEventAsyncReturnsRepositoryResult()
     {
-        var expected = CreateSummary();
+        var expected = CreateSummary() with { UserId = null };
         var repository = new RecordingSecurityEventAdministrationRepository { GetResult = expected };
 
         var request = new SecurityEventAdministrationDetailRequest(expected.EventId, TenantContext.Global);
@@ -164,7 +166,7 @@ internal sealed class SecurityEventAdministrationServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value, Is.EqualTo(expected));
-            Assert.That(repository.LastGetRequest, Is.SameAs(request));
+            Assert.That(repository.LastGetRequest, Is.EqualTo(request));
         }
     }
 
@@ -207,9 +209,41 @@ internal sealed class SecurityEventAdministrationServiceTests
         }
     }
 
-    private static SecurityEventAdministrationService CreateService(RecordingSecurityEventAdministrationRepository? repository = null)
+    [Test]
+    public void SearchSecurityEventsAsyncAuditsProviderFailure()
     {
-        return new SecurityEventAdministrationService(repository ?? new RecordingSecurityEventAdministrationRepository());
+        var repository = new RecordingSecurityEventAdministrationRepository { SearchException = new InvalidOperationException() };
+        Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository).SearchSecurityEventsAsync(
+            new SearchSecurityEventsRequest { Tenant = TenantContext.Global }));
+    }
+
+    [Test]
+    public void SearchSecurityEventsAsyncRejectsOutOfScopePaginationSentinel()
+    {
+        var tenant = new TenantContext(Guid.NewGuid());
+        var userId = Guid.NewGuid();
+        var repository = new RecordingSecurityEventAdministrationRepository();
+        repository.SearchResults.Add(CreateSummary() with { TenantId = tenant.TenantId, UserId = userId });
+        repository.SearchResults.Add(CreateSummary() with { TenantId = tenant.TenantId, UserId = Guid.NewGuid() });
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository).SearchSecurityEventsAsync(
+            new SearchSecurityEventsRequest { Tenant = tenant, UserId = userId, Limit = 1 }));
+    }
+
+    private static AuthorizedSecurityEventAdministrationService CreateService(RecordingSecurityEventAdministrationRepository? repository = null)
+    {
+        var boundary = new AdminReadTestBoundary(DateTimeOffset.UtcNow);
+        return new AuthorizedSecurityEventAdministrationService(new SecurityEventAdministrationService(
+            repository ?? new RecordingSecurityEventAdministrationRepository(), boundary.Sessions,
+            boundary.Authorizer, boundary.Sink, boundary.TimeProvider), boundary.Actor);
+    }
+
+    private sealed class AuthorizedSecurityEventAdministrationService(SecurityEventAdministrationService service, AccountSecurityActorContext actor)
+    {
+        public Task<Result<SecurityEventSearchResult>> SearchSecurityEventsAsync(SearchSecurityEventsRequest request) =>
+            service.SearchSecurityEventsAsync(request is null ? null! : request with { Actor = actor });
+        public Task<Result<SecurityEventSummary>> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request) =>
+            service.GetSecurityEventAsync(request with { Actor = actor });
     }
 
     private static SecurityEventSummary CreateSummary()
@@ -238,8 +272,11 @@ internal sealed class SecurityEventAdministrationServiceTests
         public SecurityEventAdministrationDetailRequest? LastGetRequest { get; private set; }
         public SecurityEventSummary? GetResult { get; init; }
 
+        public Exception? SearchException { get; init; }
+
         public Task<IReadOnlyList<SecurityEventSummary>> SearchSecurityEventsAsync(SearchSecurityEventsRequest request, CancellationToken cancellationToken = default)
         {
+            if (SearchException is not null) throw SearchException;
             LastSearchRequest = request;
             return Task.FromResult<IReadOnlyList<SecurityEventSummary>>(SearchResults.AsReadOnly());
         }
