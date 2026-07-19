@@ -721,6 +721,20 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     }
 
     [Test]
+    public async Task RegisterShouldCommitInvitationAcceptanceFailureAudit()
+    {
+        var transaction = new Mock<IAshlarTransaction>();
+        var service = CreateService(
+            CreateInvitations(acceptance: Result.Failure<InvitationAcceptanceResult>(AshlarFailureCodes.InvalidInvitation)).Object,
+            transaction: transaction);
+
+        await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
+
+        transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
+        transaction.Verify(t => t.RollbackAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public async Task RegisterShouldMapCredentialProviderKeyConflict()
     {
         var userId = Guid.NewGuid();

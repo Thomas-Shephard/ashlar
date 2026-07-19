@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Models.Invitations;
 
 /// <summary>
-/// Represents a persisted invitation that can create or attach a user to a tenant.
+/// Represents a persisted invitation that can create a user or be accepted by an existing active user.
 /// </summary>
 public sealed class UserInvitation
 {
