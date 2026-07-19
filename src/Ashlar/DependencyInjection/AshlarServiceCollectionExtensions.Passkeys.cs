@@ -54,7 +54,19 @@ public static partial class AshlarServiceCollectionExtensions
                 provider.GetRequiredService<IAuthenticationRateLimiter>(),
                 new PasskeyServiceInfrastructure(provider.GetService<TimeProvider>(), sink, transactions));
         });
-        services.TryAddScoped<IPasskeyService, PasskeyService>();
+        services.TryAddScoped<IPasskeyService>(provider =>
+        {
+            var dependencies = provider.GetRequiredService<PasskeyServiceDependencies>();
+            return new PasskeyService(
+                provider.GetRequiredService<IPasskeyCredentialStore>(),
+                provider.GetRequiredService<IPasskeyChallengeStore>(),
+                new ActiveSessionFreshProofValidator(
+                    provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+                    dependencies.TimeProvider),
+                provider.GetRequiredService<IPasskeyCeremonyValidator>(),
+                provider.GetRequiredService<IEnumerable<IAuthenticationProvider>>(),
+                dependencies);
+        });
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<PasskeyOptions>>().Value);
         services.AddAshlarConfigurationValidation();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IAshlarConfigurationCheck, PasskeyConfigurationCheck>());

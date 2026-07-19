@@ -6,12 +6,10 @@ namespace Ashlar.Identity.Models.Mfa;
 /// <param name="FreshnessWindow">Maximum age of an additional-verification ceremony that may satisfy step-up.</param>
 /// <param name="AllowedProviders">Provider keys that may satisfy the step-up requirement, or <see langword="null" /> to allow any.</param>
 /// <param name="AllowedFactors">Provider-neutral factor families that may satisfy the step-up requirement, or <see langword="null" /> to allow any.</param>
-/// <param name="Purpose">Optional operation purpose this proof is minted for, such as <c>passkey-registration</c>.</param>
 public sealed record StepUpRequirement(
     TimeSpan FreshnessWindow,
     IReadOnlyCollection<AuthenticationProviderKey>? AllowedProviders = null,
-    IReadOnlyCollection<string>? AllowedFactors = null,
-    string? Purpose = null);
+    IReadOnlyCollection<string>? AllowedFactors = null);
 
 /// <summary>
 /// Describes a step-up evaluation request.
@@ -46,7 +44,7 @@ public sealed record StepUpEvaluationResult(bool Succeeded, AshlarFailureCode? F
 /// </remarks>
 public sealed class FreshMfaVerificationProof
 {
-    internal FreshMfaVerificationProof(Guid userId, Guid? tenantId, Guid sessionId, DateTimeOffset verifiedAt, DateTimeOffset expiresAt, string? purpose = null)
+    internal FreshMfaVerificationProof(Guid userId, Guid? tenantId, Guid sessionId, DateTimeOffset verifiedAt, DateTimeOffset expiresAt, string purpose)
     {
         UserId = userId;
         TenantId = tenantId;
@@ -71,8 +69,8 @@ public sealed class FreshMfaVerificationProof
     /// <summary>UTC time after which this proof or its source session is no longer valid, whichever occurs first.</summary>
     public DateTimeOffset ExpiresAt { get; }
 
-    /// <summary>Operation purpose this proof was minted for, or <see langword="null" /> for a general session freshness proof.</summary>
-    public string? Purpose { get; }
+    /// <summary>Operation purpose this proof was minted for.</summary>
+    public string Purpose { get; }
 }
 
 /// <summary>
@@ -87,7 +85,7 @@ public sealed class FreshMfaVerificationProof
 /// </remarks>
 public sealed class FreshPrimaryAuthenticationProof
 {
-    internal FreshPrimaryAuthenticationProof(Guid userId, Guid? tenantId, Guid sessionId, DateTimeOffset authenticatedAt, DateTimeOffset expiresAt, string? purpose = null)
+    internal FreshPrimaryAuthenticationProof(Guid userId, Guid? tenantId, Guid sessionId, DateTimeOffset authenticatedAt, DateTimeOffset expiresAt, string purpose)
     {
         UserId = userId;
         TenantId = tenantId;
@@ -112,6 +110,6 @@ public sealed class FreshPrimaryAuthenticationProof
     /// <summary>UTC time after which this proof or its source session is no longer valid, whichever occurs first.</summary>
     public DateTimeOffset ExpiresAt { get; }
 
-    /// <summary>Operation purpose this proof was minted for, or <see langword="null" /> for a general primary-authentication freshness proof.</summary>
-    public string? Purpose { get; }
+    /// <summary>Operation purpose this proof was minted for.</summary>
+    public string Purpose { get; }
 }

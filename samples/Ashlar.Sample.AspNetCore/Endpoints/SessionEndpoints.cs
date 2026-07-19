@@ -7,7 +7,7 @@ namespace Ashlar.Sample.AspNetCore.Endpoints;
 
 internal static class SessionEndpoints
 {
-    private static readonly StepUpRequirement SessionManagementRequirement = new(TimeSpan.FromMinutes(10), Purpose: "session-management");
+    private static readonly StepUpRequirement SessionManagementRequirement = new(TimeSpan.FromMinutes(10));
 
     public static void MapSessionEndpoints(this IEndpointRouteBuilder app)
     {
@@ -35,7 +35,7 @@ internal static class SessionEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var proof = httpContext.CreateFreshMfaProof(stepUp, SessionManagementRequirement);
+            var proof = httpContext.CreateFreshMfaProof(stepUp, SessionManagementRequirement, IAuthenticationSessionService.SelfServiceProofPurpose);
             if (!proof.Succeeded || proof.Value == null) return Results.Forbid();
             var revoked = await signInManager.RevokeSessionForCurrentUserAsync(httpContext, sessionId, proof.Value, reason: "user-revoked", cancellationToken);
             return revoked ? Results.NoContent() : Results.NotFound();
@@ -47,7 +47,7 @@ internal static class SessionEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var proof = httpContext.CreateFreshMfaProof(stepUp, SessionManagementRequirement);
+            var proof = httpContext.CreateFreshMfaProof(stepUp, SessionManagementRequirement, IAuthenticationSessionService.SelfServiceProofPurpose);
             if (!proof.Succeeded || proof.Value == null) return Results.Forbid();
             await signInManager.RevokeOtherSessionsForCurrentUserAsync(httpContext, proof.Value, reason: "user-revoked-others", cancellationToken);
             return Results.NoContent();

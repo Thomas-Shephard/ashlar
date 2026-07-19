@@ -5,6 +5,9 @@ namespace Ashlar.Identity.Abstractions.Services;
 /// </summary>
 public interface IAuthenticationSessionService
 {
+    /// <summary>Purpose required for fresh proofs authorizing self-service session management.</summary>
+    public const string SelfServiceProofPurpose = "session-management";
+
     /// <summary>
     /// Creates and persists a new authentication session after Ashlar has completed authentication.
     /// </summary>

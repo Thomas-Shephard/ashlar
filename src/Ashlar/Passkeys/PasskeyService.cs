@@ -36,8 +36,8 @@ internal sealed class PasskeyService : IPasskeyService
     private AuthenticationCapability CreateCapability(SucceededPasskeyAssertion ceremony) =>
         new(ceremony.Verified.CredentialId, ceremony.Verified.SignCount, ceremony.Verified.UserVerified, _options.ProviderKey);
 
-    private const string RegistrationPurpose = "passkey-registration";
-    private const string ManagementPurpose = "passkey-management";
+    private const string RegistrationPurpose = IPasskeyService.RegistrationProofPurpose;
+    private const string ManagementPurpose = IPasskeyService.ManagementProofPurpose;
     private const string AuthenticationPurpose = "passkey-authentication";
     private const string AuthenticationChallengeStartPurpose = "passkey-authentication-start";
     private const string MfaRegistrationProofType = "fresh-mfa";
@@ -47,7 +47,7 @@ internal sealed class PasskeyService : IPasskeyService
     private const string PrimaryCredentialKeyMetadataKey = "primary_credential_key";
     private readonly IPasskeyCredentialStore _credentials;
     private readonly IPasskeyChallengeStore _challenges;
-    private readonly IFreshAuthenticationProofValidator _proofValidator;
+    private readonly ActiveSessionFreshProofValidator _proofValidator;
     private readonly IPasskeyCeremonyValidator _ceremonyValidator;
     private readonly IAuthenticationOrchestrator _authenticationOrchestrator;
     private readonly IAuthenticationHandshakeService _handshakeService;
@@ -59,10 +59,10 @@ internal sealed class PasskeyService : IPasskeyService
     private readonly AshlarDurableTransactionProvider _transactionProvider;
     private readonly IReadOnlyList<ISecondaryAuthenticationFactorProvider> _additionalVerificationProviders;
 
-    public PasskeyService(
+    internal PasskeyService(
         IPasskeyCredentialStore credentials,
         IPasskeyChallengeStore challenges,
-        IFreshAuthenticationProofValidator proofValidator,
+        ActiveSessionFreshProofValidator proofValidator,
         IPasskeyCeremonyValidator ceremonyValidator,
         IEnumerable<IAuthenticationProvider> providers,
         PasskeyServiceDependencies dependencies)

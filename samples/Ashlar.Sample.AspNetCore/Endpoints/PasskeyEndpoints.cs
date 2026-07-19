@@ -10,8 +10,8 @@ namespace Ashlar.Sample.AspNetCore.Endpoints;
 
 internal static class PasskeyEndpoints
 {
-    private static readonly StepUpRequirement SelfServicePasskeyRegistrationRequirement = new(TimeSpan.FromMinutes(10), Purpose: "passkey-registration");
-    private static readonly StepUpRequirement SelfServicePasskeyManagementRequirement = new(TimeSpan.FromMinutes(10), Purpose: "passkey-management");
+    private static readonly StepUpRequirement SelfServicePasskeyRegistrationRequirement = new(TimeSpan.FromMinutes(10));
+    private static readonly StepUpRequirement SelfServicePasskeyManagementRequirement = new(TimeSpan.FromMinutes(10));
 
     public static void MapPasskeyEndpoints(this IEndpointRouteBuilder app)
     {
@@ -91,11 +91,11 @@ internal static class PasskeyEndpoints
 
         if (posture.Value.AdditionalVerificationFactors.Any(factor => factor.IsUsable))
         {
-            var proof = httpContext.CreateFreshMfaProof(stepUp, SelfServicePasskeyRegistrationRequirement);
+            var proof = httpContext.CreateFreshMfaProof(stepUp, SelfServicePasskeyRegistrationRequirement, IPasskeyService.RegistrationProofPurpose);
             return proof.Succeeded ? new PasskeyRegistrationProof(proof.Value, null) : null;
         }
 
-        var primaryProof = httpContext.CreateFreshPrimaryAuthenticationProof(stepUp, SelfServicePasskeyRegistrationRequirement.FreshnessWindow, SelfServicePasskeyRegistrationRequirement.Purpose);
+        var primaryProof = httpContext.CreateFreshPrimaryAuthenticationProof(stepUp, SelfServicePasskeyRegistrationRequirement.FreshnessWindow, IPasskeyService.RegistrationProofPurpose);
         return primaryProof.Succeeded ? new PasskeyRegistrationProof(null, primaryProof.Value) : null;
     }
 
@@ -203,7 +203,7 @@ internal static class PasskeyEndpoints
     private static async Task<IResult> RenameAsync(Guid credentialId, PasskeyDisplayNameRequest request, IPasskeyService passkeys, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
     {
         if (!httpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return Results.Forbid();
-        var proof = httpContext.CreateFreshMfaProof(httpContext.RequestServices.GetRequiredService<StepUpAuthenticationService>(), SelfServicePasskeyManagementRequirement);
+        var proof = httpContext.CreateFreshMfaProof(httpContext.RequestServices.GetRequiredService<StepUpAuthenticationService>(), SelfServicePasskeyManagementRequirement, IPasskeyService.ManagementProofPurpose);
         if (!proof.Succeeded || proof.Value == null) return Results.Forbid();
 
         var result = await passkeys.RenameAsync(new RenamePasskeyRequest(user.GetAshlarUserId(), httpContext.ToTenantContext(), sessionId, proof.Value, credentialId, request.DisplayName ?? "Passkey", httpContext.ToAuditContext()), cancellationToken);
@@ -213,7 +213,7 @@ internal static class PasskeyEndpoints
     private static async Task<IResult> RevokeAsync(Guid credentialId, IPasskeyService passkeys, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
     {
         if (!httpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return Results.Forbid();
-        var proof = httpContext.CreateFreshMfaProof(httpContext.RequestServices.GetRequiredService<StepUpAuthenticationService>(), SelfServicePasskeyManagementRequirement);
+        var proof = httpContext.CreateFreshMfaProof(httpContext.RequestServices.GetRequiredService<StepUpAuthenticationService>(), SelfServicePasskeyManagementRequirement, IPasskeyService.ManagementProofPurpose);
         if (!proof.Succeeded || proof.Value == null) return Results.Forbid();
 
         var result = await passkeys.RevokeAsync(new RevokePasskeyRequest(user.GetAshlarUserId(), httpContext.ToTenantContext(), sessionId, proof.Value, credentialId, httpContext.ToAuditContext()), cancellationToken);

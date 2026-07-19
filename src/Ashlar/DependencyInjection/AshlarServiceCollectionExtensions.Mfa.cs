@@ -39,13 +39,19 @@ public static partial class AshlarServiceCollectionExtensions
         }
 
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, RecoveryCodeAuthenticationProvider>());
-        services.TryAddScoped(provider => new RecoveryCodeServiceDependencies(
-            provider.GetRequiredService<IOptions<RecoveryCodeOptions>>(),
-            provider.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>(),
-            provider.GetService<TimeProvider>(),
-            provider.GetRequiredService<SecurityEventFanOutSink>(),
-            provider.GetService<ISecurityNotificationService>(),
-            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>()));
+        services.TryAddScoped(provider =>
+        {
+            var timeProvider = provider.GetService<TimeProvider>() ?? TimeProvider.System;
+            return new RecoveryCodeServiceDependencies(
+                provider.GetRequiredService<IOptions<RecoveryCodeOptions>>(),
+                new ActiveSessionFreshProofValidator(
+                provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+                    timeProvider),
+                timeProvider,
+                provider.GetRequiredService<SecurityEventFanOutSink>(),
+                provider.GetService<ISecurityNotificationService>(),
+                provider.GetRequiredService<IAccountSecurityOperationAuthorizer>());
+        });
         services.TryAddScoped(provider => new RecoveryCodeService(
             provider.GetRequiredAshlarProviderService<IUserRepository>(),
             provider.GetRequiredAshlarProviderService<ICredentialRepository>(),
@@ -82,12 +88,18 @@ public static partial class AshlarServiceCollectionExtensions
         }
 
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, TotpAuthenticationProvider>());
-        services.TryAddScoped(provider => new TotpServiceDependencies(
-            provider.GetRequiredService<IOptions<TotpOptions>>(),
-            provider.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>(),
-            provider.GetService<TimeProvider>(),
-            provider.GetRequiredService<SecurityEventFanOutSink>(),
-            provider.GetService<ISecurityNotificationService>()));
+        services.TryAddScoped(provider =>
+        {
+            var timeProvider = provider.GetService<TimeProvider>() ?? TimeProvider.System;
+            return new TotpServiceDependencies(
+                provider.GetRequiredService<IOptions<TotpOptions>>(),
+                new ActiveSessionFreshProofValidator(
+                provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+                    timeProvider),
+                timeProvider,
+                provider.GetRequiredService<SecurityEventFanOutSink>(),
+                provider.GetService<ISecurityNotificationService>());
+        });
         services.TryAddScoped(provider => new TotpService(
             provider.GetRequiredAshlarProviderService<IUserRepository>(),
             provider.GetRequiredAshlarProviderService<ICredentialRepository>(),

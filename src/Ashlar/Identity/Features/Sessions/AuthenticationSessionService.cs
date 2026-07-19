@@ -16,7 +16,7 @@ internal sealed class AuthenticationSessionService(
     ILogger<AuthenticationSessionService>? logger = null)
     : IAuthenticationSessionService, IAuthenticationSessionMutationExecutor
 {
-    internal const string SelfServiceProofPurpose = "session-management";
+    internal const string SelfServiceProofPurpose = IAuthenticationSessionService.SelfServiceProofPurpose;
     private static readonly Action<ILogger, Guid, Guid, Exception?> SessionLastSeenUpdateNotPersisted =
         LoggerMessage.Define<Guid, Guid>(
             LogLevel.Warning,

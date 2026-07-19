@@ -9,7 +9,7 @@ internal sealed class AccountSecurityAdministrationService(
     TimeProvider timeProvider,
     ISecurityEventSink? securityEventSink) : IAccountSecurityAdministrationService
 {
-    internal const string ProofPurpose = "account-security-administration";
+    internal const string ProofPurpose = IAccountSecurityAdministrationService.ProofPurpose;
     private readonly ActiveSessionFreshProofValidator _proofValidator = new(sessionRepository, timeProvider);
     private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider);
 

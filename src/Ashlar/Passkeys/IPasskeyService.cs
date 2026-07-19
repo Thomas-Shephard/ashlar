@@ -9,6 +9,12 @@ namespace Ashlar.Passkeys;
 /// </remarks>
 public interface IPasskeyService
 {
+    /// <summary>Purpose required when minting proofs for passkey registration.</summary>
+    public const string RegistrationProofPurpose = "passkey-registration";
+
+    /// <summary>Purpose required when minting proofs for passkey management.</summary>
+    public const string ManagementProofPurpose = "passkey-management";
+
     /// <summary>
     /// Starts a passkey registration ceremony.
     /// </summary>

@@ -6,7 +6,7 @@ namespace Ashlar.Identity.Providers.RecoveryCode;
 
 internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeMutationExecutor
 {
-    internal const string ProofPurpose = "recovery-code-management";
+    internal const string ProofPurpose = IRecoveryCodeService.ManagementProofPurpose;
     private const string EmptyUserIdMessage = "User ID cannot be empty.";
 
     private readonly IUserRepository _userRepository;
@@ -18,7 +18,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
     private readonly SecurityEventEmitter _securityEvents;
     private readonly SecurityNotificationEmitter _notifications;
     private readonly IAccountSecurityOperationAuthorizer _authorizer;
-    private readonly IFreshAuthenticationProofValidator _proofValidator;
+    private readonly ActiveSessionFreshProofValidator _proofValidator;
 
     public RecoveryCodeService(
         IUserRepository userRepository,
@@ -386,14 +386,14 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
 
 internal sealed class RecoveryCodeServiceDependencies(
     IOptions<RecoveryCodeOptions> options,
-    IFreshAuthenticationProofValidator proofValidator,
+    ActiveSessionFreshProofValidator proofValidator,
     TimeProvider? timeProvider = null,
     SecurityEventFanOutSink? securityEventSink = null,
     ISecurityNotificationService? notificationService = null,
     IAccountSecurityOperationAuthorizer? authorizer = null)
 {
     public IOptions<RecoveryCodeOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
-    public IFreshAuthenticationProofValidator ProofValidator { get; } = proofValidator ?? throw new ArgumentNullException(nameof(proofValidator));
+    public ActiveSessionFreshProofValidator ProofValidator { get; } = proofValidator ?? throw new ArgumentNullException(nameof(proofValidator));
     public TimeProvider TimeProvider { get; } = timeProvider ?? TimeProvider.System;
     public SecurityEventFanOutSink? SecurityEventSink { get; } = securityEventSink;
     public ISecurityNotificationService? NotificationService { get; } = notificationService;
