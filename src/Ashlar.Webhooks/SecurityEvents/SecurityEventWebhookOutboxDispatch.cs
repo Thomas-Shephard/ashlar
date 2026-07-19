@@ -199,7 +199,7 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
             }
 
             var client = context.HttpClientFactory.CreateClient(context.HttpClientName);
-            using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 var exception = new HttpRequestException(null, null, response.StatusCode);
