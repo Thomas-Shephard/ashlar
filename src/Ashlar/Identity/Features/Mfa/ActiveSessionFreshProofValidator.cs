@@ -29,7 +29,7 @@ internal sealed class ActiveSessionFreshProofValidator : IFreshAuthenticationPro
         var session = await _sessions.GetSessionAsync(proof!.SessionId, cancellationToken);
         now = _timeProvider.GetUtcNow();
         return FreshVerificationProofValidator.ValidateMfaProof(userId, tenant, proof, currentSessionId, now, purpose)
-            ?? ValidateSession(session, userId, tenant, now);
+            ?? ValidateSession(session, proof.SessionId, userId, tenant, now);
     }
 
     private async ValueTask<AshlarFailureCode?> ValidatePrimaryAsync(Guid userId, TenantContext tenant,
@@ -42,11 +42,11 @@ internal sealed class ActiveSessionFreshProofValidator : IFreshAuthenticationPro
         var session = await _sessions.GetSessionAsync(proof!.SessionId, cancellationToken);
         now = _timeProvider.GetUtcNow();
         return FreshVerificationProofValidator.ValidatePrimaryAuthenticationProof(userId, tenant, proof, currentSessionId, now, purpose)
-            ?? ValidateSession(session, userId, tenant, now);
+            ?? ValidateSession(session, proof.SessionId, userId, tenant, now);
     }
 
-    private static AshlarFailureCode? ValidateSession(AuthenticationSession? session, Guid userId, TenantContext tenant, DateTimeOffset now) =>
-        session is null || session.UserId != userId || session.TenantId != tenant.TenantId || !session.IsActive(now)
+    private static AshlarFailureCode? ValidateSession(AuthenticationSession? session, Guid sessionId, Guid userId, TenantContext tenant, DateTimeOffset now) =>
+        session is null || session.Id != sessionId || session.UserId != userId || session.TenantId != tenant.TenantId || !session.IsActive(now)
         ? AshlarFailureCodes.StepUpRequired
         : null;
 }
