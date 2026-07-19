@@ -201,7 +201,7 @@ public static class AshlarSecurityEventWebhookOutboxBrowser
     /// Creates a conservative error summary from stored safe failure details.
     /// </summary>
     /// <param name="lastError">Stored safe failure detail from the dispatcher.</param>
-    /// <returns>The safe error summary, or <see langword="null" /> when stored detail is malformed or legacy raw exception text.</returns>
+    /// <returns>The safe error summary, or <see langword="null" /> when stored detail is malformed or contains raw exception text.</returns>
     public static string? CreateLastErrorSummary(string? lastError)
     {
         var summary = lastError?.Trim();

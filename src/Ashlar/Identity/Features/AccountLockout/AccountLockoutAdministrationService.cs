@@ -10,10 +10,14 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
     private readonly IAccountLockoutRepository _repository;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly AshlarDurableTransactionProvider _transactionProvider;
+    private readonly AdminReadBoundary _boundary;
 
     public AccountLockoutAdministrationService(
         IAccountLockoutRepository repository,
-        AccountLockoutAdministrationServiceDependencies dependencies)
+        AccountLockoutAdministrationServiceDependencies dependencies,
+        IAuthenticationSessionRepository sessions,
+        IAccountSecurityOperationAuthorizer authorizer,
+        IPersistentSecurityEventSink auditSink)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         ArgumentNullException.ThrowIfNull(dependencies);
@@ -21,14 +25,18 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
         _securityEvents = new SecurityEventEmitter(
             DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, _transactionProvider, "Account-lockout reset", repository),
             dependencies.TimeProvider ?? TimeProvider.System);
+        _boundary = new(sessions, authorizer, auditSink, dependencies.TimeProvider ?? TimeProvider.System,
+            IAccountSecurityAdministrationService.ProofPurpose, AshlarSecurityEventTypes.AccountLockoutReset);
     }
 
     public async Task<Result<ResetAccountLockoutResult>> ResetLockoutAsync(
+        AccountSecurityActorContext actor,
         Guid userId,
         AuthenticationProviderKey provider,
         ResetAccountLockoutRequest request,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         if (ValidateScopedOperation(userId, provider, request, out var tenantId) is { } failure)
         {
             return Result.Failure<ResetAccountLockoutResult>(failure);
@@ -38,9 +46,25 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
         {
             return Result.Failure<ResetAccountLockoutResult>(reasonFailure);
         }
+        if (request.Audit.ActorUserId != actor.ActorUserId)
+        {
+            await _boundary.RecordFailureAsync(actor, request.Tenant, false, AccountSecurityOperation.ResetAccountLockout);
+            return Result.Failure<ResetAccountLockoutResult>(AshlarFailureCodes.ValidationError);
+        }
+        if (!await _boundary.AuthorizeAsync(actor, request.Tenant, false, userId,
+                AccountSecurityOperation.ResetAccountLockout, cancellationToken, recordSuccess: false,
+                provider: provider))
+            return Result.Failure<ResetAccountLockoutResult>(AshlarFailureCodes.ValidationError);
+
+        var existing = await _repository.GetAsync(userId, tenantId, provider, cancellationToken);
+        if (existing is not null && (existing.UserId != userId || existing.TenantId != tenantId || existing.Provider != provider))
+        {
+            await _boundary.RecordFailureAsync(actor, request.Tenant, false, AccountSecurityOperation.ResetAccountLockout);
+            return Result.Failure<ResetAccountLockoutResult>(AshlarFailureCodes.ValidationError);
+        }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-        var reset = await _repository.ResetAsync(userId, tenantId, provider, cancellationToken);
+        var reset = existing is not null && await _repository.ResetAsync(userId, tenantId, provider, cancellationToken);
         await RecordResetAsync(userId, tenantId, provider, reset, request, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 

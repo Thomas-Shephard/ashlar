@@ -6,7 +6,7 @@ namespace Ashlar.Security.Hashing;
 public sealed class PasswordHasherSelector
 {
     /// <summary>
-    /// Hasher used for new password hashes and unknown legacy formats.
+    /// Hasher used for new password hashes and unrecognized formats.
     /// </summary>
     public IPasswordHasher DefaultHasher { get; }
     private readonly Dictionary<byte, IPasswordHasher> _hashers = [];

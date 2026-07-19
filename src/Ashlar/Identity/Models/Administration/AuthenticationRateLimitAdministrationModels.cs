@@ -48,7 +48,7 @@ public enum AuthenticationRateLimitBucketResetStatus
 /// Request for administrator authentication rate-limit bucket search.
 /// </summary>
 /// <remarks>
-/// Host applications must authorize callers and apply any required step-up policy before executing this read-only operation.
+/// The administration reader enforces actor session, proof, scope, and host authorization before executing this operation.
 /// Bucket identifiers are opaque operational identifiers derived from stored hashed key material.
 /// </remarks>
 public sealed record SearchAuthenticationRateLimitBucketsRequest
@@ -157,7 +157,7 @@ public sealed record AuthenticationRateLimitBucketLookupRequest(string BucketId,
 /// <param name="Purpose">Purpose that scopes the bucket identifier.</param>
 /// <param name="Audit">Required audit context for the operator or calling workflow.</param>
 /// <remarks>
-/// Host applications must authorize callers and apply any required step-up policy before executing this mutating operation.
+/// The administration service enforces actor session, proof, scope, host authorization, and durable security-event recording before executing this operation.
 /// </remarks>
 public sealed record ResetAuthenticationRateLimitBucketRequest(string BucketId, string Purpose, AuditContext Audit)
 {

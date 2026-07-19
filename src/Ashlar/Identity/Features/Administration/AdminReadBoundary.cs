@@ -6,7 +6,9 @@ internal sealed class AdminReadBoundary(
     IAuthenticationSessionRepository sessions,
     IAccountSecurityOperationAuthorizer authorizer,
     IPersistentSecurityEventSink auditSink,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    string? proofPurpose = null,
+    string? eventType = null)
 {
     internal const string ProofPurpose = AccountSecurityActorContext.AdministrationReadProofPurpose;
     internal const string EventType = "administration.read";
@@ -15,10 +17,12 @@ internal sealed class AdminReadBoundary(
         timeProvider ?? throw new ArgumentNullException(nameof(timeProvider)));
     private readonly IAccountSecurityOperationAuthorizer _authorizer = authorizer ?? throw new ArgumentNullException(nameof(authorizer));
     private readonly SecurityEventEmitter _audit = new(auditSink ?? throw new ArgumentNullException(nameof(auditSink)), timeProvider);
+    private readonly string _proofPurpose = proofPurpose ?? ProofPurpose;
+    private readonly string _eventType = eventType ?? EventType;
 
     internal async ValueTask<bool> AuthorizeAsync(AccountSecurityActorContext? actor, TenantContext? tenant,
         bool includeAllTenants, Guid targetUserId, AccountSecurityOperation operation, CancellationToken cancellationToken,
-        bool recordSuccess = true)
+        bool recordSuccess = true, AuthenticationProviderKey? provider = null)
     {
         if (actor is null) return false;
         if (actor.Audit.ActorUserId != actor.ActorUserId)
@@ -30,7 +34,7 @@ internal sealed class AdminReadBoundary(
         try
         {
             proofFailure = await _proof.ValidateAsync(actor.ActorUserId, actor.ActorTenant, actor.FreshMfaProof,
-                actor.CurrentSessionId, ProofPurpose, cancellationToken);
+                actor.CurrentSessionId, _proofPurpose, cancellationToken);
         }
         catch
         {
@@ -47,6 +51,7 @@ internal sealed class AdminReadBoundary(
         {
             authorized = await _authorizer.AuthorizeAsync(new AccountSecurityAuthorizationContext(
                 actor.ActorUserId, actor.ActorTenant, targetUserId, tenant, includeAllTenants, operation,
+                Provider: provider,
                 CurrentSessionId: actor.CurrentSessionId), cancellationToken);
         }
         catch
@@ -75,7 +80,7 @@ internal sealed class AdminReadBoundary(
             scope = tenant == TenantContext.Global ? "global" : "tenant";
         return _audit.RecordAsync(new SecurityEventDescriptor
         {
-            EventType = EventType,
+            EventType = _eventType,
             Outcome = succeeded ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
             TenantId = tenant?.TenantId,
             SessionId = actor.CurrentSessionId,

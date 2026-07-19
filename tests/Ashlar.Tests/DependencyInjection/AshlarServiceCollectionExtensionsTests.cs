@@ -553,11 +553,26 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         var tenantId = Guid.NewGuid();
         var repository = new Mock<IAccountLockoutRepository>();
         var events = new RecordingSecurityEventSink();
+        var boundary = new AdminReadTestBoundary(DateTimeOffset.UtcNow,
+            proofPurpose: IAccountSecurityAdministrationService.ProofPurpose);
+        repository
+            .Setup(r => r.GetAsync(userId, tenantId, AuthenticationProviderKey.Local, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AccountLockoutRecord(
+                userId,
+                tenantId,
+                AuthenticationProviderKey.Local,
+                3,
+                DateTimeOffset.UtcNow.AddMinutes(-5),
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow.AddMinutes(10),
+                "version"));
         repository
             .Setup(r => r.ResetAsync(userId, tenantId, AuthenticationProviderKey.Local, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         var services = new ServiceCollection();
         services.AddAshlarProviderScoped(_ => repository.Object);
+        services.AddAshlarProviderScoped(_ => boundary.Sessions);
+        services.AddSingleton(boundary.Authorizer);
         services.AddSingleton<ISecurityEventHandler>(events);
         services.AddAshlarIdentity();
         services.AddDurableAuditForTests();
@@ -567,9 +582,10 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         var service = scope.ServiceProvider.GetRequiredService<IAccountLockoutAdministrationService>();
 
         var result = await service.ResetLockoutAsync(
+            boundary.Actor,
             userId,
             AuthenticationProviderKey.Local,
-            new ResetAccountLockoutRequest(new TenantContext(tenantId), new AuditContext(CorrelationId: "di-corr")));
+            new ResetAccountLockoutRequest(new TenantContext(tenantId), boundary.Actor.Audit with { CorrelationId = "di-corr" }));
 
         using (Assert.EnterMultipleScope())
         {

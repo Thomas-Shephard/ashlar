@@ -38,7 +38,7 @@ internal static class IdentityUrlHelper
     /// <param name="template">Body template that may contain callback placeholders.</param>
     /// <param name="callbackUrl">Callback URL to insert into the body.</param>
     /// <param name="fallbackLabel">Fallback link label when the template is empty.</param>
-    /// <param name="token">Raw token used only for legacy token placeholders. Do not log or persist this value.</param>
+    /// <param name="token">Raw token used only when no callback URL can be built. Do not log or persist this value.</param>
     /// <returns>The formatted email body.</returns>
     public static string FormatEmailBody(string? template, string? callbackUrl, string? fallbackLabel = null, string? token = null)
     {

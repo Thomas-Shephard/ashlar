@@ -222,9 +222,15 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<AshlarDurableTransactionProvider>()));
         services.TryAddScoped<IAccountLockoutAdministrationService>(provider => new AccountLockoutAdministrationService(
             provider.GetRequiredAshlarProviderService<IAccountLockoutRepository>(),
-            provider.GetRequiredService<AccountLockoutAdministrationServiceDependencies>()));
+            provider.GetRequiredService<AccountLockoutAdministrationServiceDependencies>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>()));
         services.TryAddScoped<IAccountLockoutAdministrationReader>(provider => new AccountLockoutAdministrationReader(
-            provider.GetRequiredAshlarProviderService<IAccountLockoutRepository>(), provider.GetService<TimeProvider>()));
+            provider.GetRequiredAshlarProviderService<IAccountLockoutRepository>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(), provider.GetService<TimeProvider>()));
         services.TryAddScoped<IRememberedMfaDeviceReader>(provider => new RememberedMfaDeviceReader(
             provider.GetRequiredAshlarProviderService<IRememberedMfaDeviceRepository>(), provider.GetService<TimeProvider>()));
         services.TryAddScoped<ISecurityEventAdministrationService>(provider => new SecurityEventAdministrationService(
@@ -344,9 +350,14 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped<IAuthenticationRateLimitAdministrationService>(provider =>
             new AuthenticationRateLimitAdministrationService(
                 provider.GetRequiredAshlarProviderService<IAuthenticationRateLimitAdministrationRepository>(),
-                provider.GetRequiredService<AuthenticationRateLimitAdministrationServiceDependencies>()));
+                provider.GetRequiredService<AuthenticationRateLimitAdministrationServiceDependencies>(),
+                provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+                provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+                provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>()));
         services.TryAddScoped<IAuthenticationRateLimitAdministrationReader>(provider => new AuthenticationRateLimitAdministrationReader(
-            provider.GetRequiredAshlarProviderService<IAuthenticationRateLimitAdministrationRepository>(), provider.GetService<TimeProvider>()));
+            provider.GetRequiredAshlarProviderService<IAuthenticationRateLimitAdministrationRepository>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(), provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(), provider.GetService<TimeProvider>()));
 
         return services;
     }
@@ -365,6 +376,9 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped<IAuthenticationRateLimitAdministrationReader>(provider =>
             new AuthenticationRateLimitAdministrationReader(
                 repositoryFactory(provider),
+                provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+                provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+                provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(),
                 provider.GetService<TimeProvider>()));
         return services;
     }

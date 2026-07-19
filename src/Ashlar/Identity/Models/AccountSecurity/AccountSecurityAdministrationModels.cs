@@ -2,7 +2,7 @@ using Ashlar.Auditing;
 
 namespace Ashlar.Identity.Models.AccountSecurity;
 
-/// <summary>Identifies a destructive account-security operation for host authorization.</summary>
+/// <summary>Identifies an account-security or administration operation for host authorization.</summary>
 public enum AccountSecurityOperation
 {
     /// <summary>Changes account state.</summary>
@@ -54,7 +54,25 @@ public enum AccountSecurityOperation
     /// <summary>Searches security events in an explicit scope.</summary>
     SearchSecurityEvents,
     /// <summary>Reads one security event in an explicit scope.</summary>
-    ReadSecurityEvent
+    ReadSecurityEvent,
+    /// <summary>Authorizes an administrator to query invitation summaries in an explicit scope.</summary>
+    SearchInvitations,
+    /// <summary>Reads an invitation.</summary>
+    ReadInvitation,
+    /// <summary>Revokes an invitation.</summary>
+    RevokeInvitation,
+    /// <summary>Authorizes an administrator to query stored automatic-lockout summaries.</summary>
+    SearchAccountLockouts,
+    /// <summary>Reads an account lockout.</summary>
+    ReadAccountLockout,
+    /// <summary>Resets an account lockout.</summary>
+    ResetAccountLockout,
+    /// <summary>Authorizes an administrator to query operational throttling state.</summary>
+    SearchAuthenticationRateLimitBuckets,
+    /// <summary>Authorizes an administrator to inspect one operational throttling record.</summary>
+    ReadAuthenticationRateLimitBucket,
+    /// <summary>Authorizes an administrator to clear one operational throttling record.</summary>
+    ResetAuthenticationRateLimitBucket
 }
 
 /// <summary>Context supplied to the required host authorizer.</summary>
@@ -63,8 +81,8 @@ public enum AccountSecurityOperation
 /// <param name="TargetUserId">The user targeted by the <paramref name="Operation" />, or empty for a broad search.</param>
 /// <param name="TargetTenant">The explicit target tenant or global scope.</param>
 /// <param name="IncludeAllTenants">Whether the <paramref name="Operation" /> crosses all target tenant scopes.</param>
-/// <param name="Operation">The destructive operation being authorized.</param>
-/// <param name="Provider">The credential provider being revoked, when applicable.</param>
+/// <param name="Operation">The account-security or administration operation being authorized.</param>
+/// <param name="Provider">The authentication provider targeted by the <paramref name="Operation" />, when applicable.</param>
 /// <param name="AccountState">The requested account state, when applicable.</param>
 /// <param name="RevokeSessionsAndRememberedMfaDevices">Whether an account-state change also revokes sessions and remembered MFA devices.</param>
 /// <param name="PreservePrimarySignInMethod">Whether credential revocation must leave another usable primary sign-in method.</param>

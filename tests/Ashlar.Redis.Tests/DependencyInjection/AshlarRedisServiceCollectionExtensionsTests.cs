@@ -1,5 +1,8 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.Identity.Abstractions.Services;
+using Ashlar.ProviderContracts.DependencyInjection;
+using Ashlar.Testing;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Operational.Configuration;
@@ -21,6 +24,10 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
     {
         var connection = Mock.Of<IConnectionMultiplexer>();
         var services = new ServiceCollection();
+        services.AddAshlarIdentity();
+        services.AddSingleton<IAccountSecurityOperationAuthorizer, AllowAccountSecurityOperationAuthorizer>();
+        services.AddAshlarProviderScoped<IAuthenticationSessionRepository>(_ => Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarProviderScoped<IPersistentSecurityEventSink>(_ => Mock.Of<IPersistentSecurityEventSink>());
 
         services.AddAshlarRedisRateLimiting(connection, options => options.KeyPrefix = "custom:prefix");
         using var provider = services.BuildServiceProvider();

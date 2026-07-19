@@ -42,14 +42,20 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.TryAddScoped<IInvitationService, InvitationService>();
         services.TryAddScoped<IInvitationAdministrationReader>(provider => new InvitationAdministrationReader(
-            provider.GetRequiredAshlarProviderService<IInvitationRepository>(), provider.GetService<TimeProvider>()));
+            provider.GetRequiredAshlarProviderService<IInvitationRepository>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(), provider.GetService<TimeProvider>()));
         services.TryAddScoped(provider => new InvitationAdministrationServiceDependencies(
             provider.GetService<TimeProvider>(),
             provider.GetRequiredService<SecurityEventFanOutSink>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>()));
         services.TryAddScoped<IInvitationAdministrationService>(provider => new InvitationAdministrationService(
             provider.GetRequiredAshlarProviderService<IInvitationRepository>(),
-            provider.GetRequiredService<InvitationAdministrationServiceDependencies>()));
+            provider.GetRequiredService<InvitationAdministrationServiceDependencies>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>()));
         services.TryAddScoped(provider => new InvitationStoreContext(
             provider.GetRequiredAshlarProviderService<IInvitationRepository>(),
             provider.GetRequiredAshlarProviderService<IUserRepository>(),
