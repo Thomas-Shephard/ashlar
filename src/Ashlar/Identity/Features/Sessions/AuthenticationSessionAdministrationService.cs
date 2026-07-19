@@ -55,25 +55,25 @@ public sealed class AuthenticationSessionAdministrationService(
         var limit = Math.Min(request.Limit, MaximumLimit);
         var repositoryRequest = request with { Actor = null, Limit = limit + 1 };
         var now = _timeProvider.GetUtcNow();
-        List<AuthenticationSessionAdministrationSummary> sessions;
+        List<AuthenticationSessionAdministrationSummary> results;
         try
         {
-            sessions = (await _repository.SearchAuthenticationSessionsAsync(repositoryRequest, now, cancellationToken)).ToList();
+            results = (await _repository.SearchAuthenticationSessionsAsync(repositoryRequest, now, cancellationToken)).ToList();
         }
         catch
         {
             await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchAuthenticationSessions);
             throw;
         }
-        if (sessions.Any(session => !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants,
+        if (results.Any(session => !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants,
                 session.TenantId, request.UserId, session.UserId)))
         {
             await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchAuthenticationSessions);
             throw new InvalidOperationException("The authentication-session administration provider returned a result outside the authorized scope.");
         }
         await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchAuthenticationSessions);
-        var hasMore = sessions.Count > limit;
-        var page = sessions.Take(limit).ToList().AsReadOnly();
+        var hasMore = results.Count > limit;
+        var page = results.Take(limit).ToList().AsReadOnly();
 
         return Result.Success(new AuthenticationSessionSearchResult(page, limit, request.Offset, hasMore));
     }

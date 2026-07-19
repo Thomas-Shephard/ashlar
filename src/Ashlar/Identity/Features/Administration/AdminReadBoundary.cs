@@ -68,8 +68,12 @@ internal sealed class AdminReadBoundary(
         RecordAsync(actor, tenant, includeAllTenants, operation, false);
 
     private Task RecordAsync(AccountSecurityActorContext actor, TenantContext? tenant, bool includeAllTenants,
-        AccountSecurityOperation operation, bool succeeded) =>
-        _audit.RecordAsync(new SecurityEventDescriptor
+        AccountSecurityOperation operation, bool succeeded)
+    {
+        var scope = "all-tenants";
+        if (!includeAllTenants)
+            scope = tenant?.TenantId is null ? "global" : "tenant";
+        return _audit.RecordAsync(new SecurityEventDescriptor
         {
             EventType = EventType,
             Outcome = succeeded ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
@@ -80,7 +84,8 @@ internal sealed class AdminReadBoundary(
             Properties = new Dictionary<string, string>
             {
                 ["operation"] = operation.ToString(),
-                ["scope"] = includeAllTenants ? "all-tenants" : tenant!.TenantId is null ? "global" : "tenant"
+                ["scope"] = scope
             }
         }, CancellationToken.None);
+    }
 }
