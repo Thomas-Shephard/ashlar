@@ -126,7 +126,7 @@ internal sealed class TotpTests
 
         var session = CreateFreshSession(userId, tenant, verifiedAt);
         var result = new StepUpAuthenticationService(new FakeTimeProvider(verifiedAt))
-            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(10), Purpose: TotpService.ProofPurpose)).Value!;
+            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(10)), TotpService.ProofPurpose).Value!;
         RegisterSession(result.SessionId, userId, tenant, verifiedAt);
         return result;
     }
@@ -969,8 +969,8 @@ internal sealed class TotpTests
         var session = Guid.NewGuid();
         var tenant = new TenantContext(Guid.NewGuid());
         var audit = new AuditContext(actor);
-        var mfa = new FreshMfaVerificationProof(actor, tenant.TenantId, session, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5));
-        var primary = new FreshPrimaryAuthenticationProof(actor, tenant.TenantId, session, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5));
+        var mfa = new FreshMfaVerificationProof(actor, tenant.TenantId, session, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5), TotpService.ProofPurpose);
+        var primary = new FreshPrimaryAuthenticationProof(actor, tenant.TenantId, session, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5), TotpService.ProofPurpose);
 
         var start = new StartTotpEnrollmentRequest(
             new TotpEnrollmentVerificationContext(actor, tenant, session, audit, freshMfaProof: mfa), "Ashlar", "user@example.com");

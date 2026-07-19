@@ -209,7 +209,7 @@ internal sealed class AuthenticationSessionServiceTests
         };
         _repositoryMock.Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>())).ReturnsAsync(session);
         return new StepUpAuthenticationService(_timeProvider)
-            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(5), Purpose: AuthenticationSessionService.SelfServiceProofPurpose)).Value!;
+            .CreateFreshMfaProof(new ValidatedAuthenticationSession(session), new StepUpRequirement(TimeSpan.FromMinutes(5)), AuthenticationSessionService.SelfServiceProofPurpose).Value!;
     }
 
     [Test]
@@ -1036,7 +1036,7 @@ internal sealed class AuthenticationSessionServiceTests
 
         var result = await _service.ValidateSessionAsync("raw-token");
         var proof = new StepUpAuthenticationService(_timeProvider).CreateFreshMfaProof(
-            result.ValidatedSession!, new StepUpRequirement(TimeSpan.FromMinutes(5)));
+            result.ValidatedSession!, new StepUpRequirement(TimeSpan.FromMinutes(5)), "purpose");
 
         using (Assert.EnterMultipleScope())
         {

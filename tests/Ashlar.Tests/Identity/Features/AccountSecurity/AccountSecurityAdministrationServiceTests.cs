@@ -231,7 +231,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
         };
         var proof = new StepUpAuthenticationService(_time)
             .CreateFreshMfaProof(new ValidatedAuthenticationSession(session),
-                new StepUpRequirement(TimeSpan.FromMinutes(5), Purpose: AccountSecurityAdministrationService.ProofPurpose)).Value!;
+                new StepUpRequirement(TimeSpan.FromMinutes(5)), AccountSecurityAdministrationService.ProofPurpose).Value!;
         var request = new AccountSecurityAdministrationRequest(_targetId,
             new AccountSecurityActorContext(_actorId, TenantContext.Global, _sessionId, proof, new AuditContext(_actorId)), TenantContext.Global);
         _sessions.Setup(x => x.GetSessionAsync(_sessionId, It.IsAny<CancellationToken>())).ReturnsAsync(session);
@@ -288,7 +288,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
     [Test]
     public void AdministrationRequestsRejectIncompleteOrConflictingSecurityContext()
     {
-        var proof = new FreshMfaVerificationProof(_actorId, _tenant.TenantId, _sessionId, _time.GetUtcNow(), _time.GetUtcNow().AddMinutes(5));
+        var proof = new FreshMfaVerificationProof(_actorId, _tenant.TenantId, _sessionId, _time.GetUtcNow(), _time.GetUtcNow().AddMinutes(5), AccountSecurityAdministrationService.ProofPurpose);
         var audit = new AuditContext(_actorId);
 
         using (Assert.EnterMultipleScope())
@@ -366,7 +366,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
     private FreshMfaVerificationProof CreateProof()
     {
         return new StepUpAuthenticationService(_time)
-            .CreateFreshMfaProof(new ValidatedAuthenticationSession(CreateSession()), new StepUpRequirement(TimeSpan.FromMinutes(5), Purpose: AccountSecurityAdministrationService.ProofPurpose)).Value!;
+            .CreateFreshMfaProof(new ValidatedAuthenticationSession(CreateSession()), new StepUpRequirement(TimeSpan.FromMinutes(5)), AccountSecurityAdministrationService.ProofPurpose).Value!;
     }
 
     private AuthenticationSession CreateSession(Guid? userId = null, Guid? tenantId = null, bool useDefaultTenant = true) => new()

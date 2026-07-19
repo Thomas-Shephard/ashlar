@@ -8,6 +8,9 @@ namespace Ashlar.Identity.Abstractions.Services;
 /// <remarks>Revoking or expiring a proof's source session immediately invalidates the proof for every TOTP mutation.</remarks>
 public interface ITotpService
 {
+    /// <summary>Purpose required when minting proofs for TOTP management.</summary>
+    public const string ManagementProofPurpose = "totp-management";
+
     /// <summary>
     /// Starts self-service TOTP enrollment for the authenticated account owner.
     /// </summary>

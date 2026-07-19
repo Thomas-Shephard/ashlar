@@ -10,7 +10,7 @@ namespace Ashlar.Identity.Features.Mfa;
 
 internal sealed class TotpService : ITotpService
 {
-    internal const string ProofPurpose = "totp-management";
+    internal const string ProofPurpose = ITotpService.ManagementProofPurpose;
     private const string EmptyActorUserIdMessage = "Actor user ID cannot be empty.";
 
     private readonly IUserRepository _userRepository;
@@ -24,7 +24,7 @@ internal sealed class TotpService : ITotpService
     private readonly SecurityNotificationEmitter _notifications;
     private readonly IReadOnlyList<ISecondaryAuthenticationFactorProvider> _additionalVerificationProviders;
     private readonly IAccountSecurityOperationAuthorizer _authorizer;
-    private readonly IFreshAuthenticationProofValidator _proofValidator;
+    private readonly ActiveSessionFreshProofValidator _proofValidator;
 
     public TotpService(
         IUserRepository userRepository,
@@ -525,13 +525,13 @@ internal sealed class TotpEnrollmentCompletionContext
 
 internal sealed class TotpServiceDependencies(
     IOptions<TotpOptions> options,
-    IFreshAuthenticationProofValidator proofValidator,
+    ActiveSessionFreshProofValidator proofValidator,
     TimeProvider? timeProvider = null,
     SecurityEventFanOutSink? securityEventSink = null,
     ISecurityNotificationService? notificationService = null)
 {
     public IOptions<TotpOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
-    public IFreshAuthenticationProofValidator ProofValidator { get; } = proofValidator ?? throw new ArgumentNullException(nameof(proofValidator));
+    public ActiveSessionFreshProofValidator ProofValidator { get; } = proofValidator ?? throw new ArgumentNullException(nameof(proofValidator));
     public TimeProvider TimeProvider { get; } = timeProvider ?? TimeProvider.System;
     public SecurityEventFanOutSink? SecurityEventSink { get; } = securityEventSink;
     public ISecurityNotificationService? NotificationService { get; } = notificationService;

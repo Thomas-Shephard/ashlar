@@ -75,11 +75,13 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
     /// <summary>Creates a fresh-MFA proof from an Ashlar-validated session.</summary>
     /// <param name="session">Ashlar-validated session capability.</param>
     /// <param name="requirement">Freshness and posture requirement.</param>
+    /// <param name="purpose">Operation purpose.</param>
     /// <returns>A scoped proof, or failure when the requirement is not satisfied.</returns>
-    public Result<FreshMfaVerificationProof> CreateFreshMfaProof(ValidatedAuthenticationSession session, StepUpRequirement requirement)
+    public Result<FreshMfaVerificationProof> CreateFreshMfaProof(ValidatedAuthenticationSession session, StepUpRequirement requirement, string purpose)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(requirement);
+        ArgumentException.ThrowIfNullOrWhiteSpace(purpose);
         if (requirement.FreshnessWindow <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(requirement), requirement.FreshnessWindow, "Step-up freshness window must be positive.");
@@ -104,17 +106,18 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
             session.Id,
             verifiedAt,
             ProofExpiry(verifiedAt, requirement.FreshnessWindow, session.ExpiresAt),
-            requirement.Purpose));
+            purpose));
     }
 
     /// <summary>Creates a fresh-primary-authentication proof from an Ashlar-validated session.</summary>
     /// <param name="session">Ashlar-validated session capability.</param>
     /// <param name="freshnessWindow">Maximum age of primary authentication.</param>
-    /// <param name="purpose">Optional operation purpose.</param>
+    /// <param name="purpose">Operation purpose.</param>
     /// <returns>A scoped proof, or failure when the requirement is not satisfied.</returns>
-    public Result<FreshPrimaryAuthenticationProof> CreateFreshPrimaryAuthenticationProof(ValidatedAuthenticationSession session, TimeSpan freshnessWindow, string? purpose = null)
+    public Result<FreshPrimaryAuthenticationProof> CreateFreshPrimaryAuthenticationProof(ValidatedAuthenticationSession session, TimeSpan freshnessWindow, string purpose)
     {
         ArgumentNullException.ThrowIfNull(session);
+        ArgumentException.ThrowIfNullOrWhiteSpace(purpose);
         if (freshnessWindow <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(freshnessWindow), freshnessWindow, "Primary-authentication freshness window must be positive.");

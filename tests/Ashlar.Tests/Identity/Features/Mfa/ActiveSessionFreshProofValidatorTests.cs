@@ -19,6 +19,49 @@ internal sealed class ActiveSessionFreshProofValidatorTests
         }
     }
 
+    [Test]
+    public async Task ValidateAsyncShouldRejectEmptyTargetUser()
+    {
+        var proof = new FreshMfaVerificationProof(Guid.NewGuid(), null, Guid.NewGuid(), Now, Now.AddMinutes(10), "purpose");
+
+        var failure = await Validator().ValidateAsync(Guid.Empty, TenantContext.Global, proof, proof.SessionId, "purpose", CancellationToken.None);
+
+        Assert.That(failure, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+    }
+
+    [Test]
+    public async Task ValidateAsyncShouldRejectDifferentTenant()
+    {
+        var userId = Guid.NewGuid();
+        var proof = new FreshPrimaryAuthenticationProof(userId, Guid.NewGuid(), Guid.NewGuid(), Now, Now.AddMinutes(10), "purpose");
+
+        var failure = await Validator().ValidateAsync(userId, TenantContext.Global, proof, proof.SessionId, "purpose", CancellationToken.None);
+
+        Assert.That(failure, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+    }
+
+    [Test]
+    public async Task ValidateAsyncShouldRejectMissingCurrentSession()
+    {
+        var userId = Guid.NewGuid();
+        var proof = new FreshMfaVerificationProof(userId, null, Guid.NewGuid(), Now, Now.AddMinutes(10), "purpose");
+
+        var failure = await Validator().ValidateAsync(userId, TenantContext.Global, proof, null, "purpose", CancellationToken.None);
+
+        Assert.That(failure, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+    }
+
+    [Test]
+    public async Task ValidateAsyncShouldRejectWrongPurpose()
+    {
+        var userId = Guid.NewGuid();
+        var proof = new FreshPrimaryAuthenticationProof(userId, null, Guid.NewGuid(), Now, Now.AddMinutes(10), "totp-enrollment");
+
+        var failure = await Validator().ValidateAsync(userId, TenantContext.Global, proof, proof.SessionId, "passkey-registration", CancellationToken.None);
+
+        Assert.That(failure, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+    }
+
     [TestCase("missing")]
     [TestCase("revoked")]
     [TestCase("expired")]
@@ -122,4 +165,7 @@ internal sealed class ActiveSessionFreshProofValidatorTests
 
         Assert.That(failure, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
     }
+
+    private static ActiveSessionFreshProofValidator Validator() =>
+        new(Mock.Of<IAuthenticationSessionRepository>(), new FakeTimeProvider(Now));
 }

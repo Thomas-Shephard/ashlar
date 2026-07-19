@@ -6,6 +6,9 @@ namespace Ashlar.Identity.Abstractions.Services;
 /// </summary>
 public interface IAccountSecurityAdministrationService
 {
+    /// <summary>Purpose required for fresh proofs authorizing account-security administration.</summary>
+    public const string ProofPurpose = "account-security-administration";
+
     /// <summary>Changes the target user's account state.</summary>
     /// <param name="request">The actor-bound, authorized account-state request.</param>
     /// <param name="cancellationToken">A token that can cancel the operation.</param>

@@ -20,7 +20,8 @@ internal static class ExternalAccountLinkEndpointHelpers
 
         var proof = httpContext.CreateFreshMfaProof(
             services.GetRequiredService<StepUpAuthenticationService>(),
-            new StepUpRequirement(TimeSpan.FromMinutes(10), Purpose: "external-account-linking"));
+            new StepUpRequirement(TimeSpan.FromMinutes(10)),
+            AshlarExternalAccountLinkService.LinkingProofPurpose);
         if (!proof.Succeeded || proof.Value == null)
         {
             return Results.Forbid();
@@ -55,7 +56,8 @@ internal static class ExternalAccountLinkEndpointHelpers
 
         var proof = httpContext.CreateFreshMfaProof(
             services.GetRequiredService<StepUpAuthenticationService>(),
-            new StepUpRequirement(TimeSpan.FromMinutes(10), Purpose: "external-account-unlinking"));
+            new StepUpRequirement(TimeSpan.FromMinutes(10)),
+            AshlarExternalAccountLinkService.UnlinkingProofPurpose);
         if (!proof.Succeeded || proof.Value == null)
         {
             return Results.Forbid();

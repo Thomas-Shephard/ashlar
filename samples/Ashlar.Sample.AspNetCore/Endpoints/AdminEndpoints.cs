@@ -19,9 +19,9 @@ internal sealed record AdminSetUserAccountStateRequest(UserAccountState AccountS
 internal static partial class AdminEndpoints
 {
     private const string AdminPolicy = "admin";
-    private static readonly StepUpRequirement AdminSecurityRequirement = new(TimeSpan.FromMinutes(5), Purpose: "account-security-administration");
-    private static readonly StepUpRequirement AdminReadRequirement = new(TimeSpan.FromMinutes(5), Purpose: AccountSecurityActorContext.AdministrationReadProofPurpose);
-    private static readonly StepUpRequirement GrantAdministrationRequirement = new(TimeSpan.FromMinutes(5), Purpose: IAuthorizationGrantService.AdministrationProofPurpose);
+    private static readonly StepUpRequirement AdminSecurityRequirement = new(TimeSpan.FromMinutes(5));
+    private static readonly StepUpRequirement AdminReadRequirement = new(TimeSpan.FromMinutes(5));
+    private static readonly StepUpRequirement GrantAdministrationRequirement = new(TimeSpan.FromMinutes(5));
 
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
@@ -147,7 +147,7 @@ internal static partial class AdminEndpoints
             return Results.Forbid();
         }
 
-        var proof = httpContext.CreateFreshMfaProof(stepUp, AdminReadRequirement);
+        var proof = httpContext.CreateFreshMfaProof(stepUp, AdminReadRequirement, AccountSecurityActorContext.AdministrationReadProofPurpose);
         if (!proof.TryGetValue(out var freshProof)) return Results.Forbid();
         var result = await users.SearchUsersAsync(new SearchUsersRequest
         {
@@ -245,7 +245,7 @@ internal static partial class AdminEndpoints
             return Results.Forbid();
         }
 
-        var proof = httpContext.CreateFreshMfaProof(stepUp, GrantAdministrationRequirement);
+        var proof = httpContext.CreateFreshMfaProof(stepUp, GrantAdministrationRequirement, IAuthorizationGrantService.AdministrationProofPurpose);
         if (!proof.TryGetValue(out var freshProof))
         {
             return Results.Json(SampleResultErrors.From(proof, "Fresh MFA proof required"), statusCode: StatusCodes.Status403Forbidden);
@@ -284,7 +284,7 @@ internal static partial class AdminEndpoints
             return null;
         }
 
-        var proof = httpContext.CreateFreshMfaProof(stepUp, AdminSecurityRequirement);
+        var proof = httpContext.CreateFreshMfaProof(stepUp, AdminSecurityRequirement, IAccountSecurityAdministrationService.ProofPurpose);
         return !proof.TryGetValue(out var freshProof)
             ? null
             : new AccountSecurityAdministrationRequest(targetUserId,

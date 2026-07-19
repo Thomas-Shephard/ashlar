@@ -19,17 +19,15 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var credentialService = new ValidatedExternalCredentialLinkServiceMock().Object;
         var accountSecurityAdministration = CreateAccountSecurityService();
         var options = new TestOptionsMonitor(new AshlarOAuthOptions());
-        var proofValidator = new StubProofValidator();
+        var proofValidator = CreateUnlinkProofValidator(TimeProvider.System);
 
         using (Assert.EnterMultipleScope())
         {
-            var unlinkProofValidator = CreateUnlinkProofValidator(TimeProvider.System);
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(null!, proofValidator, unlinkProofValidator, accountSecurityAdministration, options, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, null!, unlinkProofValidator, accountSecurityAdministration, options, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, proofValidator, null!, accountSecurityAdministration, options, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, proofValidator, unlinkProofValidator, null!, options, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, proofValidator, unlinkProofValidator, accountSecurityAdministration, null!, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, proofValidator, unlinkProofValidator, accountSecurityAdministration, options, null!));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(null!, proofValidator, accountSecurityAdministration, options, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, null!, accountSecurityAdministration, options, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, proofValidator, null!, options, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, proofValidator, accountSecurityAdministration, null!, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, proofValidator, accountSecurityAdministration, options, null!));
         }
     }
 
@@ -195,7 +193,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             CreateProperties("Google", "Google"),
             "Ashlar.OAuth.External")));
         var credentialService = new ValidatedExternalCredentialLinkServiceMock();
-        var service = CreateService(credentialService.Object, proofFailure: AshlarFailureCodes.StepUpRequired);
+        var service = CreateService(credentialService.Object);
 
         var result = await service.CompleteExternalLinkAsync(
             CreateHttpContext(authService),
@@ -218,7 +216,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task LinkExternalAccountShouldStopWhenAuthoritativeProofValidationFails()
     {
         var credentials = new ValidatedExternalCredentialLinkServiceMock();
-        var service = CreateService(credentials.Object, proofFailure: AshlarFailureCodes.StepUpRequired);
+        var service = CreateService(credentials.Object, proofValidator: new ActiveSessionFreshProofValidator(
+            Mock.Of<IAuthenticationSessionRepository>(), TimeProvider.System));
 
         var result = await service.LinkWithFreshProofAsync(
             Guid.NewGuid(), "Google",
@@ -237,7 +236,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task CompleteExternalLinkShouldRequireFreshProofBeforeClearingUnsupportedProviderTicket()
     {
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult());
-        var service = CreateService(proofFailure: AshlarFailureCodes.StepUpRequired);
+        var service = CreateService();
 
         var result = await service.CompleteExternalLinkAsync(
             CreateHttpContext(authService),
@@ -1127,7 +1126,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         var clock = new FixedTimeProvider(now);
         var service = CreateService(accountSecurityService: executor, timeProvider: clock,
-            unlinkProofValidator: new ActiveSessionFreshProofValidator(sessions.Object, clock));
+            proofValidator: new ActiveSessionFreshProofValidator(sessions.Object, clock));
 
         var result = await service.UnlinkExternalAccountAsync(userId, "Google",
             ExternalAccountLinkServiceTestExtensions.CreateProof(userId, TenantContext.Global, sessionId, "external-account-unlinking", now),
@@ -1160,7 +1159,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var executor = CreateAccountSecurityService();
         var clock = new FixedTimeProvider(now);
         var service = CreateService(accountSecurityService: executor, timeProvider: clock,
-            unlinkProofValidator: new ActiveSessionFreshProofValidator(sessions.Object, clock));
+            proofValidator: new ActiveSessionFreshProofValidator(sessions.Object, clock));
 
         var result = await service.UnlinkExternalAccountAsync(userId, "Google",
             ExternalAccountLinkServiceTestExtensions.CreateProof(userId, TenantContext.Global, sessionId, "external-account-unlinking", now),
@@ -1385,9 +1384,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         Action<AshlarOAuthOptions>? configureOptions = null,
         TimeProvider? timeProvider = null,
         ISecurityEventSink? securityEventSink = null,
-        AshlarFailureCode? proofFailure = null,
-        IFreshAuthenticationProofValidator? proofValidator = null,
-        ActiveSessionFreshProofValidator? unlinkProofValidator = null)
+        ActiveSessionFreshProofValidator? proofValidator = null)
     {
         var options = new AshlarOAuthOptions();
         options.AddOidcProvider("Google", _ => { });
@@ -1409,8 +1406,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
 
         return new AshlarExternalAccountLinkService(
             credentialService,
-            proofValidator ?? new StubProofValidator(proofFailure, timeProvider),
-            unlinkProofValidator ?? CreateUnlinkProofValidator(timeProvider ?? TimeProvider.System),
+            proofValidator ?? CreateUnlinkProofValidator(timeProvider ?? TimeProvider.System),
             accountSecurityService ?? CreateAccountSecurityService(),
             new TestOptionsMonitor(options),
             timeProvider ?? TimeProvider.System,
@@ -1427,7 +1423,6 @@ internal sealed class AshlarExternalAccountLinkServiceTests
 
         return new AshlarExternalAccountLinkService(
             new ValidatedExternalCredentialLinkServiceMock().Object,
-            new StubProofValidator(),
             CreateUnlinkProofValidator(TimeProvider.System),
             CreateAccountSecurityService(),
             new TestOptionsMonitor(options),
@@ -1532,18 +1527,6 @@ internal sealed class AshlarExternalAccountLinkServiceTests
 
             return Task.CompletedTask;
         }
-    }
-
-    private sealed class StubProofValidator(AshlarFailureCode? failure = null, TimeProvider? timeProvider = null) : IFreshAuthenticationProofValidator
-    {
-        public ValueTask<AshlarFailureCode?> ValidateAsync(Guid userId, TenantContext tenant, FreshMfaVerificationProof? proof,
-            Guid? currentSessionId, string? purpose, CancellationToken cancellationToken) => ValueTask.FromResult(
-                failure ?? FreshVerificationProofValidator.ValidateMfaProof(
-                    userId, tenant, proof, currentSessionId, (timeProvider ?? TimeProvider.System).GetUtcNow(), purpose));
-
-        public ValueTask<AshlarFailureCode?> ValidateAsync(Guid userId, TenantContext tenant, FreshPrimaryAuthenticationProof? proof,
-            Guid? currentSessionId, string? purpose, CancellationToken cancellationToken) =>
-            ValueTask.FromResult(failure);
     }
 
     private sealed class TestAccountSecurityMutationExecutor(Result<AccountSecurityOperationResult> result) : IAccountSecurityMutationExecutor
@@ -1651,7 +1634,7 @@ internal static class ExternalAccountLinkServiceTestExtensions
         string purpose = "external-account-linking",
         DateTimeOffset? verifiedAt = null,
         TimeSpan? freshnessWindow = null,
-        bool registerSession = false)
+        bool registerSession = true)
     {
         var resolvedVerifiedAt = verifiedAt ?? DateTimeOffset.UtcNow;
         var resolvedFreshnessWindow = freshnessWindow ?? TimeSpan.FromMinutes(10);
@@ -1676,7 +1659,7 @@ internal static class ExternalAccountLinkServiceTestExtensions
             args: [session],
             culture: null)!;
         return new StepUpAuthenticationService(new FixedTimeProvider(resolvedVerifiedAt))
-            .CreateFreshMfaProof(validatedSession, new StepUpRequirement(resolvedFreshnessWindow, Purpose: purpose)).Value!;
+            .CreateFreshMfaProof(validatedSession, new StepUpRequirement(resolvedFreshnessWindow), purpose).Value!;
     }
 
 }

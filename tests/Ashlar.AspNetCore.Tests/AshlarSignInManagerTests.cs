@@ -512,7 +512,7 @@ internal sealed class AshlarSignInManagerTests
         };
         var validatedSession = (ValidatedAuthenticationSession)Activator.CreateInstance(typeof(ValidatedAuthenticationSession),
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [session], null)!;
-        var result = new StepUpAuthenticationService().CreateFreshMfaProof(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(5)));
+        var result = new StepUpAuthenticationService().CreateFreshMfaProof(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(5)), "purpose");
         return result.Value!;
     }
 

@@ -7,7 +7,6 @@ using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 
@@ -3095,7 +3094,7 @@ internal sealed class PasskeyServiceTests
         };
     }
 
-    private FreshPrimaryAuthenticationProof CreatePrimaryProof(Guid userId, Guid? tenantId, DateTimeOffset now, Guid sessionId, string? purpose = RegistrationPurpose)
+    private FreshPrimaryAuthenticationProof CreatePrimaryProof(Guid userId, Guid? tenantId, DateTimeOffset now, Guid sessionId, string purpose = RegistrationPurpose)
     {
         var stepUp = new StepUpAuthenticationService(new FakeTimeProvider(now));
         var session = new AuthenticationSession
@@ -3113,7 +3112,7 @@ internal sealed class PasskeyServiceTests
         return result.Value!;
     }
 
-    private FreshMfaVerificationProof CreateMfaProof(Guid userId, Guid? tenantId, DateTimeOffset now, Guid sessionId, string? purpose = RegistrationPurpose)
+    private FreshMfaVerificationProof CreateMfaProof(Guid userId, Guid? tenantId, DateTimeOffset now, Guid sessionId, string purpose = RegistrationPurpose)
     {
         var stepUp = new StepUpAuthenticationService(new FakeTimeProvider(now));
         var session = new AuthenticationSession
@@ -3129,7 +3128,7 @@ internal sealed class PasskeyServiceTests
             AdditionalVerificationFactor = AuthenticationFactorTypes.Passkey,
             ExpiresAt = now.AddHours(1)
         };
-        var result = stepUp.CreateFreshMfaProof(CreateValidatedSession(session), new StepUpRequirement(RegistrationFreshnessWindow, Purpose: purpose));
+        var result = stepUp.CreateFreshMfaProof(CreateValidatedSession(session), new StepUpRequirement(RegistrationFreshnessWindow), purpose);
         _proofSessions[sessionId] = session;
         return result.Value!;
     }
@@ -3270,17 +3269,11 @@ internal sealed class PasskeyServiceTests
         return dependencies;
     }
 
-    private static IFreshAuthenticationProofValidator ProofValidator(
+    private static ActiveSessionFreshProofValidator ProofValidator(
         IAuthenticationSessionRepository sessions,
         TimeProvider? timeProvider = null)
     {
-        var services = new ServiceCollection();
-        services.AddAshlarProviderScoped<IAuthenticationSessionRepository>(_ => sessions);
-        services.AddSingleton<TimeProvider>(timeProvider ?? TimeProvider.System);
-        services.AddAshlarIdentity();
-        using var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
-        return scope.ServiceProvider.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>();
+        return new ActiveSessionFreshProofValidator(sessions, timeProvider ?? TimeProvider.System);
     }
 
     private static PasskeyService CreateVerifiedPasskeyService(
@@ -3342,7 +3335,7 @@ internal sealed class PasskeyServiceTests
         return new(users, credentials, challenges, dependencies.Options.Value.ProviderName);
     }
 
-    private sealed record TestStoreInfrastructure(IAuthenticationSessionRepository Sessions, IFreshAuthenticationProofValidator ProofValidator);
+    private sealed record TestStoreInfrastructure(IAuthenticationSessionRepository Sessions, ActiveSessionFreshProofValidator ProofValidator);
 
     private sealed class ForwardingPersistentSink(ISecurityEventSink sink) : IPersistentSecurityEventSink
     {

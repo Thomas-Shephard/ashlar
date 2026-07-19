@@ -240,7 +240,7 @@ internal sealed class AshlarCompositionTests
     }
 
     [Test]
-    public void FreshProofValidationIsAvailableWithoutExposingItsRepository()
+    public void FreshProofValidatorIsInternalAndNotRegistered()
     {
         var services = new ServiceCollection();
         services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
@@ -251,9 +251,9 @@ internal sealed class AshlarCompositionTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(scope.ServiceProvider.GetService<IFreshAuthenticationProofValidator>(), Is.Not.Null);
+            Assert.That(scope.ServiceProvider.GetService<ActiveSessionFreshProofValidator>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetService<IAuthenticationSessionRepository>(), Is.Null);
-            Assert.That(Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<IFreshAuthenticationProofValidator>(scope.ServiceProvider), Is.Not.Null);
+            Assert.That(typeof(ActiveSessionFreshProofValidator).IsNotPublic, Is.True);
         }
     }
 

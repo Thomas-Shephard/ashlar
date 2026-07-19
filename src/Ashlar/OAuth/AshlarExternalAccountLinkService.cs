@@ -14,12 +14,14 @@ namespace Ashlar.OAuth;
 /// </remarks>
 public sealed class AshlarExternalAccountLinkService
 {
-    private const string LinkPurpose = "external-account-linking";
-    private const string UnlinkPurpose = "external-account-unlinking";
+    /// <summary>Purpose required when minting proofs for external-account linking.</summary>
+    public const string LinkingProofPurpose = "external-account-linking";
+
+    /// <summary>Purpose required when minting proofs for external-account unlinking.</summary>
+    public const string UnlinkingProofPurpose = "external-account-unlinking";
 
     private readonly IValidatedExternalCredentialLinkService _credentialLinkService;
-    private readonly IFreshAuthenticationProofValidator _proofValidator;
-    private readonly ActiveSessionFreshProofValidator _unlinkProofValidator;
+    private readonly ActiveSessionFreshProofValidator _proofValidator;
     private readonly IAccountSecurityMutationExecutor _accountSecurityMutationExecutor;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _options;
     private readonly TimeProvider _timeProvider;
@@ -27,8 +29,7 @@ public sealed class AshlarExternalAccountLinkService
 
     internal AshlarExternalAccountLinkService(
         IValidatedExternalCredentialLinkService credentialLinkService,
-        IFreshAuthenticationProofValidator proofValidator,
-        ActiveSessionFreshProofValidator unlinkProofValidator,
+        ActiveSessionFreshProofValidator proofValidator,
         IAccountSecurityMutationExecutor accountSecurityMutationExecutor,
         IOptionsMonitor<AshlarOAuthOptions> options,
         TimeProvider timeProvider,
@@ -36,7 +37,6 @@ public sealed class AshlarExternalAccountLinkService
     {
         _credentialLinkService = credentialLinkService ?? throw new ArgumentNullException(nameof(credentialLinkService));
         _proofValidator = proofValidator ?? throw new ArgumentNullException(nameof(proofValidator));
-        _unlinkProofValidator = unlinkProofValidator ?? throw new ArgumentNullException(nameof(unlinkProofValidator));
         _accountSecurityMutationExecutor = accountSecurityMutationExecutor ?? throw new ArgumentNullException(nameof(accountSecurityMutationExecutor));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
@@ -56,7 +56,7 @@ public sealed class AshlarExternalAccountLinkService
         if (currentSessionId == Guid.Empty) throw new ArgumentException("The current session id cannot be empty.", nameof(currentSessionId));
 
         var properties = new AuthenticationProperties { RedirectUri = redirectUri };
-        properties.Items[AshlarOAuthAuthenticationProperties.Purpose] = LinkPurpose;
+        properties.Items[AshlarOAuthAuthenticationProperties.Purpose] = LinkingProofPurpose;
         properties.Items[AshlarOAuthAuthenticationProperties.LinkingUserId] = currentUserId.ToString("D");
         properties.Items[AshlarOAuthAuthenticationProperties.LinkingSessionId] = currentSessionId.ToString("D");
         return properties;
@@ -93,7 +93,7 @@ public sealed class AshlarExternalAccountLinkService
         ArgumentNullException.ThrowIfNull(tenant);
 
         if (await _proofValidator.ValidateAsync(
-                currentUserId, tenant, freshMfaProof, currentSessionId, LinkPurpose, cancellationToken) is { } proofFailure)
+                currentUserId, tenant, freshMfaProof, currentSessionId, LinkingProofPurpose, cancellationToken) is { } proofFailure)
         {
             return new AshlarExternalAccountLinkResult(
                 AshlarExternalAccountLinkStatus.Failed,
@@ -139,7 +139,7 @@ public sealed class AshlarExternalAccountLinkService
 
     private static bool IsLinkingTicket(AuthenticationProperties? properties, Guid userId, Guid sessionId) =>
         properties?.Items.TryGetValue(AshlarOAuthAuthenticationProperties.Purpose, out var purpose) == true
-        && string.Equals(purpose, LinkPurpose, StringComparison.Ordinal)
+        && string.Equals(purpose, LinkingProofPurpose, StringComparison.Ordinal)
         && properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.LinkingUserId, out var boundUserId)
         && Guid.TryParse(boundUserId, out var parsedUserId)
         && parsedUserId == userId
@@ -221,8 +221,8 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
         }
 
-        if (await _unlinkProofValidator.ValidateAsync(
-                currentUserId, request.Tenant, freshMfaProof, currentSessionId, UnlinkPurpose, cancellationToken) is { } proofFailure)
+        if (await _proofValidator.ValidateAsync(
+                currentUserId, request.Tenant, freshMfaProof, currentSessionId, UnlinkingProofPurpose, cancellationToken) is { } proofFailure)
         {
             await RecordUnlinkFailureAsync(currentUserId, request, proofFailure.Value);
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);

@@ -280,7 +280,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
         await provider.GetRequiredService<IAuthenticationSessionRepository>().CreateSessionAsync(session);
         var validated = await provider.GetRequiredService<IAuthenticationSessionService>().ValidateSessionAsync(token);
         var proof = provider.GetRequiredService<StepUpAuthenticationService>().CreateFreshMfaProof(
-            validated.ValidatedSession!, new StepUpRequirement(TimeSpan.FromMinutes(5), Purpose: IAuthorizationGrantService.AdministrationProofPurpose)).Value!;
+            validated.ValidatedSession!, new StepUpRequirement(TimeSpan.FromMinutes(5)), IAuthorizationGrantService.AdministrationProofPurpose).Value!;
         var audit = new AuditContext(actor.Id, UserAgent: "atomicity-test");
         return new AccountSecurityActorContext(actor.Id, TenantContext.Global, session.Id, proof, audit);
     }

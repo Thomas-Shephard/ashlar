@@ -57,7 +57,7 @@ internal sealed class StepUpAuthenticationServiceTests
         var validatedSession = new ValidatedAuthenticationSession(session);
         session.AdditionalVerificationAt = _now;
 
-        var result = CreateService().CreateFreshMfaProof(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(10)));
+        var result = CreateService().CreateFreshMfaProof(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(10)), "purpose");
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
     }
@@ -72,9 +72,9 @@ internal sealed class StepUpAuthenticationServiceTests
         using var _ = Assert.EnterMultipleScope();
         Assert.That(service.Evaluate(new StepUpEvaluationRequest(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(10)))).FailureCode,
             Is.EqualTo(AshlarFailureCodes.StepUpExpired));
-        Assert.That(service.CreateFreshMfaProof(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(10))).FailureCode,
+        Assert.That(service.CreateFreshMfaProof(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(10)), "purpose").FailureCode,
             Is.EqualTo(AshlarFailureCodes.StepUpExpired));
-        Assert.That(service.CreateFreshPrimaryAuthenticationProof(validatedSession, TimeSpan.FromMinutes(10)).FailureCode,
+        Assert.That(service.CreateFreshPrimaryAuthenticationProof(validatedSession, TimeSpan.FromMinutes(10), "purpose").FailureCode,
             Is.EqualTo(AshlarFailureCodes.StepUpExpired));
     }
 
@@ -86,9 +86,9 @@ internal sealed class StepUpAuthenticationServiceTests
         var service = CreateService();
 
         using var _ = Assert.EnterMultipleScope();
-        Assert.That(service.CreateFreshMfaProof(validatedSession, new StepUpRequirement(TimeSpan.MaxValue)).Value?.ExpiresAt,
+        Assert.That(service.CreateFreshMfaProof(validatedSession, new StepUpRequirement(TimeSpan.MaxValue), "purpose").Value?.ExpiresAt,
             Is.EqualTo(session.ExpiresAt));
-        Assert.That(service.CreateFreshPrimaryAuthenticationProof(validatedSession, TimeSpan.MaxValue).Value?.ExpiresAt,
+        Assert.That(service.CreateFreshPrimaryAuthenticationProof(validatedSession, TimeSpan.MaxValue, "purpose").Value?.ExpiresAt,
             Is.EqualTo(session.ExpiresAt));
     }
 
@@ -104,9 +104,9 @@ internal sealed class StepUpAuthenticationServiceTests
         var service = new StepUpAuthenticationService(new FakeTimeProvider(ceremonyAt));
 
         using var _ = Assert.EnterMultipleScope();
-        Assert.That(service.CreateFreshMfaProof(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(20))).Value?.ExpiresAt,
+        Assert.That(service.CreateFreshMfaProof(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(20)), "purpose").Value?.ExpiresAt,
             Is.EqualTo(ceremonyAt.ToUniversalTime().AddMinutes(20)));
-        Assert.That(service.CreateFreshPrimaryAuthenticationProof(validatedSession, TimeSpan.FromMinutes(20)).Value?.ExpiresAt,
+        Assert.That(service.CreateFreshPrimaryAuthenticationProof(validatedSession, TimeSpan.FromMinutes(20), "purpose").Value?.ExpiresAt,
             Is.EqualTo(ceremonyAt.ToUniversalTime().AddMinutes(20)));
     }
 
@@ -123,7 +123,7 @@ internal sealed class StepUpAuthenticationServiceTests
             additionalVerificationFactor: "totp");
 
         var result = service.CreateFreshMfaProof(new ValidatedAuthenticationSession(session),
-            new StepUpRequirement(TimeSpan.FromMinutes(10), [TotpProvider()], ["totp"], "passkey-registration"));
+            new StepUpRequirement(TimeSpan.FromMinutes(10), [TotpProvider()], ["totp"]), "passkey-registration");
 
         using (Assert.EnterMultipleScope())
         {
@@ -142,9 +142,9 @@ internal sealed class StepUpAuthenticationServiceTests
     {
         var service = CreateService();
         var stale = service.CreateFreshMfaProof(new ValidatedAuthenticationSession(CreateSession(additionalVerificationAt: _now.AddMinutes(-11))),
-            new StepUpRequirement(TimeSpan.FromMinutes(10)));
+            new StepUpRequirement(TimeSpan.FromMinutes(10)), "purpose");
         var missing = service.CreateFreshMfaProof(new ValidatedAuthenticationSession(CreateSession()),
-            new StepUpRequirement(TimeSpan.FromMinutes(10)));
+            new StepUpRequirement(TimeSpan.FromMinutes(10)), "purpose");
 
         using (Assert.EnterMultipleScope())
         {
@@ -161,13 +161,21 @@ internal sealed class StepUpAuthenticationServiceTests
         var service = CreateService();
         using var _ = Assert.EnterMultipleScope();
 
+        Assert.Throws<ArgumentNullException>(() => service.CreateFreshMfaProof(
+            new ValidatedAuthenticationSession(CreateSession(additionalVerificationAt: _now)),
+            new StepUpRequirement(TimeSpan.FromMinutes(10)), null!));
+
+        Assert.Throws<ArgumentException>(() => service.CreateFreshMfaProof(
+            new ValidatedAuthenticationSession(CreateSession(additionalVerificationAt: _now)),
+            new StepUpRequirement(TimeSpan.FromMinutes(10)), " "));
+
         Assert.Throws<ArgumentOutOfRangeException>(() => service.CreateFreshMfaProof(
             new ValidatedAuthenticationSession(CreateSession(additionalVerificationAt: _now)),
-            new StepUpRequirement(TimeSpan.Zero)));
+            new StepUpRequirement(TimeSpan.Zero), "purpose"));
 
         var inactive = service.CreateFreshMfaProof(
             new ValidatedAuthenticationSession(CreateSession(expiresAt: _now, additionalVerificationAt: _now.AddMinutes(-1))),
-            new StepUpRequirement(TimeSpan.FromMinutes(10)));
+            new StepUpRequirement(TimeSpan.FromMinutes(10)), "purpose");
 
         Assert.That(inactive.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
     }
@@ -197,10 +205,10 @@ internal sealed class StepUpAuthenticationServiceTests
     public void CreateFreshPrimaryAuthenticationProofShouldRejectMissingStaleOrInactiveSession()
     {
         var service = CreateService();
-        var missing = service.CreateFreshPrimaryAuthenticationProof(new ValidatedAuthenticationSession(CreateSession()), TimeSpan.FromMinutes(10));
-        var stale = service.CreateFreshPrimaryAuthenticationProof(new ValidatedAuthenticationSession(CreateSession(authenticatedAt: _now.AddMinutes(-11))), TimeSpan.FromMinutes(10));
-        var future = service.CreateFreshPrimaryAuthenticationProof(new ValidatedAuthenticationSession(CreateSession(authenticatedAt: _now.AddMinutes(1))), TimeSpan.FromMinutes(10));
-        var inactive = service.CreateFreshPrimaryAuthenticationProof(new ValidatedAuthenticationSession(CreateSession(expiresAt: _now, authenticatedAt: _now.AddMinutes(-1))), TimeSpan.FromMinutes(10));
+        var missing = service.CreateFreshPrimaryAuthenticationProof(new ValidatedAuthenticationSession(CreateSession()), TimeSpan.FromMinutes(10), "purpose");
+        var stale = service.CreateFreshPrimaryAuthenticationProof(new ValidatedAuthenticationSession(CreateSession(authenticatedAt: _now.AddMinutes(-11))), TimeSpan.FromMinutes(10), "purpose");
+        var future = service.CreateFreshPrimaryAuthenticationProof(new ValidatedAuthenticationSession(CreateSession(authenticatedAt: _now.AddMinutes(1))), TimeSpan.FromMinutes(10), "purpose");
+        var inactive = service.CreateFreshPrimaryAuthenticationProof(new ValidatedAuthenticationSession(CreateSession(expiresAt: _now, authenticatedAt: _now.AddMinutes(-1))), TimeSpan.FromMinutes(10), "purpose");
 
         using (Assert.EnterMultipleScope())
         {
@@ -216,9 +224,11 @@ internal sealed class StepUpAuthenticationServiceTests
     {
         var service = CreateService();
 
-        Assert.Throws<ArgumentNullException>(() => service.CreateFreshPrimaryAuthenticationProof(null!, TimeSpan.FromMinutes(10)));
+        Assert.Throws<ArgumentNullException>(() => service.CreateFreshPrimaryAuthenticationProof(null!, TimeSpan.FromMinutes(10), "purpose"));
+        Assert.Throws<ArgumentException>(() => service.CreateFreshPrimaryAuthenticationProof(
+            new ValidatedAuthenticationSession(CreateSession(authenticatedAt: _now)), TimeSpan.FromMinutes(10), " "));
         Assert.Throws<ArgumentOutOfRangeException>(() => service.CreateFreshPrimaryAuthenticationProof(
-            new ValidatedAuthenticationSession(CreateSession(authenticatedAt: _now)), TimeSpan.Zero));
+            new ValidatedAuthenticationSession(CreateSession(authenticatedAt: _now)), TimeSpan.Zero, "purpose"));
     }
 
     [Test]

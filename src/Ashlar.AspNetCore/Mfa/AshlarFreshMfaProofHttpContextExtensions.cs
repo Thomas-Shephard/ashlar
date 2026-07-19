@@ -15,6 +15,7 @@ public static class AshlarFreshMfaProofHttpContextExtensions
     /// <param name="httpContext">Current request context populated by Ashlar session authentication.</param>
     /// <param name="stepUp">Step-up service used to evaluate the validated session.</param>
     /// <param name="requirement">Freshness, provider, and factor requirement for the sensitive mutation.</param>
+    /// <param name="purpose">Required operation purpose this proof is minted for.</param>
     /// <returns>Fresh MFA proof scoped to the current user, tenant, and session, or a failure when verification is missing or stale.</returns>
     /// <remarks>
     /// Claims, remembered-device cookies, and client-supplied booleans are not sufficient. The Ashlar session
@@ -23,7 +24,8 @@ public static class AshlarFreshMfaProofHttpContextExtensions
     public static Result<FreshMfaVerificationProof> CreateFreshMfaProof(
         this HttpContext httpContext,
         StepUpAuthenticationService stepUp,
-        StepUpRequirement requirement)
+        StepUpRequirement requirement,
+        string purpose)
     {
         ArgumentNullException.ThrowIfNull(httpContext);
         ArgumentNullException.ThrowIfNull(stepUp);
@@ -34,7 +36,7 @@ public static class AshlarFreshMfaProofHttpContextExtensions
             return Result.Failure<FreshMfaVerificationProof>(AshlarFailureCodes.SessionNotFoundOrInactive);
         }
 
-        return stepUp.CreateFreshMfaProof(session, requirement);
+        return stepUp.CreateFreshMfaProof(session, requirement, purpose);
     }
 
     /// <summary>
@@ -43,7 +45,7 @@ public static class AshlarFreshMfaProofHttpContextExtensions
     /// <param name="httpContext">Current request context populated by Ashlar session authentication.</param>
     /// <param name="stepUp">Step-up service used to evaluate the validated session.</param>
     /// <param name="freshnessWindow">Maximum age of the current primary sign-in.</param>
-    /// <param name="purpose">Optional operation purpose this proof is minted for.</param>
+    /// <param name="purpose">Operation purpose this proof is minted for.</param>
     /// <returns>Fresh primary-authentication proof scoped to the current user, tenant, and session, or a failure when sign-in is missing or stale.</returns>
     /// <remarks>
     /// This proof is for enrolling MFA when the account has no usable additional-verification factor.
@@ -53,7 +55,7 @@ public static class AshlarFreshMfaProofHttpContextExtensions
         this HttpContext httpContext,
         StepUpAuthenticationService stepUp,
         TimeSpan freshnessWindow,
-        string? purpose = null)
+        string purpose)
     {
         ArgumentNullException.ThrowIfNull(httpContext);
         ArgumentNullException.ThrowIfNull(stepUp);

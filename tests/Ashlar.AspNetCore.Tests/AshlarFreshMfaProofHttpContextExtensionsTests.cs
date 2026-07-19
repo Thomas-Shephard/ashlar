@@ -15,7 +15,8 @@ internal sealed class AshlarFreshMfaProofHttpContextExtensionsTests
     {
         var result = new DefaultHttpContext().CreateFreshMfaProof(
             new StepUpAuthenticationService(new FakeTimeProvider(Now)),
-            new StepUpRequirement(TimeSpan.FromMinutes(10)));
+            new StepUpRequirement(TimeSpan.FromMinutes(10)),
+            "purpose");
 
         using (Assert.EnterMultipleScope())
         {
@@ -63,7 +64,8 @@ internal sealed class AshlarFreshMfaProofHttpContextExtensionsTests
 
         var result = context.CreateFreshMfaProof(
             new StepUpAuthenticationService(new FakeTimeProvider(Now)),
-            new StepUpRequirement(TimeSpan.FromMinutes(10)));
+            new StepUpRequirement(TimeSpan.FromMinutes(10)),
+            "purpose");
 
         Assert.That(result.Value?.SessionId, Is.EqualTo(session.Id));
     }
@@ -82,7 +84,8 @@ internal sealed class AshlarFreshMfaProofHttpContextExtensionsTests
         };
 
         var result = context.CreateFreshMfaProof(new StepUpAuthenticationService(new FakeTimeProvider(Now)),
-            new StepUpRequirement(TimeSpan.FromMinutes(10)));
+            new StepUpRequirement(TimeSpan.FromMinutes(10)),
+            "purpose");
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
     }
@@ -92,7 +95,8 @@ internal sealed class AshlarFreshMfaProofHttpContextExtensionsTests
     {
         var result = new DefaultHttpContext().CreateFreshPrimaryAuthenticationProof(
             new StepUpAuthenticationService(new FakeTimeProvider(Now)),
-            TimeSpan.FromMinutes(10));
+            TimeSpan.FromMinutes(10),
+            "purpose");
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
     }
