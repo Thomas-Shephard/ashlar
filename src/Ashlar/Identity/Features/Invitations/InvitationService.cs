@@ -128,7 +128,7 @@ internal sealed class InvitationService(
     }
 
     /// <summary>
-    /// Accepts an invitation by raw token and creates or attaches the user.
+    /// Accepts an invitation by raw token, creating a user or accepting for an existing active user.
     /// </summary>
     /// <param name="request">Raw invitation token and acceptance details. Do not log or persist the token.</param>
     /// <param name="context">Authentication context used for tenant scope, audit, and rate limiting. Tenant-owned invitations require a matching tenant context; a missing tenant is global-only.</param>
@@ -156,6 +156,26 @@ internal sealed class InvitationService(
                 Context = context
             }, cancellationToken);
             return Result.Failure<InvitationAcceptanceResult>(AshlarFailureCodes.InvalidInvitation);
+        }
+
+        var existingUser = await _dependencies.UserRepository.GetUserByEmailAsync(availableInvitation.DisplayEmail, availableInvitation.TenantId, cancellationToken);
+        if (existingUser != null)
+        {
+            existingUser = await _dependencies.UserRepository.GetUserByIdAsync(existingUser.Id, cancellationToken);
+            if (existingUser is not { AccountState: UserAccountState.Active }
+                || !UserTenantOwnership.Matches(existingUser, availableInvitation.TenantId)
+                || IdentityNormalization.NormalizeEmail(existingUser.DisplayEmail) != IdentityNormalization.NormalizeEmail(availableInvitation.DisplayEmail))
+            {
+                await _securityEvents.RecordAsync(new SecurityEventDescriptor
+                {
+                    EventType = AshlarSecurityEventTypes.InvitationAccepted,
+                    Outcome = SecurityEventOutcomes.Failure,
+                    FailureReason = AshlarFailureCodes.InvalidInvitation.Value,
+                    TenantId = availableInvitation.TenantId,
+                    Context = context
+                }, cancellationToken);
+                return Result.Failure<InvitationAcceptanceResult>(AshlarFailureCodes.InvalidInvitation);
+            }
         }
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
@@ -191,7 +211,7 @@ internal sealed class InvitationService(
             return Result.Failure<InvitationAcceptanceResult>(AshlarFailureCodes.ConcurrencyConflict);
         }
 
-        var acceptedUser = await AcceptInvitationUserAsync(acceptedInvitation, request.UserName, now, cancellationToken);
+        var acceptedUser = await AcceptInvitationUserAsync(acceptedInvitation, existingUser, request.UserName, now, cancellationToken);
 
         if (acceptedUser.IsNewUser)
         {
@@ -199,7 +219,7 @@ internal sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.UserCreated,
                 Outcome = SecurityEventOutcomes.Success,
-                UserId = acceptedUser.UserId,
+                UserId = acceptedUser.User.Id,
                 TenantId = acceptedInvitation.TenantId,
                 Context = context
             }, cancellationToken);
@@ -209,7 +229,7 @@ internal sealed class InvitationService(
         {
             EventType = AshlarSecurityEventTypes.InvitationAccepted,
             Outcome = SecurityEventOutcomes.Success,
-            UserId = acceptedUser.UserId,
+            UserId = acceptedUser.User.Id,
             TenantId = acceptedInvitation.TenantId,
             Properties = new Dictionary<string, string> { [InvitationIdProperty] = acceptedInvitation.Id.ToString() },
             Context = context
@@ -217,7 +237,7 @@ internal sealed class InvitationService(
 
         transaction.OnCommitted(async ct =>
         {
-            var notifiedUser = await _dependencies.UserRepository.GetUserByIdAsync(acceptedUser.UserId, ct);
+            var notifiedUser = await _dependencies.UserRepository.GetUserByIdAsync(acceptedUser.User.Id, ct);
             if (notifiedUser != null)
             {
                 await _notifications.NotifyAsync(SecurityNotificationType.InvitationAccepted, notifiedUser, now, context: context, metadata: new Dictionary<string, string> { [InvitationIdProperty] = acceptedInvitation.Id.ToString() }, cancellationToken: ct);
@@ -225,10 +245,7 @@ internal sealed class InvitationService(
         });
 
         await transaction.CommitAsync(cancellationToken);
-
-        var authenticatedUser = await _dependencies.UserRepository.GetUserByIdAsync(acceptedUser.UserId, cancellationToken)
-            ?? throw new InvalidOperationException("Accepted invitation user could not be loaded for session issuance.");
-        return Result.Success(new InvitationAcceptanceResult(acceptedUser.UserId, CreateSessionIssuanceResult(authenticatedUser)));
+        return Result.Success(new InvitationAcceptanceResult(acceptedUser.User.Id, CreateSessionIssuanceResult(acceptedUser.User)));
     }
 
     /// <inheritdoc />
@@ -315,10 +332,8 @@ internal sealed class InvitationService(
         return false;
     }
 
-    private async Task<AcceptedInvitationUser> AcceptInvitationUserAsync(UserInvitation invitation, string? requestedUserName, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task<AcceptedInvitationUser> AcceptInvitationUserAsync(UserInvitation invitation, IUser? user, string? requestedUserName, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var user = await _dependencies.UserRepository.GetUserByEmailAsync(invitation.DisplayEmail, invitation.TenantId, cancellationToken);
-
         if (user == null)
         {
             var userId = Guid.NewGuid();
@@ -332,24 +347,25 @@ internal sealed class InvitationService(
                 TenantId = invitation.TenantId
             };
             await _dependencies.UserRepository.CreateUserAsync(newUser, cancellationToken);
-            return new AcceptedInvitationUser(userId, IsNewUser: true);
+            return new AcceptedInvitationUser(newUser, IsNewUser: true);
         }
 
-        if (!user.CanSignIn() || (!user.EmailVerifiedAt.HasValue && _options.Value.VerifyEmailOnAcceptance))
+        if (!user.EmailVerifiedAt.HasValue && _options.Value.VerifyEmailOnAcceptance)
         {
             var updatedUser = new AshlarUser
             {
                 Id = user.Id,
                 DisplayEmail = user.DisplayEmail,
                 Name = requestedUserName ?? user.Name,
-                AccountState = UserAccountState.Active,
-                EmailVerifiedAt = _options.Value.VerifyEmailOnAcceptance ? (user.EmailVerifiedAt ?? now) : user.EmailVerifiedAt,
+                AccountState = user.AccountState,
+                EmailVerifiedAt = now,
                 TenantId = invitation.TenantId
             };
             await _dependencies.UserRepository.UpdateUserAsync(updatedUser, cancellationToken);
+            user = updatedUser;
         }
 
-        return new AcceptedInvitationUser(user.Id, IsNewUser: false);
+        return new AcceptedInvitationUser(user, IsNewUser: false);
     }
 
     private static MfaAuthenticationResult CreateSessionIssuanceResult(IUser user)
@@ -466,7 +482,7 @@ internal sealed class InvitationService(
         return properties;
     }
 
-    private sealed record AcceptedInvitationUser(Guid UserId, bool IsNewUser);
+    private sealed record AcceptedInvitationUser(IUser User, bool IsNewUser);
 
     private sealed record ValidatedRevokeInvitationsRequest(
         string Email,

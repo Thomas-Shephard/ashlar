@@ -202,7 +202,7 @@ public sealed class AshlarOidcInvitationRegistrationService
             cancellationToken);
         if (!acceptance.Succeeded || acceptance.Value == null || acceptance.Value.UserId == Guid.Empty)
         {
-            await transaction.RollbackAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return new AshlarOidcInvitationRegistrationResult(MapInvitationFailure(acceptance), Assertion: assertion, InvitationAcceptance: acceptance);
         }
 
