@@ -13,6 +13,11 @@ namespace Ashlar.Sqlite.Tests.Webhooks;
 
 internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
 {
+    private const string ValidSecret = "0123456789abcdef0123456789abcdef";
+    private const string ChangedSecret = $"changed-{ValidSecret}";
+    private const string CurrentSecret = $"current-{ValidSecret}";
+    private const string OldSecret = $"old-{ValidSecret}";
+
     private static readonly string[] ExpectedIndexes =
     [
         "ix_ashlar_security_event_webhook_outbox_pending",
@@ -95,7 +100,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     [Test]
     public async Task EnqueueStoresSafeBodyHeadersAndSignatureWithoutSecret()
     {
-        var delivery = CreateDelivery("shared-secret");
+        var delivery = CreateDelivery(ValidSecret);
         var enqueuer = _serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>();
 
         await enqueuer.EnqueueAsync(delivery);
@@ -115,9 +120,9 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.That(row.Body, Is.EqualTo(delivery.Body.ToArray()));
             Assert.That(Encoding.UTF8.GetString(row.Body), Does.Contain("\"eventType\":\"ashlar.sign_in.failed\""));
             Assert.That(Encoding.UTF8.GetString(row.Body), Does.Not.Contain("203.0.113.10"));
-            Assert.That(headers["X-Ashlar-Signature"], Is.EqualTo(CreateSignature("shared-secret", delivery.Body.Span)));
-            Assert.That(headers["X-Ashlar-Signature"], Is.Not.EqualTo(CreateSignature("changed-secret", delivery.Body.Span)));
-            Assert.That(row.Headers, Does.Not.Contain("shared-secret"));
+            Assert.That(headers["X-Ashlar-Signature"], Is.EqualTo(CreateSignature(ValidSecret, delivery.Body.Span)));
+            Assert.That(headers["X-Ashlar-Signature"], Is.Not.EqualTo(CreateSignature(ChangedSecret, delivery.Body.Span)));
+            Assert.That(row.Headers, Does.Not.Contain(ValidSecret));
             Assert.That(row.CreatedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
             Assert.That(row.AvailableAt, Is.EqualTo(_timeProvider.GetUtcNow()));
         }
@@ -240,16 +245,16 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     public async Task DispatcherRegeneratesSignatureAtSendTime()
     {
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
-        await EnqueueAsync(CreateDelivery("old-secret"));
+        await EnqueueAsync(CreateDelivery(OldSecret));
 
-        await CreateDispatcher(transport, webhookOptions: CreateWebhookOptions("current-secret")).ProcessBatchAsync();
+        await CreateDispatcher(transport, webhookOptions: CreateWebhookOptions(CurrentSecret)).ProcessBatchAsync();
 
         var request = transport.Requests.Single();
         var result = AshlarSecurityEventWebhookSignature.Verify(new AshlarSecurityEventWebhookVerificationRequest
         {
             Body = Encoding.UTF8.GetBytes(request.Body),
             Headers = request.Headers.ToDictionary(header => header.Key, header => header.Value.Single(), StringComparer.Ordinal),
-            SharedSecret = "current-secret",
+            SharedSecret = CurrentSecret,
             EventId = new Guid("11111111-1111-1111-1111-111111111111"),
             EndpointName = "audit",
             DestinationPathAndQuery = "/security-events",
@@ -263,7 +268,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.IsValid, Is.True);
-            Assert.That(request.Headers[AshlarSecurityEventWebhookSignature.SignatureHeaderName].Single(), Is.Not.EqualTo(CreateSignature("old-secret", Encoding.UTF8.GetBytes(request.Body))));
+            Assert.That(request.Headers[AshlarSecurityEventWebhookSignature.SignatureHeaderName].Single(), Is.Not.EqualTo(CreateSignature(OldSecret, Encoding.UTF8.GetBytes(request.Body))));
         }
     }
 
@@ -922,7 +927,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         return new AshlarSecurityEventWebhookDestinationValidator(new StaticDestinationResolver());
     }
 
-    private static AshlarSecurityEventWebhookDelivery CreateDelivery(string? sharedSecret = "shared-secret", TimeSpan? timeout = null)
+    private static AshlarSecurityEventWebhookDelivery CreateDelivery(string? sharedSecret = ValidSecret, TimeSpan? timeout = null)
     {
         var securityEvent = new AshlarSecurityEvent
         {
@@ -955,7 +960,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             payload);
     }
 
-    private static AshlarSecurityEventWebhookOptions CreateWebhookOptions(string sharedSecret = "shared-secret")
+    private static AshlarSecurityEventWebhookOptions CreateWebhookOptions(string sharedSecret = ValidSecret)
     {
         var options = new AshlarSecurityEventWebhookOptions();
         options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions

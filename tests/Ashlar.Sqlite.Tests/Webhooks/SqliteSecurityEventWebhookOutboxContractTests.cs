@@ -7,6 +7,8 @@ namespace Ashlar.Sqlite.Tests.Webhooks;
 
 internal sealed class SqliteSecurityEventWebhookOutboxContractTests : SecurityEventWebhookOutboxContractTests
 {
+    private const string ValidSecret = "0123456789abcdef0123456789abcdef";
+
     private SqliteContractDatabase? _database;
 
     protected override async Task<IServiceProvider> CreateInitializedServiceProviderAsync()
@@ -21,7 +23,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxContractTests : SecurityEv
                 {
                     Name = "audit",
                     Uri = new Uri("https://example.test/security-events"),
-                    SharedSecret = "shared-secret"
+                    SharedSecret = ValidSecret
                 });
             });
             services.AddAshlarSqliteSecurityEventWebhookOutbox();

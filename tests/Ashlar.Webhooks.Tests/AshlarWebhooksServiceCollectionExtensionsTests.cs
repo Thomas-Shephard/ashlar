@@ -18,6 +18,7 @@ namespace Ashlar.Webhooks.Tests;
 
 internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
 {
+    private const string ValidSecret = "0123456789abcdef0123456789abcdef";
     [Test]
     public void AddAshlarSecurityEventWebhooksRegistersHandlerAndOptions()
     {
@@ -31,7 +32,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
                 {
                     Name = "audit",
                     Uri = new Uri("https://example.test/security-events"),
-                    SharedSecret = "shared-secret"
+                    SharedSecret = ValidSecret
                 });
             },
             client =>
@@ -157,7 +158,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
             {
                 Name = "audit",
                 Uri = new Uri("https://example.test/security-events"),
-                SharedSecret = "shared-secret"
+                SharedSecret = ValidSecret
             });
         });
 
@@ -281,7 +282,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
             {
                 Name = "best-effort",
                 Uri = new Uri("https://example.test/security-events"),
-                SharedSecret = "shared-secret"
+                SharedSecret = ValidSecret
             });
         });
         services.AddAshlarSecurityEventWebhookOutbox(options =>
@@ -290,7 +291,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
             {
                 Name = "outbox",
                 Uri = new Uri("https://example.test/security-events/outbox"),
-                SharedSecret = "shared-secret"
+                SharedSecret = ValidSecret
             });
         });
 

@@ -16,12 +16,14 @@ public sealed class AshlarSecurityEventWebhookEndpointOptions
     public Uri? Uri { get; set; }
 
     /// <summary>
-    /// Gets or sets an optional shared secret used to sign request bodies.
+    /// Gets or sets an optional shared secret used to sign request bodies. When supplied, the secret must be at least
+    /// <see cref="AshlarSecurityEventWebhookSignature.MinimumSharedSecretByteLength"/> UTF-8 bytes.
     /// </summary>
     public string? SharedSecret { get; set; }
 
     /// <summary>
-    /// Gets or sets a value indicating whether this endpoint may receive unsigned webhooks.
+    /// Gets or sets a value indicating whether this endpoint may receive unsigned webhooks when
+    /// <see cref="SharedSecret"/> is <see langword="null"/>.
     /// </summary>
     public bool AllowUnsigned { get; set; }
 
@@ -64,8 +66,9 @@ public sealed class AshlarSecurityEventWebhookEndpointOptions
             && !string.IsNullOrWhiteSpace(endpoint.Name)
             && AshlarSecurityEventWebhookHeaderValues.IsSafe(endpoint.Name)
             && AshlarSecurityEventWebhookDestinationValidator.ValidateUri(endpoint.Uri, destinationPolicy, nat64Prefixes).IsValid
-            && (endpoint.SharedSecret is null || !string.IsNullOrWhiteSpace(endpoint.SharedSecret))
-            && (endpoint.AllowUnsigned || !string.IsNullOrWhiteSpace(endpoint.SharedSecret))
+            && AshlarSecurityEventWebhookSignature.IsSigningConfigurationValid(
+                endpoint.SharedSecret,
+                endpoint.AllowUnsigned)
             && (!endpoint.Timeout.HasValue || endpoint.Timeout.Value > TimeSpan.Zero)
             && endpoint.EventTypes.All(eventType =>
                 !string.IsNullOrWhiteSpace(eventType) && AshlarSecurityEventWebhookHeaderValues.IsSafe(eventType))

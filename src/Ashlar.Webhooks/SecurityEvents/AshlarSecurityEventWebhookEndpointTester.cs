@@ -46,9 +46,9 @@ public enum AshlarSecurityEventWebhookEndpointTestStatus
     DestinationRejected = 3,
 
     /// <summary>
-    /// The endpoint requires signing but has no shared secret.
+    /// The endpoint requires a valid shared secret but its signing configuration is invalid.
     /// </summary>
-    MissingSharedSecret = 4,
+    InvalidSharedSecret = 4,
 
     /// <summary>
     /// The endpoint returned a non-success response or delivery failed.
@@ -89,7 +89,7 @@ public sealed record AshlarSecurityEventWebhookEndpointTestResult(
         AshlarSecurityEventWebhookEndpointTestStatus.EndpointNotFound => "Webhook endpoint was not found.",
         AshlarSecurityEventWebhookEndpointTestStatus.EndpointDisabled => "Webhook endpoint is disabled.",
         AshlarSecurityEventWebhookEndpointTestStatus.DestinationRejected => "Webhook destination was rejected.",
-        AshlarSecurityEventWebhookEndpointTestStatus.MissingSharedSecret => "Webhook endpoint is missing a shared secret.",
+        AshlarSecurityEventWebhookEndpointTestStatus.InvalidSharedSecret => "Webhook endpoint has no valid shared secret.",
         AshlarSecurityEventWebhookEndpointTestStatus.DeliveryFailed => "Webhook endpoint delivery failed.",
         AshlarSecurityEventWebhookEndpointTestStatus.TimedOut => "Webhook endpoint test timed out.",
         AshlarSecurityEventWebhookEndpointTestStatus.Canceled => "Webhook endpoint test was canceled.",
@@ -154,10 +154,12 @@ public sealed class AshlarSecurityEventWebhookEndpointTester : IAshlarSecurityEv
                 AshlarSecurityEventWebhookEndpointTestStatus.EndpointDisabled);
         }
 
-        if (string.IsNullOrWhiteSpace(endpoint.SharedSecret) && !endpoint.AllowUnsigned)
+        if (!AshlarSecurityEventWebhookSignature.IsSigningConfigurationValid(
+                endpoint.SharedSecret,
+                endpoint.AllowUnsigned))
         {
             return new AshlarSecurityEventWebhookEndpointTestResult(
-                AshlarSecurityEventWebhookEndpointTestStatus.MissingSharedSecret);
+                AshlarSecurityEventWebhookEndpointTestStatus.InvalidSharedSecret);
         }
 
         AshlarSecurityEventWebhookPayload? payload = null;

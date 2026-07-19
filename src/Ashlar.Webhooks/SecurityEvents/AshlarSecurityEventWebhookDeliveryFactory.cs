@@ -161,13 +161,15 @@ public sealed class AshlarSecurityEventWebhookDeliveryFactory
         RemoveHeader(headers, AshlarSecurityEventWebhookSignature.SignatureHeaderName);
         RemoveHeader(headers, AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName);
 
-        if (string.IsNullOrWhiteSpace(request.SharedSecret))
+        if (!AshlarSecurityEventWebhookSignature.IsSigningConfigurationValid(
+                request.SharedSecret,
+                request.AllowUnsigned))
         {
-            if (!request.AllowUnsigned)
-            {
-                throw new InvalidOperationException("Ashlar security event webhook endpoint is missing a shared secret.");
-            }
+            throw new InvalidOperationException("Ashlar security event webhook endpoint has no valid shared secret.");
+        }
 
+        if (request.SharedSecret is null)
+        {
             return;
         }
 
@@ -274,12 +276,13 @@ internal sealed class AshlarSecurityEventWebhookSigningRequest
     public required string EndpointName { get; init; }
 
     /// <summary>
-    /// Gets the shared secret.
+    /// Gets the shared secret, or <see langword="null"/> for unsigned delivery.
     /// </summary>
     public string? SharedSecret { get; init; }
 
     /// <summary>
-    /// Gets a value indicating whether unsigned delivery is explicitly allowed.
+    /// Gets a value indicating whether unsigned delivery is explicitly allowed when <see cref="SharedSecret"/> is
+    /// <see langword="null"/>.
     /// </summary>
     public bool AllowUnsigned { get; init; }
 

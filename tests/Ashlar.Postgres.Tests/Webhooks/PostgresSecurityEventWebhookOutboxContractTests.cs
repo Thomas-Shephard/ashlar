@@ -6,6 +6,8 @@ namespace Ashlar.Postgres.Tests.Webhooks;
 
 internal sealed class PostgresSecurityEventWebhookOutboxContractTests : SecurityEventWebhookOutboxContractTests
 {
+    private const string ValidSecret = "0123456789abcdef0123456789abcdef";
+
     private PostgresContractDatabaseLease? _database;
 
     protected override async Task<IServiceProvider> CreateInitializedServiceProviderAsync()
@@ -20,7 +22,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxContractTests : Security
                 {
                     Name = "audit",
                     Uri = new Uri("https://example.test/security-events"),
-                    SharedSecret = "shared-secret"
+                    SharedSecret = ValidSecret
                 });
             });
             services.AddAshlarPostgresSecurityEventWebhookOutbox();
