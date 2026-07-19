@@ -22,7 +22,7 @@ internal sealed class AdminReadBoundary(
 
     internal async ValueTask<bool> AuthorizeAsync(AccountSecurityActorContext? actor, TenantContext? tenant,
         bool includeAllTenants, Guid targetUserId, AccountSecurityOperation operation, CancellationToken cancellationToken,
-        bool recordSuccess = true, AuthenticationProviderKey? provider = null)
+        AuthenticationProviderKey? provider = null)
     {
         if (actor is null) return false;
         if (actor.Audit.ActorUserId != actor.ActorUserId)
@@ -59,8 +59,8 @@ internal sealed class AdminReadBoundary(
             await RecordAsync(actor, tenant, includeAllTenants, operation, false);
             throw;
         }
-        if (!authorized || recordSuccess)
-            await RecordAsync(actor, tenant, includeAllTenants, operation, authorized);
+        if (!authorized)
+            await RecordAsync(actor, tenant, includeAllTenants, operation, false);
         return authorized;
     }
 

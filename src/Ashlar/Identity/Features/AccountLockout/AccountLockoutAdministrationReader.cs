@@ -21,8 +21,7 @@ internal sealed class AccountLockoutAdministrationReader(IAccountLockoutReposito
             return Result.Failure<AccountLockoutSearchResult>(AshlarFailureCodes.ValidationError);
         }
         if (!await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants, request.UserId ?? Guid.Empty,
-                AccountSecurityOperation.SearchAccountLockouts, cancellationToken, recordSuccess: false,
-                provider: request.Provider)) return Result.Failure<AccountLockoutSearchResult>(AshlarFailureCodes.ValidationError);
+                AccountSecurityOperation.SearchAccountLockouts, cancellationToken, request.Provider)) return Result.Failure<AccountLockoutSearchResult>(AshlarFailureCodes.ValidationError);
 
         var limit = Math.Min(request.Limit, AccountLockoutAdministrationService.MaximumLimit);
         var now = _timeProvider.GetUtcNow();
@@ -43,8 +42,7 @@ internal sealed class AccountLockoutAdministrationReader(IAccountLockoutReposito
         if (AccountLockoutAdministrationService.ValidateScopedOperation(userId, provider, request, out var tenantId) is { } failure)
             return Result.Failure<AccountLockoutStatus>(failure);
         if (!await _boundary.AuthorizeAsync(actor, request.Tenant, false, userId,
-                AccountSecurityOperation.ReadAccountLockout, cancellationToken, recordSuccess: false,
-                provider: provider)) return Result.Failure<AccountLockoutStatus>(AshlarFailureCodes.ValidationError);
+                AccountSecurityOperation.ReadAccountLockout, cancellationToken, provider)) return Result.Failure<AccountLockoutStatus>(AshlarFailureCodes.ValidationError);
 
         var record = await _repository.GetAsync(userId, tenantId, provider, cancellationToken);
         if (record is not null && (record.UserId != userId || record.TenantId != tenantId || record.Provider != provider))

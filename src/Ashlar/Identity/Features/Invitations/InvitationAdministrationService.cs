@@ -57,7 +57,7 @@ internal sealed class InvitationAdministrationService : IInvitationAdministratio
             return Result.Failure<RevokeInvitationAdministrationResult>(AshlarFailureCodes.ValidationError);
         }
         if (!await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants, Guid.Empty,
-                AccountSecurityOperation.RevokeInvitation, cancellationToken, recordSuccess: false))
+                AccountSecurityOperation.RevokeInvitation, cancellationToken))
             return Result.Failure<RevokeInvitationAdministrationResult>(AshlarFailureCodes.ValidationError);
 
         var now = _timeProvider.GetUtcNow();

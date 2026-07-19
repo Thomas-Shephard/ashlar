@@ -21,7 +21,7 @@ internal sealed class AuthenticationRateLimitAdministrationReader(IAuthenticatio
         try { AdministrationScopeValidation.ThrowIfInvalidScope(tenant, includeAllTenants); }
         catch (ArgumentException exception) { return Result.Failure<AuthenticationRateLimitBucketSearchResult>(AshlarFailureCodes.ValidationError, exception.Message); }
         if (!await _boundary.AuthorizeAsync(actor, tenant, includeAllTenants, Guid.Empty,
-                AccountSecurityOperation.SearchAuthenticationRateLimitBuckets, cancellationToken, recordSuccess: false)) return Result.Failure<AuthenticationRateLimitBucketSearchResult>(AshlarFailureCodes.ValidationError);
+                AccountSecurityOperation.SearchAuthenticationRateLimitBuckets, cancellationToken)) return Result.Failure<AuthenticationRateLimitBucketSearchResult>(AshlarFailureCodes.ValidationError);
 
         var limit = Math.Min(request.Limit, AuthenticationRateLimitAdministrationService.MaximumLimit);
         var buckets = await _repository.SearchBucketsAsync(request with { Limit = limit + 1 }, _timeProvider.GetUtcNow(), cancellationToken);
@@ -41,7 +41,7 @@ internal sealed class AuthenticationRateLimitAdministrationReader(IAuthenticatio
         try { AdministrationScopeValidation.ThrowIfInvalidScope(tenant, includeAllTenants); }
         catch (ArgumentException exception) { return Result.Failure<AuthenticationRateLimitBucketSummary>(AshlarFailureCodes.ValidationError, exception.Message); }
         if (!await _boundary.AuthorizeAsync(actor, tenant, includeAllTenants, Guid.Empty,
-                AccountSecurityOperation.ReadAuthenticationRateLimitBucket, cancellationToken, recordSuccess: false)) return Result.Failure<AuthenticationRateLimitBucketSummary>(AshlarFailureCodes.ValidationError);
+                AccountSecurityOperation.ReadAuthenticationRateLimitBucket, cancellationToken)) return Result.Failure<AuthenticationRateLimitBucketSummary>(AshlarFailureCodes.ValidationError);
         var bucket = await _repository.GetBucketAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
         if (bucket == null || !string.Equals(bucket.BucketId, request.BucketId, StringComparison.Ordinal)
             || !string.Equals(bucket.Purpose, request.Purpose, StringComparison.Ordinal))

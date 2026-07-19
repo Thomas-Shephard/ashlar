@@ -41,8 +41,7 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
         }
 
         if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchSecurityEvents, cancellationToken,
-                recordSuccess: false))
+                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchSecurityEvents, cancellationToken))
             return Result.Failure<SecurityEventSearchResult>(AshlarFailureCodes.ValidationError);
 
         var limit = Math.Min(request.Limit, MaximumLimit);
@@ -81,8 +80,7 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
         }
 
         if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                Guid.Empty, AccountSecurityOperation.ReadSecurityEvent, cancellationToken,
-                recordSuccess: false))
+                Guid.Empty, AccountSecurityOperation.ReadSecurityEvent, cancellationToken))
             return Result.Failure<SecurityEventSummary>(AshlarFailureCodes.ValidationError);
 
         SecurityEventSummary? securityEvent;

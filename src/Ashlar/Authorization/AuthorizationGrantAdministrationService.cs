@@ -58,8 +58,7 @@ internal sealed class AuthorizationGrantAdministrationService(
         }
 
         if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchAuthorizationGrants, cancellationToken,
-                recordSuccess: false))
+                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchAuthorizationGrants, cancellationToken))
             return Result.Failure<AuthorizationGrantSearchResult>(AshlarFailureCodes.ValidationError);
 
         var limit = Math.Min(request.Limit, MaximumLimit);
@@ -96,7 +95,7 @@ internal sealed class AuthorizationGrantAdministrationService(
         }
 
         if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                Guid.Empty, AccountSecurityOperation.ReadAuthorizationGrant, cancellationToken, recordSuccess: false))
+                Guid.Empty, AccountSecurityOperation.ReadAuthorizationGrant, cancellationToken))
             return Result.Failure<AuthorizationGrantAdministrationSummary>(AshlarFailureCodes.ValidationError);
 
         AuthorizationGrantAdministrationSummary? grant;
@@ -122,7 +121,7 @@ internal sealed class AuthorizationGrantAdministrationService(
             return Result.Failure<AuthorizationGrantAdministrationSummary>(AshlarFailureCodes.AuthorizationGrantNotFound, "Authorization grant was not found.");
         }
         if (!await _boundary.AuthorizeAsync(request.Actor!, request.Tenant, request.IncludeAllTenants,
-                grant.UserId, AccountSecurityOperation.ReadAuthorizationGrant, cancellationToken, recordSuccess: false))
+                grant.UserId, AccountSecurityOperation.ReadAuthorizationGrant, cancellationToken))
             return Result.Failure<AuthorizationGrantAdministrationSummary>(AshlarFailureCodes.AuthorizationGrantNotFound, "Authorization grant was not found.");
 
         await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadAuthorizationGrant);
