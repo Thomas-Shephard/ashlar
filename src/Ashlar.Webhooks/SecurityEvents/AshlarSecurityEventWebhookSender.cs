@@ -79,7 +79,7 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
 
             using var request = CreateRequest(delivery);
             var client = _httpClientFactory.CreateClient(HttpClientName);
-            using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {

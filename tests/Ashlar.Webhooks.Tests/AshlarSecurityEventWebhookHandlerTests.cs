@@ -911,6 +911,17 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     }
 
     [Test]
+    public async Task SenderDoesNotBufferResponseContent()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted, new ThrowingResponseContent());
+        var sender = new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(transport), destinationValidator: CreateDestinationValidator());
+
+        var result = await sender.SendAsync(CreateDelivery());
+
+        Assert.That(result, Is.EqualTo(AshlarSecurityEventWebhookSendResult.Sent));
+    }
+
+    [Test]
     public async Task SenderObserverRecordsSuccessfulBestEffortDelivery()
     {
         var observer = new RecordingDeliveryObserver();
@@ -1736,6 +1747,20 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     }
 
     [Test]
+    public async Task SharedOutboxDispatchDoesNotBufferResponseContent()
+    {
+        var failed = new List<Exception>();
+        var context = CreateOutboxDispatchContext(
+            new RecordingHttpMessageHandler(HttpStatusCode.Accepted, new ThrowingResponseContent()),
+            null,
+            failed);
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
+
+        Assert.That(failed, Is.Empty);
+    }
+
+    [Test]
     public void SharedOutboxDispatchDoesNotMarkFailedWhenSentStatePersistenceThrows()
     {
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
@@ -2371,14 +2396,26 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         }
     }
 
-    private sealed class RecordingHttpMessageHandler(HttpStatusCode statusCode) : HttpMessageHandler
+    private sealed class RecordingHttpMessageHandler(HttpStatusCode statusCode, HttpContent? responseContent = null) : HttpMessageHandler
     {
         public List<RecordedRequest> Requests { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests.Add(await RecordedRequest.CreateAsync(request, cancellationToken));
-            return new HttpResponseMessage(statusCode);
+            return new HttpResponseMessage(statusCode) { Content = responseContent };
+        }
+    }
+
+    private sealed class ThrowingResponseContent : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            throw new InvalidOperationException("Response content must not be buffered.");
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
         }
     }
 
