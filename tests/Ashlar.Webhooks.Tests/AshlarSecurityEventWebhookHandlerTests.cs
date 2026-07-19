@@ -12,6 +12,8 @@ namespace Ashlar.Webhooks.Tests;
 
 internal sealed class AshlarSecurityEventWebhookHandlerTests
 {
+    private const string ValidSecret = "0123456789abcdef0123456789abcdef";
+    private const string OtherSecret = $"other-{ValidSecret}";
     private static readonly IReadOnlyDictionary<string, string> EmptyHeaders = new Dictionary<string, string>();
 
     [Test]
@@ -111,7 +113,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     public void CreateSignatureReturnsKnownHmacSha256Value()
     {
         var signature = AshlarSecurityEventWebhookSignature.CreateSignature(
-            "secret",
+            ValidSecret,
             "hello"u8,
             DateTimeOffset.FromUnixTimeSeconds(1_800_000_000),
             DateTimeOffset.FromUnixTimeSeconds(1_700_000_000),
@@ -119,7 +121,35 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             "audit",
             "/security-events?tenant=contoso");
 
-        Assert.That(signature, Is.EqualTo("v1=381d2453658bf2e7d70575906681e8d788a5bf14e5d6507c326677837d6f8c24"));
+        Assert.That(signature, Is.EqualTo("v1=b0ff78bd200d522804502932a64fecb52f0297990f11be4d2609e29f9ff2ad9f"));
+    }
+
+    [TestCase("")]
+    [TestCase(" ")]
+    [TestCase("short")]
+    public void CreateSignatureRejectsBlankAndShortSecrets(string sharedSecret)
+    {
+        var now = DateTimeOffset.UnixEpoch;
+
+        Assert.Throws<ArgumentException>(() => AshlarSecurityEventWebhookSignature.CreateSignature(
+            sharedSecret, "body"u8, now, now, Guid.Empty, "audit", "/security-events"));
+    }
+
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase("short")]
+    public void VerifyFailsClosedForMissingAndShortSecrets(string? sharedSecret)
+    {
+        var result = VerifySignature(
+            "body"u8,
+            EmptyHeaders,
+            sharedSecret,
+            Guid.Empty,
+            "audit",
+            "/security-events",
+            TimeProvider.System);
+
+        Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.InvalidSecret));
     }
 
     [Test]
@@ -131,7 +161,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var result = VerifySignature(
             "body"u8,
             headers,
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -154,7 +184,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var result = VerifySignature(
             "body"u8,
             headers,
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -179,7 +209,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var result = VerifySignature(
             "body"u8,
             headers,
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -206,7 +236,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var first = VerifySignature(
             "body"u8,
             headers,
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -215,7 +245,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var second = VerifySignature(
             "body"u8,
             headers,
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -251,7 +281,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var first = VerifySignature(
             "body"u8,
             CreateSignedHeaders(now: now, eventId: firstEventId),
-            "secret",
+            ValidSecret,
             firstEventId,
             "audit",
             "/security-events?tenant=contoso",
@@ -260,7 +290,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var second = VerifySignature(
             "body"u8,
             CreateSignedHeaders(now: now, eventId: secondEventId),
-            "secret",
+            ValidSecret,
             secondEventId,
             "audit",
             "/security-events?tenant=contoso",
@@ -285,7 +315,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var result = VerifySignature(
             "body"u8,
             headers,
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -311,7 +341,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var result = VerifySignature(
             "body"u8,
             CreateSignedHeaders(now: now),
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -336,7 +366,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var result = VerifySignature(
             "body"u8,
             headers,
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -369,7 +399,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var result = VerifySignature(
             "body"u8,
             headers,
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -397,7 +427,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var result = VerifySignature(
             "body"u8,
             headers,
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -419,7 +449,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var result = VerifySignature(
             "body"u8,
             headers,
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -440,7 +470,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var result = VerifySignature(
             "body"u8,
             headers,
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -454,7 +484,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     }
 
     [Test]
-    public void VerifyReportsMissingSecretBeforeSignatureComparison()
+    public void VerifyReportsInvalidSecretBeforeSignatureComparison()
     {
         var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
         var result = VerifySignature(
@@ -466,15 +496,15 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             "/security-events?tenant=contoso",
             new StaticTimeProvider(now));
 
-        Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.MissingSecret));
+        Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.InvalidSecret));
     }
 
-    [TestCase("secret", "body", "11111111-1111-1111-1111-111111111111", "audit", "/security-events?tenant=contoso", 1)]
-    [TestCase("wrong-secret", "body", "11111111-1111-1111-1111-111111111111", "audit", "/security-events?tenant=contoso", 0)]
-    [TestCase("secret", "changed-body", "11111111-1111-1111-1111-111111111111", "audit", "/security-events?tenant=contoso", 0)]
-    [TestCase("secret", "body", "22222222-2222-2222-2222-222222222222", "audit", "/security-events?tenant=contoso", 0)]
-    [TestCase("secret", "body", "11111111-1111-1111-1111-111111111111", "other", "/security-events?tenant=contoso", 0)]
-    [TestCase("secret", "body", "11111111-1111-1111-1111-111111111111", "audit", "/security-events?tenant=other", 0)]
+    [TestCase(ValidSecret, "body", "11111111-1111-1111-1111-111111111111", "audit", "/security-events?tenant=contoso", 1)]
+    [TestCase(OtherSecret, "body", "11111111-1111-1111-1111-111111111111", "audit", "/security-events?tenant=contoso", 0)]
+    [TestCase(ValidSecret, "changed-body", "11111111-1111-1111-1111-111111111111", "audit", "/security-events?tenant=contoso", 0)]
+    [TestCase(ValidSecret, "body", "22222222-2222-2222-2222-222222222222", "audit", "/security-events?tenant=contoso", 0)]
+    [TestCase(ValidSecret, "body", "11111111-1111-1111-1111-111111111111", "other", "/security-events?tenant=contoso", 0)]
+    [TestCase(ValidSecret, "body", "11111111-1111-1111-1111-111111111111", "audit", "/security-events?tenant=other", 0)]
     public void VerifyBindsSecretBodyEventEndpointAndDestination(
         string secret,
         string body,
@@ -511,7 +541,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var result = VerifySignature(
             "body"u8,
             headers,
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -531,7 +561,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var result = VerifySignature(
             "body"u8,
             headers,
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -553,7 +583,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingTimestamp).FailureReason, Is.EqualTo("Missing signature timestamp."));
             Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.TimestampOutsideTolerance).FailureReason, Is.EqualTo("Signature timestamp is outside the accepted tolerance."));
             Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.InvalidSignature).FailureReason, Is.EqualTo("Invalid signature."));
-            Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingSecret).FailureReason, Is.EqualTo("Missing shared secret."));
+            Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.InvalidSecret).FailureReason, Is.EqualTo("Missing or invalid shared secret."));
             Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingEventTimestamp).FailureReason, Is.EqualTo("Missing event timestamp."));
             Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MalformedEventTimestamp).FailureReason, Is.EqualTo("Malformed event timestamp."));
             Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.ReplayDetected).FailureReason, Is.EqualTo("Replay detected."));
@@ -573,7 +603,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var result = VerifySignature(
             "body"u8,
             headers,
-            "secret",
+            ValidSecret,
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
@@ -589,12 +619,12 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentException>(() => AshlarSecurityEventWebhookSignature.CreateSignature("secret", "body"u8, now, now, Guid.Empty, "audit", " "));
-            Assert.Throws<ArgumentException>(() => AshlarSecurityEventWebhookSignature.CreateSignature("secret", "body"u8, now, now, Guid.Empty, "audit", "/security-events\r\nx-test"));
+            Assert.Throws<ArgumentException>(() => AshlarSecurityEventWebhookSignature.CreateSignature(ValidSecret, "body"u8, now, now, Guid.Empty, "audit", " "));
+            Assert.Throws<ArgumentException>(() => AshlarSecurityEventWebhookSignature.CreateSignature(ValidSecret, "body"u8, now, now, Guid.Empty, "audit", "/security-events\r\nx-test"));
             Assert.Throws<ArgumentOutOfRangeException>(() => VerifySignature(
                 "body"u8,
                 CreateSignedHeaders(now),
-                "secret",
+                ValidSecret,
                 new Guid("11111111-1111-1111-1111-111111111111"),
                 "audit",
                 "/security-events?tenant=contoso",
@@ -615,7 +645,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         AddSigningHeaders(
             headers,
             "audit",
-            "secret",
+            ValidSecret,
             allowUnsigned: false,
             Guid.Empty,
             DateTimeOffset.FromUnixTimeSeconds(1_700_000_000),
@@ -640,7 +670,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         AddSigningHeaders(
             headers,
             "audit",
-            "secret",
+            ValidSecret,
             allowUnsigned: false,
             Guid.Empty,
             DateTimeOffset.FromUnixTimeSeconds(1_700_000_000),
@@ -653,6 +683,21 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             Assert.That(headers, Does.ContainKey(AshlarSecurityEventWebhookSignature.SignatureHeaderName));
             Assert.That(headers, Does.ContainKey(AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName));
         }
+    }
+
+    [Test]
+    public void AddSigningHeadersRejectsWeakSecretWhenUnsignedIsAllowed()
+    {
+        Assert.Throws<InvalidOperationException>(() => AddSigningHeaders(
+            new Dictionary<string, string>(),
+            "audit",
+            " ",
+            allowUnsigned: true,
+            Guid.Empty,
+            DateTimeOffset.UnixEpoch,
+            new Uri("https://example.test/security-events"),
+            "body"u8,
+            DateTimeOffset.UnixEpoch));
     }
 
     [Test]
@@ -1280,7 +1325,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
                 DateTimeOffset.FromUnixTimeSeconds(1_700_000_000).ToString("O"),
             [AshlarSecurityEventWebhookSignature.SignatureHeaderName] =
                 AshlarSecurityEventWebhookSignature.CreateSignature(
-                    "secret",
+                    ValidSecret,
                     "body"u8,
                     now,
                     DateTimeOffset.FromUnixTimeSeconds(1_700_000_000),
@@ -1350,7 +1395,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         {
             Name = name,
             Uri = new Uri(uri),
-            SharedSecret = "shared-secret"
+            SharedSecret = ValidSecret
         };
     }
 
@@ -1362,7 +1407,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         {
             Name = "audit",
             Uri = uri ?? new Uri("https://example.test/security-events"),
-            SharedSecret = "shared-secret"
+            SharedSecret = ValidSecret
         };
         return new AshlarSecurityEventWebhookDelivery(
             "audit",
@@ -2030,7 +2075,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var sent = new List<Guid>();
         var endpoint = CreateEndpoint();
         endpoint.Uri = new Uri("https://EXAMPLE.test:443/security-events");
-        endpoint.SharedSecret = "current-secret";
+        endpoint.SharedSecret = ValidSecret;
         var context = new AshlarSecurityEventWebhookOutboxDispatchContext(
             new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
             AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
@@ -2052,7 +2097,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         staleHeaders[AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName.ToLowerInvariant()] = "1";
         staleHeaders[AshlarSecurityEventWebhookSignature.SignatureHeaderName.ToLowerInvariant()] =
             AshlarSecurityEventWebhookSignature.CreateSignature(
-                "stale-secret",
+                OtherSecret,
                 entry.Body,
                 DateTimeOffset.FromUnixTimeSeconds(1),
                 entry.OccurredAt,
@@ -2072,7 +2117,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             Assert.That(VerifySignature(
                 request.Body,
                 sentHeaders,
-                "current-secret",
+                ValidSecret,
                 entry.EventId,
                 entry.EndpointName,
                 "/security-events",

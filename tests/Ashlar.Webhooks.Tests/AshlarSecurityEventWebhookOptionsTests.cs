@@ -5,6 +5,8 @@ namespace Ashlar.Webhooks.Tests;
 
 internal sealed class AshlarSecurityEventWebhookOptionsTests
 {
+    private const string ValidSecret = "0123456789abcdef0123456789abcdef";
+
     [Test]
     public void ValidateAcceptsEmptyEndpointList()
     {
@@ -50,7 +52,7 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
         {
             Name = "audit",
             Uri = new Uri("https://example.test/security-events"),
-            SharedSecret = "shared-secret",
+            SharedSecret = ValidSecret,
             Timeout = TimeSpan.FromSeconds(3)
         };
         endpoint.EventTypes.Add("ashlar.session.created");
@@ -66,7 +68,7 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
         {
             Name = "internal",
             Uri = new Uri("https://10.0.0.5/security-events"),
-            SharedSecret = "shared-secret"
+            SharedSecret = ValidSecret
         });
         options.DestinationPolicy = AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks;
 
@@ -120,6 +122,39 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
         Assert.That(AshlarSecurityEventWebhookEndpointOptions.Validate(endpoint), Is.True);
     }
 
+    [TestCase("")]
+    [TestCase(" ")]
+    [TestCase("0123456789abcdef0123456789abcde")]
+    public void EndpointValidateRejectsBlankAndShortSharedSecrets(string sharedSecret)
+    {
+        var endpoint = new AshlarSecurityEventWebhookEndpointOptions
+        {
+            Name = "audit",
+            Uri = new Uri("https://example.test/security-events"),
+            SharedSecret = sharedSecret,
+            AllowUnsigned = true
+        };
+
+        Assert.That(AshlarSecurityEventWebhookEndpointOptions.Validate(endpoint), Is.False);
+    }
+
+    [Test]
+    public void EndpointValidateMeasuresSharedSecretAsUtf8Bytes()
+    {
+        var endpoint = new AshlarSecurityEventWebhookEndpointOptions
+        {
+            Name = "audit",
+            Uri = new Uri("https://example.test/security-events"),
+            SharedSecret = new string('\u00e9', 15)
+        };
+
+        Assert.That(AshlarSecurityEventWebhookEndpointOptions.Validate(endpoint), Is.False);
+
+        endpoint.SharedSecret += '\u00e9';
+
+        Assert.That(AshlarSecurityEventWebhookEndpointOptions.Validate(endpoint), Is.True);
+    }
+
     private static IEnumerable<AshlarSecurityEventWebhookOptions?> InvalidOptions()
     {
         yield return null;
@@ -143,26 +178,25 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://user@example.test") });
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), Timeout = TimeSpan.Zero });
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit\r\nbad", Uri = new Uri("https://example.test") });
-        yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = " " });
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test") });
 
-        var blankEventType = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = "shared-secret" };
+        var blankEventType = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = ValidSecret };
         blankEventType.EventTypes.Add(" ");
         yield return CreateOptions(blankEventType);
 
-        var unsafeEventType = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = "shared-secret" };
+        var unsafeEventType = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = ValidSecret };
         unsafeEventType.EventTypes.Add("ashlar.sign_in.failed\r\nx-test");
         yield return CreateOptions(unsafeEventType);
 
-        var nullOutcome = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = "shared-secret" };
+        var nullOutcome = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = ValidSecret };
         nullOutcome.Outcomes.Add(null!);
         yield return CreateOptions(nullOutcome);
 
-        var blankOutcome = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = "shared-secret" };
+        var blankOutcome = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = ValidSecret };
         blankOutcome.Outcomes.Add(" ");
         yield return CreateOptions(blankOutcome);
 
-        var unsafeOutcome = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = "shared-secret" };
+        var unsafeOutcome = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = ValidSecret };
         unsafeOutcome.Outcomes.Add("success\r\nx-test");
         yield return CreateOptions(unsafeOutcome);
     }
@@ -178,6 +212,6 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
     {
         Name = name,
         Uri = new Uri("https://example.test/security-events"),
-        SharedSecret = "shared-secret"
+        SharedSecret = ValidSecret
     };
 }

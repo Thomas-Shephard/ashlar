@@ -18,7 +18,7 @@ services.AddAshlarSecurityEventWebhooks(options =>
 });
 ```
 
-Webhook destinations are validated before delivery. Endpoints must use HTTPS, must not include user info or fragments, and are checked against the configured destination policy. Requests are signed with the current Ashlar security event webhook signature format when `SharedSecret` is configured. Endpoints without a shared secret are rejected unless `AllowUnsigned = true` is set explicitly.
+Webhook destinations are validated before delivery. Endpoints must use HTTPS, must not include user info or fragments, and are checked against the configured destination policy. Requests are signed with the current Ashlar security event webhook signature format when `SharedSecret` is configured. Use a randomly generated secret of at least 32 UTF-8 bytes. Endpoints without a shared secret are rejected unless `AllowUnsigned = true` is set explicitly; any supplied secret must still meet the minimum length.
 
 Ashlar-owned webhook HTTP clients always disable automatic redirects and validate the connected remote IP address. The optional HTTP client callback is limited to safe `HttpClient` settings such as timeout and default headers; replacing the primary handler is intentionally unsupported because it would bypass SSRF protections and redirect assumptions.
 
@@ -78,7 +78,7 @@ It does not include user ids, tenant ids, actor ids, session ids, provider detai
 - `EndpointNotFound`
 - `EndpointDisabled`
 - `DestinationRejected`
-- `MissingSharedSecret`
+- `InvalidSharedSecret`
 - `DeliveryFailed`
 - `TimedOut`
 - `Canceled`

@@ -9,6 +9,7 @@ namespace Ashlar.Webhooks.Tests;
 
 internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
 {
+    private const string ValidSecret = "0123456789abcdef0123456789abcdef";
     [Test]
     public async Task TestAsyncSendsOneSyntheticSafeSignedRequest()
     {
@@ -43,7 +44,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
             Assert.That(json, Does.Not.Contain("metadata"));
             Assert.That(headers["X-Ashlar-Event-Type"], Is.EqualTo(AshlarSecurityEventWebhookEndpointTester.TestEventType));
             Assert.That(headers["X-Ashlar-Webhook-Endpoint"], Is.EqualTo("audit"));
-            Assert.That(VerifySignature(request.Body, headers, "shared-secret", payload.GetProperty("id").GetGuid(), "audit", "/security-events").IsValid, Is.True);
+            Assert.That(VerifySignature(request.Body, headers, ValidSecret, payload.GetProperty("id").GetGuid(), "audit", "/security-events").IsValid, Is.True);
         }
     }
 
@@ -100,11 +101,14 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         }
     }
 
-    [Test]
-    public async Task TestAsyncReportsMissingSharedSecretWhenUnsignedNotAllowed()
+    [TestCase(null, false)]
+    [TestCase("short", false)]
+    [TestCase("short", true)]
+    public async Task TestAsyncReportsInvalidSharedSecret(string? sharedSecret, bool allowUnsigned)
     {
         var endpoint = CreateEndpoint();
-        endpoint.SharedSecret = null;
+        endpoint.SharedSecret = sharedSecret;
+        endpoint.AllowUnsigned = allowUnsigned;
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
         var tester = CreateTester(transport, CreateOptions(endpoint));
 
@@ -112,8 +116,8 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookEndpointTestStatus.MissingSharedSecret));
-            Assert.That(result.FailureReason, Is.EqualTo("Webhook endpoint is missing a shared secret."));
+            Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookEndpointTestStatus.InvalidSharedSecret));
+            Assert.That(result.FailureReason, Is.EqualTo("Webhook endpoint has no valid shared secret."));
             Assert.That(result.EventId, Is.Null);
             Assert.That(transport.Requests, Is.Empty);
         }
@@ -395,7 +399,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         {
             Name = name,
             Uri = new Uri(uri),
-            SharedSecret = "shared-secret"
+            SharedSecret = ValidSecret
         };
     }
 

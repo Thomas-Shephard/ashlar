@@ -7,6 +7,8 @@ namespace Ashlar.ProviderContractTests.Webhooks;
 
 internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContractFixture
 {
+    private const string ValidSecret = "0123456789abcdef0123456789abcdef";
+
     protected static readonly DateTimeOffset Now = new(2026, 5, 24, 12, 0, 0, TimeSpan.Zero);
     private static readonly AshlarSecurityEventWebhookOutboxStatus[] ExpectedPagedStatuses =
     [
@@ -340,7 +342,7 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         {
             Name = endpointName,
             Uri = new Uri($"https://example.test/{endpointName}"),
-            SharedSecret = "shared-secret"
+            SharedSecret = ValidSecret
         };
         var headers = AshlarSecurityEventWebhookDeliveryFactory.CreateHeaders(
             endpoint,

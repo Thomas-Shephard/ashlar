@@ -21,6 +21,8 @@ namespace Ashlar.Postgres.Tests.DependencyInjection;
 
 internal sealed class AshlarPostgresCompositionTests
 {
+    private const string ValidSecret = "0123456789abcdef0123456789abcdef";
+
     [Test]
     public void AddAshlarPostgresExplicitConnectionShouldReplaceAmbientDataSource()
     {
@@ -159,7 +161,7 @@ internal sealed class AshlarPostgresCompositionTests
             {
                 Name = "test",
                 Uri = new Uri("https://webhooks.example.test/ashlar"),
-                SharedSecret = "test-secret"
+                SharedSecret = ValidSecret
             });
         });
         services.AddAshlarAspNetCoreSessions();

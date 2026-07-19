@@ -20,6 +20,8 @@ namespace Ashlar.Sqlite.Tests.DependencyInjection;
 
 internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestBase
 {
+    private const string ValidSecret = "0123456789abcdef0123456789abcdef";
+
     [Test]
     public void AddAshlarSqliteRegistersMinimalPersistenceServices()
     {
@@ -99,7 +101,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             {
                 Name = "test",
                 Uri = new Uri("https://webhooks.example.test/ashlar"),
-                SharedSecret = "test-secret"
+                SharedSecret = ValidSecret
             });
         });
 

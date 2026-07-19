@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -40,9 +41,9 @@ public enum AshlarSecurityEventWebhookVerificationStatus
     InvalidSignature = 5,
 
     /// <summary>
-    /// The shared secret required for verification is missing.
+    /// The shared secret required for verification is missing or does not meet the minimum strength requirement.
     /// </summary>
-    MissingSecret = 6,
+    InvalidSecret = 6,
 
     /// <summary>
     /// The event occurrence timestamp header is missing.
@@ -147,7 +148,7 @@ public sealed record AshlarSecurityEventWebhookVerificationResult(AshlarSecurity
         AshlarSecurityEventWebhookVerificationStatus.MissingTimestamp => "Missing signature timestamp.",
         AshlarSecurityEventWebhookVerificationStatus.TimestampOutsideTolerance => "Signature timestamp is outside the accepted tolerance.",
         AshlarSecurityEventWebhookVerificationStatus.InvalidSignature => "Invalid signature.",
-        AshlarSecurityEventWebhookVerificationStatus.MissingSecret => "Missing shared secret.",
+        AshlarSecurityEventWebhookVerificationStatus.InvalidSecret => "Missing or invalid shared secret.",
         AshlarSecurityEventWebhookVerificationStatus.MissingEventTimestamp => "Missing event timestamp.",
         AshlarSecurityEventWebhookVerificationStatus.MalformedEventTimestamp => "Malformed event timestamp.",
         AshlarSecurityEventWebhookVerificationStatus.ReplayDetected => "Replay detected.",
@@ -182,7 +183,8 @@ public sealed class AshlarSecurityEventWebhookVerificationRequest
     public required IReadOnlyDictionary<string, string> Headers { get; init; }
 
     /// <summary>
-    /// Gets the shared secret configured for the receiving webhook endpoint.
+    /// Gets the shared secret configured for the receiving webhook endpoint. The secret must be at least
+    /// <see cref="AshlarSecurityEventWebhookSignature.MinimumSharedSecretByteLength"/> UTF-8 bytes.
     /// </summary>
     /// <remarks>Do not log, persist in diagnostics, or expose this value to replay-store implementations.</remarks>
     public string? SharedSecret { get; init; }
@@ -227,6 +229,11 @@ public sealed class AshlarSecurityEventWebhookVerificationRequest
 public static class AshlarSecurityEventWebhookSignature
 {
     /// <summary>
+    /// Defines the minimum UTF-8 byte length for webhook signing secrets.
+    /// </summary>
+    public const int MinimumSharedSecretByteLength = 32;
+
+    /// <summary>
     /// Defines the signature header name.
     /// </summary>
     public const string SignatureHeaderName = "X-Ashlar-Signature";
@@ -252,7 +259,7 @@ public static class AshlarSecurityEventWebhookSignature
     /// <summary>
     /// Creates the versioned HMAC-SHA256 signature for a webhook request.
     /// </summary>
-    /// <param name="sharedSecret">The shared secret.</param>
+    /// <param name="sharedSecret">The shared secret, containing at least <see cref="MinimumSharedSecretByteLength"/> UTF-8 bytes.</param>
     /// <param name="body">The raw request body bytes.</param>
     /// <param name="signatureTimestamp">The signature timestamp.</param>
     /// <param name="occurredAt">The security event occurrence timestamp.</param>
@@ -270,6 +277,11 @@ public static class AshlarSecurityEventWebhookSignature
         string destinationPathAndQuery)
     {
         ArgumentNullException.ThrowIfNull(sharedSecret);
+        if (!IsSharedSecretValid(sharedSecret))
+        {
+            throw new ArgumentException($"Shared secret must be at least {MinimumSharedSecretByteLength} UTF-8 bytes.", nameof(sharedSecret));
+        }
+
         ValidateSigningInputs(endpointName, destinationPathAndQuery);
 
         var hash = ComputeSignatureHash(sharedSecret, body, signatureTimestamp, occurredAt, eventId, endpointName, destinationPathAndQuery);
@@ -293,9 +305,9 @@ public static class AshlarSecurityEventWebhookSignature
         ArgumentNullException.ThrowIfNull(request.TimeProvider);
         ValidateSigningInputs(request.EndpointName, request.DestinationPathAndQuery);
 
-        if (string.IsNullOrWhiteSpace(request.SharedSecret))
+        if (!IsSharedSecretValid(request.SharedSecret))
         {
-            return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingSecret);
+            return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.InvalidSecret);
         }
 
         if (!TryGetHeader(request.Headers, SignatureTimestampHeaderName, out var timestampValue))
@@ -374,6 +386,17 @@ public static class AshlarSecurityEventWebhookSignature
         }
 
         return VerifyReplay(request, signatureTimestamp, tolerance);
+    }
+
+    private static bool IsSharedSecretValid([NotNullWhen(true)] string? sharedSecret)
+    {
+        return !string.IsNullOrWhiteSpace(sharedSecret)
+            && Encoding.UTF8.GetByteCount(sharedSecret) >= MinimumSharedSecretByteLength;
+    }
+
+    internal static bool IsSigningConfigurationValid(string? sharedSecret, bool allowUnsigned)
+    {
+        return sharedSecret is null ? allowUnsigned : IsSharedSecretValid(sharedSecret);
     }
 
     /// <summary>
