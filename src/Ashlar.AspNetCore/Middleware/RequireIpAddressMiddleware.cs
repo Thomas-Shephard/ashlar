@@ -21,7 +21,7 @@ public sealed class RequireIpAddressMiddleware(RequestDelegate next)
         if (context.Connection.RemoteIpAddress == null)
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await context.Response.WriteAsync("Client IP address could not be determined.");
+            await context.Response.WriteAsync("Client IP address could not be determined.", context.RequestAborted);
             return;
         }
 

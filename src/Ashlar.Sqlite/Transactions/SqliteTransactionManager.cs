@@ -178,16 +178,15 @@ internal sealed partial class SqliteTransactionManager : IAshlarTransactionProvi
     {
         private bool _committed;
         private bool _disposed;
-        private bool IsRoot => transaction != null;
 
         public async Task CommitAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            if (IsRoot)
+            if (transaction is not null)
             {
-                await manager.CompleteRootAsync(transaction!, cancellationToken);
+                await manager.CompleteRootAsync(transaction, cancellationToken);
                 _disposed = true;
                 return;
             }
@@ -200,9 +199,9 @@ internal sealed partial class SqliteTransactionManager : IAshlarTransactionProvi
             cancellationToken.ThrowIfCancellationRequested();
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            if (IsRoot)
+            if (transaction is not null)
             {
-                await transaction!.RollbackAsync(cancellationToken);
+                await transaction.RollbackAsync(cancellationToken);
                 await manager.ClearTransactionAsync();
             }
             else
@@ -228,7 +227,7 @@ internal sealed partial class SqliteTransactionManager : IAshlarTransactionProvi
 
             _disposed = true;
 
-            if (IsRoot)
+            if (transaction is not null)
             {
                 await manager.ClearTransactionAsync();
                 return;

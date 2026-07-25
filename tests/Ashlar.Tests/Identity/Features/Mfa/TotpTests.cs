@@ -42,13 +42,11 @@ internal sealed class TotpTests
 
         _rawTransactionProvider.Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_transaction.Object);
-        var composition = DurableSecurityMutationTestComposition.Compose(
+        (_transactionProvider, _durableEvents) = DurableSecurityMutationTestComposition.Compose(
             _rawTransactionProvider.Object,
             _securityEvents.Object,
             _repository.Object,
             _credentialRepository.Object);
-        _transactionProvider = composition.Transactions;
-        _durableEvents = composition.Events;
         _transaction.Setup(x => x.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()))
             .Callback<Func<CancellationToken, Task>>(onCommitted.Add);
         _transaction.Setup(x => x.CommitAsync(It.IsAny<CancellationToken>()))
