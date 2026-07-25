@@ -2,6 +2,9 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Ashlar.Auditing;
+using Ashlar.Identity.Abstractions.Services;
+using Ashlar.Identity.Models.AccountSecurity;
+using Ashlar.Testing;
 using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.Options;
 
@@ -10,14 +13,18 @@ namespace Ashlar.Webhooks.Tests;
 internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
 {
     private const string ValidSecret = "0123456789abcdef0123456789abcdef";
+    private static readonly DateTimeOffset StaticNow = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+    private static readonly AccountSecurityActorTestContext Security = new(StaticNow, IAccountSecurityAdministrationService.ProofPurpose);
+    private static AccountSecurityActorContext Actor => Security.Actor;
     [Test]
     public async Task TestAsyncSendsOneSyntheticSafeSignedRequest()
     {
+        var security = new AccountSecurityActorTestContext(StaticNow, IAccountSecurityAdministrationService.ProofPurpose);
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
         var endpoint = CreateEndpoint();
-        var tester = CreateTester(transport, CreateOptions(endpoint));
+        var tester = CreateTester(transport, CreateOptions(endpoint), security: security);
 
-        var result = await tester.TestAsync("audit");
+        var result = await tester.TestAsync(security.Actor, "audit");
 
         var request = transport.Requests.Single();
         var json = request.ReadBody();
@@ -29,6 +36,8 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.FailureReason, Is.Empty);
             Assert.That(result.EventId, Is.EqualTo(payload.GetProperty("id").GetGuid()));
+            Assert.That(security.Authorizer.LastContext!.TargetTenant, Is.Null);
+            Assert.That(security.Authorizer.LastContext.IncludeAllTenants, Is.True);
             Assert.That(request.Method, Is.EqualTo(HttpMethod.Post));
             Assert.That(request.RequestUri, Is.EqualTo(endpoint.Uri));
             Assert.That(request.ContentType, Is.EqualTo("application/json"));
@@ -49,6 +58,48 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
     }
 
     [Test]
+    public async Task TestAsyncFailsClosedBeforeSendWhenHostDenies()
+    {
+        var security = new AccountSecurityActorTestContext(StaticNow, IAccountSecurityAdministrationService.ProofPurpose, authorized: false);
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var result = await CreateTester(transport, CreateOptions(CreateEndpoint()), security: security).TestAsync(security.Actor, "audit");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookEndpointTestStatus.Unauthorized));
+            Assert.That(transport.Requests, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task TestAsyncFailsClosedForWrongProofMissingOrRevokedSessionAndAuditMismatch()
+    {
+        foreach (var failure in new[] { "proof", "missing-session", "revoked-session", "audit" })
+        {
+            var security = new AccountSecurityActorTestContext(StaticNow, IAccountSecurityAdministrationService.ProofPurpose);
+            if (failure == "proof")
+                security.Actor = new AccountSecurityActorContext(security.Actor.ActorUserId, security.Actor.ActorTenant, security.Actor.CurrentSessionId,
+                    FreshMfaVerificationProofFactory.Create(security.Actor.ActorUserId, null, security.Actor.CurrentSessionId, StaticNow, StaticNow.AddMinutes(5), "wrong"),
+                    security.Actor.Audit);
+            else if (failure == "missing-session")
+                security.Sessions.Session = null;
+            else if (failure == "revoked-session")
+                security.Sessions.Session!.RevokedAt = StaticNow;
+            else
+                security.Actor = new AccountSecurityActorContext(security.Actor.ActorUserId, security.Actor.ActorTenant, security.Actor.CurrentSessionId,
+                    security.Actor.FreshMfaProof, new AuditContext(Guid.NewGuid()));
+
+            var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+            var result = await CreateTester(transport, CreateOptions(CreateEndpoint()), security: security).TestAsync(security.Actor, "audit");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookEndpointTestStatus.Unauthorized), failure);
+                Assert.That(transport.Requests, Is.Empty, failure);
+            }
+        }
+    }
+
+    [Test]
     public async Task TestAsyncIgnoresEndpointEventFilters()
     {
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
@@ -56,7 +107,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         endpoint.EventTypes.Add("ashlar.sign_in.failed");
         var tester = CreateTester(transport, CreateOptions(endpoint));
 
-        var result = await tester.TestAsync("audit");
+        var result = await tester.TestAsync(Actor, "audit");
 
         using (Assert.EnterMultipleScope())
         {
@@ -73,7 +124,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         endpoint.Outcomes.Add(SecurityEventOutcomes.Failure);
         var tester = CreateTester(transport, CreateOptions(endpoint));
 
-        var result = await tester.TestAsync("audit");
+        var result = await tester.TestAsync(Actor, "audit");
 
         using (Assert.EnterMultipleScope())
         {
@@ -91,7 +142,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         endpoint.AllowUnsigned = true;
         var tester = CreateTester(transport, CreateOptions(endpoint));
 
-        var result = await tester.TestAsync("audit");
+        var result = await tester.TestAsync(Actor, "audit");
 
         using (Assert.EnterMultipleScope())
         {
@@ -112,7 +163,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
         var tester = CreateTester(transport, CreateOptions(endpoint));
 
-        var result = await tester.TestAsync("audit");
+        var result = await tester.TestAsync(Actor, "audit");
 
         using (Assert.EnterMultipleScope())
         {
@@ -131,8 +182,8 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
         var tester = CreateTester(transport, CreateOptions(disabled));
 
-        var missing = await tester.TestAsync("missing");
-        var disabledResult = await tester.TestAsync("disabled");
+        var missing = await tester.TestAsync(Actor, "missing");
+        var disabledResult = await tester.TestAsync(Actor, "disabled");
 
         using (Assert.EnterMultipleScope())
         {
@@ -150,7 +201,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
         var tester = CreateTester(transport, CreateOptions(CreateEndpoint(uri: "https://127.0.0.1/security-events")));
 
-        var result = await tester.TestAsync("audit");
+        var result = await tester.TestAsync(Actor, "audit");
 
         using (Assert.EnterMultipleScope())
         {
@@ -167,7 +218,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.BadGateway);
         var tester = CreateTester(transport, CreateOptions(CreateEndpoint()));
 
-        var result = await tester.TestAsync("audit");
+        var result = await tester.TestAsync(Actor, "audit");
 
         using (Assert.EnterMultipleScope())
         {
@@ -185,7 +236,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
             new ThrowingHttpMessageHandler(new InvalidOperationException("transport failed")),
             CreateOptions(CreateEndpoint()));
 
-        var result = await tester.TestAsync("audit");
+        var result = await tester.TestAsync(Actor, "audit");
 
         using (Assert.EnterMultipleScope())
         {
@@ -201,7 +252,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         endpoint.Timeout = TimeSpan.FromMilliseconds(1);
         var tester = CreateTester(new TimeoutHttpMessageHandler(), CreateOptions(endpoint));
 
-        var result = await tester.TestAsync("audit");
+        var result = await tester.TestAsync(Actor, "audit");
 
         using (Assert.EnterMultipleScope())
         {
@@ -219,7 +270,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
             new CancelingHttpMessageHandler(cancellation),
             CreateOptions(CreateEndpoint()));
 
-        var result = await tester.TestAsync("audit", cancellation.Token);
+        var result = await tester.TestAsync(Actor, "audit", cancellation.Token);
 
         using (Assert.EnterMultipleScope())
         {
@@ -236,7 +287,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         cancellation.Cancel();
         var tester = CreateTester(new RecordingHttpMessageHandler(HttpStatusCode.Accepted), CreateOptions(CreateEndpoint()));
 
-        Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(), () => tester.TestAsync("audit", cancellation.Token));
+        Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(), () => tester.TestAsync(Actor, "audit", cancellation.Token));
     }
 
     [Test]
@@ -252,7 +303,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
                 return new OperationCanceledException(cancellation.Token);
             }));
 
-        var result = await tester.TestAsync("audit", cancellation.Token);
+        var result = await tester.TestAsync(Actor, "audit", cancellation.Token);
 
         using (Assert.EnterMultipleScope())
         {
@@ -269,7 +320,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
             CreateOptions(CreateEndpoint()),
             new ThrowingTimeProvider(() => new OperationCanceledException()));
 
-        var result = await tester.TestAsync("audit");
+        var result = await tester.TestAsync(Actor, "audit");
 
         using (Assert.EnterMultipleScope())
         {
@@ -286,7 +337,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
             CreateOptions(CreateEndpoint()),
             new ThrowingTimeProvider(() => new InvalidOperationException("time failed")));
 
-        var result = await tester.TestAsync("audit");
+        var result = await tester.TestAsync(Actor, "audit");
 
         using (Assert.EnterMultipleScope())
         {
@@ -302,9 +353,9 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookEndpointTester(null!, sender))?.ParamName, Is.EqualTo("options"));
-            Assert.That(Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookEndpointTester(Options.Create(CreateOptions()), null!))?.ParamName, Is.EqualTo("sender"));
-            Assert.That(Assert.ThrowsAsync<ArgumentException>(() => new AshlarSecurityEventWebhookEndpointTester(Options.Create(CreateOptions()), sender).TestAsync(" "))?.ParamName, Is.EqualTo("endpointName"));
+            Assert.That(Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookEndpointTester(null!, sender, Security.Sessions, Security.Authorizer, Security.AuditSink))?.ParamName, Is.EqualTo("options"));
+            Assert.That(Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookEndpointTester(Options.Create(CreateOptions()), null!, Security.Sessions, Security.Authorizer, Security.AuditSink))?.ParamName, Is.EqualTo("sender"));
+            Assert.That(Assert.ThrowsAsync<ArgumentException>(() => new AshlarSecurityEventWebhookEndpointTester(Options.Create(CreateOptions()), sender, Security.Sessions, Security.Authorizer, Security.AuditSink).TestAsync(Actor, " "))?.ParamName, Is.EqualTo("endpointName"));
         }
     }
 
@@ -315,7 +366,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         endpoint.Uri = null;
         var tester = CreateTester(new RecordingHttpMessageHandler(HttpStatusCode.Accepted), CreateOptions(endpoint));
 
-        var result = await tester.TestAsync("audit");
+        var result = await tester.TestAsync(Actor, "audit");
 
         Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookEndpointTestStatus.DeliveryFailed));
     }
@@ -330,6 +381,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
             Assert.That(new AshlarSecurityEventWebhookEndpointTestResult(AshlarSecurityEventWebhookEndpointTestStatus.DeliveryFailed).FailureReason, Is.EqualTo("Webhook endpoint delivery failed."));
             Assert.That(new AshlarSecurityEventWebhookEndpointTestResult(AshlarSecurityEventWebhookEndpointTestStatus.TimedOut).FailureReason, Is.EqualTo("Webhook endpoint test timed out."));
             Assert.That(new AshlarSecurityEventWebhookEndpointTestResult(AshlarSecurityEventWebhookEndpointTestStatus.Canceled).FailureReason, Is.EqualTo("Webhook endpoint test was canceled."));
+            Assert.That(new AshlarSecurityEventWebhookEndpointTestResult(AshlarSecurityEventWebhookEndpointTestStatus.Unauthorized).FailureReason, Is.EqualTo("Webhook endpoint test was not authorized."));
             Assert.That(new AshlarSecurityEventWebhookEndpointTestResult((AshlarSecurityEventWebhookEndpointTestStatus)99).FailureReason, Is.EqualTo("Webhook endpoint delivery failed."));
         }
     }
@@ -358,16 +410,19 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         }
     }
 
-    private static readonly DateTimeOffset StaticNow = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
-
     private static AshlarSecurityEventWebhookEndpointTester CreateTester(
         HttpMessageHandler transport,
         AshlarSecurityEventWebhookOptions options,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        AccountSecurityActorTestContext? security = null)
     {
+        security ??= Security;
         return new AshlarSecurityEventWebhookEndpointTester(
             Options.Create(options),
             CreateSender(transport),
+            security.Sessions,
+            security.Authorizer,
+            security.AuditSink,
             timeProvider ?? new StaticTimeProvider(StaticNow));
     }
 
@@ -488,9 +543,13 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
 
     private sealed class ThrowingTimeProvider(Func<Exception> exceptionFactory) : TimeProvider
     {
+        private int _calls;
+
         public override DateTimeOffset GetUtcNow()
         {
-            throw exceptionFactory();
+            if (_calls++ == 2)
+                throw exceptionFactory();
+            return StaticNow;
         }
     }
 

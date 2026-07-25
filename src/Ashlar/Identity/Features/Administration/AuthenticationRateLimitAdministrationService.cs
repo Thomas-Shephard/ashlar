@@ -10,7 +10,7 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
     private readonly IAuthenticationRateLimitAdministrationRepository _repository;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly AshlarDurableTransactionProvider _transactionProvider;
-    private readonly AdminReadBoundary _boundary;
+    private readonly AccountSecurityOperationBoundary _boundary;
     private readonly TimeProvider _timeProvider;
 
     public AuthenticationRateLimitAdministrationService(

@@ -1,4 +1,6 @@
 using Ashlar.Webhooks.SecurityEvents;
+using Ashlar.Identity.Abstractions.Services;
+using Ashlar.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 
@@ -8,6 +10,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
 {
     private static readonly DateTimeOffset Now = new(2026, 5, 24, 12, 0, 0, TimeSpan.Zero);
     private static readonly string[] FailedEndpointNames = ["failed"];
+    private static readonly AccountSecurityActorTestContext Security = new(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
     private FakeTimeProvider _timeProvider = null!;
     private ServiceProvider _provider = null!;
 
@@ -19,6 +22,9 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         services.AddSingleton<TimeProvider>(_timeProvider);
         services.AddAshlarSqlite(GetConnectionString());
         services.AddAshlarSqliteSecurityEventWebhookOutbox();
+        services.AddSingleton<IAuthenticationSessionRepository>(Security.Sessions);
+        services.AddSingleton<IAccountSecurityOperationAuthorizer>(Security.Authorizer);
+        services.AddSingleton<IPersistentSecurityEventSink>(Security.AuditSink);
         _provider = services.BuildServiceProvider();
         await _provider.InitializeAshlarSqliteSchemaAsync();
     }
@@ -36,8 +42,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxBrowser(null!, _timeProvider));
-            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxBrowser(connectionProvider, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxBrowser(null!, _timeProvider, Security.Sessions, Security.Authorizer, Security.AuditSink));
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxBrowser(connectionProvider, null!, Security.Sessions, Security.Authorizer, Security.AuditSink));
         }
     }
 
@@ -48,7 +54,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         await InsertDiscardedRowAsync();
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 10 });
+            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 10 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -65,6 +71,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
             Assert.That(result.Deliveries.Select(delivery => delivery.EndpointName), Does.Not.Contain("discarded"));
             Assert.That(result.Deliveries.All(delivery => delivery.EventType == "security.test"), Is.True);
             Assert.That(result.Deliveries.All(delivery => delivery.Outcome == "success"), Is.True);
+            Assert.That(Security.Authorizer.LastContext!.TargetTenant, Is.Null);
+            Assert.That(Security.Authorizer.LastContext.IncludeAllTenants, Is.True);
         }
     }
 
@@ -75,7 +83,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         await InsertDiscardedRowAsync();
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
@@ -90,12 +98,12 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         await InsertRowsAsync();
 
         var browser = _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>();
-        var failed = await browser.ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest
+        var failed = await browser.ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
         {
             Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
             Limit = 10
         });
-        var page = await browser.ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 2, Offset = 1 });
+        var page = await browser.ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 2, Offset = 1 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -116,7 +124,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         await InsertRowsAsync(eventType: "bad\nevent", outcome: "bad\routcome", lastError: longError);
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
@@ -137,7 +145,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         await InsertRowsAsync(lastError: "kind=http_status;status=502;reason=non_success_status");
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
@@ -152,13 +160,48 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         await InsertRowsAsync(lastError: null);
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
             });
 
         Assert.That(result.Deliveries.Single().LastErrorSummary, Is.Null);
+    }
+
+    [Test]
+    public async Task ListAsyncReturnsNoDataForAuthorizationProofSessionAndAuditFailures()
+    {
+        await InsertRowsAsync();
+        foreach (var failure in new[] { "authorization", "proof", "missing-session", "revoked-session", "audit" })
+        {
+            var security = FailedSecurity(failure, AccountSecurityActorContext.AdministrationReadProofPurpose);
+            var browser = new SqliteSecurityEventWebhookOutboxBrowser(
+                _provider.GetRequiredService<ISqliteConnectionProvider>(), _timeProvider,
+                security.Sessions, security.Authorizer, security.AuditSink);
+            var result = await browser.ListAsync(security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Deliveries, Is.Empty, failure);
+            }
+        }
+    }
+
+    private static AccountSecurityActorTestContext FailedSecurity(string failure, string purpose)
+    {
+        var security = new AccountSecurityActorTestContext(Now, purpose, authorized: failure != "authorization");
+        if (failure == "proof")
+            security.Actor = new AccountSecurityActorContext(security.Actor.ActorUserId, security.Actor.ActorTenant, security.Actor.CurrentSessionId,
+                FreshMfaVerificationProofFactory.Create(security.Actor.ActorUserId, null, security.Actor.CurrentSessionId, Now, Now.AddMinutes(5), "wrong"),
+                security.Actor.Audit);
+        else if (failure == "missing-session")
+            security.Sessions.Session = null;
+        else if (failure == "revoked-session")
+            security.Sessions.Session!.RevokedAt = Now;
+        else if (failure == "audit")
+            security.Actor = new AccountSecurityActorContext(security.Actor.ActorUserId, security.Actor.ActorTenant, security.Actor.CurrentSessionId,
+                security.Actor.FreshMfaProof, new AuditContext(Guid.NewGuid()));
+        return security;
     }
 
     private async Task InsertRowsAsync(

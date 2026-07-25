@@ -8,7 +8,7 @@ internal sealed class InvitationAdministrationReader(IInvitationRepository repos
 {
     private readonly IInvitationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
-    private readonly AdminReadBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
+    private readonly AccountSecurityOperationBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
 
     public async Task<Result<InvitationSearchResult>> SearchInvitationsAsync(AccountSecurityActorContext actor, SearchInvitationsRequest request, CancellationToken cancellationToken = default)
     {

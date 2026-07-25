@@ -857,7 +857,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.GetService<IAshlarSecurityEventWebhookEnqueuer>(), Is.Null);
-            Assert.That(provider.GetService<IAshlarSecurityEventWebhookOutboxBrowser>(), Is.InstanceOf<PostgresSecurityEventWebhookOutboxBrowser>());
+            Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>());
             Assert.That(provider.GetService<PostgresSecurityEventWebhookOutboxDispatcher>(), Is.Not.Null);
             Assert.That(hostedServices.Any(service => service is PostgresSecurityEventWebhookOutboxHostedService), Is.True);
             Assert.That(provider.GetRequiredService<IOptions<PostgresSecurityEventWebhookOutboxOptions>>().Value.BatchSize, Is.EqualTo(7));

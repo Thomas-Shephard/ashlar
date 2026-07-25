@@ -1,5 +1,8 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Transactions;
+using Ashlar.Identity.Abstractions.Services;
+using Ashlar.Identity.Models.AccountSecurity;
+using Ashlar.Testing;
 using Ashlar.Webhooks.SecurityEvents;
 
 namespace Ashlar.Webhooks.Tests;
@@ -9,6 +12,7 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
     private static readonly DateTimeOffset Now = new(2026, 5, 31, 12, 0, 0, TimeSpan.Zero);
     private static readonly string[] FullAuditPropertyNames = ["delivery_id", "endpoint_name", "event_id", "event_type", "outcome"];
     private static readonly string[] MinimalAuditPropertyNames = ["delivery_id"];
+    private static readonly AccountSecurityActorTestContext Security = new(Now, IAccountSecurityAdministrationService.ProofPurpose);
 
     [Test]
     public void ValidateRequestRejectsInvalidRequests()
@@ -16,7 +20,7 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(null!));
-            Assert.Throws<ArgumentException>(() => AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.Empty, new AuditContext())));
+            Assert.Throws<ArgumentException>(() => AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.Empty, Security.Actor)));
             Assert.Throws<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.NewGuid(), null!)));
         }
     }
@@ -59,12 +63,13 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
     {
         var sink = new RecordingSecurityEventSink();
         var time = new FixedTimeProvider(Now);
-        var actorUserId = Guid.NewGuid();
+        var actorUserId = Security.Actor.ActorUserId;
         var deliveryId = Guid.NewGuid();
         var eventId = Guid.NewGuid();
         var request = new AshlarSecurityEventWebhookOutboxOperationRequest(
             deliveryId,
-            new AuditContext(actorUserId, "203.0.113.10", "agent", "corr", new Dictionary<string, string> { ["ignored"] = "ignored" }));
+            new AccountSecurityActorContext(actorUserId, Security.Actor.ActorTenant, Security.Actor.CurrentSessionId,
+                Security.Actor.FreshMfaProof, new AuditContext(actorUserId, "203.0.113.10", "agent", "corr", new Dictionary<string, string> { ["ignored"] = "ignored" })));
         var result = AshlarSecurityEventWebhookOutboxOperations.CreateResult(
             AshlarSecurityEventWebhookOutboxOperationStatus.Retried,
             deliveryId,
@@ -103,7 +108,7 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
     [Test]
     public async Task RecordSuccessfulOperationAsyncOmitsAbsentPropertiesAndPropagatesAuditFailures()
     {
-        var request = new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.NewGuid(), new AuditContext());
+        var request = new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.NewGuid(), Security.Actor);
         var result = AshlarSecurityEventWebhookOutboxOperations.CreateResult(
             AshlarSecurityEventWebhookOutboxOperationStatus.Discarded,
             request.DeliveryId);
@@ -149,7 +154,7 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
         var transactionProvider = new RecordingTransactionProvider();
         var operations = new TestWebhookOutboxOperations(sink, transactionProvider);
 
-        var result = await operations.RetryAsync(new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.NewGuid(), new AuditContext(Guid.NewGuid())));
+        var result = await operations.RetryAsync(new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.NewGuid(), Security.Actor));
 
         using (Assert.EnterMultipleScope())
         {
@@ -189,7 +194,8 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
     private sealed class TestWebhookOutboxOperations(
         ISecurityEventSink sink,
         IAshlarTransactionProvider transactionProvider)
-        : AshlarSecurityEventWebhookOutboxOperationsBase(TimeProvider.System, sink, Ashlar.Testing.DurableTransactionComposition.Create(transactionProvider))
+        : AshlarSecurityEventWebhookOutboxOperationsBase(new FixedTimeProvider(Now), sink, DurableTransactionComposition.Create(transactionProvider),
+            Security.Sessions, Security.Authorizer, Security.AuditSink)
     {
         protected override Task<AshlarSecurityEventWebhookOutboxOperationState?> RetryFailedAsync(Guid deliveryId, CancellationToken cancellationToken)
         {

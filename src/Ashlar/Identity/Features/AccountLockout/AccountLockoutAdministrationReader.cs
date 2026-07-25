@@ -8,7 +8,7 @@ internal sealed class AccountLockoutAdministrationReader(IAccountLockoutReposito
 {
     private readonly IAccountLockoutRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
-    private readonly AdminReadBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
+    private readonly AccountSecurityOperationBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
 
     public async Task<Result<AccountLockoutSearchResult>> SearchLockoutsAsync(AccountSecurityActorContext actor, SearchAccountLockoutsRequest request, CancellationToken cancellationToken = default)
     {

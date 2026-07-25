@@ -1,3 +1,5 @@
+using Ashlar.Identity.Models.AccountSecurity;
+
 namespace Ashlar.Webhooks.SecurityEvents;
 
 /// <summary>
@@ -8,10 +10,12 @@ public interface IAshlarSecurityEventWebhookOutboxBrowser
     /// <summary>
     /// Lists safe security event webhook outbox delivery summaries.
     /// </summary>
+    /// <param name="actor">The authenticated and proof-bound actor.</param>
     /// <param name="request">Paging and status filters for the read-only browse operation.</param>
     /// <param name="cancellationToken">A token that can cancel the browse operation before results are returned.</param>
     /// <returns>Matching outbox delivery summaries with destination URI, body, headers, and lock-owner values omitted.</returns>
     Task<AshlarSecurityEventWebhookOutboxBrowseResult> ListAsync(
+        AccountSecurityActorContext actor,
         AshlarSecurityEventWebhookOutboxBrowseRequest request,
         CancellationToken cancellationToken = default);
 }

@@ -1,19 +1,30 @@
 using Ashlar.Webhooks.SecurityEvents;
+using Ashlar.Identity.Features.Administration;
 
 namespace Ashlar.Postgres.Webhooks;
 
 internal sealed class PostgresSecurityEventWebhookOutboxBrowser(
     IPostgresConnectionProvider connectionProvider,
-    TimeProvider timeProvider) : IAshlarSecurityEventWebhookOutboxBrowser
+    TimeProvider timeProvider,
+    IAuthenticationSessionRepository sessions,
+    IAccountSecurityOperationAuthorizer authorizer,
+    IPersistentSecurityEventSink auditSink) : IAshlarSecurityEventWebhookOutboxBrowser
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+    private readonly AccountSecurityOperationBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider,
+        eventType: "security_event_webhook.outbox_browse");
 
     public async Task<AshlarSecurityEventWebhookOutboxBrowseResult> ListAsync(
+        AccountSecurityActorContext actor,
         AshlarSecurityEventWebhookOutboxBrowseRequest request,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(request);
+        if (!await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
+                AccountSecurityOperation.BrowseSecurityEventWebhookOutbox, cancellationToken).ConfigureAwait(false))
+            return new AshlarSecurityEventWebhookOutboxBrowseResult([], request.Limit, request.Offset, false);
 
         const string sql = """
             WITH browseable AS (
@@ -49,7 +60,9 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowser(
             request.Offset
         };
         var rows = await PostgresAdminQuery.QueryAsync<OutboxBrowseRow>(_connectionProvider, sql, parameters, cancellationToken).ConfigureAwait(false);
-        return CreateResult(rows, request.Limit, request.Offset);
+        var result = CreateResult(rows, request.Limit, request.Offset);
+        await _boundary.RecordSuccessAsync(actor, null, true, AccountSecurityOperation.BrowseSecurityEventWebhookOutbox).ConfigureAwait(false);
+        return result;
     }
 
     private static AshlarSecurityEventWebhookOutboxBrowseResult CreateResult(

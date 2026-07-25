@@ -25,7 +25,7 @@ public sealed class AuthenticationSessionAdministrationService(
 
     private readonly IAuthenticationSessionAdministrationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
-    private readonly AdminReadBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
+    private readonly AccountSecurityOperationBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
 
     /// <inheritdoc />
     public async Task<Result<AuthenticationSessionSearchResult>> SearchAuthenticationSessionsAsync(SearchAuthenticationSessionsRequest request, CancellationToken cancellationToken = default)

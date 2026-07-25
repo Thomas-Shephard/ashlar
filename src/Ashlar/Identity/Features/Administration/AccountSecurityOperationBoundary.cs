@@ -2,7 +2,16 @@ using Ashlar.Auditing;
 
 namespace Ashlar.Identity.Features.Administration;
 
-internal sealed class AdminReadBoundary(
+/// <summary>
+/// Enforces actor identity, active-session proof, host authorization, and durable audit around privileged operations.
+/// </summary>
+/// <param name="sessions">The authentication-session repository.</param>
+/// <param name="authorizer">The host operation authorizer.</param>
+/// <param name="auditSink">The durable audit sink.</param>
+/// <param name="timeProvider">The clock used for proof validation and audit timestamps.</param>
+/// <param name="proofPurpose">The required proof purpose, or the administration-read purpose by default.</param>
+/// <param name="eventType">The durable audit event type, or the administration-read event type by default.</param>
+public sealed class AccountSecurityOperationBoundary(
     IAuthenticationSessionRepository sessions,
     IAccountSecurityOperationAuthorizer authorizer,
     IPersistentSecurityEventSink auditSink,
@@ -10,8 +19,10 @@ internal sealed class AdminReadBoundary(
     string? proofPurpose = null,
     string? eventType = null)
 {
-    internal const string ProofPurpose = AccountSecurityActorContext.AdministrationReadProofPurpose;
-    internal const string EventType = "administration.read";
+    /// <summary>Gets the default proof purpose for privileged reads.</summary>
+    public const string ProofPurpose = AccountSecurityActorContext.AdministrationReadProofPurpose;
+    /// <summary>Gets the default durable audit event type.</summary>
+    public const string EventType = "administration.read";
     private readonly ActiveSessionFreshProofValidator _proof = new(
         sessions ?? throw new ArgumentNullException(nameof(sessions)),
         timeProvider ?? throw new ArgumentNullException(nameof(timeProvider)));
@@ -20,7 +31,16 @@ internal sealed class AdminReadBoundary(
     private readonly string _proofPurpose = proofPurpose ?? ProofPurpose;
     private readonly string _eventType = eventType ?? EventType;
 
-    internal async ValueTask<bool> AuthorizeAsync(AccountSecurityActorContext? actor, TenantContext? tenant,
+    /// <summary>Validates the actor, proof source session, audit identity, and host authorization.</summary>
+    /// <param name="actor">The authenticated actor context.</param>
+    /// <param name="tenant">The target tenant scope.</param>
+    /// <param name="includeAllTenants">Whether the operation crosses all tenant scopes.</param>
+    /// <param name="targetUserId">The target user, or an empty identifier for operational actions.</param>
+    /// <param name="operation">The operation requiring authorization.</param>
+    /// <param name="cancellationToken">A token that can cancel validation.</param>
+    /// <param name="provider">The target authentication provider, when applicable.</param>
+    /// <returns><see langword="true" /> only when every boundary check succeeds.</returns>
+    public async ValueTask<bool> AuthorizeAsync(AccountSecurityActorContext? actor, TenantContext? tenant,
         bool includeAllTenants, Guid targetUserId, AccountSecurityOperation operation, CancellationToken cancellationToken,
         AuthenticationProviderKey? provider = null)
     {
@@ -64,11 +84,23 @@ internal sealed class AdminReadBoundary(
         return authorized;
     }
 
-    internal Task RecordSuccessAsync(AccountSecurityActorContext actor, TenantContext? tenant, bool includeAllTenants,
+    /// <summary>Records a successful authorized operation durably.</summary>
+    /// <param name="actor">The authenticated actor context.</param>
+    /// <param name="tenant">The target tenant scope.</param>
+    /// <param name="includeAllTenants">Whether the operation crossed all tenant scopes.</param>
+    /// <param name="operation">The completed operation.</param>
+    /// <returns>A task representing durable audit emission.</returns>
+    public Task RecordSuccessAsync(AccountSecurityActorContext actor, TenantContext? tenant, bool includeAllTenants,
         AccountSecurityOperation operation) =>
         RecordAsync(actor, tenant, includeAllTenants, operation, true);
 
-    internal Task RecordFailureAsync(AccountSecurityActorContext actor, TenantContext? tenant, bool includeAllTenants,
+    /// <summary>Records a failed authorized operation durably.</summary>
+    /// <param name="actor">The authenticated actor context.</param>
+    /// <param name="tenant">The target tenant scope.</param>
+    /// <param name="includeAllTenants">Whether the operation crossed all tenant scopes.</param>
+    /// <param name="operation">The failed operation.</param>
+    /// <returns>A task representing durable audit emission.</returns>
+    public Task RecordFailureAsync(AccountSecurityActorContext actor, TenantContext? tenant, bool includeAllTenants,
         AccountSecurityOperation operation) =>
         RecordAsync(actor, tenant, includeAllTenants, operation, false);
 

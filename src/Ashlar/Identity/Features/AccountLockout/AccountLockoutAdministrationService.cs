@@ -10,7 +10,7 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
     private readonly IAccountLockoutRepository _repository;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly AshlarDurableTransactionProvider _transactionProvider;
-    private readonly AdminReadBoundary _boundary;
+    private readonly AccountSecurityOperationBoundary _boundary;
 
     public AccountLockoutAdministrationService(
         IAccountLockoutRepository repository,

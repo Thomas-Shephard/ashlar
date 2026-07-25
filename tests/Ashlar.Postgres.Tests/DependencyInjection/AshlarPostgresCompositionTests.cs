@@ -1,3 +1,4 @@
+using Ashlar.Testing;
 using Ashlar.Identity.Abstractions.AccountSecurity;
 using Ashlar.Identity.Models.AccountSecurity;
 using Ashlar.Identity.Models.Mfa;
@@ -217,6 +218,7 @@ internal sealed class AshlarPostgresCompositionTests
         services.AddAshlarPostgresCleanup();
         services.AddAshlarPostgresEmailOutboxDispatcher<TestEmailTransport>();
         services.AddAshlarPostgresSecurityEventWebhookDispatcher();
+        AddWebhookOperationalSecurity(services);
 
         using var provider = ServiceProviderValidation.BuildValidatedServiceProvider(
             services,
@@ -226,6 +228,17 @@ internal sealed class AshlarPostgresCompositionTests
             typeof(IAshlarOperationsSummaryService));
 
         Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
+    }
+
+    private static void AddWebhookOperationalSecurity(IServiceCollection services)
+    {
+        var security = new AccountSecurityActorTestContext(
+            DateTimeOffset.UtcNow,
+            IAccountSecurityAdministrationService.ProofPurpose);
+        services.AddSingleton<IAuthenticationSessionRepository>(security.Sessions);
+        services.AddSingleton<IAccountSecurityOperationAuthorizer>(security.Authorizer);
+        if (!services.Any(service => service.ServiceType == typeof(IPersistentSecurityEventSink)))
+            services.AddSingleton<IPersistentSecurityEventSink>(security.AuditSink);
     }
 
     private static NpgsqlDataSource CreateDataSource(string host)

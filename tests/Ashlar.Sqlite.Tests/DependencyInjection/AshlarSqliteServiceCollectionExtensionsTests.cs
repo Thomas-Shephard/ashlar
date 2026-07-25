@@ -1,3 +1,4 @@
+using Ashlar.Testing;
 using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.Providers.Local;
 using Ashlar.Messaging;
@@ -104,6 +105,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
                 SharedSecret = ValidSecret
             });
         });
+        AddWebhookOperationalSecurity(services);
 
         await using var provider = ServiceProviderValidation.BuildValidatedServiceProvider(
             services,
@@ -319,6 +321,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
         services.AddAshlarSqliteCleanupHostedService();
         services.AddAshlarSqliteEmailOutboxHostedService<TestEmailTransport>();
         services.AddAshlarSqliteSecurityEventWebhookHostedService();
+        AddWebhookOperationalSecurity(services);
 
         using var provider = ServiceProviderValidation.BuildValidatedServiceProvider(services);
 
@@ -335,6 +338,17 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.Throws<ArgumentNullException>(() => _ = new SqliteAshlarCleanupDiagnostics(null!, TimeProvider.System));
             Assert.Throws<ArgumentNullException>(() => _ = new SqliteAshlarCleanupDiagnostics(options, null!));
         }
+    }
+
+    private static void AddWebhookOperationalSecurity(IServiceCollection services)
+    {
+        var security = new AccountSecurityActorTestContext(
+            DateTimeOffset.UtcNow,
+            IAccountSecurityAdministrationService.ProofPurpose);
+        services.AddSingleton<IAuthenticationSessionRepository>(security.Sessions);
+        services.AddSingleton<IAccountSecurityOperationAuthorizer>(security.Authorizer);
+        if (!services.Any(service => service.ServiceType == typeof(IPersistentSecurityEventSink)))
+            services.AddSingleton<IPersistentSecurityEventSink>(security.AuditSink);
     }
 
     [Test]

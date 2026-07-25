@@ -4,7 +4,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity.Features.Administration;
 
-internal sealed class AdminReadBoundaryTests
+internal sealed class AccountSecurityOperationBoundaryTests
 {
     private static readonly DateTimeOffset Now = new(2026, 7, 18, 12, 0, 0, TimeSpan.Zero);
 
@@ -29,10 +29,10 @@ internal sealed class AdminReadBoundaryTests
         var sink = Mock.Of<IPersistentSecurityEventSink>();
         var clock = new FakeTimeProvider(Now);
 
-        Assert.Throws<ArgumentNullException>(() => new AdminReadBoundary(null!, authorizer, sink, clock));
-        Assert.Throws<ArgumentNullException>(() => new AdminReadBoundary(sessions, null!, sink, clock));
-        Assert.Throws<ArgumentNullException>(() => new AdminReadBoundary(sessions, authorizer, null!, clock));
-        Assert.Throws<ArgumentNullException>(() => new AdminReadBoundary(sessions, authorizer, sink, null!));
+        Assert.Throws<ArgumentNullException>(() => new AccountSecurityOperationBoundary(null!, authorizer, sink, clock));
+        Assert.Throws<ArgumentNullException>(() => new AccountSecurityOperationBoundary(sessions, null!, sink, clock));
+        Assert.Throws<ArgumentNullException>(() => new AccountSecurityOperationBoundary(sessions, authorizer, null!, clock));
+        Assert.Throws<ArgumentNullException>(() => new AccountSecurityOperationBoundary(sessions, authorizer, sink, null!));
     }
 
     [Test]
@@ -40,7 +40,7 @@ internal sealed class AdminReadBoundaryTests
     {
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
-        var proof = new FreshMfaVerificationProof(userId, null, sessionId, Now, Now.AddMinutes(5), AdminReadBoundary.ProofPurpose);
+        var proof = new FreshMfaVerificationProof(userId, null, sessionId, Now, Now.AddMinutes(5), AccountSecurityOperationBoundary.ProofPurpose);
 
         Assert.Throws<ArgumentNullException>(() => new AccountSecurityActorContext(userId, TenantContext.Global, sessionId, proof, null!));
         Assert.Throws<ArgumentNullException>(() => new AccountSecurityActorContext(userId, TenantContext.Global, sessionId, null!, new AuditContext(userId)));
@@ -156,7 +156,7 @@ internal sealed class AdminReadBoundaryTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(boundary.Sink.Events.Single().EventType, Is.EqualTo(AdminReadBoundary.EventType));
+            Assert.That(boundary.Sink.Events.Single().EventType, Is.EqualTo(AccountSecurityOperationBoundary.EventType));
             Assert.That(boundary.Sink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Success));
             Assert.That(boundary.Sink.Events.Single().Properties!["operation"], Is.EqualTo(nameof(AccountSecurityOperation.SearchCredentials)));
             Assert.That(boundary.Sink.Events.Single().Properties!["scope"], Is.EqualTo("global"));

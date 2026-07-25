@@ -18,7 +18,7 @@ internal sealed class AuthorizationGrantAdministrationService(
     private readonly IAuthorizationGrantAdministrationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly AuthorizationGrantOptions _options = ValidateOptions(options ?? new AuthorizationGrantOptions());
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
-    private readonly AdminReadBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
+    private readonly AccountSecurityOperationBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
 
     public async Task<Result<AuthorizationGrantSearchResult>> SearchAuthorizationGrantsAsync(SearchAuthorizationGrantsRequest request, CancellationToken cancellationToken = default)
     {
