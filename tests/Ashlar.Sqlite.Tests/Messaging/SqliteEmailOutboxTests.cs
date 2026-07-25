@@ -3,6 +3,7 @@ using Ashlar.Security.Encryption;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Time.Testing;
 using System.Globalization;
 
@@ -10,6 +11,18 @@ namespace Ashlar.Sqlite.Tests.Messaging;
 
 internal sealed class SqliteEmailOutboxTests : SqliteTestBase
 {
+    [Test]
+    public void SchemaRequiresExplicitSensitivity()
+    {
+        Assert.ThrowsAsync<SqliteException>(() => ExecuteAsync(
+            "INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, created_at, available_at) VALUES ($id, 'to@example.com', 'Subject', 'Body', $now, $now)",
+            command =>
+            {
+                command.AddGuidParameter("$id", Guid.NewGuid());
+                command.AddDateTimeOffsetParameter("$now", _timeProvider.GetUtcNow());
+            }));
+    }
+
     private ServiceProvider _serviceProvider = null!;
     private FakeTimeProvider _timeProvider = null!;
     private readonly List<ServiceProvider> _dispatcherProviders = [];
@@ -98,7 +111,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
         var sender = _serviceProvider.GetRequiredService<IEmailSender>();
         await sender.SendAsync(new EmailMessage(
             "to@example.com",
-            "Subject",
+            "Subject", EmailMessageSensitivity.ContainsLiveSecret,
             "Text",
             "<p>Html</p>",
             new EmailMessageOptions
@@ -109,7 +122,6 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
                 Bcc = "bcc@example.com",
                 Headers = new Dictionary<string, string> { ["X-Test"] = "Header" },
                 Metadata = new Dictionary<string, string> { ["Trace"] = "Metadata" },
-                Sensitivity = EmailMessageSensitivity.ContainsLiveSecret
             }));
 
         var row = await QuerySingleOutboxRowAsync();
@@ -138,7 +150,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     public async Task SenderStoresNormalBodyPlaintext()
     {
         var sender = _serviceProvider.GetRequiredService<IEmailSender>();
-        await sender.SendAsync(new EmailMessage("to@example.com", "Subject", "Normal body"));
+        await sender.SendAsync(new EmailMessage("to@example.com", "Subject", EmailMessageSensitivity.Normal, "Normal body"));
 
         var row = await QuerySingleOutboxRowAsync();
 
@@ -178,9 +190,8 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
 
         var message = new EmailMessage(
             "to@example.com",
-            "Subject",
-            "Body",
-            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+            "Subject", EmailMessageSensitivity.ContainsLiveSecret,
+            "Body");
 
         var exception = Assert.ThrowsAsync<InvalidOperationException>(() => sender.SendAsync(message));
 
@@ -195,7 +206,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
 
         await using (var tx = await txProvider.BeginTransactionAsync())
         {
-            await sender.SendAsync(new EmailMessage("rollback@example.com", "Subject", "Body"));
+            await sender.SendAsync(new EmailMessage("rollback@example.com", "Subject", EmailMessageSensitivity.Normal, "Body"));
             Assert.That(await CountRowsOutsideScopeAsync(), Is.Zero);
             await tx.RollbackAsync();
         }
@@ -204,7 +215,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
 
         await using (var tx = await txProvider.BeginTransactionAsync())
         {
-            await sender.SendAsync(new EmailMessage("commit@example.com", "Subject", "Body"));
+            await sender.SendAsync(new EmailMessage("commit@example.com", "Subject", EmailMessageSensitivity.Normal, "Body"));
             await tx.CommitAsync();
         }
 
@@ -350,9 +361,9 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             """
             PRAGMA ignore_check_constraints = ON;
             INSERT INTO ashlar_email_outbox (
-                id, to_address, subject, text_body, body_protection, created_at, available_at
+                id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at
             ) VALUES (
-                $id, 'unknown-protection@example.com', 'Subject', 'Plain secret', 'Unknown', $now, $now
+                $id, 'unknown-protection@example.com', 'Subject', 'Plain secret', 'Normal', 'Unknown', $now, $now
             );
             PRAGMA ignore_check_constraints = OFF;
             """,
@@ -727,7 +738,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     private async Task SeedMessageAsync(string to)
     {
         await ExecuteAsync(
-            "INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, created_at, available_at) VALUES ($id, $to, 'Subject', 'Body', $now, $now)",
+            "INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at) VALUES ($id, $to, 'Subject', 'Body', 'Normal', $now, $now)",
             command =>
             {
                 command.AddGuidParameter("$id", Guid.NewGuid());

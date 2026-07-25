@@ -237,7 +237,7 @@ internal sealed class PostgresEmailOutboxAdministrationService(
                 status = EmailOutboxStatus.Discarded;
             }
 
-            var suppressPublicFields = EmailOutboxDispatch.ParseSensitivity(Sensitivity) == EmailMessageSensitivity.ContainsLiveSecret ||
+            var suppressPublicFields = EmailOutboxDispatch.ParseSensitivity(Sensitivity) != EmailMessageSensitivity.Normal ||
                 EmailOutboxDispatch.ParseBodyProtection(BodyProtection) != EmailOutboxBodyProtection.None;
             return new EmailOutboxAdministrationOperationState(Id, ToAddress, Subject, status, suppressPublicFields);
         }

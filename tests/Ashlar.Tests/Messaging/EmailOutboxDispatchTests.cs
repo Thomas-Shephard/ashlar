@@ -8,7 +8,7 @@ internal sealed class EmailOutboxDispatchTests
     [Test]
     public void ProtectBodiesForStorageLeavesNormalMessagesUnprotected()
     {
-        var message = new EmailMessage("to@example.com", "Subject", "Text", "<p>Html</p>");
+        var message = new EmailMessage("to@example.com", "Subject", EmailMessageSensitivity.Normal, "Text", "<p>Html</p>");
 
         var storedBodies = EmailOutboxDispatch.ProtectBodiesForStorage(message, new FakeSecretProtector());
 
@@ -25,9 +25,8 @@ internal sealed class EmailOutboxDispatchTests
     {
         var message = new EmailMessage(
             "to@example.com",
-            "Subject",
-            "Live token",
-            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+            "Subject", EmailMessageSensitivity.ContainsLiveSecret,
+            "Live token");
 
         var storedBodies = EmailOutboxDispatch.ProtectBodiesForStorage(message, new FakeSecretProtector());
 
@@ -44,9 +43,8 @@ internal sealed class EmailOutboxDispatchTests
     {
         var message = new EmailMessage(
             "to@example.com",
-            "Subject",
-            "Live token",
-            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+            "Subject", EmailMessageSensitivity.ContainsLiveSecret,
+            "Live token");
 
         var exception = Assert.Throws<InvalidOperationException>(() => EmailOutboxDispatch.ProtectBodiesForStorage(message));
 
@@ -90,7 +88,8 @@ internal sealed class EmailOutboxDispatchTests
             CcAddress = "cc@example.com",
             BccAddress = "bcc@example.com",
             Subject = "Subject",
-            TextBody = "Text"
+            TextBody = "Text",
+            Sensitivity = EmailMessageSensitivity.Normal
         };
 
         var message = EmailOutboxDispatch.MapToEmailMessage(entry);
@@ -115,6 +114,7 @@ internal sealed class EmailOutboxDispatchTests
             ToAddress = "to@example.com",
             Subject = "Subject",
             TextBody = protector.Protect("Live text"),
+            Sensitivity = EmailMessageSensitivity.Normal,
             BodyProtection = EmailOutboxBodyProtection.SecretProtector
         };
 
@@ -132,6 +132,7 @@ internal sealed class EmailOutboxDispatchTests
             ToAddress = "to@example.com",
             Subject = "Subject",
             TextBody = "plain",
+            Sensitivity = EmailMessageSensitivity.Normal,
             BodyProtection = EmailOutboxBodyProtection.Unknown
         };
 
@@ -163,22 +164,23 @@ internal sealed class EmailOutboxDispatchTests
     }
 
     [Test]
-    public void ParseSensitivityParsesKnownValuesCaseInsensitively()
+    public void ParseSensitivityFailsClosedForNonCanonicalSensitiveValue()
     {
         Assert.That(EmailOutboxDispatch.ParseSensitivity("containslivesecret"), Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
     }
 
     [Test]
-    public void ParseSensitivityFallsBackToNormalForUnknownOrNumericValues()
+    public void ParseSensitivityFailsClosedForUnknownOrNumericValues()
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(EmailOutboxDispatch.ParseSensitivity(null), Is.EqualTo(EmailMessageSensitivity.Normal));
+            Assert.That(EmailOutboxDispatch.ParseSensitivity(null), Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
             Assert.That(EmailOutboxDispatch.ParseSensitivity("Normal"), Is.EqualTo(EmailMessageSensitivity.Normal));
-            Assert.That(EmailOutboxDispatch.ParseSensitivity("Unknown"), Is.EqualTo(EmailMessageSensitivity.Normal));
-            Assert.That(EmailOutboxDispatch.ParseSensitivity("0"), Is.EqualTo(EmailMessageSensitivity.Normal));
-            Assert.That(EmailOutboxDispatch.ParseSensitivity("1"), Is.EqualTo(EmailMessageSensitivity.Normal));
-            Assert.That(EmailOutboxDispatch.ParseSensitivity("2"), Is.EqualTo(EmailMessageSensitivity.Normal));
+            Assert.That(EmailOutboxDispatch.ParseSensitivity("normal"), Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
+            Assert.That(EmailOutboxDispatch.ParseSensitivity("Unknown"), Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
+            Assert.That(EmailOutboxDispatch.ParseSensitivity("0"), Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
+            Assert.That(EmailOutboxDispatch.ParseSensitivity("1"), Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
+            Assert.That(EmailOutboxDispatch.ParseSensitivity("2"), Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
         }
     }
 
@@ -198,6 +200,10 @@ internal sealed class EmailOutboxDispatchTests
     [Test]
     public void CreateFailureUpdateSuppressesSensitiveErrorDetails()
     {
+        var suppressionParameter = typeof(EmailOutboxDispatch)
+            .GetMethod(nameof(EmailOutboxDispatch.CreateFailureUpdate))!
+            .GetParameters()
+            .Single(parameter => parameter.Name == "suppressErrorDetails");
         var failure = EmailOutboxDispatch.CreateFailureUpdate(
             0,
             3,
@@ -208,6 +214,8 @@ internal sealed class EmailOutboxDispatchTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(suppressionParameter.IsOptional, Is.False);
+            Assert.That(suppressionParameter.HasDefaultValue, Is.False);
             Assert.That(failure.LastError, Does.Contain("suppressed"));
             Assert.That(failure.LastError, Does.Not.Contain("live-token-link"));
         }
@@ -446,7 +454,8 @@ internal sealed class EmailOutboxDispatchTests
             {
                 Id = Guid.NewGuid(),
                 ToAddress = "to@example.com",
-                Subject = "Subject"
+                Subject = "Subject",
+                Sensitivity = EmailMessageSensitivity.Normal
             }), Is.False);
             Assert.That(EmailOutboxDispatch.ShouldSuppressFailureDetails(new EmailOutboxEntry
             {
@@ -460,6 +469,7 @@ internal sealed class EmailOutboxDispatchTests
                 Id = Guid.NewGuid(),
                 ToAddress = "to@example.com",
                 Subject = "Subject",
+                Sensitivity = EmailMessageSensitivity.Normal,
                 BodyProtection = EmailOutboxBodyProtection.SecretProtector
             }), Is.True);
             Assert.That(EmailOutboxDispatch.ShouldSuppressFailureDetails(new EmailOutboxEntry
@@ -467,9 +477,21 @@ internal sealed class EmailOutboxDispatchTests
                 Id = Guid.NewGuid(),
                 ToAddress = "to@example.com",
                 Subject = "Subject",
+                Sensitivity = EmailMessageSensitivity.Normal,
                 BodyProtection = EmailOutboxBodyProtection.Unknown
             }), Is.True);
         }
+    }
+
+    [Test]
+    public void ShouldSuppressFailureDetailsForUnknownSensitivity()
+    {
+        Assert.That(EmailOutboxDispatch.ShouldSuppressFailureDetails(new EmailOutboxEntry
+        {
+            ToAddress = "to@example.com",
+            Subject = "Subject",
+            Sensitivity = (EmailMessageSensitivity)int.MaxValue
+        }), Is.True);
     }
 
     private static EmailOutboxEntry CreateEntry(

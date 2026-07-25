@@ -109,9 +109,8 @@ internal sealed class InvitationService(
         var message = IdentityUrlHelper.FormatEmailBody(invitationOptions.EmailTextTemplate, callbackUrl);
         var emailMessage = new EmailMessage(
             email,
-            invitationOptions.EmailSubject,
-            message,
-            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+            invitationOptions.EmailSubject, EmailMessageSensitivity.ContainsLiveSecret,
+            message);
         await TransactionalEmailDelivery.SendOrRegisterPostCommitAsync(_dependencies.EmailSender, transaction, emailMessage, cancellationToken);
 
         await _securityEvents.RecordAsync(new SecurityEventDescriptor

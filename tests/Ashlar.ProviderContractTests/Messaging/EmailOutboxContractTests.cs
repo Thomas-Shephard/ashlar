@@ -39,7 +39,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
     public async Task NormalEmailPersistsWithNormalSensitivityAndNoBodyProtection()
     {
         await using var scope = CreateAsyncScope();
-        var message = new EmailMessage("contract-normal@example.com", "Subject", "Normal text", "<p>Normal html</p>");
+        var message = new EmailMessage("contract-normal@example.com", "Subject", EmailMessageSensitivity.Normal, "Normal text", "<p>Normal html</p>");
 
         await GetEmailSender(scope.ServiceProvider).SendAsync(message);
 
@@ -60,10 +60,9 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         var transport = GetRecordingEmailTransport(scope.ServiceProvider);
         var message = new EmailMessage(
             "contract-sensitive@example.com",
-            "Subject",
+            "Subject", EmailMessageSensitivity.ContainsLiveSecret,
             SensitiveTextBody,
-            SensitiveHtmlBody,
-            new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+            SensitiveHtmlBody);
 
         await GetEmailSender(scope.ServiceProvider).SendAsync(message);
         var row = await ReadSingleEmailOutboxRowAsync();
@@ -114,7 +113,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         var dispatcher = GetEmailOutboxDispatcher(scope.ServiceProvider);
         var transport = GetRecordingEmailTransport(scope.ServiceProvider);
 
-        await sender.SendAsync(new EmailMessage("once@example.com", "Subject", "Text"));
+        await sender.SendAsync(new EmailMessage("once@example.com", "Subject", EmailMessageSensitivity.Normal, "Text"));
 
         var first = await dispatcher.ProcessBatchAsync();
         var second = await dispatcher.ProcessBatchAsync();
@@ -135,9 +134,9 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         var dispatcher = GetEmailOutboxDispatcher(scope.ServiceProvider);
         var transport = GetRecordingEmailTransport(scope.ServiceProvider);
 
-        await sender.SendAsync(new EmailMessage("batch-one@example.com", "Subject", "Text"));
-        await sender.SendAsync(new EmailMessage("batch-two@example.com", "Subject", "Text"));
-        await sender.SendAsync(new EmailMessage("batch-three@example.com", "Subject", "Text"));
+        await sender.SendAsync(new EmailMessage("batch-one@example.com", "Subject", EmailMessageSensitivity.Normal, "Text"));
+        await sender.SendAsync(new EmailMessage("batch-two@example.com", "Subject", EmailMessageSensitivity.Normal, "Text"));
+        await sender.SendAsync(new EmailMessage("batch-three@example.com", "Subject", EmailMessageSensitivity.Normal, "Text"));
 
         var count = await dispatcher.ProcessBatchAsync();
 
@@ -167,7 +166,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
             return Task.CompletedTask;
         };
 
-        await sender.SendAsync(new EmailMessage("retryable@example.com", "Subject", "Text"));
+        await sender.SendAsync(new EmailMessage("retryable@example.com", "Subject", EmailMessageSensitivity.Normal, "Text"));
 
         var first = await dispatcher.ProcessBatchAsync();
         await AdvanceEmailOutboxTimeAsync(RetryDelay);
@@ -235,10 +234,9 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         transport.OnDeliver = (message, _) => throw new InvalidOperationException($"Failed to deliver {message.TextBody} {message.HtmlBody}");
         var message = new EmailMessage(
             "contract-sensitive-failure@example.com",
-            "Subject",
+            "Subject", EmailMessageSensitivity.ContainsLiveSecret,
             SensitiveTextBody,
-            SensitiveHtmlBody,
-            new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+            SensitiveHtmlBody);
 
         await GetEmailSender(scope.ServiceProvider).SendAsync(message);
         var count = await GetEmailOutboxDispatcher(scope.ServiceProvider).ProcessBatchAsync();
@@ -310,7 +308,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
 
         await using (var transaction = await transactionProvider.BeginTransactionAsync())
         {
-            await sender.SendAsync(new EmailMessage("rollback@example.com", "Subject", "Text"));
+            await sender.SendAsync(new EmailMessage("rollback@example.com", "Subject", EmailMessageSensitivity.Normal, "Text"));
             await transaction.RollbackAsync();
         }
 
@@ -318,7 +316,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
 
         await using (var transaction = await transactionProvider.BeginTransactionAsync())
         {
-            await sender.SendAsync(new EmailMessage("commit@example.com", "Subject", "Text"));
+            await sender.SendAsync(new EmailMessage("commit@example.com", "Subject", EmailMessageSensitivity.Normal, "Text"));
             await transaction.CommitAsync();
         }
 
@@ -333,7 +331,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
     {
         return new EmailMessage(
             to,
-            "Contract Subject",
+            "Contract Subject", EmailMessageSensitivity.ContainsLiveSecret,
             "Plain text body",
             "<p>HTML body</p>",
             new EmailMessageOptions
@@ -344,7 +342,6 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
                 Bcc = "bcc@example.com",
                 Headers = new Dictionary<string, string> { ["X-Test"] = "Header" },
                 Metadata = new Dictionary<string, string> { ["Trace"] = "Metadata" },
-                Sensitivity = EmailMessageSensitivity.ContainsLiveSecret
             });
     }
 

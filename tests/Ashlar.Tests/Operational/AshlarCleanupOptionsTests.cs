@@ -99,4 +99,31 @@ internal sealed class AshlarCleanupOptionsTests
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.Throws<ArgumentNullException>(() => AshlarCleanupOptions.Validate(null!));
     }
+
+    [Test]
+    public async Task SensitiveEmailCleanupFailsClosedForUnknownMarkers()
+    {
+        var predicates = new Dictionary<string, string>();
+
+        await AshlarCleanupPlan.RunAsync(
+            new AshlarCleanupOptions { MaxBatchesPerRun = 1 },
+            DateTimeOffset.UtcNow,
+            predicates,
+            static (result, definition, _, _) =>
+            {
+                result[definition.Category] = definition.Predicate;
+                return Task.FromResult(0);
+            },
+            static definition => new AshlarCleanupDeleteDefinition(
+                definition.Category,
+                definition.TableName,
+                AshlarCleanupPlan.RenderPredicate(definition.PredicateTemplate, "@cutoff", "TRUE", "FALSE"),
+                definition.OrderColumn),
+            CancellationToken.None);
+
+        foreach (var category in new[] { "sent_sensitive_emails", "failed_sensitive_emails", "discarded_sensitive_emails" })
+        {
+            Assert.That(predicates[category], Does.Contain("(sensitivity IS NULL OR sensitivity <> 'Normal')"));
+        }
+    }
 }

@@ -8,7 +8,7 @@ internal sealed class EmailMessageTests
     [Test]
     public void EmailMessageAcceptsValidTextEmail()
     {
-        var message = new EmailMessage("user@example.com", "Sign in", "Use this code.");
+        var message = new EmailMessage("user@example.com", "Sign in", EmailMessageSensitivity.Normal, "Use this code.");
 
         using (Assert.EnterMultipleScope())
         {
@@ -25,15 +25,30 @@ internal sealed class EmailMessageTests
     }
 
     [Test]
-    public void EmailMessageCopiesSensitivityFromOptions()
+    public void EmailMessageRequiresExplicitSensitivity()
     {
-        var message = new EmailMessage(
-            "user@example.com",
-            "Sign in",
-            "Use this link.",
-            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+        var constructor = typeof(EmailMessage).GetConstructors().Single();
+        var sensitivity = constructor.GetParameters().Single(parameter => parameter.Name == "sensitivity");
 
-        Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sensitivity.ParameterType, Is.EqualTo(typeof(EmailMessageSensitivity)));
+            Assert.That(sensitivity.IsOptional, Is.False);
+            Assert.That(sensitivity.HasDefaultValue, Is.False);
+            Assert.That(typeof(EmailMessageOptions).GetProperty(nameof(EmailMessage.Sensitivity)), Is.Null);
+        }
+    }
+
+    [Test]
+    public void EmailMessageRejectsUnknownSensitivity()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                _ = new EmailMessage("user@example.com", "Subject", default, "Body"));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                _ = new EmailMessage("user@example.com", "Subject", (EmailMessageSensitivity)int.MaxValue, "Body"));
+        }
     }
 
     [Test]
@@ -41,7 +56,7 @@ internal sealed class EmailMessageTests
     {
         var message = new EmailMessage(
             "user@example.com",
-            "Sign in",
+            "Sign in", EmailMessageSensitivity.Normal,
             htmlBody: "<p>Use this link.</p>",
             options: new EmailMessageOptions
             {
@@ -63,7 +78,7 @@ internal sealed class EmailMessageTests
     {
         var message = new EmailMessage(
             "user@example.com",
-            "Sign in",
+            "Sign in", EmailMessageSensitivity.Normal,
             "Use this code.",
             options: new EmailMessageOptions
             {
@@ -81,7 +96,7 @@ internal sealed class EmailMessageTests
     [Test]
     public void EmailMessageRejectsEmptyTo()
     {
-        var exception = Assert.Throws<ArgumentException>(() => _ = new EmailMessage(" ", "Subject", "Body"));
+        var exception = Assert.Throws<ArgumentException>(() => _ = new EmailMessage(" ", "Subject", EmailMessageSensitivity.Normal, "Body"));
 
         Assert.That(exception.ParamName, Is.EqualTo("to"));
     }
@@ -89,7 +104,7 @@ internal sealed class EmailMessageTests
     [Test]
     public void EmailMessageRejectsEmptySubject()
     {
-        var exception = Assert.Throws<ArgumentException>(() => _ = new EmailMessage("user@example.com", "\t", "Body"));
+        var exception = Assert.Throws<ArgumentException>(() => _ = new EmailMessage("user@example.com", "\t", EmailMessageSensitivity.Normal, "Body"));
 
         Assert.That(exception.ParamName, Is.EqualTo("subject"));
     }
@@ -97,7 +112,7 @@ internal sealed class EmailMessageTests
     [Test]
     public void EmailMessageRejectsMissingBody()
     {
-        var exception = Assert.Throws<ArgumentException>(() => _ = new EmailMessage("user@example.com", "Subject", " ", "\r\n"));
+        var exception = Assert.Throws<ArgumentException>(() => _ = new EmailMessage("user@example.com", "Subject", EmailMessageSensitivity.Normal, " ", "\r\n"));
 
         Assert.That(exception.ParamName, Is.EqualTo("textBody"));
     }
@@ -110,7 +125,7 @@ internal sealed class EmailMessageTests
 
         var message = new EmailMessage(
             "user@example.com",
-            "Subject",
+            "Subject", EmailMessageSensitivity.Normal,
             "Body",
             options: new EmailMessageOptions
             {
@@ -139,7 +154,7 @@ internal sealed class EmailMessageTests
 
         var message = new EmailMessage(
             "user@example.com",
-            "Subject",
+            "Subject", EmailMessageSensitivity.Normal,
             "Body",
             options: new EmailMessageOptions
             {
@@ -167,7 +182,7 @@ internal sealed class EmailMessageTests
     {
         var message = new EmailMessage(
             "user@example.com",
-            "Subject",
+            "Subject", EmailMessageSensitivity.Normal,
             "Body",
             options: new EmailMessageOptions
             {
@@ -199,7 +214,7 @@ internal sealed class EmailMessageTests
     {
         Assert.Throws<ArgumentException>(() => _ = new EmailMessage(
             to: "recipient@example.com",
-            subject: "Test Subject",
+            subject: "Test Subject", EmailMessageSensitivity.Normal,
             textBody: "Hello",
             options: new EmailMessageOptions
             {
@@ -208,7 +223,7 @@ internal sealed class EmailMessageTests
 
         Assert.Throws<ArgumentException>(() => _ = new EmailMessage(
             to: "recipient@example.com",
-            subject: "Test Subject",
+            subject: "Test Subject", EmailMessageSensitivity.Normal,
             textBody: "Hello",
             options: new EmailMessageOptions
             {
@@ -217,7 +232,7 @@ internal sealed class EmailMessageTests
 
         Assert.Throws<ArgumentException>(() => _ = new EmailMessage(
             to: "recipient@example.com",
-            subject: "Test Subject",
+            subject: "Test Subject", EmailMessageSensitivity.Normal,
             textBody: "Hello",
             options: new EmailMessageOptions
             {
@@ -230,7 +245,7 @@ internal sealed class EmailMessageTests
     {
         var message = new EmailMessage(
             to: "recipient@example.com",
-            subject: "Test Subject",
+            subject: "Test Subject", EmailMessageSensitivity.Normal,
             textBody: "Hello",
             options: new EmailMessageOptions
             {
@@ -245,7 +260,7 @@ internal sealed class EmailMessageTests
     {
         Assert.Throws<ArgumentException>(() => _ = new EmailMessage(
             to: "recipient@example.com",
-            subject: "Test Subject\nInjected-Header: Value",
+            subject: "Test Subject\nInjected-Header: Value", EmailMessageSensitivity.Normal,
             textBody: "Hello"));
     }
 
@@ -254,7 +269,7 @@ internal sealed class EmailMessageTests
     {
         Assert.Throws<ArgumentException>(() => _ = new EmailMessage(
             to: "recipient@example.com\r\nBcc: victim@example.com",
-            subject: "Subject",
+            subject: "Subject", EmailMessageSensitivity.Normal,
             textBody: "Hello"));
     }
 
@@ -263,13 +278,13 @@ internal sealed class EmailMessageTests
     {
         Assert.Throws<ArgumentException>(() => _ = new EmailMessage(
             to: "recipient@example.com",
-            subject: "Subject",
+            subject: "Subject", EmailMessageSensitivity.Normal,
             textBody: "Hello",
             options: new EmailMessageOptions { Cc = "cc@example.com\r\nBcc: victim@example.com" }));
 
         Assert.Throws<ArgumentException>(() => _ = new EmailMessage(
             to: "recipient@example.com",
-            subject: "Subject",
+            subject: "Subject", EmailMessageSensitivity.Normal,
             textBody: "Hello",
             options: new EmailMessageOptions { Bcc = "bcc@example.com\nCc: victim@example.com" }));
     }

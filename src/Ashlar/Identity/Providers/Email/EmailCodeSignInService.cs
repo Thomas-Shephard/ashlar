@@ -99,9 +99,8 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
         var message = string.Format(CultureInfo.InvariantCulture, signInOptions.EmailTextTemplate, code, lifetimeMinutes);
         var emailMessage = new EmailMessage(
             user.DisplayEmail,
-            signInOptions.EmailSubject,
-            message,
-            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+            signInOptions.EmailSubject, EmailMessageSensitivity.ContainsLiveSecret,
+            message);
         await TransactionalEmailDelivery.SendOrRegisterPostCommitAsync(_dependencies.EmailSender, transaction, emailMessage, cancellationToken);
 
         await RecordAsync(AshlarSecurityEventTypes.EmailCodeRequested, SecurityEventOutcomes.Success, context, user.Id, null, cancellationToken);

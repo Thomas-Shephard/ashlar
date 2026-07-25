@@ -74,7 +74,7 @@ public sealed partial class SecurityNotificationService(
         {
             await _emailSender.SendAsync(new EmailMessage(
                 recipientEmail,
-                subject,
+                subject, EmailMessageSensitivity.Normal,
                 body,
                 options: new EmailMessageOptions { From = opt.FromAddress }), cancellationToken);
         }

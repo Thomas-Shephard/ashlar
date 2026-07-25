@@ -12,12 +12,14 @@ public sealed record EmailMessage
     /// </summary>
     /// <param name="to">Recipient address after header-injection validation.</param>
     /// <param name="subject">Message subject after header-injection validation.</param>
+    /// <param name="sensitivity">Explicit classification of whether the body contains live secret material.</param>
     /// <param name="textBody">Plain-text body, required when no HTML body is supplied.</param>
     /// <param name="htmlBody">HTML body, required when no plain-text body is supplied.</param>
     /// <param name="options">Optional sender, routing, headers, and metadata.</param>
     public EmailMessage(
         string to,
         string subject,
+        EmailMessageSensitivity sensitivity,
         string? textBody = null,
         string? htmlBody = null,
         EmailMessageOptions? options = null)
@@ -37,6 +39,11 @@ public sealed record EmailMessage
             throw new ArgumentException("An email message must include a text or HTML body.", nameof(textBody));
         }
 
+        if (sensitivity is not EmailMessageSensitivity.Normal and not EmailMessageSensitivity.ContainsLiveSecret)
+        {
+            throw new ArgumentOutOfRangeException(nameof(sensitivity));
+        }
+
         ValidateHeader("To", to);
         ValidateHeader("Subject", subject);
 
@@ -48,7 +55,7 @@ public sealed record EmailMessage
         ReplyTo = options?.ReplyTo;
         Cc = options?.Cc;
         Bcc = options?.Bcc;
-        Sensitivity = options?.Sensitivity ?? EmailMessageSensitivity.Normal;
+        Sensitivity = sensitivity;
 
         if (From != null)
         {
@@ -151,7 +158,7 @@ public sealed record EmailMessage
     public IReadOnlyDictionary<string, string>? Metadata { get; }
 
     /// <summary>
-    /// Whether the body contains live secret material such as tokens, links, or codes.
+    /// Explicit classification of whether the body contains live secret material such as tokens, links, or codes.
     /// </summary>
     public EmailMessageSensitivity Sensitivity { get; }
 }
@@ -167,12 +174,12 @@ public enum EmailMessageSensitivity
     /// <summary>
     /// The message does not contain a live secret.
     /// </summary>
-    Normal,
+    Normal = 1,
 
     /// <summary>
     /// The message contains a currently valid secret such as a token, link, or code.
     /// </summary>
-    ContainsLiveSecret
+    ContainsLiveSecret = 2
 }
 
 /// <summary>
@@ -209,9 +216,4 @@ public sealed record EmailMessageOptions
     /// Provider-neutral metadata for transports and diagnostics. Do not include secrets.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
-
-    /// <summary>
-    /// Whether the body contains live secret material such as tokens, links, or codes.
-    /// </summary>
-    public EmailMessageSensitivity Sensitivity { get; init; } = EmailMessageSensitivity.Normal;
 }

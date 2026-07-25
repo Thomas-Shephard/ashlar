@@ -66,7 +66,7 @@ public sealed class EmailOutboxEntry
     /// <summary>
     /// Sensitivity classification used to decide whether error details and bodies require protection.
     /// </summary>
-    public EmailMessageSensitivity Sensitivity { get; init; } = EmailMessageSensitivity.Normal;
+    public required EmailMessageSensitivity Sensitivity { get; init; }
 
     /// <summary>
     /// Protection applied to persisted body columns.
@@ -208,7 +208,7 @@ public static class EmailOutboxDispatch
         TimeSpan initialRetryDelay,
         DateTimeOffset now,
         Exception exception,
-        bool suppressErrorDetails = false)
+        bool suppressErrorDetails)
     {
         ArgumentNullException.ThrowIfNull(exception);
 
@@ -240,7 +240,7 @@ public static class EmailOutboxDispatch
     {
         ArgumentNullException.ThrowIfNull(entry);
 
-        return entry.Sensitivity == EmailMessageSensitivity.ContainsLiveSecret ||
+        return entry.Sensitivity != EmailMessageSensitivity.Normal ||
             entry.BodyProtection != EmailOutboxBodyProtection.None;
     }
 
@@ -263,6 +263,7 @@ public static class EmailOutboxDispatch
         return new EmailMessage(
             entry.ToAddress,
             entry.Subject,
+            entry.Sensitivity,
             textBody,
             htmlBody,
             new EmailMessageOptions
@@ -272,8 +273,7 @@ public static class EmailOutboxDispatch
                 Cc = entry.CcAddress,
                 Bcc = entry.BccAddress,
                 Headers = headers,
-                Metadata = metadata,
-                Sensitivity = entry.Sensitivity
+                Metadata = metadata
             });
     }
 
@@ -281,15 +281,15 @@ public static class EmailOutboxDispatch
     /// Parses a persisted sensitivity value into a safe message sensitivity.
     /// </summary>
     /// <param name="value">Persisted sensitivity marker from the outbox row.</param>
-    /// <returns>The parsed sensitivity, or <see cref="EmailMessageSensitivity.Normal"/> for unknown values.</returns>
+    /// <returns>The parsed sensitivity, or <see cref="EmailMessageSensitivity.ContainsLiveSecret"/> for unknown values.</returns>
     public static EmailMessageSensitivity ParseSensitivity(string? value)
     {
-        if (value != null && value.Equals(nameof(EmailMessageSensitivity.ContainsLiveSecret), StringComparison.OrdinalIgnoreCase))
+        if (value == nameof(EmailMessageSensitivity.Normal))
         {
-            return EmailMessageSensitivity.ContainsLiveSecret;
+            return EmailMessageSensitivity.Normal;
         }
 
-        return EmailMessageSensitivity.Normal;
+        return EmailMessageSensitivity.ContainsLiveSecret;
     }
 
     /// <summary>
@@ -302,7 +302,7 @@ public static class EmailOutboxDispatch
     {
         ArgumentNullException.ThrowIfNull(message);
 
-        if (message.Sensitivity != EmailMessageSensitivity.ContainsLiveSecret)
+        if (message.Sensitivity == EmailMessageSensitivity.Normal)
         {
             return new EmailOutboxStoredBodies(message.TextBody, message.HtmlBody, EmailOutboxBodyProtection.None);
         }
@@ -356,7 +356,7 @@ public static class EmailOutboxDispatch
 
     private static void ValidateBodyProtection(EmailOutboxEntry entry)
     {
-        if (entry.Sensitivity == EmailMessageSensitivity.ContainsLiveSecret &&
+        if (entry.Sensitivity != EmailMessageSensitivity.Normal &&
             entry.BodyProtection != EmailOutboxBodyProtection.SecretProtector)
         {
             throw new InvalidOperationException("Email outbox row contains live secrets without protected bodies.");
