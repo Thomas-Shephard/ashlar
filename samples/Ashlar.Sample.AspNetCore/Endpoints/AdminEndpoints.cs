@@ -34,22 +34,7 @@ internal static partial class AdminEndpoints
     {
         app.MapGet("/api/admin/users", ListAdminUsersAsync).RequireAuthorization().RequireFreshMfa();
 
-        app.MapGet("/api/admin/users/{userId:guid}/security", async (
-            Guid userId,
-            IAccountSecurityService accountSecurity,
-            IAuthorizationEvaluator auth,
-            HttpContext httpContext,
-            CancellationToken cancellationToken) =>
-        {
-            var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
-            if (tenant == null)
-            {
-                return Results.Forbid();
-            }
-
-            var result = await accountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(tenant, TimeSpan.FromDays(30)), cancellationToken);
-            return ToAccountSecurityPostureResult(result);
-        }).RequireAuthorization();
+        app.MapGet("/api/admin/users/{userId:guid}/security", GetAdminUserSecurityAsync).RequireAuthorization().RequireFreshMfa();
 
         app.MapPost("/api/admin/users/{userId:guid}/disable", async (
             Guid userId,
@@ -158,6 +143,28 @@ internal static partial class AdminEndpoints
         return result.Succeeded
             ? Results.Ok(result.Value!.Items.Select(user => new { id = user.UserId, user.DisplayEmail, user.Name }))
             : Results.Forbid();
+    }
+
+    private static async Task<IResult> GetAdminUserSecurityAsync(
+        Guid userId,
+        IUserAdministrationService users,
+        StepUpAuthenticationService stepUp,
+        IAuthorizationEvaluator auth,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
+        if (tenant == null || !httpContext.TryGetAshlarSessionContext(out var actorUserId, out var sessionId, out var actorTenant) || actorTenant == null)
+        {
+            return Results.Forbid();
+        }
+
+        var proof = httpContext.CreateFreshMfaProof(stepUp, AdminReadRequirement, AccountSecurityActorContext.AdministrationReadProofPurpose);
+        if (!proof.TryGetValue(out var freshProof)) return Results.Forbid();
+        var result = await users.GetUserDetailAsync(new UserAdministrationDetailRequest(
+            userId, tenant, RecentSecurityEventWindow: TimeSpan.FromDays(30),
+            Actor: new AccountSecurityActorContext(actorUserId, actorTenant, sessionId, freshProof, httpContext.ToAuditContext())), cancellationToken);
+        return ToAccountSecurityPostureResult(result);
     }
 
     private static void MapAdminProjectEndpoints(IEndpointRouteBuilder app)
@@ -363,16 +370,18 @@ internal static partial class AdminEndpoints
             : Results.BadRequest(error);
     }
 
-    private static IResult ToAccountSecurityPostureResult(Result<AccountSecurityPosture> result)
+    private static IResult ToAccountSecurityPostureResult(Result<UserAdministrationDetail> result)
     {
-        if (result.Succeeded)
+        if (result is { Succeeded: true, Value: { } detail })
         {
-            return Results.Ok(result.Value);
+            return Results.Ok(detail.SecurityPosture);
         }
 
-        var error = SampleResultErrors.From(result, "User not found");
-        return result.FailureCode == AshlarFailureCodes.UserNotFound
-            ? Results.NotFound(error)
-            : Results.BadRequest(error);
+        if (result.FailureCode == AshlarFailureCodes.UserNotFound)
+        {
+            return Results.NotFound(SampleResultErrors.From(result, "User not found"));
+        }
+
+        return Results.Forbid();
     }
 }
