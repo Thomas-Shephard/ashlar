@@ -60,8 +60,8 @@ internal sealed class CredentialService(
     private const string CredentialIdPropertyName = "credential_id";
     private readonly IUserRepository _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
     private readonly ICredentialRepository _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
-    private readonly IUserLookup _userLookup = new UserLookup(userRepository!);
-    private readonly ICredentialLookup _credentialLookup = new CredentialLookup(credentialRepository!);
+    private readonly IUserLookup _userLookup = new UserLookup(userRepository);
+    private readonly ICredentialLookup _credentialLookup = new CredentialLookup(credentialRepository);
     private readonly ISecretProtector _secretProtector = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
     private readonly AshlarDurableTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly IdentityServiceOptions _options = ValidateDependencies(dependencies).Options ?? new IdentityServiceOptions();

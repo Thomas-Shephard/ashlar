@@ -43,7 +43,7 @@ internal sealed class AuthenticationSessionService(
     private readonly AuthenticationSessionOptions _options = ValidateOptions(dependencies.Options ?? new AuthenticationSessionOptions());
     private readonly TimeProvider _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
     private readonly IUserRepository _userRepository = dependencies.UserRepository ?? throw new ArgumentNullException($"{nameof(dependencies)}.{nameof(dependencies.UserRepository)}");
-    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, transactionProvider, "Authentication-session mutations", repository, dependencies.UserRepository!), dependencies.TimeProvider ?? TimeProvider.System);
+    private readonly SecurityEventEmitter _securityEvents = new(DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, transactionProvider, "Authentication-session mutations", repository, dependencies.UserRepository), dependencies.TimeProvider ?? TimeProvider.System);
     private readonly ILogger<AuthenticationSessionService> _logger = logger ?? dependencies.Logger ?? NullLogger<AuthenticationSessionService>.Instance;
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
     private readonly IAccountSecurityOperationAuthorizer? _operationAuthorizer = dependencies.OperationAuthorizer;
