@@ -1,5 +1,4 @@
 using Ashlar.Webhooks.SecurityEvents;
-using Ashlar.Identity.Features.Administration;
 
 namespace Ashlar.Postgres.Webhooks;
 
@@ -8,24 +7,16 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowser(
     TimeProvider timeProvider,
     IAuthenticationSessionRepository sessions,
     IAccountSecurityOperationAuthorizer authorizer,
-    IPersistentSecurityEventSink auditSink) : IAshlarSecurityEventWebhookOutboxBrowser
+    IPersistentSecurityEventSink auditSink) : AshlarSecurityEventWebhookOutboxBrowserBase(
+        sessions, authorizer, auditSink, timeProvider)
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-    private readonly AccountSecurityOperationBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider,
-        eventType: "security_event_webhook.outbox_browse");
 
-    public async Task<AshlarSecurityEventWebhookOutboxBrowseResult> ListAsync(
-        AccountSecurityActorContext actor,
+    protected override async Task<IReadOnlyList<AshlarSecurityEventWebhookOutboxDeliverySummary>> LoadAsync(
         AshlarSecurityEventWebhookOutboxBrowseRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(actor);
-        AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(request);
-        if (!await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
-                AccountSecurityOperation.BrowseSecurityEventWebhookOutbox, cancellationToken).ConfigureAwait(false))
-            return new AshlarSecurityEventWebhookOutboxBrowseResult([], request.Limit, request.Offset, false);
-
         const string sql = """
             WITH browseable AS (
                 SELECT id, endpoint_name, event_id, event_type, outcome, attempt_count, created_at, available_at,
@@ -60,19 +51,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowser(
             request.Offset
         };
         var rows = await PostgresAdminQuery.QueryAsync<OutboxBrowseRow>(_connectionProvider, sql, parameters, cancellationToken).ConfigureAwait(false);
-        var result = CreateResult(rows, request.Limit, request.Offset);
-        await _boundary.RecordSuccessAsync(actor, null, true, AccountSecurityOperation.BrowseSecurityEventWebhookOutbox).ConfigureAwait(false);
-        return result;
-    }
-
-    private static AshlarSecurityEventWebhookOutboxBrowseResult CreateResult(
-        IReadOnlyList<OutboxBrowseRow> rows,
-        int limit,
-        int offset)
-    {
-        var hasMore = rows.Count > limit;
-        var deliveries = rows.Take(limit).Select(static row => row.ToSummary()).ToList().AsReadOnly();
-        return new AshlarSecurityEventWebhookOutboxBrowseResult(deliveries, limit, offset, hasMore);
+        return rows.Select(static row => row.ToSummary()).ToList().AsReadOnly();
     }
 
     private sealed record OutboxBrowseRow(
