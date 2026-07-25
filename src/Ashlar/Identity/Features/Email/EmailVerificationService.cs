@@ -142,12 +142,11 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, "Verification token", token);
         var emailMessage = new EmailMessage(
             user.DisplayEmail,
-            _options.Value.Subject,
+            _options.Value.Subject, EmailMessageSensitivity.ContainsLiveSecret,
             message,
             options: new EmailMessageOptions
             {
                 From = _options.Value.FromAddress,
-                Sensitivity = EmailMessageSensitivity.ContainsLiveSecret
             });
         await TransactionalEmailDelivery.SendOrRegisterPostCommitAsync(_emailSender, transaction, emailMessage, cancellationToken);
 

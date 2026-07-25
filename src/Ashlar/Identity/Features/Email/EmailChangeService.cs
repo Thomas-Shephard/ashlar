@@ -175,12 +175,11 @@ internal sealed class EmailChangeService(
         var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, "Confirmation token", token);
         var emailMessage = new EmailMessage(
             newEmail,
-            _options.Value.Subject,
+            _options.Value.Subject, EmailMessageSensitivity.ContainsLiveSecret,
             message,
             options: new EmailMessageOptions
             {
                 From = _options.Value.FromAddress,
-                Sensitivity = EmailMessageSensitivity.ContainsLiveSecret
             });
         await TransactionalEmailDelivery.SendOrRegisterPostCommitAsync(_dependencies.EmailSender, transaction, emailMessage, cancellationToken);
 
@@ -229,7 +228,7 @@ internal sealed class EmailChangeService(
         await using var suppressionTransaction = await _dependencies.IdentityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
         var suppressionMessage = new EmailMessage(
             newEmail,
-            _options.Value.Subject,
+            _options.Value.Subject, EmailMessageSensitivity.Normal,
             "An attempt was made to change another account's email address to this one. No changes were made, and no further action is required.",
             options: new EmailMessageOptions { From = _options.Value.FromAddress });
 

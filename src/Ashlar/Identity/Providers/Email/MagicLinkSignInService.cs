@@ -105,9 +105,8 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
         var message = IdentityUrlHelper.FormatEmailBody(signInOptions.EmailTextTemplate, callbackUrl);
         var emailMessage = new EmailMessage(
             user.DisplayEmail,
-            signInOptions.EmailSubject,
-            message,
-            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+            signInOptions.EmailSubject, EmailMessageSensitivity.ContainsLiveSecret,
+            message);
         await TransactionalEmailDelivery.SendOrRegisterPostCommitAsync(_dependencies.EmailSender, transaction, emailMessage, cancellationToken);
 
         await RecordAsync(AshlarSecurityEventTypes.MagicLinkRequested, SecurityEventOutcomes.Success, context, user.Id, null, cancellationToken);

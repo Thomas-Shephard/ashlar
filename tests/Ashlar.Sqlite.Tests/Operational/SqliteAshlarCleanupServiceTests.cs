@@ -341,11 +341,11 @@ internal sealed class SqliteAshlarCleanupServiceTests : SqliteTestBase
             ($e1, 'old-event', $veryOld),
             ($e2, 'recent-event', $recent);
 
-            INSERT INTO ashlar_email_outbox (id, to_address, subject, created_at, available_at, sent_at, failed_at) VALUES
-            ($o1, 'a@example.com', 'sent', $old, $old, $old, NULL),
-            ($o2, 'b@example.com', 'failed', $old, $old, NULL, $old),
-            ($o3, 'c@example.com', 'pending', $now, $now, NULL, NULL),
-            ($o4, 'd@example.com', 'recent-sent', $now, $now, $recent, NULL);
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, sensitivity, created_at, available_at, sent_at, failed_at) VALUES
+            ($o1, 'a@example.com', 'sent', 'Normal', $old, $old, $old, NULL),
+            ($o2, 'b@example.com', 'failed', 'Normal', $old, $old, NULL, $old),
+            ($o3, 'c@example.com', 'pending', 'Normal', $now, $now, NULL, NULL),
+            ($o4, 'd@example.com', 'recent-sent', 'Normal', $now, $now, $recent, NULL);
             """, command =>
         {
             command.AddGuidParameter("$userId", TestUserId);

@@ -241,13 +241,13 @@ internal sealed class PostgresSchemaIntegrityTests : PostgresTestBase
                 """, new { id = Guid.NewGuid(), userId, token = Guid.NewGuid().ToString("N"), now, expires = now.AddHours(1) }));
         var outboxSentAndFailed = Assert.ThrowsAsync<PostgresException>(async () =>
             await connection.ExecuteAsync("""
-                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, created_at, available_at, sent_at, failed_at)
-                VALUES (@id, 'to@example.com', 'Subject', 'Body', @now, @now, @now, @now)
+                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, sent_at, failed_at)
+                VALUES (@id, 'to@example.com', 'Subject', 'Body', 'Normal', @now, @now, @now, @now)
                 """, new { id = Guid.NewGuid(), now }));
         var outboxHalfLocked = Assert.ThrowsAsync<PostgresException>(async () =>
             await connection.ExecuteAsync("""
-                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, created_at, available_at, locked_until)
-                VALUES (@id, 'to@example.com', 'Subject', 'Body', @now, @now, @lockedUntil)
+                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, locked_until)
+                VALUES (@id, 'to@example.com', 'Subject', 'Body', 'Normal', @now, @now, @lockedUntil)
                 """, new { id = Guid.NewGuid(), now, lockedUntil = now.AddMinutes(5) }));
 
         using (Assert.EnterMultipleScope())

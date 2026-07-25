@@ -55,9 +55,8 @@ internal sealed class TransactionalEmailDeliveryTests
     {
         return new EmailMessage(
             "user@example.com",
-            "Subject",
-            "secret-token",
-            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+            "Subject", EmailMessageSensitivity.ContainsLiveSecret,
+            "secret-token");
     }
 
     private class RecordingEmailSender(List<string> events) : IEmailSender

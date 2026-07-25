@@ -11,7 +11,7 @@ internal sealed class SmtpEmailSenderTests
     {
         var mockTransport = new Mock<IEmailTransport>();
         var sender = new SmtpEmailSender(mockTransport.Object);
-        var message = new EmailMessage(to: "r@e.com", subject: "S", textBody: "B");
+        var message = new EmailMessage(to: "r@e.com", subject: "S", sensitivity: EmailMessageSensitivity.Normal, textBody: "B");
 
         await sender.SendAsync(message);
 

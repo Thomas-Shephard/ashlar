@@ -5,12 +5,25 @@ using Ashlar.Security.Encryption;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Ashlar.Postgres.Tests.Messaging;
 
 internal sealed class PostgresEmailOutboxTests : PostgresTestBase
 {
+    [Test]
+    public async Task SchemaRequiresExplicitSensitivity()
+    {
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+
+        var exception = Assert.ThrowsAsync<PostgresException>(() => connection.ExecuteAsync(
+            "INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, created_at, available_at) VALUES (@id, 'to@example.com', 'Subject', 'Body', @now, @now)",
+            new { id = Guid.NewGuid(), now = _now }));
+
+        Assert.That(exception!.SqlState, Is.EqualTo(PostgresErrorCodes.NotNullViolation));
+    }
+
     private IServiceProvider _serviceProvider;
     private FakeTimeProvider _timeProvider;
     private readonly DateTimeOffset _now = new(2026, 5, 8, 12, 0, 0, TimeSpan.Zero);
@@ -133,7 +146,7 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
 
         var message = new EmailMessage(
             "to@example.com",
-            "Subject",
+            "Subject", EmailMessageSensitivity.Normal,
             "Body",
             options: new EmailMessageOptions
             {
@@ -174,7 +187,7 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
 
         var message = new EmailMessage(
             "to@example.com",
-            "Subject",
+            "Subject", EmailMessageSensitivity.Normal,
             "Body",
             options: new EmailMessageOptions
             {
@@ -207,9 +220,8 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
 
         await sender.SendAsync(new EmailMessage(
             "to@example.com",
-            "Subject",
-            "Body",
-            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret }));
+            "Subject", EmailMessageSensitivity.ContainsLiveSecret,
+            "Body"));
 
         await using var connection = await GetDataSource().OpenConnectionAsync();
         var row = await connection.QuerySingleAsync<RawOutboxRow>("SELECT sensitivity AS Sensitivity, body_protection AS BodyProtection, text_body AS TextBody FROM ashlar_email_outbox");
@@ -231,7 +243,7 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
             _timeProvider,
             _serviceProvider.GetRequiredService<ISecretProtector>());
 
-        await sender.SendAsync(new EmailMessage("to@example.com", "Subject", "Normal body"));
+        await sender.SendAsync(new EmailMessage("to@example.com", "Subject", EmailMessageSensitivity.Normal, "Normal body"));
 
         await using var connection = await GetDataSource().OpenConnectionAsync();
         var row = await connection.QuerySingleAsync<RawOutboxRow>("SELECT body_protection AS BodyProtection, text_body AS TextBody FROM ashlar_email_outbox");
@@ -270,9 +282,8 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
 
         var message = new EmailMessage(
             "to@example.com",
-            "Subject",
-            "Body",
-            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+            "Subject", EmailMessageSensitivity.ContainsLiveSecret,
+            "Body");
 
         var exception = Assert.ThrowsAsync<InvalidOperationException>(() => sender.SendAsync(message));
 
@@ -288,7 +299,7 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
 
         await using (var tx = await txProvider.BeginTransactionAsync())
         {
-            await sender.SendAsync(new EmailMessage("to@example.com", "Subject", "Body"));
+            await sender.SendAsync(new EmailMessage("to@example.com", "Subject", EmailMessageSensitivity.Normal, "Body"));
 
             // Should not be visible outside transaction
             await using var connectionOutside = await GetDataSource().OpenConnectionAsync();
@@ -577,9 +588,9 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
             await connection.ExecuteAsync(
                 """
                 INSERT INTO ashlar_email_outbox (
-                    id, to_address, subject, text_body, body_protection, created_at, available_at
+                    id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at
                 ) VALUES (
-                    @id, 'unknown-protection@example.com', 'Subject', 'Plain secret', 'Unknown', @now, @now
+                    @id, 'unknown-protection@example.com', 'Subject', 'Plain secret', 'Normal', 'Unknown', @now, @now
                 )
                 """,
                 new { id = Guid.NewGuid(), now = _timeProvider.GetUtcNow() });
@@ -823,13 +834,13 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
         var old = _now.AddDays(-60);
 
         await connection.ExecuteAsync("""
-            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, created_at, available_at, sent_at) VALUES
-            (@id1, 'sent@example.com', 'Sub', 'Body', @old, @old, @old),
-            (@id2, 'recent-sent@example.com', 'Sub', 'Body', @now, @now, @now);
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, sent_at) VALUES
+            (@id1, 'sent@example.com', 'Sub', 'Body', 'Normal', @old, @old, @old),
+            (@id2, 'recent-sent@example.com', 'Sub', 'Body', 'Normal', @now, @now, @now);
 
-            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, created_at, available_at, failed_at) VALUES
-            (@id3, 'failed@example.com', 'Sub', 'Body', @old, @old, @old),
-            (@id4, 'recent-failed@example.com', 'Sub', 'Body', @now, @now, @now);
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, failed_at) VALUES
+            (@id3, 'failed@example.com', 'Sub', 'Body', 'Normal', @old, @old, @old),
+            (@id4, 'recent-failed@example.com', 'Sub', 'Body', 'Normal', @now, @now, @now);
             """, new { id1 = Guid.NewGuid(), id2 = Guid.NewGuid(), id3 = Guid.NewGuid(), id4 = Guid.NewGuid(), now = _now, old });
 
         var cleanupOptions = new AshlarCleanupOptions
@@ -913,9 +924,9 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     }
 
     [Test]
-    public void MapToEmailMessageDefaultsUnknownSensitivityToNormal()
+    public void MapToEmailMessageDefaultsUnknownSensitivityToContainsLiveSecret()
     {
-        Assert.That(EmailOutboxDispatch.ParseSensitivity("Unknown"), Is.EqualTo(EmailMessageSensitivity.Normal));
+        Assert.That(EmailOutboxDispatch.ParseSensitivity("Unknown"), Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
     }
 
     [Test]
@@ -1162,7 +1173,7 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     {
         await using var connection = await GetDataSource().OpenConnectionAsync();
         await connection.ExecuteAsync(
-            "INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, created_at, available_at) VALUES (@id, @to, 'Subject', 'Body', @now, @now)",
+            "INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at) VALUES (@id, @to, 'Subject', 'Body', 'Normal', @now, @now)",
             new { id = Guid.NewGuid(), to, now = _timeProvider.GetUtcNow() });
     }
 

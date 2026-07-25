@@ -1,3 +1,5 @@
+using Ashlar.Messaging;
+
 namespace Ashlar.Operational;
 
 /// <summary>
@@ -121,12 +123,12 @@ public sealed class AshlarCleanupOptions
     public TimeSpan? RemoveFailedEmailsAfter { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>
-    /// Retention period after sensitive email messages containing live secrets are sent. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes sent rows on the next cleanup run.
+    /// Retention period after email messages not classified exactly as <see cref="EmailMessageSensitivity.Normal"/> are sent. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes sent rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveSentSensitiveEmailsAfter { get; set; } = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// Retention period after sensitive email messages containing live secrets are marked as failed (all attempts exhausted). <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes failed rows on the next cleanup run.
+    /// Retention period after email messages not classified exactly as <see cref="EmailMessageSensitivity.Normal"/> are marked as failed (all attempts exhausted). <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes failed rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveFailedSensitiveEmailsAfter { get; set; } = TimeSpan.FromHours(1);
 
@@ -136,7 +138,7 @@ public sealed class AshlarCleanupOptions
     public TimeSpan? RemoveDiscardedEmailsAfter { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>
-    /// Retention period after sensitive email messages containing live secrets are discarded by an operator. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes discarded rows on the next cleanup run.
+    /// Retention period after email messages not classified exactly as <see cref="EmailMessageSensitivity.Normal"/> are discarded by an operator. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes discarded rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveDiscardedSensitiveEmailsAfter { get; set; } = TimeSpan.FromHours(1);
 

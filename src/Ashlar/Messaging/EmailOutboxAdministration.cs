@@ -406,7 +406,7 @@ public sealed record EmailOutboxAdministrationOperationState(
     string? ToAddress,
     string? Subject,
     EmailOutboxStatus Status,
-    bool SuppressPublicFields = false);
+    bool SuppressPublicFields);
 
 /// <summary>
 /// Provider-facing email outbox projection used by safe administration mapping helpers.
@@ -636,18 +636,18 @@ public static class EmailOutboxAdministrationProvider
     /// </summary>
     /// <param name="status">The operation status.</param>
     /// <param name="id">The outbox entry id.</param>
+    /// <param name="suppressPublicFields">Whether recipient and subject metadata must be suppressed.</param>
     /// <param name="toAddress">The stored recipient address.</param>
     /// <param name="subject">The stored subject.</param>
     /// <param name="outboxStatus">The stored outbox status.</param>
-    /// <param name="suppressPublicFields">Whether recipient and subject metadata must be suppressed.</param>
     /// <returns>A mutation result that omits public metadata when the row may contain live secrets or protected content.</returns>
     public static EmailOutboxOperationResult CreateOperationResult(
         EmailOutboxOperationStatus status,
         Guid id,
+        bool suppressPublicFields,
         string? toAddress = null,
         string? subject = null,
-        EmailOutboxStatus? outboxStatus = null,
-        bool suppressPublicFields = false)
+        EmailOutboxStatus? outboxStatus = null)
     {
         return new EmailOutboxOperationResult(
             status,
@@ -668,7 +668,7 @@ public static class EmailOutboxAdministrationProvider
         EmailOutboxAdministrationOperationState state)
     {
         ArgumentNullException.ThrowIfNull(state);
-        return CreateOperationResult(status, state.Id, state.ToAddress, state.Subject, state.Status, state.SuppressPublicFields);
+        return CreateOperationResult(status, state.Id, state.SuppressPublicFields, state.ToAddress, state.Subject, state.Status);
     }
 
     /// <summary>
@@ -681,13 +681,13 @@ public static class EmailOutboxAdministrationProvider
     {
         if (state is null)
         {
-            return CreateOperationResult(EmailOutboxOperationStatus.NotFound, id);
+            return CreateOperationResult(EmailOutboxOperationStatus.NotFound, id, suppressPublicFields: true);
         }
 
         var status = state.Status == EmailOutboxStatus.Discarded
             ? EmailOutboxOperationStatus.AlreadyDiscarded
             : EmailOutboxOperationStatus.NotFailed;
-        return CreateOperationResult(status, state.Id, state.ToAddress, state.Subject, state.Status, state.SuppressPublicFields);
+        return CreateOperationResult(status, state.Id, state.SuppressPublicFields, state.ToAddress, state.Subject, state.Status);
     }
 
     /// <summary>
@@ -725,7 +725,7 @@ public static class EmailOutboxAdministrationProvider
 
     private static bool IsSensitive(EmailOutboxAdministrationProjection record)
     {
-        return record.Sensitivity == EmailMessageSensitivity.ContainsLiveSecret ||
+        return record.Sensitivity != EmailMessageSensitivity.Normal ||
             record.BodyProtection != EmailOutboxBodyProtection.None;
     }
 

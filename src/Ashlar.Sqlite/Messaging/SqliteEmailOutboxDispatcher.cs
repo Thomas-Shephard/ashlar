@@ -118,8 +118,6 @@ internal sealed class SqliteEmailOutboxDispatcher<TTransport>(
         var subjectOrdinal = reader.GetOrdinal("subject");
         var textBodyOrdinal = reader.GetOrdinal("text_body");
         var htmlBodyOrdinal = reader.GetOrdinal("html_body");
-        var sensitivityOrdinal = reader.GetOrdinal("sensitivity");
-        var bodyProtectionOrdinal = reader.GetOrdinal("body_protection");
         var headersOrdinal = reader.GetOrdinal("headers");
         var metadataOrdinal = reader.GetOrdinal("metadata");
         var attemptCountOrdinal = reader.GetOrdinal("attempt_count");
@@ -137,8 +135,8 @@ internal sealed class SqliteEmailOutboxDispatcher<TTransport>(
                 Subject = reader.GetString(subjectOrdinal),
                 TextBody = reader.GetValue(textBodyOrdinal) as string,
                 HtmlBody = reader.GetValue(htmlBodyOrdinal) as string,
-                Sensitivity = EmailOutboxDispatch.ParseSensitivity(reader.GetString(sensitivityOrdinal)),
-                BodyProtection = EmailOutboxDispatch.ParseBodyProtection(reader.GetString(bodyProtectionOrdinal)),
+                Sensitivity = EmailOutboxDispatch.ParseSensitivity(reader.GetNullableString("sensitivity")),
+                BodyProtection = EmailOutboxDispatch.ParseBodyProtection(reader.GetNullableString("body_protection")),
                 Headers = reader.GetValue(headersOrdinal) as string,
                 Metadata = reader.GetValue(metadataOrdinal) as string,
                 AttemptCount = reader.GetInt32(attemptCountOrdinal)

@@ -71,7 +71,7 @@ internal sealed class SmtpEmailTransportTests
     {
         var message = new EmailMessage(
             to: "recipient@example.com",
-            subject: "Test Subject",
+            subject: "Test Subject", EmailMessageSensitivity.Normal,
             textBody: "Hello",
             options: new EmailMessageOptions
             {
@@ -110,7 +110,7 @@ internal sealed class SmtpEmailTransportTests
     {
         var message = new EmailMessage(
             to: "recipient@example.com",
-            subject: "Test Subject",
+            subject: "Test Subject", EmailMessageSensitivity.Normal,
             textBody: "Hello Text",
             htmlBody: "<b>Hello HTML</b>",
             options: new EmailMessageOptions
@@ -165,7 +165,7 @@ internal sealed class SmtpEmailTransportTests
     {
         var message = new EmailMessage(
             to: "recipient@example.com",
-            subject: "Test Subject",
+            subject: "Test Subject", EmailMessageSensitivity.Normal,
             textBody: "Hello Text");
 
         MimeMessage? sentMessage = null;
@@ -185,7 +185,7 @@ internal sealed class SmtpEmailTransportTests
         _options.DefaultFromAddress = null;
         var message = new EmailMessage(
             to: "recipient@example.com",
-            subject: "Test Subject",
+            subject: "Test Subject", EmailMessageSensitivity.Normal,
             textBody: "Hello Text");
 
         Assert.ThrowsAsync<InvalidOperationException>(() => _transport.DeliverAsync(message));
@@ -196,7 +196,7 @@ internal sealed class SmtpEmailTransportTests
     {
         var message = new EmailMessage(
             to: "recipient@example.com",
-            subject: "Test Subject",
+            subject: "Test Subject", EmailMessageSensitivity.Normal,
             textBody: "Hello Text");
 
         string? sentContentType = null;
@@ -224,7 +224,7 @@ internal sealed class SmtpEmailTransportTests
     {
         var message = new EmailMessage(
             to: "recipient@example.com",
-            subject: "Test Subject",
+            subject: "Test Subject", EmailMessageSensitivity.Normal,
             htmlBody: "<b>Hello HTML</b>");
 
         string? sentContentType = null;
@@ -252,7 +252,7 @@ internal sealed class SmtpEmailTransportTests
     {
         _options.Username = "user";
         _options.Password = "secure_password";
-        var message = new EmailMessage(to: "r@e.com", subject: "S", textBody: "B");
+        var message = new EmailMessage(to: "r@e.com", subject: "S", sensitivity: EmailMessageSensitivity.Normal, textBody: "B");
 
         await _transport.DeliverAsync(message);
 
@@ -264,7 +264,7 @@ internal sealed class SmtpEmailTransportTests
     {
         _options.Username = "user";
         _options.Password = "secret_password";
-        var message = new EmailMessage(to: "r@e.com", subject: "S", textBody: "B");
+        var message = new EmailMessage(to: "r@e.com", subject: "S", sensitivity: EmailMessageSensitivity.Normal, textBody: "B");
 
         _mockSmtpClient.Setup(x => x.SendAsync(It.IsAny<MimeMessage>(), It.IsAny<CancellationToken>(), It.IsAny<ITransferProgress>()))
             .ThrowsAsync(new InvalidOperationException("Error with secret_password in it"));
@@ -285,7 +285,7 @@ internal sealed class SmtpEmailTransportTests
     {
         _options.Username = "user";
         _options.Password = "secret_password";
-        var message = new EmailMessage(to: "r@e.com", subject: "S", textBody: "B");
+        var message = new EmailMessage(to: "r@e.com", subject: "S", sensitivity: EmailMessageSensitivity.Normal, textBody: "B");
 
         var inner = new InvalidOperationException("Inner error with secret_password");
         var outer = new InvalidOperationException("Outer error", inner);
@@ -309,7 +309,7 @@ internal sealed class SmtpEmailTransportTests
     {
         var cts = new CancellationTokenSource();
         cts.Cancel();
-        var message = new EmailMessage(to: "r@e.com", subject: "S", textBody: "B");
+        var message = new EmailMessage(to: "r@e.com", subject: "S", sensitivity: EmailMessageSensitivity.Normal, textBody: "B");
 
         _mockSmtpClient.Setup(x => x.ConnectAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<MailKit.Security.SecureSocketOptions>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OperationCanceledException());
@@ -321,7 +321,7 @@ internal sealed class SmtpEmailTransportTests
     {
         _options.Timeout = TimeSpan.FromSeconds(5);
         _options.SecurityOptions = MailKit.Security.SecureSocketOptions.SslOnConnect;
-        var message = new EmailMessage(to: "r@e.com", subject: "S", textBody: "B");
+        var message = new EmailMessage(to: "r@e.com", subject: "S", sensitivity: EmailMessageSensitivity.Normal, textBody: "B");
 
         await _transport.DeliverAsync(message);
 

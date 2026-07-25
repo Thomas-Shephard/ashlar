@@ -168,12 +168,11 @@ internal sealed class PasswordResetService : IPasswordResetService
         var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, ResetTokenLabel, token);
         var resetEmail = new EmailMessage(
             user.DisplayEmail,
-            _options.Value.Subject,
+            _options.Value.Subject, EmailMessageSensitivity.ContainsLiveSecret,
             message,
             options: new EmailMessageOptions
             {
                 From = _options.Value.FromAddress,
-                Sensitivity = EmailMessageSensitivity.ContainsLiveSecret
             });
         var transactionalEmailOutbox = TransactionalEmailDelivery.IsTransactionalDurableOutbox(_dependencies.EmailSender);
         var resetEmailQueued = true;

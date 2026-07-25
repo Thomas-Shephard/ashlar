@@ -168,7 +168,7 @@ await using (var tx = await transactionProvider.BeginTransactionAsync())
     // ... perform identity operations ...
 
     // This message is only persisted if the transaction commits
-    await emailSender.SendAsync(new EmailMessage("user@example.com", "Welcome", "Hello!"));
+    await emailSender.SendAsync(new EmailMessage("user@example.com", "Welcome", EmailMessageSensitivity.Normal, "Hello!"));
 
     await tx.CommitAsync();
 }

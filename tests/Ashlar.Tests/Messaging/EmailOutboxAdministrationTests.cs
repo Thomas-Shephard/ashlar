@@ -1,3 +1,4 @@
+using System.Reflection;
 using Ashlar.Auditing;
 using Ashlar.Messaging;
 
@@ -149,30 +150,41 @@ internal sealed class EmailOutboxAdministrationProviderTests
     [Test]
     public void CreateOperationResultSanitizesPublicFields()
     {
-        var state = new EmailOutboxAdministrationOperationState(Guid.NewGuid(), "state@example.com", "State subject", EmailOutboxStatus.Pending);
+        var suppressionParameters = new[]
+        {
+            typeof(EmailOutboxAdministrationOperationState).GetConstructors().Single().GetParameters().Single(parameter => parameter.Name == "SuppressPublicFields"),
+            typeof(EmailOutboxAdministrationProvider).GetMethod(
+                nameof(EmailOutboxAdministrationProvider.CreateOperationResult),
+                [typeof(EmailOutboxOperationStatus), typeof(Guid), typeof(bool), typeof(string), typeof(string), typeof(EmailOutboxStatus?)])!
+                .GetParameters().Single(parameter => parameter.Name == "suppressPublicFields")
+        };
+        var state = new EmailOutboxAdministrationOperationState(Guid.NewGuid(), "state@example.com", "State subject", EmailOutboxStatus.Pending, SuppressPublicFields: false);
         var safe = EmailOutboxAdministrationProvider.CreateOperationResult(
             EmailOutboxOperationStatus.Retried,
             Guid.NewGuid(),
+            suppressPublicFields: false,
             "user@example.com",
             "Subject",
             EmailOutboxStatus.Pending);
         var unsafeResult = EmailOutboxAdministrationProvider.CreateOperationResult(
             EmailOutboxOperationStatus.Discarded,
             Guid.NewGuid(),
+            suppressPublicFields: false,
             "bad\nrecipient@example.com",
             "bad\rsubject",
             EmailOutboxStatus.Discarded);
         var suppressed = EmailOutboxAdministrationProvider.CreateOperationResult(
             EmailOutboxOperationStatus.Retried,
             Guid.NewGuid(),
+            suppressPublicFields: true,
             "secret@example.com",
             "Token",
-            EmailOutboxStatus.Pending,
-            suppressPublicFields: true);
+            EmailOutboxStatus.Pending);
         var fromState = EmailOutboxAdministrationProvider.CreateOperationResult(EmailOutboxOperationStatus.Retried, state);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(suppressionParameters, Has.All.Matches<ParameterInfo>(parameter => !parameter.IsOptional && !parameter.HasDefaultValue));
             Assert.That(safe.ToAddress, Is.EqualTo("user@example.com"));
             Assert.That(safe.Subject, Is.EqualTo("Subject"));
             Assert.That(safe.OutboxStatus, Is.EqualTo(EmailOutboxStatus.Pending));
@@ -189,8 +201,8 @@ internal sealed class EmailOutboxAdministrationProviderTests
     public void CreateNoOpResultReturnsStableStatuses()
     {
         var id = Guid.NewGuid();
-        var pending = new EmailOutboxAdministrationOperationState(id, "user@example.com", "Subject", EmailOutboxStatus.Pending);
-        var discarded = new EmailOutboxAdministrationOperationState(id, "user@example.com", "Subject", EmailOutboxStatus.Discarded);
+        var pending = new EmailOutboxAdministrationOperationState(id, "user@example.com", "Subject", EmailOutboxStatus.Pending, SuppressPublicFields: false);
+        var discarded = new EmailOutboxAdministrationOperationState(id, "user@example.com", "Subject", EmailOutboxStatus.Discarded, SuppressPublicFields: false);
 
         var missingResult = EmailOutboxAdministrationProvider.CreateNoOpResult(id, null);
         var pendingResult = EmailOutboxAdministrationProvider.CreateNoOpResult(id, pending);
@@ -219,7 +231,7 @@ internal sealed class EmailOutboxAdministrationProviderTests
             UserAgent = "tests",
             CorrelationId = "correlation"
         });
-        var result = EmailOutboxAdministrationProvider.CreateOperationResult(EmailOutboxOperationStatus.Retried, id);
+        var result = EmailOutboxAdministrationProvider.CreateOperationResult(EmailOutboxOperationStatus.Retried, id, suppressPublicFields: true);
 
         await EmailOutboxAdministrationProvider.RecordSuccessfulOperationAsync(
             sink,
@@ -329,7 +341,7 @@ internal sealed class EmailOutboxAdministrationProviderTests
 
         protected override Task<EmailOutboxAdministrationOperationState?> RetryFailedAsync(Guid id, CancellationToken cancellationToken)
         {
-            return Task.FromResult<EmailOutboxAdministrationOperationState?>(new(id, "retry@example.com", "Retry", EmailOutboxStatus.Pending));
+            return Task.FromResult<EmailOutboxAdministrationOperationState?>(new(id, "retry@example.com", "Retry", EmailOutboxStatus.Pending, SuppressPublicFields: false));
         }
 
         protected override Task<EmailOutboxAdministrationOperationState?> DiscardFailedAsync(Guid id, CancellationToken cancellationToken)

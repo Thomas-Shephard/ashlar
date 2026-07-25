@@ -8,7 +8,7 @@ internal sealed class NullEmailSenderTests
     public async Task NullEmailSenderCompletesSuccessfully()
     {
         var sender = new NullEmailSender();
-        var message = new EmailMessage("user@example.com", "Subject", "Body");
+        var message = new EmailMessage("user@example.com", "Subject", EmailMessageSensitivity.Normal, "Body");
 
         await sender.SendAsync(message);
 

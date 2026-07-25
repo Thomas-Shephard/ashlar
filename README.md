@@ -118,7 +118,7 @@ services.AddSingleton<IEmailSender, MyEmailSender>();
 services.AddAshlarIdentity();
 ```
 
-`EmailMessage` contains simple string address fields (`To`, `From`, and `ReplyTo`) plus subject, text and/or HTML body, headers, metadata, and an `EmailMessageSensitivity` classification. Token-bearing Ashlar emails are marked `ContainsLiveSecret`; ordinary notifications remain `Normal`. This is a provider-neutral boundary for senders, outboxes, dispatchers, diagnostics, and future retention/redaction policy. It does not encrypt email bodies at rest.
+`EmailMessage` contains simple string address fields (`To`, `From`, and `ReplyTo`) plus subject, text and/or HTML body, headers, metadata, and a required `EmailMessageSensitivity` classification. Callers must explicitly classify every body as `Normal` or `ContainsLiveSecret`; token-bearing Ashlar emails use `ContainsLiveSecret`. This is a provider-neutral boundary for senders, outboxes, dispatchers, diagnostics, and future retention/redaction policy. It does not encrypt email bodies at rest.
 
 Durable provider outbox senders can also implement `ITransactionalEmailOutboxSender`. Ashlar token flows enqueue sensitive messages inside the active Ashlar transaction when this marker is present. Direct/non-transactional senders still run after commit, so SMTP delivery is not attempted while credential state can still roll back.
 
