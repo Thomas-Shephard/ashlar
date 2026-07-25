@@ -165,6 +165,9 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         using var forbiddenTenantRequest = new HttpRequestMessage(HttpMethod.Get, "/api/admin/users");
         forbiddenTenantRequest.Headers.Add("X-Tenant-Id", tenantId.ToString("D"));
         var forbiddenTenantResponse = await AdminClient.SendAsync(forbiddenTenantRequest);
+        using var forbiddenTenantSecurityRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/admin/users/{tenantMemberId}/security");
+        forbiddenTenantSecurityRequest.Headers.Add("X-Tenant-Id", tenantId.ToString("D"));
+        var forbiddenTenantSecurityResponse = await AdminClient.SendAsync(forbiddenTenantSecurityRequest);
         using var forbiddenProjectCatalogRequest = new HttpRequestMessage(HttpMethod.Get, "/api/admin/projects");
         forbiddenProjectCatalogRequest.Headers.Add("X-Tenant-Id", tenantId.ToString("D"));
         var forbiddenProjectCatalogResponse = await AdminClient.SendAsync(forbiddenProjectCatalogRequest);
@@ -172,10 +175,20 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         using var tenantAdminClient = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         AddTenantHeader(tenantAdminClient, tenantId);
         await SignInWithMagicLinkAsync(tenantAdminClient, tenantAdminEmail);
-        await EnrollTotpAsync(tenantAdminClient, tenantAdminId);
+        var tenantAdminTotpSecret = await EnrollTotpAsync(tenantAdminClient, tenantAdminId);
 
         var tenantUsers = await GetJsonAsync(tenantAdminClient, "/api/admin/users");
+        await ExpireCurrentStepUpAsync(tenantAdminId);
+        await AssertStepUpForbiddenGetAsync(tenantAdminClient, $"/api/admin/users/{tenantMemberId}/security");
+        await VerifyCurrentSessionWithTotpAsync(tenantAdminClient, tenantAdminTotpSecret);
         var tenantSecurity = await tenantAdminClient.GetAsync($"/api/admin/users/{tenantMemberId}/security");
+        var tenantSecurityJson = await tenantSecurity.Content.ReadFromJsonAsync<JsonElement>();
+        await using var auditConnection = new NpgsqlConnection(GetConnectionString());
+        var tenantSecurityAuditCount = await auditConnection.ExecuteScalarAsync<int>("""
+            SELECT count(*) FROM ashlar_security_events
+            WHERE event_type = 'administration.read' AND actor_user_id = @ActorUserId
+              AND tenant_id = @TenantId AND outcome = 'success' AND properties->>'operation' = 'ReadUser'
+            """, new { ActorUserId = tenantAdminId, TenantId = tenantId });
         var tenantGrant = await PostAsJsonWithCsrfAsync(tenantAdminClient, "/api/projects/alpha/grants", new { userId = tenantMemberId });
         var projectGrantTenantId = await GetProjectGrantTenantIdAsync(tenantMemberId, "alpha");
         var disableTenantMember = await PostAsJsonWithCsrfAsync(tenantAdminClient, $"/api/admin/users/{tenantMemberId}/disable", new { reason = "tenant-scope-test" });
@@ -190,12 +203,16 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             Assert.That(Ids(globalUsers), Does.Not.Contain(tenantAdminId));
             Assert.That(Ids(globalUsers), Does.Not.Contain(tenantMemberId));
             Assert.That(forbiddenTenantResponse.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+            Assert.That(forbiddenTenantSecurityResponse.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
             Assert.That(forbiddenProjectCatalogResponse.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
             Assert.That(Ids(tenantUsers), Does.Contain(tenantAdminId));
             Assert.That(Ids(tenantUsers), Does.Contain(tenantMemberId));
             Assert.That(Ids(tenantUsers), Does.Not.Contain(adminUserId));
             Assert.That(Ids(tenantUsers), Does.Not.Contain(globalUserId));
             Assert.That(tenantSecurity.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(tenantSecurityJson.TryGetProperty("user", out _), Is.False);
+            Assert.That(tenantSecurityJson.GetProperty("userId").GetGuid(), Is.EqualTo(tenantMemberId));
+            Assert.That(tenantSecurityAuditCount, Is.EqualTo(1));
             Assert.That(tenantGrant.StatusCode, Is.EqualTo(HttpStatusCode.OK));
             Assert.That(projectGrantTenantId, Is.EqualTo(tenantId));
             Assert.That(disableTenantMember.StatusCode, Is.EqualTo(HttpStatusCode.OK));
@@ -361,6 +378,8 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             Assert.That(StepUpPoliciesFor("POST", "/api/admin/projects"), Is.EqualTo(new[] { AshlarStepUpPolicyNames.FreshMfa }));
             Assert.That(StepUpPoliciesFor("POST", "/api/projects/{projectId}/grants"), Is.EqualTo(new[] { AshlarStepUpPolicyNames.FreshMfa }));
             Assert.That(StepUpPoliciesFor("POST", "/api/invitations"), Is.EqualTo(new[] { AshlarStepUpPolicyNames.FreshMfa }));
+            Assert.That(StepUpPoliciesFor("GET", "/api/admin/users"), Is.EqualTo(new[] { AshlarStepUpPolicyNames.FreshMfa }));
+            Assert.That(StepUpPoliciesFor("GET", "/api/admin/users/{userId:guid}/security"), Is.EqualTo(new[] { AshlarStepUpPolicyNames.FreshMfa }));
             Assert.That(StepUpPoliciesFor("GET", "/api/admin/projects"), Is.Empty);
             Assert.That(StepUpPoliciesFor("POST", "/api/invitations/accept"), Is.Empty);
         }
