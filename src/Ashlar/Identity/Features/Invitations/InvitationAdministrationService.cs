@@ -15,7 +15,7 @@ internal sealed class InvitationAdministrationService : IInvitationAdministratio
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly AshlarDurableTransactionProvider _transactionProvider;
-    private readonly AdminReadBoundary _boundary;
+    private readonly AccountSecurityOperationBoundary _boundary;
 
     /// <summary>Initializes invitation revocation with durable audit composition.</summary>
     public InvitationAdministrationService(

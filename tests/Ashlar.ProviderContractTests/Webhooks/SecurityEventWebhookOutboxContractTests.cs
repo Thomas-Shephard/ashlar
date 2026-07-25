@@ -1,4 +1,5 @@
 using Ashlar.Testing;
+using Ashlar.Identity.Abstractions.Services;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,6 +11,8 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
     private const string ValidSecret = "0123456789abcdef0123456789abcdef";
 
     protected static readonly DateTimeOffset Now = new(2026, 5, 24, 12, 0, 0, TimeSpan.Zero);
+    protected static readonly AccountSecurityActorTestContext Security = new(Now, IAccountSecurityAdministrationService.ProofPurpose);
+    private static readonly AccountSecurityActorTestContext ReadSecurity = new(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
     private static readonly AshlarSecurityEventWebhookOutboxStatus[] ExpectedPagedStatuses =
     [
         AshlarSecurityEventWebhookOutboxStatus.Scheduled,
@@ -17,6 +20,12 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
     ];
     private static readonly string[] FailedEndpointNames = ["failed"];
     private static readonly JsonSerializerOptions WebJsonOptions = new(JsonSerializerDefaults.Web);
+
+    static SecurityEventWebhookOutboxContractTests()
+    {
+        Security.Sessions.AdditionalSessions.Add(ReadSecurity.Sessions.Session
+            ?? throw new InvalidOperationException("The read security context must have a session."));
+    }
 
     protected abstract Task<Guid> SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow row);
 
@@ -37,8 +46,8 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         await using var scope = CreateAsyncScope();
         var browser = GetSecurityEventWebhookOutboxBrowser(scope.ServiceProvider);
 
-        var page = await browser.ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 2, Offset = 1 });
-        var failed = await browser.ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest
+        var page = await browser.ListAsync(ReadSecurity.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 2, Offset = 1 });
+        var failed = await browser.ListAsync(ReadSecurity.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
         {
             Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
             Limit = 10
@@ -323,7 +332,7 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
 
     private static AshlarSecurityEventWebhookOutboxOperationRequest CreateOperationRequest(Guid id)
     {
-        return new AshlarSecurityEventWebhookOutboxOperationRequest(id, new AuditContext(Guid.NewGuid(), "203.0.113.9", "agent", "corr"));
+        return new AshlarSecurityEventWebhookOutboxOperationRequest(id, Security.Actor);
     }
 
     private static AshlarSecurityEventWebhookDelivery CreateDelivery(string endpointName)

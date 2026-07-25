@@ -72,7 +72,15 @@ public enum AccountSecurityOperation
     /// <summary>Authorizes an administrator to inspect one operational throttling record.</summary>
     ReadAuthenticationRateLimitBucket,
     /// <summary>Authorizes an administrator to clear one operational throttling record.</summary>
-    ResetAuthenticationRateLimitBucket
+    ResetAuthenticationRateLimitBucket,
+    /// <summary>Tests a configured security-event webhook endpoint.</summary>
+    TestSecurityEventWebhookEndpoint,
+    /// <summary>Browses safe security-event webhook outbox metadata.</summary>
+    BrowseSecurityEventWebhookOutbox,
+    /// <summary>Retries a failed security-event webhook delivery.</summary>
+    RetrySecurityEventWebhookDelivery,
+    /// <summary>Discards a failed security-event webhook delivery.</summary>
+    DiscardSecurityEventWebhookDelivery
 }
 
 /// <summary>Context supplied to the required host authorizer.</summary>

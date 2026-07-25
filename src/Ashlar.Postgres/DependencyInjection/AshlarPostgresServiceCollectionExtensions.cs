@@ -414,7 +414,10 @@ public static class AshlarPostgresServiceCollectionExtensions
             provider.GetRequiredService<IPostgresConnectionProvider>(),
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ISecurityEventSink>(),
-            provider.GetRequiredService<AshlarDurableTransactionProvider>())));
+            provider.GetRequiredService<AshlarDurableTransactionProvider>(),
+            provider.GetRequiredService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+            provider.GetRequiredService<IPersistentSecurityEventSink>())));
         services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxBrowser, PostgresSecurityEventWebhookOutboxBrowser>());
         services.Replace(ServiceDescriptor.Scoped<ISecurityEventWebhookOutboxDiagnostics, PostgresSecurityEventWebhookOutboxDiagnostics>());
 

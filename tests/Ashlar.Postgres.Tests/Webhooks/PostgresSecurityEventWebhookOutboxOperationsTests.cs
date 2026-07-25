@@ -1,4 +1,5 @@
 using Dapper;
+using Ashlar.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 
@@ -8,6 +9,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
 {
     private static readonly DateTimeOffset Now = new(2026, 5, 31, 12, 0, 0, TimeSpan.Zero);
     private static readonly string[] AuditPropertyNames = ["delivery_id", "endpoint_name", "event_id", "event_type", "outcome"];
+    private static readonly AccountSecurityActorTestContext Security = new(Now, IAccountSecurityAdministrationService.ProofPurpose);
     private FakeTimeProvider _timeProvider = null!;
     private RecordingSecurityEventSink _audit = null!;
     private ServiceProvider _provider = null!;
@@ -22,6 +24,9 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
         services.AddSingleton<ISecurityEventHandler>(_audit);
         services.AddAshlarPostgres(GetConnectionString());
         services.AddAshlarPostgresSecurityEventWebhookOutbox();
+        services.AddSingleton<IAuthenticationSessionRepository>(Security.Sessions);
+        services.AddSingleton<IAccountSecurityOperationAuthorizer>(Security.Authorizer);
+        services.AddSingleton<IPersistentSecurityEventSink>(Security.AuditSink);
         _provider = services.BuildServiceProvider();
         await _provider.InitializeAshlarPostgresSchemaAsync();
     }
@@ -50,11 +55,11 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxOperations(null!, _timeProvider, audit, transactionProvider));
-            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxOperations(connectionProvider, null!, audit, transactionProvider));
-            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxOperations(connectionProvider, _timeProvider, null!, transactionProvider));
-            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxOperations(connectionProvider, _timeProvider, audit, null!));
-            Assert.DoesNotThrow(() => _ = new PostgresSecurityEventWebhookOutboxOperations(connectionProvider, _timeProvider, audit, transactionProvider));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxOperations(null!, _timeProvider, audit, transactionProvider, Security.Sessions, Security.Authorizer, Security.AuditSink));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxOperations(connectionProvider, null!, audit, transactionProvider, Security.Sessions, Security.Authorizer, Security.AuditSink));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxOperations(connectionProvider, _timeProvider, null!, transactionProvider, Security.Sessions, Security.Authorizer, Security.AuditSink));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxOperations(connectionProvider, _timeProvider, audit, null!, Security.Sessions, Security.Authorizer, Security.AuditSink));
+            Assert.DoesNotThrow(() => _ = new PostgresSecurityEventWebhookOutboxOperations(connectionProvider, _timeProvider, audit, transactionProvider, Security.Sessions, Security.Authorizer, Security.AuditSink));
         }
     }
 
@@ -117,7 +122,8 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
             _provider.GetRequiredService<IPostgresConnectionProvider>(),
             _timeProvider,
             new ThrowingSecurityEventSink(new InvalidOperationException("audit failed")),
-            _provider.GetRequiredService<AshlarDurableTransactionProvider>());
+            _provider.GetRequiredService<AshlarDurableTransactionProvider>(),
+            Security.Sessions, Security.Authorizer, Security.AuditSink);
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.RetryAsync(Request(id)));
         var row = await QueryStateAsync(id);
@@ -138,7 +144,8 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
             _provider.GetRequiredService<IPostgresConnectionProvider>(),
             _timeProvider,
             new ThrowingSecurityEventSink(new InvalidOperationException("audit failed")),
-            _provider.GetRequiredService<AshlarDurableTransactionProvider>());
+            _provider.GetRequiredService<AshlarDurableTransactionProvider>(),
+            Security.Sessions, Security.Authorizer, Security.AuditSink);
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.DiscardAsync(Request(id)));
         var row = await QueryStateAsync(id);
@@ -235,7 +242,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxOperations>(), Is.TypeOf<PostgresSecurityEventWebhookOutboxOperations>());
+            Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxOperations>());
             Assert.That(bestEffortProvider.GetService<IAshlarSecurityEventWebhookOutboxOperations>(), Is.Null);
         }
     }
@@ -244,7 +251,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
 
     private static AshlarSecurityEventWebhookOutboxOperationRequest Request(Guid id)
     {
-        return new AshlarSecurityEventWebhookOutboxOperationRequest(id, new AuditContext(Guid.NewGuid(), "203.0.113.9", "agent", "corr"));
+        return new AshlarSecurityEventWebhookOutboxOperationRequest(id, Security.Actor);
     }
 
     private async Task<Guid> InsertRowAsync(

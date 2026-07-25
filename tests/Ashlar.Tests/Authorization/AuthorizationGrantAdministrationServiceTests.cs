@@ -400,7 +400,7 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AdminReadBoundary.EventType));
+            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AccountSecurityOperationBoundary.EventType));
             Assert.That(sink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Success));
         }
         Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(new FakeRepository(), sink: new ThrowingSink())

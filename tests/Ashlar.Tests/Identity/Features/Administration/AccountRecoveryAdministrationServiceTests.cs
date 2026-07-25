@@ -111,7 +111,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
         var sessionId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
         return new AccountSecurityActorContext(userId, TenantContext.Global, sessionId,
-            new FreshMfaVerificationProof(userId, null, sessionId, now, now.AddMinutes(5), AdminReadBoundary.ProofPurpose),
+            new FreshMfaVerificationProof(userId, null, sessionId, now, now.AddMinutes(5), AccountSecurityOperationBoundary.ProofPurpose),
             new AuditContext(userId));
     }
 

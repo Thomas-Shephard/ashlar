@@ -1,3 +1,9 @@
+using Ashlar.Auditing;
+using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.Identity.Abstractions.Services;
+using Ashlar.Identity.Features.Administration;
+using Ashlar.Identity.Models.AccountSecurity;
+
 namespace Ashlar.Webhooks.SecurityEvents;
 
 /// <summary>
@@ -8,12 +14,60 @@ public interface IAshlarSecurityEventWebhookOutboxBrowser
     /// <summary>
     /// Lists safe security event webhook outbox delivery summaries.
     /// </summary>
+    /// <param name="actor">The authenticated and proof-bound actor.</param>
     /// <param name="request">Paging and status filters for the read-only browse operation.</param>
     /// <param name="cancellationToken">A token that can cancel the browse operation before results are returned.</param>
     /// <returns>Matching outbox delivery summaries with destination URI, body, headers, and lock-owner values omitted.</returns>
     Task<AshlarSecurityEventWebhookOutboxBrowseResult> ListAsync(
+        AccountSecurityActorContext actor,
         AshlarSecurityEventWebhookOutboxBrowseRequest request,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>Shared authorization, paging, and audit behavior for provider-specific webhook outbox browsers.</summary>
+/// <param name="sessions">The authentication-session repository.</param>
+/// <param name="authorizer">The host operation authorizer.</param>
+/// <param name="auditSink">The durable audit sink.</param>
+/// <param name="timeProvider">The clock used for proof validation and audit timestamps.</param>
+public abstract class AshlarSecurityEventWebhookOutboxBrowserBase(
+    IAuthenticationSessionRepository sessions,
+    IAccountSecurityOperationAuthorizer authorizer,
+    IPersistentSecurityEventSink auditSink,
+    TimeProvider timeProvider) : IAshlarSecurityEventWebhookOutboxBrowser
+{
+    private readonly AccountSecurityOperationBoundary _boundary = new(
+        sessions, authorizer, auditSink, timeProvider, eventType: "security_event_webhook.outbox_browse");
+
+    /// <inheritdoc />
+    public async Task<AshlarSecurityEventWebhookOutboxBrowseResult> ListAsync(
+        AccountSecurityActorContext actor,
+        AshlarSecurityEventWebhookOutboxBrowseRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(request);
+        if (!await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
+                AccountSecurityOperation.BrowseSecurityEventWebhookOutbox, cancellationToken).ConfigureAwait(false))
+            return new AshlarSecurityEventWebhookOutboxBrowseResult([], request.Limit, request.Offset, false);
+
+        var rows = await LoadAsync(request, cancellationToken).ConfigureAwait(false);
+        var result = new AshlarSecurityEventWebhookOutboxBrowseResult(
+            rows.Take(request.Limit).ToList().AsReadOnly(),
+            request.Limit,
+            request.Offset,
+            rows.Count > request.Limit);
+        await _boundary.RecordSuccessAsync(
+            actor, null, true, AccountSecurityOperation.BrowseSecurityEventWebhookOutbox).ConfigureAwait(false);
+        return result;
+    }
+
+    /// <summary>Loads at most the requested page plus one sentinel row.</summary>
+    /// <param name="request">The validated browse request.</param>
+    /// <param name="cancellationToken">A token that can cancel provider loading.</param>
+    /// <returns>The safe provider rows, including a sentinel row when another page exists.</returns>
+    protected abstract Task<IReadOnlyList<AshlarSecurityEventWebhookOutboxDeliverySummary>> LoadAsync(
+        AshlarSecurityEventWebhookOutboxBrowseRequest request,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>

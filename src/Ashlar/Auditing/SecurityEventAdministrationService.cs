@@ -18,7 +18,7 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
     internal const int MaximumLimit = 100;
 
     private readonly ISecurityEventAdministrationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-    private readonly AdminReadBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
+    private readonly AccountSecurityOperationBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
 
     /// <inheritdoc />
     public async Task<Result<SecurityEventSearchResult>> SearchSecurityEventsAsync(SearchSecurityEventsRequest request, CancellationToken cancellationToken = default)

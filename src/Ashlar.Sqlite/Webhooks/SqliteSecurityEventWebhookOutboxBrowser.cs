@@ -5,25 +5,25 @@ namespace Ashlar.Sqlite.Webhooks;
 
 internal sealed class SqliteSecurityEventWebhookOutboxBrowser(
     ISqliteConnectionProvider connectionProvider,
-    TimeProvider timeProvider) : IAshlarSecurityEventWebhookOutboxBrowser
+    TimeProvider timeProvider,
+    IAuthenticationSessionRepository sessions,
+    IAccountSecurityOperationAuthorizer authorizer,
+    IPersistentSecurityEventSink auditSink) : AshlarSecurityEventWebhookOutboxBrowserBase(
+        sessions, authorizer, auditSink, timeProvider)
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
-    public async Task<AshlarSecurityEventWebhookOutboxBrowseResult> ListAsync(
+    protected override async Task<IReadOnlyList<AshlarSecurityEventWebhookOutboxDeliverySummary>> LoadAsync(
         AshlarSecurityEventWebhookOutboxBrowseRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
-        AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(request);
-
         var rows = await SqliteQuery.QueryAsync(
             _connectionProvider,
             command => BuildSql(command, request),
             ReadRow,
             cancellationToken).ConfigureAwait(false);
-        var hasMore = rows.Count > request.Limit;
-        var deliveries = rows.Take(request.Limit).Select(static row => row.ToSummary()).ToList().AsReadOnly();
-        return new AshlarSecurityEventWebhookOutboxBrowseResult(deliveries, request.Limit, request.Offset, hasMore);
+        return rows.Select(static row => row.ToSummary()).ToList().AsReadOnly();
     }
 
     private string BuildSql(SqliteCommand command, AshlarSecurityEventWebhookOutboxBrowseRequest request)

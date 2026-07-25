@@ -22,7 +22,7 @@ public sealed class UserAdministrationService(IUserAdministrationRepository repo
 
     private readonly IUserAdministrationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly IAccountSecurityService _accountSecurityService = accountSecurityService ?? throw new ArgumentNullException(nameof(accountSecurityService));
-    private readonly AdminReadBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
+    private readonly AccountSecurityOperationBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
 
 
     /// <inheritdoc />

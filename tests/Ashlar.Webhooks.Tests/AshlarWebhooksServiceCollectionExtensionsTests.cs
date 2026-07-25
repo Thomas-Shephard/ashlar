@@ -3,11 +3,13 @@ using System.Net.Sockets;
 using System.Text;
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.Abstractions.Transactions;
 using Ashlar.Operational.Diagnostics;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 using Ashlar.Testing.DependencyInjection;
+using Ashlar.Testing;
 using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -19,10 +21,12 @@ namespace Ashlar.Webhooks.Tests;
 internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
 {
     private const string ValidSecret = "0123456789abcdef0123456789abcdef";
+    private static readonly AccountSecurityActorTestContext Security = new(DateTimeOffset.UtcNow, IAccountSecurityAdministrationService.ProofPurpose);
     [Test]
     public void AddAshlarSecurityEventWebhooksRegistersHandlerAndOptions()
     {
         var services = new ServiceCollection();
+        AddOperationalSecurity(services);
         var configuredHttpClient = false;
 
         services.AddAshlarSecurityEventWebhooks(
@@ -63,6 +67,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
     public void AddAshlarSecurityEventWebhooksIsIdempotentForHandler()
     {
         var services = new ServiceCollection();
+        AddOperationalSecurity(services);
 
         services.AddAshlarSecurityEventWebhooks();
         services.AddAshlarSecurityEventWebhooks();
@@ -265,6 +270,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
     public void WebhookCompositionsBuildWithStrictValidationWithoutHostedServices()
     {
         var services = new ServiceCollection();
+        AddOperationalSecurity(services);
         services.AddLogging();
         services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
         services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
@@ -319,6 +325,13 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
     {
         public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+    }
+
+    private static void AddOperationalSecurity(IServiceCollection services)
+    {
+        services.AddSingleton<IAuthenticationSessionRepository>(Security.Sessions);
+        services.AddSingleton<IAccountSecurityOperationAuthorizer>(Security.Authorizer);
+        services.AddSingleton<IPersistentSecurityEventSink>(Security.AuditSink);
     }
 
     private sealed class TestHttpClientFactory : IHttpClientFactory

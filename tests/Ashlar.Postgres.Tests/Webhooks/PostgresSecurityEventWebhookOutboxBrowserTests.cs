@@ -1,4 +1,6 @@
 using Dapper;
+using Ashlar.Identity.Models.AccountSecurity;
+using Ashlar.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 
@@ -8,6 +10,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
 {
     private static readonly DateTimeOffset Now = new(2026, 5, 24, 12, 0, 0, TimeSpan.Zero);
     private static readonly string[] FailedEndpointNames = ["failed"];
+    private static readonly AccountSecurityActorTestContext Security = new(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
     private FakeTimeProvider _timeProvider = null!;
     private ServiceProvider _provider = null!;
 
@@ -19,6 +22,9 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
         services.AddSingleton<TimeProvider>(_timeProvider);
         services.AddAshlarPostgres(GetConnectionString());
         services.AddAshlarPostgresSecurityEventWebhookOutbox();
+        services.AddSingleton<IAuthenticationSessionRepository>(Security.Sessions);
+        services.AddSingleton<IAccountSecurityOperationAuthorizer>(Security.Authorizer);
+        services.AddSingleton<IPersistentSecurityEventSink>(Security.AuditSink);
         _provider = services.BuildServiceProvider();
         await _provider.InitializeAshlarPostgresSchemaAsync();
     }
@@ -44,8 +50,8 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxBrowser(null!, _timeProvider));
-            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxBrowser(connectionProvider, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxBrowser(null!, _timeProvider, Security.Sessions, Security.Authorizer, Security.AuditSink));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxBrowser(connectionProvider, null!, Security.Sessions, Security.Authorizer, Security.AuditSink));
         }
     }
 
@@ -56,7 +62,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
         await InsertDiscardedRowAsync();
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 10 });
+            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 10 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -77,13 +83,34 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
     }
 
     [Test]
+    public async Task ListAsyncReturnsNoDataWhenAuthorizationFails()
+    {
+        var security = new AccountSecurityActorTestContext(
+            Now,
+            AccountSecurityActorContext.AdministrationReadProofPurpose,
+            authorized: false);
+        var browser = new PostgresSecurityEventWebhookOutboxBrowser(
+            _provider.GetRequiredService<IPostgresConnectionProvider>(),
+            _timeProvider,
+            security.Sessions,
+            security.Authorizer,
+            security.AuditSink);
+
+        var result = await browser.ListAsync(
+            security.Actor,
+            new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 10 });
+
+        Assert.That(result.Deliveries, Is.Empty);
+    }
+
+    [Test]
     public async Task ListAsyncExcludesDiscardedRowsFromFailedFilter()
     {
         await InsertRowsAsync();
         await InsertDiscardedRowAsync();
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
@@ -98,13 +125,13 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
         await InsertRowsAsync();
 
         var failed = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
             });
         var page = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 2, Offset = 1 });
+            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 2, Offset = 1 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -125,7 +152,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
         await InsertRowsAsync(eventType: "bad\nevent", outcome: "bad\routcome", lastError: longError);
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
@@ -146,7 +173,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
         await InsertRowsAsync(lastError: "kind=http_status;status=502;reason=non_success_status");
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
@@ -161,7 +188,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
         await InsertRowsAsync(lastError: null);
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10

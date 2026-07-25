@@ -1,5 +1,9 @@
 using Ashlar.Auditing;
+using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.Abstractions.Transactions;
+using Ashlar.Identity.Features.Administration;
+using Ashlar.Identity.Models.AccountSecurity;
 
 namespace Ashlar.Webhooks.SecurityEvents;
 
@@ -11,7 +15,7 @@ public interface IAshlarSecurityEventWebhookOutboxOperations
     /// <summary>
     /// Makes a terminal failed delivery dispatchable immediately.
     /// </summary>
-    /// <param name="request">Delivery id and audit context required for the retry mutation.</param>
+    /// <param name="request">Delivery id and authenticated actor context required for the retry mutation.</param>
     /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
     /// <returns>The stable retry outcome with only header-safe event metadata.</returns>
     Task<AshlarSecurityEventWebhookOutboxOperationResult> RetryAsync(
@@ -21,7 +25,7 @@ public interface IAshlarSecurityEventWebhookOutboxOperations
     /// <summary>
     /// Marks a terminal failed delivery as discarded.
     /// </summary>
-    /// <param name="request">Delivery id and audit context required for the discard mutation.</param>
+    /// <param name="request">Delivery id and authenticated actor context required for the discard mutation.</param>
     /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
     /// <returns>The stable discard outcome with only header-safe event metadata.</returns>
     Task<AshlarSecurityEventWebhookOutboxOperationResult> DiscardAsync(
@@ -33,10 +37,10 @@ public interface IAshlarSecurityEventWebhookOutboxOperations
 /// Request for a manual durable security event webhook outbox operation.
 /// </summary>
 /// <param name="DeliveryId">The durable outbox delivery id.</param>
-/// <param name="Audit">The required audit context.</param>
+/// <param name="Actor">The authenticated actor context.</param>
 public sealed record AshlarSecurityEventWebhookOutboxOperationRequest(
     Guid DeliveryId,
-    AuditContext Audit);
+    AccountSecurityActorContext Actor);
 
 /// <summary>
 /// Safe result statuses for manual durable security event webhook outbox operations.
@@ -114,13 +118,21 @@ public sealed record AshlarSecurityEventWebhookOutboxOperationState(
 /// <param name="timeProvider">Clock used for operation audit timestamps.</param>
 /// <param name="securityEventSink">Durable audit sink used for successful mutating operations. It is required so state changes and audit writes share one atomic boundary.</param>
 /// <param name="transactionProvider">Ashlar-owned durable transaction composition used to commit provider mutations with their required audit writes.</param>
+/// <param name="sessions">The authentication-session repository.</param>
+/// <param name="authorizer">The host operation authorizer.</param>
+/// <param name="auditSink">The durable audit sink.</param>
 public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
     TimeProvider timeProvider,
     ISecurityEventSink securityEventSink,
-    AshlarDurableTransactionProvider transactionProvider) : IAshlarSecurityEventWebhookOutboxOperations
+    AshlarDurableTransactionProvider transactionProvider,
+    IAuthenticationSessionRepository sessions,
+    IAccountSecurityOperationAuthorizer authorizer,
+    IPersistentSecurityEventSink auditSink) : IAshlarSecurityEventWebhookOutboxOperations
 {
     private readonly ISecurityEventSink _securityEventSink = securityEventSink ?? throw new ArgumentNullException(nameof(securityEventSink));
     private readonly AshlarDurableTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
+    private readonly AccountSecurityOperationBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider,
+        IAccountSecurityAdministrationService.ProofPurpose, "security_event_webhook.operation");
 
     /// <summary>
     /// Gets the time provider.
@@ -191,6 +203,13 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
         CancellationToken cancellationToken)
     {
         AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(request);
+        var operation = successStatus == AshlarSecurityEventWebhookOutboxOperationStatus.Retried
+            ? AccountSecurityOperation.RetrySecurityEventWebhookDelivery
+            : AccountSecurityOperation.DiscardSecurityEventWebhookDelivery;
+        if (!await _boundary.AuthorizeAsync(request.Actor, null, true, Guid.Empty, operation, cancellationToken).ConfigureAwait(false))
+        {
+            return AshlarSecurityEventWebhookOutboxOperations.CreateResult(AshlarSecurityEventWebhookOutboxOperationStatus.Failed, request.DeliveryId);
+        }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
@@ -232,15 +251,8 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
     }
 }
 
-/// <summary>
-/// Shared validation and safe audit helpers for manual webhook outbox operations.
-/// </summary>
-public static class AshlarSecurityEventWebhookOutboxOperations
+internal static class AshlarSecurityEventWebhookOutboxOperations
 {
-    /// <summary>
-    /// Validates a manual operation request.
-    /// </summary>
-    /// <param name="request">Manual operation request to validate.</param>
     public static void ValidateRequest(AshlarSecurityEventWebhookOutboxOperationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -249,19 +261,9 @@ public static class AshlarSecurityEventWebhookOutboxOperations
             throw new ArgumentException("Delivery ID cannot be empty.", nameof(request));
         }
 
-        ArgumentNullException.ThrowIfNull(request.Audit);
+        ArgumentNullException.ThrowIfNull(request.Actor);
     }
 
-    /// <summary>
-    /// Creates a safe operation result from stored outbox metadata.
-    /// </summary>
-    /// <param name="status">The operation status.</param>
-    /// <param name="deliveryId">The delivery id.</param>
-    /// <param name="endpointName">The stored endpoint name.</param>
-    /// <param name="eventId">The stored event id.</param>
-    /// <param name="eventType">The stored event type.</param>
-    /// <param name="outcome">The stored outcome.</param>
-    /// <returns>The safe operation result.</returns>
     public static AshlarSecurityEventWebhookOutboxOperationResult CreateResult(
         AshlarSecurityEventWebhookOutboxOperationStatus status,
         Guid deliveryId,
@@ -279,16 +281,6 @@ public static class AshlarSecurityEventWebhookOutboxOperations
             AshlarSecurityEventWebhookOutboxBrowser.SanitizeSafeText(outcome));
     }
 
-    /// <summary>
-    /// Records an audit event for a successful manual outbox operation.
-    /// </summary>
-    /// <param name="sink">The security event sink.</param>
-    /// <param name="timeProvider">The time provider.</param>
-    /// <param name="eventType">The audit event type.</param>
-    /// <param name="request">The operation request.</param>
-    /// <param name="result">The safe operation result.</param>
-    /// <param name="cancellationToken">A token that can cancel audit emission.</param>
-    /// <returns>A task representing audit emission.</returns>
     public static async Task RecordSuccessfulOperationAsync(
         ISecurityEventSink sink,
         TimeProvider timeProvider,
@@ -307,7 +299,7 @@ public static class AshlarSecurityEventWebhookOutboxOperations
             sink,
             timeProvider,
             eventType,
-            request.Audit,
+            request.Actor.Audit,
             CreateAuditProperties(result),
             cancellationToken).ConfigureAwait(false);
     }
