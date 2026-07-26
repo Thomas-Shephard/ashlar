@@ -91,7 +91,7 @@ internal sealed class SqliteCredentialRepository(ISqliteConnectionProvider conne
             sql += " AND revoked_at IS NULL AND status = $activeStatus";
         }
 
-        sql += " ORDER BY provider_type, provider_name, created_at DESC, id LIMIT 100;";
+        sql += " ORDER BY provider_type, provider_name, created_at DESC, id;";
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using var command = handle.Connection.CreateCommand();

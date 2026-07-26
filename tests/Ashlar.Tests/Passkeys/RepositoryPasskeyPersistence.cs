@@ -11,8 +11,9 @@ internal sealed class RepositoryPasskeyPersistence(
 {
     public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => users.GetUserByIdAsync(userId, cancellationToken);
     public Task<IUser?> GetUserByPasskeyAsync(string credentialId, CancellationToken cancellationToken = default) => users.GetUserByProviderKeyAsync(ProviderType.Passkey, providerName, credentialId, cancellationToken);
+    public Task<IReadOnlyList<UserCredential>> ListCredentialsAsync(Guid userId, CancellationToken cancellationToken = default) => credentials.ListCredentialsForUserAsync(userId, activeOnly: true, cancellationToken);
     public async Task<IReadOnlyList<UserCredential>> ListPasskeysAsync(Guid userId, CancellationToken cancellationToken = default) =>
-        (await credentials.ListCredentialsForUserAsync(userId, cancellationToken: cancellationToken)).Where(credential => credential.ProviderType == ProviderType.Passkey && string.Equals(credential.ProviderName, providerName, StringComparison.OrdinalIgnoreCase)).ToArray();
+        (await ListCredentialsAsync(userId, cancellationToken)).Where(credential => credential.ProviderType == ProviderType.Passkey && string.Equals(credential.ProviderName, providerName, StringComparison.OrdinalIgnoreCase)).ToArray();
     public Task<UserCredential?> GetPasskeyAsync(Guid userId, string credentialId, CancellationToken cancellationToken = default) => credentials.GetCredentialForUserAsync(userId, ProviderType.Passkey, providerName, credentialId, cancellationToken);
     public Task CreatePasskeyAsync(UserCredential credential, CancellationToken cancellationToken = default) => credentials.CreateOrReplaceCredentialAsync(credential, cancellationToken);
     public Task<bool> UpdatePasskeyAsync(UserCredential credential, string expectedVersion, CancellationToken cancellationToken = default) => credentials.UpdateCredentialAsync(credential, expectedVersion, cancellationToken);

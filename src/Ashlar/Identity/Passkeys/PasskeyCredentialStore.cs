@@ -16,8 +16,11 @@ internal sealed class PasskeyCredentialStore(IUserRepository users, ICredentialR
     public Task<IUser?> GetUserByPasskeyAsync(string credentialId, CancellationToken cancellationToken = default) =>
         users.GetUserByProviderKeyAsync(ProviderType.Passkey, _providerName, credentialId, cancellationToken);
 
+    public Task<IReadOnlyList<UserCredential>> ListCredentialsAsync(Guid userId, CancellationToken cancellationToken = default) =>
+        credentials.ListCredentialsForUserAsync(userId, activeOnly: true, cancellationToken);
+
     public async Task<IReadOnlyList<UserCredential>> ListPasskeysAsync(Guid userId, CancellationToken cancellationToken = default) =>
-        (await credentials.ListCredentialsForUserAsync(userId, cancellationToken: cancellationToken))
+        (await ListCredentialsAsync(userId, cancellationToken))
             .Where(credential => credential.ProviderType == ProviderType.Passkey && string.Equals(credential.ProviderName, _providerName, StringComparison.OrdinalIgnoreCase))
             .ToArray();
 

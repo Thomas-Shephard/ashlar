@@ -89,7 +89,11 @@ internal sealed class PasskeyService : IPasskeyService
         ArgumentNullException.ThrowIfNull(request);
         var tenant = request.Tenant ?? TenantContext.Global;
         var user = await GetAvailableRegistrationUserAsync(request.ActorUserId, tenant, cancellationToken);
-        var existing = await _credentials.ListPasskeysAsync(request.ActorUserId, cancellationToken);
+        var credentials = await _credentials.ListCredentialsAsync(request.ActorUserId, cancellationToken);
+        var existing = credentials
+            .Where(credential => credential.ProviderType == _options.ProviderKey.Type
+                && string.Equals(credential.ProviderName, _options.ProviderKey.Name, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
         var proofBindingResult = await ValidateRegistrationProofAsync(
             new RegistrationProofValidationRequest(
                 request.ActorUserId,
@@ -97,7 +101,7 @@ internal sealed class PasskeyService : IPasskeyService
                 request.FreshMfaProof,
                 request.FreshPrimaryAuthenticationProof,
                 request.CurrentSessionId),
-            existing, cancellationToken);
+            credentials, cancellationToken);
         if (!proofBindingResult.TryGetValue(out var proofBinding))
         {
             var failure = proofBindingResult.GetFailureOr(AshlarFailureCodes.StepUpRequired);

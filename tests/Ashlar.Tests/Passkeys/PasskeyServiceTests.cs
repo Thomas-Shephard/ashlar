@@ -262,6 +262,57 @@ internal sealed class PasskeyServiceTests
         await Task.CompletedTask;
     }
 
+    [TestCase("totp", false)]
+    [TestCase("RecoveryCode", true)]
+    public void StartRegistrationAsyncShouldRequireMfaProofForNonPasskeyAdditionalFactor(string providerName, bool recoveryCode)
+    {
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var user = new TestUser(Guid.NewGuid(), "test@example.com");
+        var providerKey = new AuthenticationProviderKey(recoveryCode ? ProviderType.RecoveryCode : ProviderType.Mfa, providerName);
+        var credential = CreatePasskeyCredential(user.Id, "secondary", now, providerKey);
+        var users = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        users.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        credentials.Setup(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
+        var provider = new Mock<ISecondaryAuthenticationFactorProvider>();
+        provider.SetupGet(p => p.Key).Returns(providerKey);
+        var service = CreateVerifiedPasskeyService(users.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object,
+            new Mock<IPasskeyCeremonyValidator>().Object, [provider.Object], CreateDependencies(new FakeTimeProvider(now)));
+
+        var exception = Assert.ThrowsAsync<AshlarOperationException>(() =>
+            service.StartRegistrationAsync(CreateStartRegistrationRequest(user.Id, "Laptop", now: now)));
+
+        Assert.That(exception!.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+    }
+
+    [Test]
+    public async Task StartRegistrationAsyncShouldIgnoreRevokedAdditionalFactorAndExcludeOnlyPasskeys()
+    {
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var user = new TestUser(Guid.NewGuid(), "test@example.com");
+        var providerKey = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
+        var revoked = CreatePasskeyCredential(user.Id, "secondary", now, providerKey);
+        revoked.RevokedAt = now;
+        var passkey = CreatePasskeyCredential(user.Id, "passkey", now);
+        var users = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        var validator = new Mock<IPasskeyCeremonyValidator>();
+        users.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        credentials.Setup(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync([revoked, passkey]);
+        validator.Setup(v => v.CreateRegistrationOptions(It.IsAny<PasskeyOptions>(), user, "Laptop", It.IsAny<string>(),
+                It.Is<IReadOnlyList<UserCredential>>(listed => listed.Count == 1 && listed[0] == passkey)))
+            .Returns("{}");
+        var provider = new Mock<ISecondaryAuthenticationFactorProvider>();
+        provider.SetupGet(p => p.Key).Returns(providerKey);
+        var service = CreateVerifiedPasskeyService(users.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object,
+            validator.Object, [provider.Object], CreateDependencies(new FakeTimeProvider(now)));
+
+        await service.StartRegistrationAsync(CreateStartRegistrationRequest(user.Id, "Laptop", now: now));
+
+        validator.VerifyAll();
+        credentials.Verify(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Test]
     public async Task StartRegistrationAsyncShouldStoreMfaProofBindingWhenUsableAdditionalFactorExists()
     {
@@ -865,6 +916,34 @@ internal sealed class PasskeyServiceTests
                 CurrentSessionId = RegistrationSessionId,
                 FreshPrimaryAuthenticationProof = CreatePrimaryProof(challenge.UserId.Value, challenge.TenantId, now, RegistrationSessionId)
             };
+
+        var result = await service.CompleteRegistrationAsync(request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            challenges.Verify(r => r.ConsumeAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+            credentials.Verify(r => r.CreateOrReplaceCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [TestCase("fresh-primary")]
+    [TestCase("fresh-mfa")]
+    public async Task CompleteRegistrationAsyncShouldRejectWrongProofType(string storedProofType)
+    {
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var challenge = CopyRegistrationChallenge(CreateRegistrationChallenge(now), proofType: storedProofType);
+        var credentials = new Mock<ICredentialRepository>();
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
+        var service = CreateVerifiedPasskeyService(new Mock<IUserRepository>().Object, credentials.Object, challenges.Object,
+            new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now)));
+        var request = new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, null, challenge.UserId!.Value)
+        {
+            CurrentSessionId = RegistrationSessionId,
+            FreshMfaProof = storedProofType == "fresh-primary" ? CreateMfaProof(challenge.UserId.Value, challenge.TenantId, now, RegistrationSessionId) : null,
+            FreshPrimaryAuthenticationProof = storedProofType == "fresh-mfa" ? CreatePrimaryProof(challenge.UserId.Value, challenge.TenantId, now, RegistrationSessionId) : null
+        };
 
         var result = await service.CompleteRegistrationAsync(request);
 
