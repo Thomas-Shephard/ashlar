@@ -107,13 +107,13 @@ public sealed class AshlarSignInManager(
     {
         ArgumentNullException.ThrowIfNull(httpContext);
 
-        var userId = TryGetUserId(httpContext.User) ?? throw new InvalidOperationException("User is not authenticated.");
-        var currentSessionId = TryGetSessionId(httpContext.User);
-
-        return await _sessionReader.ListSessionsForUserAsync(
-            userId,
-            new ListAuthenticationSessionsRequest { ActiveOnly = activeOnly, CurrentSessionId = currentSessionId },
-            cancellationToken);
+        var session = await GetExistingValidatedSessionAsync(httpContext, cancellationToken)
+            ?? throw new InvalidOperationException("User does not have an active Ashlar session.");
+        var result = await _sessionReader.ListSessionsAsync(
+            session, new ListAuthenticationSessionsRequest { ActiveOnly = activeOnly }, cancellationToken);
+        return result.Succeeded
+            ? result.Value!
+            : throw new InvalidOperationException("User does not have an active Ashlar session.");
     }
 
     public async Task<bool> RevokeSessionForCurrentUserAsync(

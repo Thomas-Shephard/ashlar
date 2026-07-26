@@ -336,7 +336,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(typeof(IAccountSecurityService).GetMethods().Select(method => method.Name), Is.EqualTo(["GetUserSecurityPostureAsync"]));
+            Assert.That(typeof(IAccountSecurityService).GetMethods().Select(method => method.Name), Is.EqualTo(["GetSecurityPostureAsync"]));
             Assert.That(typeof(IAccountSecurityAdministrationService).GetMethods().All(method => method.GetParameters()[0].ParameterType != typeof(Guid)), Is.True);
         }
     }

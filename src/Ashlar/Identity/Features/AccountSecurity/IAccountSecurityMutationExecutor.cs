@@ -9,3 +9,9 @@ internal interface IAccountSecurityMutationExecutor
     Task<Result<AccountSecurityOperationResult>> RevokeRememberedMfaDeviceAsync(Guid userId, Guid deviceId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default);
     Task<Result<AccountSecurityOperationResult>> RevokeRememberedMfaDevicesAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default);
 }
+
+internal interface IAccountSecurityPostureReader
+{
+    Task<Result<AccountSecurityPosture>> GetUserSecurityPostureAsync(
+        Guid userId, AccountSecurityPostureRequest request, CancellationToken cancellationToken = default);
+}

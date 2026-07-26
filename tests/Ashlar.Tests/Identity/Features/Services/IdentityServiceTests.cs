@@ -60,24 +60,12 @@ internal sealed class IdentityServiceTests
     }
 
     [Test]
-    public void ConstructorShouldThrowOnNullRepository()
-    {
-        var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
-        var authenticationPipeline = new Mock<IAuthenticationPipeline>();
-        // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(null!, providerRegistry.Object, authenticationPipeline.Object));
-    }
-
-    [Test]
     public void ConstructorWithCollaboratorsShouldThrowOnNullProviderRegistry()
     {
         var authenticationPipeline = new Mock<IAuthenticationPipeline>();
 
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(
-            _repositoryMock.Object,
-            // ReSharper disable once NullableWarningSuppressionIsUsed
-            null!,
-            authenticationPipeline.Object));
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(null!, authenticationPipeline.Object));
     }
 
     [Test]
@@ -87,7 +75,6 @@ internal sealed class IdentityServiceTests
 
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(
-            _repositoryMock.Object,
             providerRegistry.Object,
             (IAuthenticationPipeline)null!));
     }
@@ -106,7 +93,6 @@ internal sealed class IdentityServiceTests
             .ReturnsAsync(expected);
 
         var service = new IdentityService(
-            _repositoryMock.Object,
             providerRegistry.Object,
             authenticationPipeline.Object);
 
@@ -651,53 +637,13 @@ internal sealed class IdentityServiceTests
     }
 
     [Test]
-    public async Task FindByEmailAsyncShouldCallRepository()
+    public void RawIdentityLookupsAreNotAppFacing()
     {
-        var email = "test@example.com";
-        var tenantId = Guid.NewGuid();
-        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
-        _repositoryMock.Setup(r => r.GetUserByEmailAsync(email, tenantId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(user);
-
-        var result = await _identityService.FindByEmailAsync(email, tenantId);
-
-        Assert.That(result, Is.EqualTo(user));
-    }
-
-    [Test]
-    public async Task FindByProviderKeyAsyncShouldCallRepository()
-    {
-        var provider = new AuthenticationProviderKey(ProviderType.Oidc, "Google");
-        var providerKey = "sub-123";
-        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
-        _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(provider.Type, provider.Name, providerKey, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(user);
-
-        var result = await _identityService.FindByProviderKeyAsync(provider, providerKey);
-
-        Assert.That(result, Is.EqualTo(user));
-    }
-
-    [Test]
-    public void FindByProviderKeyAsyncWithUninitializedProviderShouldThrow()
-    {
+        var methods = typeof(IIdentityService).GetMethods().Select(method => method.Name);
         using (Assert.EnterMultipleScope())
         {
-            Assert.ThrowsAsync<ArgumentException>(() => _identityService.FindByProviderKeyAsync(default, "key"));
-            Assert.ThrowsAsync<ArgumentException>(() => _identityService.FindByProviderKeyAsync(new AuthenticationProviderKey((ProviderType)ProviderType.StorageFallbackValue, "unknown"), "key"));
-        }
-    }
-
-    [Test]
-    public void FindByProviderKeyAsyncWithNullOrWhitespaceProviderKeyShouldThrow()
-    {
-        var provider = new AuthenticationProviderKey(ProviderType.Oidc, "Google");
-        using (Assert.EnterMultipleScope())
-        {
-            // ReSharper disable once NullableWarningSuppressionIsUsed
-            Assert.ThrowsAsync<ArgumentNullException>(() => _identityService.FindByProviderKeyAsync(provider, null!));
-            Assert.ThrowsAsync<ArgumentException>(() => _identityService.FindByProviderKeyAsync(provider, ""));
-            Assert.ThrowsAsync<ArgumentException>(() => _identityService.FindByProviderKeyAsync(provider, " "));
+            Assert.That(methods, Does.Not.Contain("FindByEmailAsync"));
+            Assert.That(methods, Does.Not.Contain("FindByProviderKeyAsync"));
         }
     }
 
@@ -2224,7 +2170,6 @@ internal sealed class IdentityServiceTests
             new AuthenticationPipelineDependencies(securityEventSink, _timeProvider));
 
         return new IdentityService(
-            _repositoryMock.Object,
             providerRegistry,
             pipeline);
     }

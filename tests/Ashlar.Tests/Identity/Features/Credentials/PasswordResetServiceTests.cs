@@ -633,7 +633,8 @@ internal sealed class PasswordResetServiceTests
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(fixture.Time, composition.Events, ProviderRegistry: providerRegistry));
 
-        var posture = await accountSecurity.GetUserSecurityPostureAsync(user.Id);
+        var posture = await ((IAccountSecurityPostureReader)accountSecurity).GetUserSecurityPostureAsync(
+            user.Id, new AccountSecurityPostureRequest());
 
         using (Assert.EnterMultipleScope())
         {
@@ -1189,9 +1190,13 @@ internal sealed class PasswordResetServiceTests
         public Task<int> RevokeOtherSessionsAsync(Guid userId, RevokeOtherAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
     }
 
-    private sealed class TestAuthenticationSessionReader : IAuthenticationSessionReader
+    private sealed class TestAuthenticationSessionReader : IAuthenticationSessionInventoryReader
     {
-        public Task<IReadOnlyList<AuthenticationSessionSummary>> ListSessionsForUserAsync(Guid userId, ListAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<AuthenticationSessionSummary>>([]);
+        public Task<Result<IReadOnlyList<AuthenticationSessionSummary>>> ListSessionsAsync(ValidatedAuthenticationSession session, ListAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result.Success<IReadOnlyList<AuthenticationSessionSummary>>([]));
+
+        public Task<Result<IReadOnlyList<AuthenticationSessionSummary>>> ListSessionsForUserAsync(Guid userId, Guid? tenantId, ListAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result.Success<IReadOnlyList<AuthenticationSessionSummary>>([]));
     }
 
     private sealed class NonTenantUser : IUser

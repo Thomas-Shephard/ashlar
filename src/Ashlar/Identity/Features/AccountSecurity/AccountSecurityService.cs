@@ -7,13 +7,13 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Features.AccountSecurity;
 
-internal sealed class AccountSecurityService : IAccountSecurityService, IAccountSecurityMutationExecutor
+internal sealed class AccountSecurityService : IAccountSecurityService, IAccountSecurityMutationExecutor, IAccountSecurityPostureReader
 {
     private const string AdminReason = "admin";
     private readonly IUserRepository _userRepository;
     private readonly ICredentialRepository _credentialRepository;
     private readonly IAuthenticationSessionMutationExecutor _sessionService;
-    private readonly IAuthenticationSessionReader _sessionReader;
+    private readonly IAuthenticationSessionInventoryReader _sessionReader;
     private readonly AshlarDurableTransactionProvider _transactionProvider;
     private readonly IAccountSecurityGuard _accountSecurityGuard;
     private readonly TimeProvider _timeProvider;
@@ -29,7 +29,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         IUserRepository userRepository,
         ICredentialRepository credentialRepository,
         IAuthenticationSessionMutationExecutor sessionService,
-        IAuthenticationSessionReader sessionReader,
+        IAuthenticationSessionInventoryReader sessionReader,
         AshlarDurableTransactionProvider transactionProvider,
         IAccountSecurityGuard accountSecurityGuard,
         AccountSecurityServiceDependencies dependencies)
@@ -217,8 +217,17 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
 
         if (request.PreservePrimarySignInMethod)
         {
-            var posture = (await GetUserSecurityPostureAsync(
-                userId, new AccountSecurityPostureRequest(request.Tenant), cancellationToken)).Value!;
+            var postureResult = await GetUserSecurityPostureInternalAsync(
+                userId, new AccountSecurityPostureRequest(request.Tenant), cancellationToken);
+            if (!postureResult.TryGetValue(out var posture))
+            {
+                var failure = postureResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
+                await RecordFailureAsync(new AccountSecurityFailureEvent(
+                    AshlarSecurityEventTypes.UserCredentialsRevoked, userId, request, failure.Code.Value,
+                    Provider: provider, AuditTenantId: GetAuditTenantId(request, user)), cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return Result.Failure<AccountSecurityOperationResult>(failure);
+            }
 
             var storedPrimaryCredentials = posture.CredentialInventory.Where(item => item.IsAvailable &&
                 item.IsPrimaryCredential);
@@ -282,26 +291,62 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         return Result.Success(result);
     }
 
-    public async Task<Result<AccountSecurityPosture>> GetUserSecurityPostureAsync(Guid userId, AccountSecurityPostureRequest? request = null, CancellationToken cancellationToken = default)
+    public async Task<Result<AccountSecurityPosture>> GetSecurityPostureAsync(
+        ValidatedAuthenticationSession session, TimeSpan? recentSecurityEventWindow = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        var activeSessions = await _sessionReader.ListSessionsAsync(
+            session, new ListAuthenticationSessionsRequest { ActiveOnly = true }, cancellationToken);
+        if (!activeSessions.Succeeded)
+            return Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.SessionNotFoundOrInactive);
+
+        var posture = await GetUserSecurityPostureInternalAsync(session.UserId,
+            new AccountSecurityPostureRequest(new TenantContext(session.TenantId), recentSecurityEventWindow),
+            cancellationToken);
+        return posture.Value is { AccountState: var state } && state.CanSignIn()
+            ? posture
+            : Result.Failure<AccountSecurityPosture>(posture.FailureDetails
+                ?? new AshlarFailure(AshlarFailureCodes.UserNotFoundOrUnavailable));
+    }
+
+    Task<Result<AccountSecurityPosture>> IAccountSecurityPostureReader.GetUserSecurityPostureAsync(
+        Guid userId, AccountSecurityPostureRequest request, CancellationToken cancellationToken) =>
+        GetUserSecurityPostureInternalAsync(userId, request, cancellationToken);
+
+    private async Task<Result<AccountSecurityPosture>> GetUserSecurityPostureInternalAsync(Guid userId, AccountSecurityPostureRequest request, CancellationToken cancellationToken)
     {
         ValidateUserId(userId);
-        request ??= new AccountSecurityPostureRequest();
+        request = request with { Tenant = request.Tenant ?? TenantContext.Global };
+        var now = _timeProvider.GetUtcNow();
+        var eventStart = default(DateTimeOffset?);
+        if (request.RecentSecurityEventWindow is { } window
+            && !TryGetEventStart(now, window, out eventStart))
+            return Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.ValidationError);
 
         var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
         if (!userResult.TryGetValue(out var user))
         {
             return Result.Failure<AccountSecurityPosture>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFound));
         }
+        if (!Enum.IsDefined(user.AccountState))
+            return Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.UserNotFound);
 
         var credentials = await _credentialRepository.ListCredentialsForUserAsync(userId, activeOnly: false, cancellationToken);
-        var sessions = await _sessionReader.ListSessionsForUserAsync(userId, new ListAuthenticationSessionsRequest { ActiveOnly = true }, cancellationToken);
+        if (credentials is null || credentials.Any(credential => IsInvalidCredential(credential, userId, now)))
+            return Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.UserNotFound);
+        var sessions = await _sessionReader.ListSessionsForUserAsync(userId, request.Tenant.TenantId,
+            new ListAuthenticationSessionsRequest { ActiveOnly = true }, cancellationToken);
+        if (!sessions.Succeeded)
+            return Result.Failure<AccountSecurityPosture>(sessions.GetFailureOr(AshlarFailureCodes.TenantMismatch));
         int? eventCount = null;
-        if (_securityEventSummaryRepository != null && request.RecentSecurityEventWindow is { } window)
+        if (_securityEventSummaryRepository != null && eventStart is { } since)
         {
-            eventCount = await _securityEventSummaryRepository.CountSecurityEventsForUserAsync(userId, _timeProvider.GetUtcNow().Subtract(window), cancellationToken);
+            eventCount = await _securityEventSummaryRepository.CountSecurityEventsForUserAsync(userId, since, cancellationToken);
+            if (eventCount < 0)
+                return Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.UserNotFound);
         }
 
-        var now = _timeProvider.GetUtcNow();
         var inventory = credentials
             .Select(ClassifyCredential)
             .OrderBy(item => item.DisplayName, StringComparer.Ordinal)
@@ -316,7 +361,9 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         var primaryCredentials = primaryCredentialItems
             .AsReadOnly();
         var factors = CreateAdditionalVerificationFactors(inventory);
-        var policyEvaluation = await _mfaPolicyEvaluator.EvaluateAsync(user, new AuthenticationContext(UserId: user.Id, TenantId: request.Tenant?.TenantId), cancellationToken);
+        var policyEvaluation = await _mfaPolicyEvaluator.EvaluateAsync(user, new AuthenticationContext(UserId: user.Id, TenantId: request.Tenant.TenantId), cancellationToken);
+        if (policyEvaluation is null)
+            return Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.ValidationError);
         var policy = CreatePolicyPosture(policyEvaluation, factors);
 
         var posture = new AccountSecurityPosture(
@@ -328,11 +375,35 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
             factors,
             policy,
             inventory,
-            sessions.Count,
+            sessions.Value!.Count,
             eventCount);
 
         return Result.Success(posture);
     }
+
+    private static bool TryGetEventStart(DateTimeOffset now, TimeSpan window, out DateTimeOffset? eventStart)
+    {
+        eventStart = null;
+        if (window <= TimeSpan.Zero)
+            return false;
+
+        try
+        {
+            eventStart = now.Subtract(window);
+            return true;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsInvalidCredential(UserCredential credential, Guid userId, DateTimeOffset now) =>
+        credential.Id == Guid.Empty || credential.UserId != userId
+        || !Enum.IsDefined(credential.Status) || credential.ProviderType == default
+        || credential.ProviderType.IsStorageFallback || string.IsNullOrWhiteSpace(credential.ProviderName)
+        || credential.CreatedAt > now
+        || credential.ExpiresAt is { } expiresAt && expiresAt <= credential.CreatedAt;
 
     private static TRequest RequireAudit<TRequest>(TRequest? request)
         where TRequest : AccountSecurityOperationRequest

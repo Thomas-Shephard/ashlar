@@ -618,7 +618,6 @@ internal sealed class EmailCodeSignInTests
             AllowAuthenticationFactorRateLimiter.Instance,
             new AuthenticationPipelineDependencies(audit, time));
         var identity = identityService ?? new IdentityService(
-            repository,
             registry,
             pipeline);
         var orchestrator = authenticationOrchestrator ?? authenticationOrchestratorFactory?.Invoke(rateLimiter) ?? CreateOrchestrator(pipeline, user, requireMfa);

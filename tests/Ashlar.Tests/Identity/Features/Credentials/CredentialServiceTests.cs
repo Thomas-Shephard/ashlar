@@ -360,6 +360,57 @@ internal sealed class CredentialServiceTests
         _credentialRepositoryMock.Verify(r => r.GetCredentialForUserAsync(user.Id, It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task ResolveAsyncShouldRejectProviderUserWithInvalidIdentity(bool emptyUserId)
+    {
+        var requestedUserId = Guid.NewGuid();
+        var user = new User
+        {
+            Id = emptyUserId ? Guid.Empty : Guid.NewGuid(),
+            DisplayEmail = "other@example.com"
+        };
+        var context = new AuthenticationContext(UserId: requestedUserId);
+        var assertion = new Mock<IAuthenticationAssertion>().Object;
+        var provider = CreateProviderMock();
+        provider.As<IAuthenticationUserResolver>()
+            .Setup(item => item.FindUserAsync(assertion, context, It.IsAny<IUserLookup>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        var (resolvedUser, resolvedCredential, _, _) = await _service.ResolveAsync(context, assertion, provider.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolvedUser, Is.Null);
+            Assert.That(resolvedCredential, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task ResolveAsyncShouldRejectProviderUserWithUndefinedAccountState()
+    {
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            DisplayEmail = "other@example.com",
+            AccountState = (UserAccountState)int.MaxValue
+        };
+        var context = new AuthenticationContext();
+        var assertion = new Mock<IAuthenticationAssertion>().Object;
+        var provider = CreateProviderMock();
+        provider.As<IAuthenticationUserResolver>()
+            .Setup(item => item.FindUserAsync(assertion, context, It.IsAny<IUserLookup>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        var (resolvedUser, resolvedCredential, _, _) = await _service.ResolveAsync(context, assertion, provider.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolvedUser, Is.Null);
+            Assert.That(resolvedCredential, Is.Null);
+        }
+    }
+
     [Test]
     public async Task ResolveAsyncShouldRejectTenantAwareGlobalUserWhenContextTenantIsSet()
     {

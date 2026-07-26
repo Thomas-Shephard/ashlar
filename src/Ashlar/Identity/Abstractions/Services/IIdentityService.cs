@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Abstractions.Services;
 
 /// <summary>
-/// Coordinates user lookup and authentication provider execution.
+/// Coordinates authentication provider execution.
 /// </summary>
 public interface IIdentityService
 {
@@ -9,24 +9,6 @@ public interface IIdentityService
     /// Gets the authentication providers registered with the identity service.
     /// </summary>
     IEnumerable<AuthenticationProviderKey> SupportedProviderKeys { get; }
-
-    /// <summary>
-    /// Finds a user by email address within an optional tenant boundary using Ashlar's normalized lookup form.
-    /// </summary>
-    /// <param name="email">The email address to look up.</param>
-    /// <param name="tenantId">The tenant boundary for the lookup, or <see langword="null" /> for tenantless users.</param>
-    /// <param name="cancellationToken">A token that can cancel email lookup.</param>
-    /// <returns>The matching user, or <see langword="null" /> when no user exists.</returns>
-    Task<IUser?> FindByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Finds a user by an authentication provider credential key.
-    /// </summary>
-    /// <param name="provider">The authentication provider that owns the credential.</param>
-    /// <param name="providerKey">The provider-specific credential key.</param>
-    /// <param name="cancellationToken">A token that can cancel provider-key lookup.</param>
-    /// <returns>The matching user, or <see langword="null" /> when no user exists.</returns>
-    Task<IUser?> FindByProviderKeyAsync(AuthenticationProviderKey provider, string providerKey, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Authenticates an assertion with the matching authentication provider.

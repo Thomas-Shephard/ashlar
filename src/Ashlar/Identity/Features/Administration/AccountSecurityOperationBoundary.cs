@@ -45,27 +45,7 @@ public sealed class AccountSecurityOperationBoundary(
         AuthenticationProviderKey? provider = null)
     {
         if (actor is null) return false;
-        if (actor.Audit.ActorUserId != actor.ActorUserId)
-        {
-            await RecordAsync(actor, tenant, includeAllTenants, operation, false);
-            return false;
-        }
-        AshlarFailureCode? proofFailure;
-        try
-        {
-            proofFailure = await _proof.ValidateAsync(actor.ActorUserId, actor.ActorTenant, actor.FreshMfaProof,
-                actor.CurrentSessionId, _proofPurpose, cancellationToken);
-        }
-        catch
-        {
-            await RecordAsync(actor, tenant, includeAllTenants, operation, false);
-            throw;
-        }
-        if (proofFailure is not null)
-        {
-            await RecordAsync(actor, tenant, includeAllTenants, operation, false);
-            return false;
-        }
+        if (!await ValidateActorAsync(actor, tenant, includeAllTenants, operation, cancellationToken)) return false;
         bool authorized;
         try
         {
@@ -82,6 +62,14 @@ public sealed class AccountSecurityOperationBoundary(
         if (!authorized)
             await RecordAsync(actor, tenant, includeAllTenants, operation, false);
         return authorized;
+    }
+
+    internal async Task RecordValidatedFailureAsync(AccountSecurityActorContext? actor, TenantContext? tenant,
+        bool includeAllTenants, AccountSecurityOperation operation, CancellationToken cancellationToken)
+    {
+        if (actor is not null
+            && await ValidateActorAsync(actor, tenant, includeAllTenants, operation, cancellationToken))
+            await RecordAsync(actor, tenant, includeAllTenants, operation, false);
     }
 
     /// <summary>Records a successful authorized operation durably.</summary>
@@ -104,8 +92,35 @@ public sealed class AccountSecurityOperationBoundary(
         AccountSecurityOperation operation) =>
         RecordAsync(actor, tenant, includeAllTenants, operation, false);
 
+    private async Task<bool> ValidateActorAsync(AccountSecurityActorContext actor, TenantContext? tenant,
+        bool includeAllTenants, AccountSecurityOperation operation, CancellationToken cancellationToken)
+    {
+        AshlarFailureCode? proofFailure;
+        try
+        {
+            proofFailure = await _proof.ValidateAsync(actor.ActorUserId, actor.ActorTenant, actor.FreshMfaProof,
+                actor.CurrentSessionId, _proofPurpose, cancellationToken);
+        }
+        catch
+        {
+            await RecordAsync(actor, tenant, includeAllTenants, operation, false, actorAuthenticated: false);
+            throw;
+        }
+        if (proofFailure is not null)
+        {
+            await RecordAsync(actor, tenant, includeAllTenants, operation, false, actorAuthenticated: false);
+            return false;
+        }
+        if (actor.Audit.ActorUserId != actor.ActorUserId)
+        {
+            await RecordAsync(actor, tenant, includeAllTenants, operation, false);
+            return false;
+        }
+        return true;
+    }
+
     private Task RecordAsync(AccountSecurityActorContext actor, TenantContext? tenant, bool includeAllTenants,
-        AccountSecurityOperation operation, bool succeeded)
+        AccountSecurityOperation operation, bool succeeded, bool actorAuthenticated = true)
     {
         var scope = "all-tenants";
         if (!includeAllTenants)
@@ -115,8 +130,8 @@ public sealed class AccountSecurityOperationBoundary(
             EventType = _eventType,
             Outcome = succeeded ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
             TenantId = tenant?.TenantId,
-            SessionId = actor.CurrentSessionId,
-            Audit = actor.Audit with { ActorUserId = actor.ActorUserId },
+            SessionId = actorAuthenticated ? actor.CurrentSessionId : null,
+            Audit = actor.Audit with { ActorUserId = actorAuthenticated ? actor.ActorUserId : null },
             FailureReason = succeeded ? null : AshlarFailureCodes.ValidationError.Value,
             Properties = new Dictionary<string, string>
             {

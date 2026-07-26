@@ -392,9 +392,9 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
         var accountSecurity = new Mock<IAccountSecurityService>(MockBehavior.Strict);
         accountSecurity
-            .Setup(service => service.GetUserSecurityPostureAsync(
-                session.UserId,
-                It.IsAny<AccountSecurityPostureRequest?>(),
+            .Setup(service => service.GetSecurityPostureAsync(
+                It.IsAny<ValidatedAuthenticationSession>(),
+                It.IsAny<TimeSpan?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.UserNotFound));
         var context = CreateContext(
@@ -429,9 +429,9 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
             RecentSecurityEventCount: null);
         var accountSecurity = new Mock<IAccountSecurityService>(MockBehavior.Strict);
         accountSecurity
-            .Setup(service => service.GetUserSecurityPostureAsync(
-                session.UserId,
-                It.IsAny<AccountSecurityPostureRequest?>(),
+            .Setup(service => service.GetSecurityPostureAsync(
+                It.IsAny<ValidatedAuthenticationSession>(),
+                It.IsAny<TimeSpan?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Result<AccountSecurityPosture>(false, posture));
         var context = CreateContext(
@@ -474,9 +474,9 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
         var accountSecurity = new Mock<IAccountSecurityService>(MockBehavior.Strict);
         accountSecurity
-            .Setup(service => service.GetUserSecurityPostureAsync(
-                session.UserId,
-                It.IsAny<AccountSecurityPostureRequest?>(),
+            .Setup(service => service.GetSecurityPostureAsync(
+                It.IsAny<ValidatedAuthenticationSession>(),
+                It.IsAny<TimeSpan?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Result<AccountSecurityPosture>(true));
         var context = CreateContext(
@@ -498,9 +498,9 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var session = CreateSession(tenantId);
         var accountSecurity = new Mock<IAccountSecurityService>(MockBehavior.Strict);
         accountSecurity
-            .Setup(service => service.GetUserSecurityPostureAsync(
-                session.UserId,
-                It.Is<AccountSecurityPostureRequest>(request => request.Tenant != null && request.Tenant.TenantId == tenantId),
+            .Setup(service => service.GetSecurityPostureAsync(
+                It.Is<ValidatedAuthenticationSession>(value => value.TenantId == tenantId),
+                It.IsAny<TimeSpan?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(new AccountSecurityPosture(
                 session.UserId,
@@ -1231,9 +1231,9 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     {
         var accountSecurity = new Mock<IAccountSecurityService>(MockBehavior.Strict);
         accountSecurity
-            .Setup(service => service.GetUserSecurityPostureAsync(
-                userId,
-                It.IsAny<AccountSecurityPostureRequest?>(),
+            .Setup(service => service.GetSecurityPostureAsync(
+                It.IsAny<ValidatedAuthenticationSession>(),
+                It.IsAny<TimeSpan?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(new AccountSecurityPosture(
                 userId,

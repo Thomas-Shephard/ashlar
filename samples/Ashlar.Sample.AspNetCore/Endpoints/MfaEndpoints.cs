@@ -52,7 +52,7 @@ internal static class MfaEndpoints
             return profile.FailureCode == AshlarFailureCodes.SessionNotFoundOrInactive ? Results.Unauthorized() : Results.NotFound();
 
         if (!services.HttpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return Results.Forbid();
-        var posture = await services.AccountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(services.HttpContext.ToTenantContext()), services.CancellationToken);
+        var posture = await services.AccountSecurity.GetSecurityPostureAsync(session, cancellationToken: services.CancellationToken);
         if (!posture.Succeeded) return Results.Forbid();
         if (posture.Value is not { } securityPosture) return Results.Forbid();
         if (HasFactor(securityPosture, AuthenticationFactorTypes.Totp)) return Results.Redirect("/account");
@@ -98,7 +98,9 @@ internal static class MfaEndpoints
             return Results.Forbid();
         }
 
-        var posture = await services.AccountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(services.HttpContext.ToTenantContext()), services.CancellationToken);
+        var session = services.HttpContext.GetValidatedAuthenticationSession();
+        if (session == null || session.UserId != userId) return Results.Forbid();
+        var posture = await services.AccountSecurity.GetSecurityPostureAsync(session, cancellationToken: services.CancellationToken);
         if (!posture.Succeeded)
         {
             return Results.Forbid();
@@ -287,7 +289,9 @@ internal static class MfaEndpoints
         CancellationToken cancellationToken)
     {
         var userId = user.GetAshlarUserId();
-        var postureResult = await accountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(httpContext.ToTenantContext()), cancellationToken);
+        var session = httpContext.GetValidatedAuthenticationSession();
+        if (session == null || session.UserId != userId) return Results.Forbid();
+        var postureResult = await accountSecurity.GetSecurityPostureAsync(session, cancellationToken: cancellationToken);
         if (postureResult.Value is not { } posture) return Results.Forbid();
         var hasTotp = HasFactor(posture, AuthenticationFactorTypes.Totp);
         var hasRecoveryCodes = HasFactor(posture, AuthenticationFactorTypes.RecoveryCode);
