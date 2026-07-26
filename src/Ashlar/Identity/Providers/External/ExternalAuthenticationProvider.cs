@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Providers.External;
 
 /// <summary>
-/// Authenticates identities already validated by host-managed external provider middleware.
+/// Authenticates identities represented by Ashlar-issued external assertions.
 /// </summary>
 /// <param name="supportedType">External provider family supported by this instance.</param>
 /// <param name="providerName">Configured external provider name.</param>
@@ -25,7 +25,7 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType,
     /// <summary>
     /// Extracts the stored credential key from an external identity assertion.
     /// </summary>
-    /// <param name="assertion">External identity assertion supplied by the host application.</param>
+    /// <param name="assertion">Ashlar-issued external identity assertion.</param>
     /// <param name="userId">User identifier associated with the authentication attempt.</param>
     /// <returns>The external subject identifier, or an empty string when the assertion is unsupported.</returns>
     public virtual string GetProviderKey(IAuthenticationAssertion assertion, Guid userId)
@@ -54,7 +54,7 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType,
     /// <summary>
     /// Resolves a user by the external subject identifier.
     /// </summary>
-    /// <param name="assertion">External identity assertion supplied by the host application.</param>
+    /// <param name="assertion">Ashlar-issued external identity assertion.</param>
     /// <param name="context">Authentication context for the current attempt.</param>
     /// <param name="users">Read-only user lookup capability.</param>
     /// <param name="cancellationToken">Token for aborting lookup work.</param>
@@ -73,9 +73,9 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType,
     }
 
     /// <summary>
-    /// Confirms that the host-validated external assertion matches the stored provider credential.
+    /// Confirms that the Ashlar-issued external assertion matches the stored provider credential.
     /// </summary>
-    /// <param name="assertion">External identity assertion already validated by host-managed provider infrastructure.</param>
+    /// <param name="assertion">Ashlar-issued external identity assertion.</param>
     /// <param name="credential">Stored external credential to compare against the configured provider identity.</param>
     /// <param name="cancellationToken">Token for aborting authentication work.</param>
     /// <returns>Authentication status and claims copied from the assertion when the provider identity matches.</returns>
@@ -93,8 +93,7 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType,
             throw new ArgumentException($"Mismatching provider identity. Expected {Key}, got {externalAssertion.ProviderIdentity}");
         }
 
-        // For external providers, if we received the assertion, it's typically already validated by the infrastructure layer (e.g., JWT middleware or SAML handler).
-        // Here we just confirm that the credential matches.
+        // Ashlar issues this assertion only after consuming a validated external ticket.
         if (credential == null || credential.ProviderType == default || string.IsNullOrWhiteSpace(credential.ProviderName))
         {
             return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
@@ -111,7 +110,7 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType,
 }
 
 /// <summary>
-/// Authenticates host-validated OpenID Connect identities.
+/// Authenticates Ashlar-issued OpenID Connect identities.
 /// </summary>
 /// <param name="providerName">Configured OpenID Connect provider name.</param>
 public sealed class OidcAuthenticationProvider(string providerName) : ExternalAuthenticationProvider(ProviderType.Oidc, providerName)
@@ -123,19 +122,12 @@ public sealed class OidcAuthenticationProvider(string providerName) : ExternalAu
 }
 
 /// <summary>
-/// Authenticates host-validated OAuth identities.
+/// Authenticates Ashlar-issued OAuth identities.
 /// </summary>
 /// <param name="providerName">Configured OAuth provider name.</param>
 public sealed class OAuthAuthenticationProvider(string providerName) : ExternalAuthenticationProvider(ProviderType.OAuth, providerName);
 
-/// <summary>
-/// Authenticates host-validated SAML2 identities.
-/// </summary>
-/// <param name="providerName">Configured SAML2 provider name.</param>
-public sealed class Saml2AuthenticationProvider(string providerName) : ExternalAuthenticationProvider(ProviderType.Saml2, providerName)
+internal sealed class Saml2AuthenticationProvider(string providerName) : ExternalAuthenticationProvider(ProviderType.Saml2, providerName)
 {
-    /// <summary>
-    /// Typical storage length for SAML2 subject identifiers.
-    /// </summary>
     public override int TypicalCredentialLength => 3072;
 }

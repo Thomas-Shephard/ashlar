@@ -6,18 +6,9 @@ using System.Text.Json;
 
 namespace Ashlar.OAuth;
 
-/// <summary>
-/// Maps a validated ASP.NET Core OpenID Connect principal into an Ashlar external identity assertion.
-/// </summary>
-public static class OidcExternalIdentityAssertionMapper
+internal static class OidcExternalIdentityAssertionMapper
 {
-    /// <summary>
-    /// Maps the principal to an Ashlar external identity assertion.
-    /// </summary>
-    /// <param name="providerName">The configured Ashlar provider name.</param>
-    /// <param name="principal">The validated external principal.</param>
-    /// <returns>An Ashlar assertion backed by the principal's stable OIDC issuer and subject claims.</returns>
-    public static ExternalIdentityAssertion Map(string providerName, ClaimsPrincipal principal)
+    internal static ExternalIdentityAssertion Map(string providerName, ClaimsPrincipal principal)
     {
         var normalizedProviderName = AshlarOAuthOptions.NormalizeProviderName(providerName);
         ArgumentNullException.ThrowIfNull(principal);

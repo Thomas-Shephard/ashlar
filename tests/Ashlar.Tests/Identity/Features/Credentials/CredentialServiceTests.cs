@@ -1,5 +1,4 @@
 using Ashlar.Auditing;
-using Ashlar.Identity.Providers.External;
 using Ashlar.Security.Encryption;
 using Ashlar.Testing;
 using Microsoft.Extensions.Logging;
@@ -201,7 +200,7 @@ internal sealed class CredentialServiceTests
         providerMock.As<IAuthenticationUserResolver>().Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.Is<AuthenticationContext>(c => c.Email == email), It.Is<IUserLookup>(lookup => !typeof(IUserRepository).IsInstanceOfType(lookup)), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var (resolvedUser, resolvedCredential, originalCredential, unprotectFailed) = await _service.ResolveAsync(new AuthenticationContext(email), new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>()), providerMock.Object);
+        var (resolvedUser, resolvedCredential, originalCredential, unprotectFailed) = await _service.ResolveAsync(new AuthenticationContext(email), ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>()), providerMock.Object);
 
         using (Assert.EnterMultipleScope())
         {
@@ -223,7 +222,7 @@ internal sealed class CredentialServiceTests
         providerMock.As<IAuthenticationUserResolver>().Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.Is<AuthenticationContext>(c => c.Email == email), It.Is<IUserLookup>(lookup => !typeof(IUserRepository).IsInstanceOfType(lookup)), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
 
-        await _service.ResolveAsync(new AuthenticationContext(email), new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>()), providerMock.Object);
+        await _service.ResolveAsync(new AuthenticationContext(email), ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>()), providerMock.Object);
 
         _secretProtectorMock.Verify(s => s.Unprotect(It.IsAny<string>()), Times.Once);
     }

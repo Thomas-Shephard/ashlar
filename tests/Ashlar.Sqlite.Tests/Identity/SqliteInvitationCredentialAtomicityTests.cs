@@ -1,6 +1,4 @@
-using Ashlar.Identity.Abstractions.Authentication;
 using Ashlar.Identity.Abstractions.Services;
-using Ashlar.Identity.Providers.External;
 using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Tokens;
@@ -80,8 +78,7 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
             var link = await LinkCredentialForTestAsync(
                 credentialRepository,
                 acceptance.Value!.UserId,
-                new ExternalIdentityAssertion(ProviderType.Oidc, "Google", subject, new Dictionary<string, string>()),
-                TestOidcProvider.Instance);
+                subject);
 
             Assert.That(link.FailureCode, Is.EqualTo(AshlarFailureCodes.AlreadyLinkedToOther));
             await transaction.RollbackAsync();
@@ -102,8 +99,7 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
             var retryLink = await LinkCredentialForTestAsync(
                 credentialRepository,
                 retryUserId,
-                new ExternalIdentityAssertion(ProviderType.Oidc, "Google", retrySubject, new Dictionary<string, string>()),
-                TestOidcProvider.Instance);
+                retrySubject);
 
             Assert.That(retryLink.Succeeded, Is.True);
             await retryTransaction.CommitAsync();
@@ -175,8 +171,7 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
     private static async Task<Result> LinkCredentialForTestAsync(
         ICredentialRepository credentialRepository,
         Guid userId,
-        ExternalIdentityAssertion assertion,
-        IAuthenticationProvider provider)
+        string providerKey)
     {
         try
         {
@@ -184,9 +179,9 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
-                ProviderType = provider.Key.Type,
-                ProviderName = provider.Key.Name,
-                ProviderKey = provider.GetProviderKey(assertion, userId),
+                ProviderType = ProviderType.Oidc,
+                ProviderName = "Google",
+                ProviderKey = providerKey,
                 Version = Guid.NewGuid().ToString("N"),
                 CreatedAt = Now,
                 Status = CredentialStatus.Active
@@ -196,27 +191,6 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
         catch (CredentialProviderKeyConflictException)
         {
             return Result.Failure(AshlarFailureCodes.AlreadyLinkedToOther);
-        }
-    }
-
-    private sealed class TestOidcProvider : IAuthenticationProvider
-    {
-        public static readonly TestOidcProvider Instance = new();
-
-        public AuthenticationProviderKey Key { get; } = new(ProviderType.Oidc, "Google");
-
-        public bool ProtectsCredentials => false;
-
-        public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId)
-        {
-            return ((ExternalIdentityAssertion)assertion).ProviderKey;
-        }
-
-        public string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue) => rawValue;
-
-        public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Succeeded));
         }
     }
 

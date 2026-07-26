@@ -180,18 +180,18 @@ public sealed class AshlarOidcInvitationRegistrationService
         var preview = await _invitationService.GetInvitationAcceptancePreviewAsync(invitationToken, context, cancellationToken);
         if (!preview.Succeeded || preview.Value == null)
         {
-            return new AshlarOidcInvitationRegistrationResult(MapInvitationPreviewFailure(preview), Assertion: assertion);
+            return new AshlarOidcInvitationRegistrationResult(MapInvitationPreviewFailure(preview));
         }
 
         if (context?.TenantId is Guid requestedTenantId && preview.Value.TenantId != requestedTenantId)
         {
-            return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.InvalidInvitation, Assertion: assertion);
+            return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.InvalidInvitation);
         }
 
         var emailMatch = _emailMatchPolicy.Validate(new OidcInvitationEmailMatchContext(provider.ProviderName, principal, preview.Value));
         if (!emailMatch.Succeeded)
         {
-            return new AshlarOidcInvitationRegistrationResult(emailMatch.Status ?? AshlarOidcInvitationRegistrationStatus.Failed, Assertion: assertion);
+            return new AshlarOidcInvitationRegistrationResult(emailMatch.Status ?? AshlarOidcInvitationRegistrationStatus.Failed);
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
@@ -203,7 +203,7 @@ public sealed class AshlarOidcInvitationRegistrationService
         if (!acceptance.Succeeded || acceptance.Value == null || acceptance.Value.UserId == Guid.Empty)
         {
             await transaction.CommitAsync(cancellationToken);
-            return new AshlarOidcInvitationRegistrationResult(MapInvitationFailure(acceptance), Assertion: assertion, InvitationAcceptance: acceptance);
+            return new AshlarOidcInvitationRegistrationResult(MapInvitationFailure(acceptance), InvitationAcceptance: acceptance);
         }
 
         var link = await _credentialLinkService.LinkValidatedExternalCredentialAsync(new InternalValidatedExternalCredentialLinkRequest(
@@ -217,11 +217,11 @@ public sealed class AshlarOidcInvitationRegistrationService
         if (!link.Succeeded)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return new AshlarOidcInvitationRegistrationResult(MapLinkFailure(link), acceptance.Value.UserId, assertion, acceptance, link);
+            return new AshlarOidcInvitationRegistrationResult(MapLinkFailure(link), acceptance.Value.UserId, acceptance, link);
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.Registered, acceptance.Value.UserId, assertion, acceptance, link);
+        return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.Registered, acceptance.Value.UserId, acceptance, link);
     }
 
     private static AshlarOidcInvitationRegistrationStatus MapInvitationFailure(Result<InvitationAcceptanceResult> result)

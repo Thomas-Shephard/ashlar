@@ -18,7 +18,7 @@ internal sealed class ExternalAuthenticationProviderTests
     public async Task AuthenticateAsyncWithMatchingCredentialShouldReturnSuccess()
     {
         var providerKey = "sub-123";
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -39,7 +39,7 @@ internal sealed class ExternalAuthenticationProviderTests
     [Test]
     public async Task AuthenticateAsyncWithNullCredentialShouldReturnFailed()
     {
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub-123", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub-123", new Dictionary<string, string>());
 
         var result = await _provider.AuthenticateAsync(assertion, null);
 
@@ -49,7 +49,7 @@ internal sealed class ExternalAuthenticationProviderTests
     [Test]
     public async Task AuthenticateAsyncWithDefaultCredentialProviderTypeShouldReturnFailed()
     {
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub-123", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub-123", new Dictionary<string, string>());
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -70,7 +70,7 @@ internal sealed class ExternalAuthenticationProviderTests
     [Test]
     public void AuthenticateAsyncWithMismatchedProviderTypeShouldThrowArgumentException()
     {
-        var assertion = new ExternalIdentityAssertion(ProviderType.Saml2, "Okta", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Saml2, "Okta", "sub", new Dictionary<string, string>());
 
         Assert.ThrowsAsync<ArgumentException>(() => _provider.AuthenticateAsync(assertion, null));
     }
@@ -83,6 +83,39 @@ internal sealed class ExternalAuthenticationProviderTests
     }
 
     [Test]
+    public void PublicMatchingAssertionShouldNotAuthenticate()
+    {
+        var assertion = new PublicExternalAssertion(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
+
+        Assert.ThrowsAsync<ArgumentException>(() => _provider.AuthenticateAsync(assertion, new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = ProviderType.Oidc,
+            ProviderName = "Google",
+            ProviderKey = "key",
+            Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active
+        }));
+    }
+
+    [Test]
+    public void TrustBearingAssertionShouldNotBePublic()
+    {
+        var assembly = typeof(OidcAuthenticationProvider).Assembly;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(assembly.GetType("Ashlar.Identity.Providers.External.ExternalIdentityAssertion")?.IsPublic, Is.False);
+            Assert.That(assembly.GetType("Ashlar.OAuth.OidcExternalIdentityAssertionMapper")?.IsPublic, Is.False);
+            Assert.That(assembly.GetType("Ashlar.OAuth.OAuth2ExternalIdentityAssertionMapper")?.IsPublic, Is.False);
+            Assert.That(assembly.GetType("Ashlar.Identity.Providers.External.Saml2AuthenticationProvider")?.IsPublic, Is.False);
+            Assert.That(assembly.GetType("Ashlar.Identity.Providers.External.ExternalIdentity"), Is.Null);
+        }
+    }
+
+    [Test]
     public void AuthenticateAsyncWithNullAssertionShouldThrow()
     {
         Assert.ThrowsAsync<ArgumentNullException>(() => _provider.AuthenticateAsync(null!, null));
@@ -92,7 +125,7 @@ internal sealed class ExternalAuthenticationProviderTests
     public async Task AuthenticateAsyncWithMismatchedProviderNameShouldReturnFailed()
     {
         var providerKey = "sub-123";
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -118,6 +151,8 @@ internal sealed class ExternalAuthenticationProviderTests
         Assert.That(result, Is.Empty);
     }
 
+    private sealed record PublicExternalAssertion(AuthenticationProviderKey ProviderIdentity) : IAuthenticationAssertion;
+
     [Test]
     public void GetProviderKeyWithNullAssertionShouldThrow()
     {
@@ -128,7 +163,7 @@ internal sealed class ExternalAuthenticationProviderTests
     [Test]
     public Task FindUserAsyncWithNullRepositoryShouldThrow()
     {
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "key", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "key", new Dictionary<string, string>());
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.ThrowsAsync<ArgumentNullException>(() => ((IAuthenticationUserResolver)_provider).FindUserAsync(assertion, new AuthenticationContext(), null!));
         return Task.CompletedTask;
@@ -157,7 +192,7 @@ internal sealed class ExternalAuthenticationProviderTests
         var otherTenantId = Guid.NewGuid();
         var providerKey = "ext-key";
         var providerName = "Google";
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
         var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = otherTenantId };
 
@@ -175,7 +210,7 @@ internal sealed class ExternalAuthenticationProviderTests
     {
         var providerKey = "ext-key";
         var providerName = "Google";
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
         var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = Guid.NewGuid() };
 
@@ -194,7 +229,7 @@ internal sealed class ExternalAuthenticationProviderTests
         var tenantId = Guid.NewGuid();
         var providerKey = "ext-key";
         var providerName = "Google";
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
         var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = null };
 
@@ -212,7 +247,7 @@ internal sealed class ExternalAuthenticationProviderTests
     {
         var providerKey = "ext-key";
         var providerName = "Google";
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
         var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = null };
 
@@ -231,7 +266,7 @@ internal sealed class ExternalAuthenticationProviderTests
         var tenantId = Guid.NewGuid();
         var providerKey = "ext-key";
         var providerName = "Google";
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
         var user = new GlobalUser(Guid.NewGuid(), "test@example.com");
 
         var repoMock = new Mock<IUserRepository>();
@@ -248,7 +283,7 @@ internal sealed class ExternalAuthenticationProviderTests
     {
         var providerKey = "ext-key";
         var providerName = "Google";
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
         var user = new GlobalUser(Guid.NewGuid(), "test@example.com");
 
         var repoMock = new Mock<IUserRepository>();

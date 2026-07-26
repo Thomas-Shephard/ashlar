@@ -219,7 +219,7 @@ internal sealed class IdentityServiceTests
         };
 
         var claims = new Dictionary<string, string> { { "name", "Google User" } };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, claims);
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", providerKey, claims);
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -254,7 +254,7 @@ internal sealed class IdentityServiceTests
             Status = CredentialStatus.Active,
         };
 
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -278,7 +278,7 @@ internal sealed class IdentityServiceTests
         var email = "nonexistent@example.com";
         var providerName = "Google";
         var providerKey = "sub";
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
@@ -306,7 +306,7 @@ internal sealed class IdentityServiceTests
             CreatedAt = DateTimeOffset.UtcNow,
             Status = CredentialStatus.Active,
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -332,7 +332,7 @@ internal sealed class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(type, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await LinkCredentialForTestAsync(userId, new ExternalIdentityAssertion(type, providerName, providerKey, new Dictionary<string, string>()));
+        var result = await LinkCredentialForTestAsync(userId, ExternalIdentityAssertionTestHelper.Create(type, providerName, providerKey, new Dictionary<string, string>()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -348,7 +348,7 @@ internal sealed class IdentityServiceTests
         var type = ProviderType.Oidc;
         var providerName = "Google";
         var providerKey = "sub";
-        var assertion = new ExternalIdentityAssertion(type, providerName, providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(type, providerName, providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
@@ -415,7 +415,7 @@ internal sealed class IdentityServiceTests
             CreatedAt = DateTimeOffset.UtcNow,
             Status = CredentialStatus.Active,
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -507,7 +507,7 @@ internal sealed class IdentityServiceTests
         var providerName = "Google";
         var providerKey = "sub-123";
         var anotherUser = new User { Id = anotherUserId, DisplayEmail = "another@example.com" };
-        var assertion = new ExternalIdentityAssertion(type, providerName, providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(type, providerName, providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com" });
@@ -530,7 +530,7 @@ internal sealed class IdentityServiceTests
         var type = ProviderType.Oidc;
         var providerName = "Google";
         var providerKey = "sub-123";
-        var assertion = new ExternalIdentityAssertion(type, providerName, providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(type, providerName, providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com" });
@@ -598,7 +598,7 @@ internal sealed class IdentityServiceTests
         };
 
         var claims = new Dictionary<string, string> { { "login", "octocat" } };
-        var assertion = new ExternalIdentityAssertion(ProviderType.OAuth, "GitHub", providerKey, claims);
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.OAuth, "GitHub", providerKey, claims);
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.OAuth, "GitHub", providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -784,7 +784,7 @@ internal sealed class IdentityServiceTests
     {
         var userId = Guid.NewGuid();
         var user = new User { Id = userId, DisplayEmail = "test@example.com" };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -813,7 +813,7 @@ internal sealed class IdentityServiceTests
         providerMock.As<IAuthenticationUserResolver>().Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<AuthenticationContext>(), It.IsAny<IUserLookup>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var assertion = new ExternalIdentityAssertion((ProviderType)"MOCK", "MOCK", "key", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create((ProviderType)"MOCK", "MOCK", "key", new Dictionary<string, string>());
 
         var credentialService = CreateCredentialService();
         var service = CreateIdentityService([providerMock.Object], credentialService);
@@ -880,7 +880,7 @@ internal sealed class IdentityServiceTests
     public async Task LinkCredentialAsyncWithNullValueDoesNotEncryptCredential()
     {
         var userId = Guid.NewGuid();
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
@@ -910,7 +910,7 @@ internal sealed class IdentityServiceTests
             Status = CredentialStatus.Active,
             CredentialValue = "malformed"
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -955,7 +955,7 @@ internal sealed class IdentityServiceTests
     [Test]
     public void ExternalIdentityAssertionWithEmptyProviderNameShouldThrow()
     {
-        Assert.Throws<ArgumentException>(() => _ = new ExternalIdentityAssertion(ProviderType.Oidc, "", "key", new Dictionary<string, string>()));
+        Assert.Throws<ArgumentException>(() => _ = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "", "key", new Dictionary<string, string>()));
     }
 
     [Test]
@@ -976,7 +976,7 @@ internal sealed class IdentityServiceTests
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<Guid>()))
             .Returns(string.Empty);
 
-        var assertion = new ExternalIdentityAssertion((ProviderType)"MOCK", "MOCK", "key", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create((ProviderType)"MOCK", "MOCK", "key", new Dictionary<string, string>());
 
         var credentialService = CreateCredentialService();
         var service = CreateIdentityService([providerMock.Object], credentialService);
@@ -1033,7 +1033,7 @@ internal sealed class IdentityServiceTests
     {
         var userId = Guid.NewGuid();
         var user = new User { Id = userId, DisplayEmail = "test@example.com" };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1092,7 +1092,7 @@ internal sealed class IdentityServiceTests
             CreatedAt = DateTimeOffset.UtcNow,
             Status = CredentialStatus.Active,
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Saml2, "Okta", providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Saml2, "Okta", providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Saml2, "Okta", providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1112,7 +1112,7 @@ internal sealed class IdentityServiceTests
         var providerName = "Google";
         var plainToken = "raw-token";
         var protectedToken = "protected(raw-token)";
-        var assertion = new ExternalIdentityAssertion(type, providerName, "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(type, providerName, "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
@@ -1145,7 +1145,7 @@ internal sealed class IdentityServiceTests
             Status = CredentialStatus.Active,
             CredentialValue = protectedToken
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1229,7 +1229,7 @@ internal sealed class IdentityServiceTests
             Status = CredentialStatus.Active,
             CredentialValue = oldTokenProtected
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.OAuth, "GitHub", providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.OAuth, "GitHub", providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.OAuth, "GitHub", providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1274,7 +1274,7 @@ internal sealed class IdentityServiceTests
             Status = CredentialStatus.Active,
             CredentialValue = null
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1294,7 +1294,7 @@ internal sealed class IdentityServiceTests
     {
         var email = "ghost@example.com";
         var providerKey = "sub-123";
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
@@ -1316,7 +1316,7 @@ internal sealed class IdentityServiceTests
     {
         var email = "ghost@example.com";
         var providerKey = "sub-123";
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
@@ -1348,7 +1348,7 @@ internal sealed class IdentityServiceTests
             Status = CredentialStatus.Active,
             CredentialValue = malformedToken
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1396,7 +1396,7 @@ internal sealed class IdentityServiceTests
             Status = CredentialStatus.Active,
             CredentialValue = null
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1591,7 +1591,7 @@ internal sealed class IdentityServiceTests
             CredentialValue = "protected(token)",
             Metadata = "original-metadata"
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1634,7 +1634,7 @@ internal sealed class IdentityServiceTests
             Status = CredentialStatus.Active,
             CredentialValue = "protected(token)"
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1711,7 +1711,7 @@ internal sealed class IdentityServiceTests
             CredentialValue = null, // Credential value is null
             Metadata = "old-metadata"
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1754,7 +1754,7 @@ internal sealed class IdentityServiceTests
             Status = CredentialStatus.Active,
             CredentialValue = "token"
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1805,7 +1805,7 @@ internal sealed class IdentityServiceTests
             Status = CredentialStatus.Active,
             CredentialValue = "token"
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1850,7 +1850,7 @@ internal sealed class IdentityServiceTests
             Status = CredentialStatus.Active,
             CredentialValue = "protected(existing)"
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1897,7 +1897,7 @@ internal sealed class IdentityServiceTests
             Status = CredentialStatus.Active,
             CredentialValue = "protected(old-value)"
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1947,7 +1947,7 @@ internal sealed class IdentityServiceTests
             CredentialValue = "protected(token)",
             Metadata = null // Currently null
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1992,7 +1992,7 @@ internal sealed class IdentityServiceTests
             Metadata = "some-metadata",
             LastUsedAt = DateTimeOffset.UtcNow // Set to now to avoid LastUsedAt update triggering the write
         };
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -2062,7 +2062,7 @@ internal sealed class IdentityServiceTests
         providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded));
 
-        var assertion = new ExternalIdentityAssertion((ProviderType)"MOCK", "MOCK", "key", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create((ProviderType)"MOCK", "MOCK", "key", new Dictionary<string, string>());
 
         var credentialService = CreateCredentialService();
         var service = CreateIdentityService([providerMock.Object], credentialService);
@@ -2195,7 +2195,7 @@ internal sealed class IdentityServiceTests
         var credentialService = CreateCredentialService();
         var service = CreateIdentityService([providerMock.Object], credentialService);
 
-        var response = await service.LoginAsync(new AuthenticationContext(email), new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "key", new Dictionary<string, string>()));
+        var response = await service.LoginAsync(new AuthenticationContext(email), ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "key", new Dictionary<string, string>()));
 
         Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
     }

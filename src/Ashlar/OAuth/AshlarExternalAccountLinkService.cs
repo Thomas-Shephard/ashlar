@@ -173,7 +173,7 @@ public sealed class AshlarExternalAccountLinkService
 
         if (linkResult.Succeeded)
         {
-            return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.Linked, assertion, linkResult);
+            return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.Linked, linkResult);
         }
 
         var status = linkResult.FailureCode?.Value switch
@@ -184,7 +184,7 @@ public sealed class AshlarExternalAccountLinkService
             _ => AshlarExternalAccountLinkStatus.Failed
         };
 
-        return new AshlarExternalAccountLinkResult(status, assertion, linkResult);
+        return new AshlarExternalAccountLinkResult(status, linkResult);
     }
 
     /// <summary>

@@ -34,7 +34,7 @@ internal sealed class IdentityServiceAuditingTests
         var tenantId = Guid.NewGuid();
         var actorUserId = Guid.NewGuid();
         var context = new AuthenticationContext("test@example.com", TenantId: tenantId, UserId: actorUserId);
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
+        var assertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);

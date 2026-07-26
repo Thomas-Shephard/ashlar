@@ -1,5 +1,4 @@
 using Ashlar.Identity.Providers.Local;
-using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.RateLimiting;
 
 namespace Ashlar.Tests.Identity.RateLimiting;
@@ -91,11 +90,11 @@ internal sealed class PrimaryAuthenticationRateLimitKeyBuilderTests
     {
         var first = PrimaryAuthenticationRateLimitKeyBuilder.BuildAttempts(
             new AuthenticationContext(IpAddress: "203.0.113.1"),
-            new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "external-user-1", new Dictionary<string, string>()),
+            ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "external-user-1", new Dictionary<string, string>()),
             new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
         var second = PrimaryAuthenticationRateLimitKeyBuilder.BuildAttempts(
             new AuthenticationContext(IpAddress: "203.0.113.1"),
-            new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "external-user-2", new Dictionary<string, string>()),
+            ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "external-user-2", new Dictionary<string, string>()),
             new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
 
         using (Assert.EnterMultipleScope())

@@ -1,19 +1,15 @@
-using Ashlar.Identity.Providers.External;
-
 namespace Ashlar.OAuth;
 
 /// <summary>
-/// Describes the result of accepting an Ashlar invitation with a validated OpenID Connect identity.
+/// Describes the result of accepting an Ashlar invitation with a validated OpenID Connect provider.
 /// </summary>
 /// <param name="Status">The registration outcome.</param>
 /// <param name="UserId">The accepted Ashlar user id, when invitation acceptance succeeded.</param>
-/// <param name="Assertion">The mapped external identity assertion, when mapping succeeded.</param>
 /// <param name="InvitationAcceptance">The underlying invitation acceptance result, when attempted.</param>
 /// <param name="CredentialLink">The underlying credential link result, when attempted.</param>
 public sealed record AshlarOidcInvitationRegistrationResult(
     AshlarOidcInvitationRegistrationStatus Status,
     Guid? UserId = null,
-    ExternalIdentityAssertion? Assertion = null,
     Result<Ashlar.Identity.Models.Invitations.InvitationAcceptanceResult>? InvitationAcceptance = null,
     Result? CredentialLink = null)
 {

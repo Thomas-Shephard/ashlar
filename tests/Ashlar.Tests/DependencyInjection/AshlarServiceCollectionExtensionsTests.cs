@@ -823,8 +823,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using var scope = provider.CreateScope();
         var registry = scope.ServiceProvider.GetRequiredService<IAuthenticationProviderRegistry>();
 
-        var googleAssertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "google-sub", new Dictionary<string, string>());
-        var microsoftAssertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Microsoft", "microsoft-sub", new Dictionary<string, string>());
+        var googleAssertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "google-sub", new Dictionary<string, string>());
+        var microsoftAssertion = ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Microsoft", "microsoft-sub", new Dictionary<string, string>());
 
         using (Assert.EnterMultipleScope())
         {

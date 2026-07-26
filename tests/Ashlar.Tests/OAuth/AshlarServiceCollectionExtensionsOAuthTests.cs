@@ -104,6 +104,7 @@ internal sealed class AshlarServiceCollectionExtensionsOAuthTests
         services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services.AddPasswordHasher<PasswordHasherV1>();
         services.AddAuthenticationProvider<LocalPasswordProvider>();
+        services.AddScoped(_ => Mock.Of<IAuthenticationOrchestrator>());
         services.AddAshlarOAuth(options => options.AddGitHub(oauth =>
         {
             oauth.ClientId = "client";

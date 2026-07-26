@@ -3,20 +3,9 @@ using Ashlar.Identity.Providers.External;
 
 namespace Ashlar.OAuth;
 
-/// <summary>
-/// Maps a validated ASP.NET Core OAuth2 principal into an Ashlar external identity assertion.
-/// </summary>
-public static class OAuth2ExternalIdentityAssertionMapper
+internal static class OAuth2ExternalIdentityAssertionMapper
 {
-    /// <summary>
-    /// Maps the principal to an Ashlar assertion backed by the provider's stable user id claim.
-    /// </summary>
-    /// <param name="providerName">The configured Ashlar provider name.</param>
-    /// <param name="principal">The validated external principal.</param>
-    /// <param name="idClaimType">The claim type containing the stable provider user id.</param>
-    /// <param name="allowUnsafeProviderKeyClaimType">Whether the caller explicitly accepts responsibility for using a claim type that Ashlar normally rejects as mutable or non-unique.</param>
-    /// <returns>An Ashlar OAuth assertion.</returns>
-    public static ExternalIdentityAssertion Map(
+    internal static ExternalIdentityAssertion Map(
         string providerName,
         ClaimsPrincipal principal,
         string idClaimType = "id",
