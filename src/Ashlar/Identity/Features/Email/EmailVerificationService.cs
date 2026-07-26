@@ -308,7 +308,10 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         var user = (await _identityContext.UserRepository.GetUserByIdAsync(userId, cancellationToken))!;
         EmailVerificationCredentialMetadata? metadata = null;
         try { metadata = JsonSerializer.Deserialize<EmailVerificationCredentialMetadata>(credential.Metadata ?? ""); }
-        catch (JsonException) { }
+        catch (JsonException)
+        {
+            // Malformed metadata is handled as an invalid token below.
+        }
         if (!user.CanSignIn())
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
