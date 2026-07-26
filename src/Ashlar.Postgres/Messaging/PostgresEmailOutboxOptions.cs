@@ -5,11 +5,19 @@ namespace Ashlar.Postgres.Messaging;
 /// </summary>
 public sealed record PostgresEmailOutboxOptions
 {
+    private static readonly TimeSpan MaxLeaseDuration = TimeSpan.FromMilliseconds(uint.MaxValue - 1d);
+
     /// <summary>
     /// Gets or sets the duration for which a message is locked for dispatch.
     /// Default is 5 minutes.
     /// </summary>
     public TimeSpan LockDuration { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Gets or sets the maximum duration of an email delivery attempt.
+    /// Default is 30 seconds.
+    /// </summary>
+    public TimeSpan DeliveryTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Gets or sets the maximum number of attempts to send an email message.
@@ -41,6 +49,10 @@ public sealed record PostgresEmailOutboxOptions
         ArgumentNullException.ThrowIfNull(options);
 
         return options.LockDuration > TimeSpan.Zero
+            && options.LockDuration / 2 > TimeSpan.Zero
+            && options.DeliveryTimeout > TimeSpan.Zero
+            && options.DeliveryTimeout <= MaxLeaseDuration
+            && options.LockDuration <= MaxLeaseDuration - options.DeliveryTimeout
             && options.MaxAttempts > 0
             && options.InitialRetryDelay > TimeSpan.Zero
             && options.BatchSize > 0

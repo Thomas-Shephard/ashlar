@@ -157,9 +157,34 @@ internal sealed class SqliteEmailOutboxDispatcher<TTransport>(
                 (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, lockId, token),
                 (id, attemptCount, finalFailure, exception) =>
                     SqliteEmailOutboxDispatcherLog.EmailOutboxDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
+                (id, token) => RenewLockAsync(id, provider, lockId, token),
+                _options.DeliveryTimeout,
+                _options.LockDuration / 2,
                 provider.GetService<ISecretProtector>(),
                 id => SqliteEmailOutboxDispatcherLog.EmailOutboxSentStateConflict(_logger, id, null)),
             cancellationToken);
+    }
+
+    private async Task<bool> RenewLockAsync(Guid id, IServiceProvider provider, string lockId, CancellationToken cancellationToken)
+    {
+        var now = _timeProvider.GetUtcNow();
+        var connectionProvider = provider.GetRequiredService<ISqliteConnectionProvider>();
+        await using var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken);
+        await using var command = connectionHandle.Connection.CreateCommand();
+        command.Transaction = connectionHandle.Transaction;
+        command.CommandText = """
+            UPDATE ashlar_email_outbox
+            SET locked_until = $lockedUntil
+            WHERE id = $id
+              AND locked_by = $lockedBy
+              AND sent_at IS NULL
+              AND failed_at IS NULL
+              AND discarded_at IS NULL
+            """;
+        command.AddParameter("$id", id.ToString("D"));
+        command.AddParameter(LockedByParameter, lockId);
+        command.AddDateTimeOffsetParameter("$lockedUntil", now.Add(_options.DeliveryTimeout).Add(_options.LockDuration));
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
     private async Task<bool> MarkAsSentAsync(Guid id, IServiceProvider provider, string lockId, CancellationToken cancellationToken)

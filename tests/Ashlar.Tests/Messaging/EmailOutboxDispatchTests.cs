@@ -256,6 +256,125 @@ internal sealed class EmailOutboxDispatchTests
     }
 
     [Test]
+    public async Task DispatchAsyncDoesNotDeliverWhenLockCannotBeRenewed()
+    {
+        var transport = new RecordingEmailTransport();
+        var sent = false;
+        var context = CreateDispatchContext(
+            transport,
+            markAsSentAsync: (_, _) => Task.FromResult(sent = true),
+            renewLockAsync: (_, _) => Task.FromResult(false));
+
+        await EmailOutboxDispatch.DispatchAsync(CreateEntry(), context, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Messages, Is.Empty);
+            Assert.That(sent, Is.False);
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task DispatchAsyncRenewsLockWhileDeliveryIsRunning(bool retainsLock)
+    {
+        var releaseDelivery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new RecordingEmailTransport { DeliveryTask = releaseDelivery.Task };
+        var renewals = 0;
+        var sent = false;
+        var context = CreateDispatchContext(
+            transport,
+            markAsSentAsync: (_, _) => Task.FromResult(sent = true),
+            renewLockAsync: (_, _) =>
+            {
+                if (++renewals == 2)
+                {
+                    releaseDelivery.SetResult();
+                }
+
+                return Task.FromResult(renewals == 1 || retainsLock);
+            }) with
+        {
+            LockRenewalInterval = TimeSpan.FromMilliseconds(1)
+        };
+
+        await EmailOutboxDispatch.DispatchAsync(CreateEntry(), context, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(renewals, Is.EqualTo(2));
+            Assert.That(sent, Is.EqualTo(retainsLock));
+        }
+    }
+
+    [Test]
+    public async Task DispatchAsyncContinuesRenewingAfterRenewalException()
+    {
+        var releaseDelivery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new RecordingEmailTransport { DeliveryTask = releaseDelivery.Task };
+        var renewals = 0;
+        var failed = false;
+        var context = CreateDispatchContext(
+            transport,
+            markAsFailedAsync: (_, _, _) =>
+            {
+                failed = true;
+                return Task.CompletedTask;
+            },
+            renewLockAsync: (_, _) =>
+            {
+                if (++renewals == 2)
+                {
+                    throw new InvalidOperationException("temporary renewal failure");
+                }
+
+                if (renewals == 3)
+                {
+                    releaseDelivery.SetResult();
+                }
+
+                return Task.FromResult(true);
+            }) with
+        {
+            LockRenewalInterval = TimeSpan.FromMilliseconds(1)
+        };
+
+        await EmailOutboxDispatch.DispatchAsync(CreateEntry(), context, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(renewals, Is.GreaterThanOrEqualTo(3));
+            Assert.That(failed, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task DispatchAsyncRenewsWhileTransportBlocksBeforeReturningTask()
+    {
+        using var releaseDelivery = new ManualResetEventSlim();
+        var transport = new SynchronouslyBlockingEmailTransport(releaseDelivery);
+        var renewals = 0;
+        var context = CreateDispatchContext(
+            transport,
+            renewLockAsync: (_, _) =>
+            {
+                if (++renewals == 2)
+                {
+                    releaseDelivery.Set();
+                }
+
+                return Task.FromResult(true);
+            }) with
+        {
+            LockRenewalInterval = TimeSpan.FromMilliseconds(1)
+        };
+
+        await EmailOutboxDispatch.DispatchAsync(CreateEntry(), context, CancellationToken.None);
+
+        Assert.That(renewals, Is.GreaterThanOrEqualTo(2));
+    }
+
+    [Test]
     public async Task DispatchAsyncLogsAndMarksFailedWhenDeliveryFails()
     {
         var entry = CreateEntry(attemptCount: 1);
@@ -442,6 +561,11 @@ internal sealed class EmailOutboxDispatchTests
             Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxDispatch.DispatchAsync(entry, context with { MarkAsSentAsync = null! }, CancellationToken.None));
             Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxDispatch.DispatchAsync(entry, context with { MarkAsFailedAsync = null! }, CancellationToken.None));
             Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxDispatch.DispatchAsync(entry, context with { LogDeliveryFailed = null! }, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxDispatch.DispatchAsync(entry, context with { RenewLockAsync = null! }, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => EmailOutboxDispatch.DispatchAsync(entry, context with { DeliveryTimeout = TimeSpan.Zero }, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => EmailOutboxDispatch.DispatchAsync(entry, context with { DeliveryTimeout = TimeSpan.MaxValue }, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => EmailOutboxDispatch.DispatchAsync(entry, context with { LockRenewalInterval = TimeSpan.Zero }, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => EmailOutboxDispatch.DispatchAsync(entry, context with { LockRenewalInterval = TimeSpan.MaxValue }, CancellationToken.None));
         }
     }
 
@@ -519,7 +643,8 @@ internal sealed class EmailOutboxDispatchTests
         Func<Guid, CancellationToken, Task<bool>>? markAsSentAsync = null,
         Func<EmailOutboxEntry, Exception, CancellationToken, Task>? markAsFailedAsync = null,
         Action<Guid, int, bool, Exception?>? logDeliveryFailed = null,
-        Action<Guid>? logSentStateConflict = null)
+        Action<Guid>? logSentStateConflict = null,
+        Func<Guid, CancellationToken, Task<bool>>? renewLockAsync = null)
     {
         return new EmailOutboxDispatchContext(
             transport,
@@ -527,6 +652,9 @@ internal sealed class EmailOutboxDispatchTests
             markAsSentAsync ?? ((_, _) => Task.FromResult(true)),
             markAsFailedAsync ?? ((_, _, _) => Task.CompletedTask),
             logDeliveryFailed ?? ((_, _, _, _) => { }),
+            renewLockAsync ?? ((_, _) => Task.FromResult(true)),
+            TimeSpan.FromMinutes(1),
+            TimeSpan.FromSeconds(30),
             secretProtector,
             logSentStateConflict);
     }
@@ -539,6 +667,8 @@ internal sealed class EmailOutboxDispatchTests
 
         public Action<EmailMessage, CancellationToken>? OnDeliver { get; init; }
 
+        public Task? DeliveryTask { get; init; }
+
         public Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default)
         {
             Messages.Add(message);
@@ -548,6 +678,15 @@ internal sealed class EmailOutboxDispatchTests
                 throw DeliverException;
             }
 
+            return DeliveryTask ?? Task.CompletedTask;
+        }
+    }
+
+    private sealed class SynchronouslyBlockingEmailTransport(ManualResetEventSlim releaseDelivery) : IEmailTransport
+    {
+        public Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default)
+        {
+            releaseDelivery.Wait(cancellationToken);
             return Task.CompletedTask;
         }
     }

@@ -102,9 +102,30 @@ internal sealed class PostgresEmailOutboxDispatcher<TTransport>(
                 (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, lockId, provider, token),
                 (id, attemptCount, finalFailure, exception) =>
                     PostgresEmailOutboxDispatcherLog.EmailOutboxDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
+                (id, token) => RenewLockAsync(id, lockId, provider, token),
+                _options.DeliveryTimeout,
+                _options.LockDuration / 2,
                 provider.GetService<ISecretProtector>(),
                 id => PostgresEmailOutboxDispatcherLog.EmailOutboxSentStateConflict(_logger, id, null)),
             cancellationToken);
+    }
+
+    private async Task<bool> RenewLockAsync(Guid id, string lockId, IServiceProvider provider, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            UPDATE ashlar_email_outbox
+            SET locked_until = @LockedUntil
+            WHERE id = @Id
+              AND locked_by = @LockedBy
+              AND sent_at IS NULL
+              AND failed_at IS NULL
+              AND discarded_at IS NULL
+            """;
+        var now = _timeProvider.GetUtcNow();
+        var connectionProvider = provider.GetRequiredService<IPostgresConnectionProvider>();
+        await using var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken);
+        var command = new CommandDefinition(sql, new { Id = id, LockedBy = lockId, LockedUntil = now.Add(_options.DeliveryTimeout).Add(_options.LockDuration) }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+        return await connectionHandle.Connection.ExecuteAsync(command) > 0;
     }
 
     private async Task<bool> MarkAsSentAsync(Guid id, string lockId, IServiceProvider provider, CancellationToken cancellationToken)
