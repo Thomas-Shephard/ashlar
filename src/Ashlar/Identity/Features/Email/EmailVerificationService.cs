@@ -6,6 +6,7 @@ using Ashlar.Messaging;
 using Ashlar.Security.Tokens;
 using Ashlar.Identity.Notifications;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 
 namespace Ashlar.Identity.Features.Email;
 
@@ -29,6 +30,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
     private readonly IOptions<EmailVerificationOptions> _options;
     private readonly SecurityNotificationEmitter _notifications;
     private readonly EmailFlowVerificationRateLimitChecker _verificationRateLimits;
+    private readonly IAuthenticationSessionRepository _sessions;
 
     /// <summary>
     /// Creates the email verification service with the dependencies for token issuance, delivery, and confirmation.
@@ -48,17 +50,30 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         _options = dependencies.Options ?? Options.Create(new EmailVerificationOptions());
         _notifications = new SecurityNotificationEmitter(dependencies.NotificationService);
         _verificationRateLimits = new EmailFlowVerificationRateLimitChecker(_rateLimitChecker, VerifyPurpose);
+        _sessions = dependencies.SessionRepository;
     }
 
     /// <summary>
     /// Requests a verification email for an active, unverified user.
     /// </summary>
-    /// <param name="request">User, callback base URI, and audit context for issuing the verification message.</param>
+    /// <param name="request">Ashlar-issued validated session, callback base URI, and required matching audit actor.</param>
     /// <param name="cancellationToken">A token that can cancel the request.</param>
     /// <returns>A success result when the verification message is queued or sent; otherwise, a failure describing why the request was rejected.</returns>
     public async Task<Result> RequestVerificationAsync(EmailVerificationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Session);
+        ArgumentNullException.ThrowIfNull(request.Audit);
+        var userId = request.Session.UserId;
+        var tenantId = request.Session.TenantId;
+
+        if (request.Audit.ActorUserId != userId)
+            return await RejectRequestAsync(request, AshlarFailureCodes.ValidationError, "Audit actor must match the validated session user.", cancellationToken);
+
+        var session = await _sessions.GetSessionAsync(request.Session.Id, cancellationToken);
+        if (session is null || session.Id != request.Session.Id || session.UserId != userId || !Nullable.Equals(session.TenantId, tenantId)
+            || !session.IsActive(_timeProvider.GetUtcNow()))
+            return await RejectRequestAsync(request, AshlarFailureCodes.SessionNotFoundOrInactive, null, cancellationToken);
 
         if (!_uriValidator.IsValid(request.CallbackBaseUri))
         {
@@ -66,21 +81,25 @@ internal sealed class EmailVerificationService : IEmailVerificationService
             {
                 EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
                 Outcome = SecurityEventOutcomes.Failure,
-                UserId = request.UserId,
+                UserId = userId,
+                TenantId = tenantId,
+                SessionId = request.Session.Id,
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.InvalidCallbackUri.Value
             }, cancellationToken);
             return Result.Failure(AshlarFailureCodes.InvalidCallbackUri, $"The URI '{request.CallbackBaseUri}' is not allowed.");
         }
 
-        var user = await _identityContext.UserRepository.GetUserByIdAsync(request.UserId, cancellationToken);
-        if (user == null || !user.CanSignIn())
+        var user = await _identityContext.UserRepository.GetUserByIdAsync(userId, cancellationToken);
+        if (user == null || !user.CanSignIn() || !UserTenantOwnership.Matches(user, tenantId))
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
                 Outcome = SecurityEventOutcomes.Failure,
-                UserId = request.UserId,
+                UserId = userId,
+                TenantId = tenantId,
+                SessionId = request.Session.Id,
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.UserNotFoundOrUnavailable.Value
             }, cancellationToken);
@@ -130,7 +149,9 @@ internal sealed class EmailVerificationService : IEmailVerificationService
             CreatedAt = now,
             ExpiresAt = now.Add(_options.Value.Expiration),
             Status = CredentialStatus.Active,
-            Purpose = CredentialPurpose
+            Purpose = CredentialPurpose,
+            Metadata = JsonSerializer.Serialize(new EmailVerificationCredentialMetadata(
+                IdentityNormalization.NormalizeEmail(user.DisplayEmail)))
         };
 
         await using var transaction = await _identityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
@@ -156,12 +177,28 @@ internal sealed class EmailVerificationService : IEmailVerificationService
             Outcome = SecurityEventOutcomes.Success,
             UserId = user.Id,
             TenantId = GetTenantId(user),
+            SessionId = request.Session.Id,
             Audit = request.Audit
         }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
 
         return Result.Success();
+    }
+
+    private async Task<Result> RejectRequestAsync(EmailVerificationRequest request, AshlarFailureCode code, string? message, CancellationToken cancellationToken)
+    {
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = request.Session.UserId,
+            TenantId = request.Session.TenantId,
+            SessionId = request.Session.Id,
+            Audit = request.Audit with { ActorUserId = request.Session.UserId },
+            FailureReason = code.Value
+        }, cancellationToken);
+        return message is null ? Result.Failure(code) : Result.Failure(code, message);
     }
 
     /// <summary>
@@ -251,6 +288,55 @@ internal sealed class EmailVerificationService : IEmailVerificationService
 
         await using var transaction = await _identityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
+        try
+        {
+            await _identityContext.CredentialRepository.AcquireUserMutationLockAsync(userId, cancellationToken);
+        }
+        catch (UserMutationLockNotFoundException)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Audit = request.Audit,
+                FailureReason = AshlarFailureCodes.UserNotFoundOrUnavailable.Value
+            }, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return Result.Failure(AshlarFailureCodes.UserNotFoundOrUnavailable, InvalidOrExpiredTokenMessage);
+        }
+        var user = (await _identityContext.UserRepository.GetUserByIdAsync(userId, cancellationToken))!;
+        EmailVerificationCredentialMetadata? metadata = null;
+        try { metadata = JsonSerializer.Deserialize<EmailVerificationCredentialMetadata>(credential.Metadata ?? ""); }
+        catch (JsonException) { }
+        if (!user.CanSignIn())
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Audit = request.Audit,
+                FailureReason = AshlarFailureCodes.UserNotFoundOrUnavailable.Value
+            }, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return Result.Failure(AshlarFailureCodes.UserNotFoundOrUnavailable, InvalidOrExpiredTokenMessage);
+        }
+
+        if (metadata?.NormalizedEmail != IdentityNormalization.NormalizeEmail(user.DisplayEmail))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Audit = request.Audit,
+                FailureReason = AshlarFailureCodes.InvalidOrExpiredToken.Value
+            }, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, InvalidOrExpiredTokenMessage);
+        }
+
         var consumed = await _identityContext.CredentialRepository.ConsumeCredentialAsync(credential.Id, credential.Version, cancellationToken);
         if (!consumed)
         {
@@ -262,21 +348,8 @@ internal sealed class EmailVerificationService : IEmailVerificationService
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.TokenConsumptionFailed.Value
             }, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return Result.Failure(AshlarFailureCodes.TokenConsumptionFailed, InvalidOrExpiredTokenMessage);
-        }
-
-        var user = await _identityContext.UserRepository.GetUserByIdAsync(userId, cancellationToken);
-        if (user == null || !user.CanSignIn())
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                Audit = request.Audit,
-                FailureReason = AshlarFailureCodes.UserNotFoundOrUnavailable.Value
-            }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.UserNotFoundOrUnavailable, InvalidOrExpiredTokenMessage);
         }
 
         var updatedUser = new UpdatedUserWrapper(user, now);
@@ -305,6 +378,8 @@ internal sealed class EmailVerificationService : IEmailVerificationService
     {
         return user is ITenantUser { TenantId: { } tenantId } ? tenantId : null;
     }
+
+    private sealed record EmailVerificationCredentialMetadata(string NormalizedEmail);
 
     private sealed class UpdatedUserWrapper(IUser original, DateTimeOffset? emailVerifiedAt) : ITenantUser, IHasAuditMetadata
     {
@@ -361,6 +436,7 @@ internal sealed class EmailVerificationServiceDependencies(
     SecureTokenContext tokenContext,
     IdentityInfrastructureContext infrastructure,
     IdentityAuditContext audit,
+    IAuthenticationSessionRepository sessionRepository,
     IOptions<EmailVerificationOptions>? options = null)
 {
     /// <summary>
@@ -383,6 +459,8 @@ internal sealed class EmailVerificationServiceDependencies(
     /// Gets email verification options.
     /// </summary>
     public IOptions<EmailVerificationOptions>? Options { get; } = options;
+    /// <summary>Gets authoritative session persistence used to re-check the issuance capability.</summary>
+    public IAuthenticationSessionRepository SessionRepository { get; } = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
     /// <summary>
     /// Gets the email sender.
     /// </summary>

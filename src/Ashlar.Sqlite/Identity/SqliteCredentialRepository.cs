@@ -44,7 +44,7 @@ internal sealed class SqliteCredentialRepository(ISqliteConnectionProvider conne
         command.AddGuidParameter(UserIdParameter, userId);
         if (await command.ExecuteScalarAsync(cancellationToken) == null)
         {
-            throw new InvalidOperationException("The credential mutation lock user does not exist.");
+            throw new UserMutationLockNotFoundException();
         }
     }
 

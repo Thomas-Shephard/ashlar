@@ -66,9 +66,9 @@ public sealed class EmailVerificationOptions
 public sealed class EmailVerificationRequest
 {
     /// <summary>
-    /// User whose email address should be verified.
+    /// Ashlar-issued session capability that binds the target user, tenant, and current session.
     /// </summary>
-    public required Guid UserId { get; init; }
+    public required ValidatedAuthenticationSession Session { get; init; }
 
     /// <summary>
     /// Base URI used to build the callback URL.
@@ -78,9 +78,9 @@ public sealed class EmailVerificationRequest
     /// </remarks>
     public required Uri CallbackBaseUri { get; init; }
     /// <summary>
-    /// Audit context to include in emitted security events.
+    /// Required audit context whose actor user identifier must match the validated session user.
     /// </summary>
-    public AuditContext? Audit { get; init; }
+    public required AuditContext Audit { get; init; }
 }
 
 /// <summary>

@@ -18,7 +18,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
 
         await using var transaction = await transactions.BeginTransactionAsync();
         Assert.DoesNotThrowAsync(async () => await credentials.AcquireUserMutationLockAsync(user.Id));
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await credentials.AcquireUserMutationLockAsync(Guid.NewGuid()));
+        Assert.ThrowsAsync<UserMutationLockNotFoundException>(async () => await credentials.AcquireUserMutationLockAsync(Guid.NewGuid()));
     }
 
     [Test]
