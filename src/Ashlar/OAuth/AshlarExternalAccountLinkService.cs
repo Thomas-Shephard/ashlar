@@ -48,18 +48,37 @@ public sealed class AshlarExternalAccountLinkService
     /// </summary>
     /// <param name="currentUserId">The currently authenticated Ashlar user id.</param>
     /// <param name="currentSessionId">The current Ashlar authentication session id.</param>
-    /// <param name="redirectUri">The URI to return to after the external provider callback.</param>
+    /// <param name="returnPath">An optional root-relative local application path to return to after the external provider callback. Absolute and scheme-relative URIs are not allowed.</param>
     /// <returns>Properties bound to account-linking purpose, user, and session.</returns>
-    public static AuthenticationProperties CreateExternalLinkChallengeProperties(Guid currentUserId, Guid currentSessionId, string? redirectUri = null)
+    public static AuthenticationProperties CreateExternalLinkChallengeProperties(Guid currentUserId, Guid currentSessionId, string? returnPath = null)
     {
         if (currentUserId == Guid.Empty) throw new ArgumentException("The current user id cannot be empty.", nameof(currentUserId));
         if (currentSessionId == Guid.Empty) throw new ArgumentException("The current session id cannot be empty.", nameof(currentSessionId));
+        if (returnPath is not null && !IsLocalReturnPath(returnPath))
+            throw new ArgumentException("The return path must be a root-relative local application path.", nameof(returnPath));
 
-        var properties = new AuthenticationProperties { RedirectUri = redirectUri };
+        var properties = new AuthenticationProperties { RedirectUri = returnPath };
         properties.Items[AshlarOAuthAuthenticationProperties.Purpose] = LinkingProofPurpose;
         properties.Items[AshlarOAuthAuthenticationProperties.LinkingUserId] = currentUserId.ToString("D");
         properties.Items[AshlarOAuthAuthenticationProperties.LinkingSessionId] = currentSessionId.ToString("D");
         return properties;
+    }
+
+    private static bool IsLocalReturnPath(string path)
+    {
+        while (path.Length > 0
+               && path[0] == '/'
+               && (path.Length == 1 || path[1] is not ('/' or '\\'))
+               && !path.Any(char.IsWhiteSpace)
+               && !path.Any(char.IsControl)
+               && Uri.IsWellFormedUriString($"http://localhost{path}", UriKind.Absolute))
+        {
+            var decoded = Uri.UnescapeDataString(path);
+            if (decoded == path) return true;
+            path = decoded;
+        }
+
+        return false;
     }
 
     /// <summary>
