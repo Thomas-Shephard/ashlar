@@ -26,6 +26,26 @@ namespace Ashlar.Tests.DependencyInjection;
 internal sealed class AshlarServiceCollectionExtensionsTests
 {
     [Test]
+    public void RateLimitProviderRegistrationAllowsOneProviderAndRejectsAnother()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarAuthenticationRateLimitProviderMarker("first");
+        Assert.DoesNotThrow(() => services.AddAshlarAuthenticationRateLimitProviderMarker("first"));
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            services.AddAshlarAuthenticationRateLimitProviderMarker("second"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception!.Message, Does.StartWith("Multiple authentication rate-limit providers are not supported."));
+            Assert.Throws<ArgumentNullException>(() =>
+                AshlarServiceCollectionExtensions.AddAshlarAuthenticationRateLimitProviderMarker(null!, "first"));
+            Assert.Throws<ArgumentException>(() => services.AddAshlarAuthenticationRateLimitProviderMarker(""));
+        }
+    }
+
+    [Test]
     public void AddAshlarPasskeyCoreValidatesOptionsOnStart()
     {
         var services = new ServiceCollection();

@@ -61,6 +61,7 @@ public static class AshlarRedisServiceCollectionExtensions
         bool ownsConnection,
         Action<RedisAuthenticationRateLimiterOptions>? configure)
     {
+        services.AddAshlarAuthenticationRateLimitProviderMarker("Redis");
         services.Replace(ServiceDescriptor.Singleton(_ => new RedisAuthenticationRateLimiterConnection(connection, ownsConnection)));
         services.AddOptions<RedisAuthenticationRateLimiterOptions>()
             .Validate(RedisAuthenticationRateLimiterOptions.Validate, "Redis rate limiter options are invalid.")

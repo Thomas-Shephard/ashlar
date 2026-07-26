@@ -19,6 +19,37 @@ namespace Ashlar.Redis.Tests.DependencyInjection;
 
 internal sealed class AshlarRedisServiceCollectionExtensionsTests
 {
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ConflictingRateLimitProviderMarkerIsRejectedInEitherOrder(bool redisFirst)
+    {
+        var services = new ServiceCollection();
+        var connection = Mock.Of<IConnectionMultiplexer>();
+
+        if (redisFirst)
+        {
+            services.AddAshlarRedisRateLimiting(connection, options => options.KeyPrefix = "test");
+        }
+        else
+        {
+            services.AddAshlarAuthenticationRateLimitProviderMarker("PostgreSQL");
+        }
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+        {
+            if (redisFirst)
+            {
+                services.AddAshlarAuthenticationRateLimitProviderMarker("PostgreSQL");
+            }
+            else
+            {
+                services.AddAshlarRedisRateLimiting(connection, options => options.KeyPrefix = "test");
+            }
+        });
+
+        Assert.That(exception!.Message, Does.StartWith("Multiple authentication rate-limit providers are not supported."));
+    }
+
     [Test]
     public void AddAshlarRedisRateLimitingRegistersRedisServices()
     {
