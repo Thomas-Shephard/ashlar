@@ -4,15 +4,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Postgres.Auditing;
 
-internal sealed class PostgresSecurityEventSink : PersistentSecurityEventSink
+internal sealed class PostgresSecurityEventSink(IPostgresConnectionProvider connectionProvider, ILogger<PostgresSecurityEventSink>? logger = null) : PersistentSecurityEventSink(logger ?? NullLogger<PostgresSecurityEventSink>.Instance)
 {
-    private readonly IPostgresConnectionProvider _connectionProvider;
-
-    public PostgresSecurityEventSink(IPostgresConnectionProvider connectionProvider, ILogger<PostgresSecurityEventSink>? logger = null)
-        : base(logger ?? NullLogger<PostgresSecurityEventSink>.Instance)
-    {
-        _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
-    }
+    private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
     protected override async Task PersistAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken)
     {

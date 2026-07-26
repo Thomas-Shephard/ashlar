@@ -480,14 +480,8 @@ public sealed record AshlarSecurityEventWebhookDestinationValidationResult(bool 
 /// <summary>
 /// Represents an unsafe security event webhook destination.
 /// </summary>
-public sealed class AshlarSecurityEventWebhookUnsafeDestinationException : InvalidOperationException
-{
-    /// <summary>
-    /// Initializes a new instance of the exception.
-    /// </summary>
-    /// <param name="message">The safe exception message.</param>
-    public AshlarSecurityEventWebhookUnsafeDestinationException(string message)
-        : base(message)
-    {
-    }
-}
+/// <param name="message">The safe exception message.</param>
+/// <remarks>
+/// Initializes a new instance of the exception.
+/// </remarks>
+public sealed class AshlarSecurityEventWebhookUnsafeDestinationException(string message) : InvalidOperationException(message);

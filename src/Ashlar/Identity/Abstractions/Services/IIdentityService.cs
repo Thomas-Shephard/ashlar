@@ -72,40 +72,32 @@ public enum AuthenticationStatus
 /// <summary>
 /// Result returned by an authentication attempt.
 /// </summary>
-public sealed class AuthenticationResponse
+/// <param name="Succeeded">Whether authentication completed successfully.</param>
+/// <param name="User">The authenticated user when available.</param>
+/// <param name="Status">Outcome of the credential authentication attempt.</param>
+/// <param name="Claims">Additional claims produced by the authentication provider.</param>
+/// <param name="CredentialUpdatePersisted">Whether a provider-requested credential update was actually persisted during authentication.</param>
+/// <remarks>
+/// Creates an authentication response.
+/// </remarks>
+public sealed class AuthenticationResponse(
+    bool Succeeded,
+    IUser? User = null,
+    AuthenticationStatus Status = AuthenticationStatus.Failed,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null,
+    bool CredentialUpdatePersisted = false)
 {
-    /// <summary>
-    /// Creates an authentication response.
-    /// </summary>
-    /// <param name="Succeeded">Whether authentication completed successfully.</param>
-    /// <param name="User">The authenticated user when available.</param>
-    /// <param name="Status">Outcome of the credential authentication attempt.</param>
-    /// <param name="Claims">Additional claims produced by the authentication provider.</param>
-    /// <param name="CredentialUpdatePersisted">Whether a provider-requested credential update was actually persisted during authentication.</param>
-    public AuthenticationResponse(
-        bool Succeeded,
-        IUser? User = null,
-        AuthenticationStatus Status = AuthenticationStatus.Failed,
-        IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null,
-        bool CredentialUpdatePersisted = false)
-    {
-        this.Succeeded = Succeeded;
-        this.User = User;
-        this.Status = Status;
-        this.Claims = Claims;
-        this.CredentialUpdatePersisted = CredentialUpdatePersisted;
-    }
 
     /// <summary>Gets whether authentication completed successfully.</summary>
-    public bool Succeeded { get; }
+    public bool Succeeded { get; } = Succeeded;
     /// <summary>Gets the authenticated user when available.</summary>
-    public IUser? User { get; }
+    public IUser? User { get; } = User;
     /// <summary>Gets the outcome of the credential authentication attempt.</summary>
-    public AuthenticationStatus Status { get; }
+    public AuthenticationStatus Status { get; } = Status;
     /// <summary>Gets additional claims produced by the authentication provider.</summary>
-    public IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims { get; }
+    public IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims { get; } = Claims;
     /// <summary>Gets whether a provider-requested credential update was persisted.</summary>
-    public bool CredentialUpdatePersisted { get; }
+    public bool CredentialUpdatePersisted { get; } = CredentialUpdatePersisted;
 
     internal StepUpSessionMarkingProof? StepUpSessionMarkingProof { get; init; }
 }

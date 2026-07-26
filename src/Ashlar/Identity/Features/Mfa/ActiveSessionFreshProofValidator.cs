@@ -1,15 +1,9 @@
 namespace Ashlar.Identity.Features.Mfa;
 
-internal sealed class ActiveSessionFreshProofValidator
+internal sealed class ActiveSessionFreshProofValidator(IAuthenticationSessionRepository sessions, TimeProvider timeProvider)
 {
-    private readonly IAuthenticationSessionRepository _sessions;
-    private readonly TimeProvider _timeProvider;
-
-    public ActiveSessionFreshProofValidator(IAuthenticationSessionRepository sessions, TimeProvider timeProvider)
-    {
-        _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
-        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-    }
+    private readonly IAuthenticationSessionRepository _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
+    private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
     public ValueTask<AshlarFailureCode?> ValidateAsync(Guid userId, TenantContext tenant,
         FreshMfaVerificationProof? proof, Guid? currentSessionId, string purpose, CancellationToken cancellationToken) =>

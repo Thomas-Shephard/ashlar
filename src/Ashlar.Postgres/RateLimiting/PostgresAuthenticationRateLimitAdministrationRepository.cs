@@ -6,14 +6,9 @@ using Npgsql;
 
 namespace Ashlar.Postgres.RateLimiting;
 
-internal sealed class PostgresAuthenticationRateLimitAdministrationRepository : IAuthenticationRateLimitAdministrationRepository
+internal sealed class PostgresAuthenticationRateLimitAdministrationRepository(NpgsqlDataSource dataSource) : IAuthenticationRateLimitAdministrationRepository
 {
-    private readonly NpgsqlDataSource _dataSource;
-
-    public PostgresAuthenticationRateLimitAdministrationRepository(NpgsqlDataSource dataSource)
-    {
-        _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
-    }
+    private readonly NpgsqlDataSource _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
 
     public async Task<IReadOnlyList<AuthenticationRateLimitBucketSummary>> SearchBucketsAsync(SearchAuthenticationRateLimitBucketsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {

@@ -8,14 +8,9 @@ internal interface IPostgresConnectionProvider
     ValueTask<PostgresConnectionHandle> GetConnectionAsync(CancellationToken cancellationToken);
 }
 
-internal sealed class PostgresTransactionManagerOwner : IPostgresConnectionProvider, IDisposable, IAsyncDisposable
+internal sealed class PostgresTransactionManagerOwner(NpgsqlDataSource dataSource, ILogger<PostgresTransactionManager>? logger = null) : IPostgresConnectionProvider, IDisposable, IAsyncDisposable
 {
-    public PostgresTransactionManagerOwner(NpgsqlDataSource dataSource, ILogger<PostgresTransactionManager>? logger = null)
-    {
-        Value = new PostgresTransactionManager(dataSource, logger);
-    }
-
-    internal PostgresTransactionManager Value { get; }
+    internal PostgresTransactionManager Value { get; } = new PostgresTransactionManager(dataSource, logger);
 
     public ValueTask<PostgresConnectionHandle> GetConnectionAsync(CancellationToken cancellationToken) =>
         Value.GetConnectionAsync(cancellationToken);

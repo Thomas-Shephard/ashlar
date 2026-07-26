@@ -4,16 +4,11 @@ using Ashlar.Identity.RateLimiting.Abstractions;
 
 namespace Ashlar.Sqlite.RateLimiting;
 
-internal sealed class SqliteAuthenticationRateLimitAdministrationRepository : IAuthenticationRateLimitAdministrationRepository
+internal sealed class SqliteAuthenticationRateLimitAdministrationRepository(ISqliteConnectionProvider connectionProvider) : IAuthenticationRateLimitAdministrationRepository
 {
     private const string PurposeParameterName = "$purpose";
 
-    private readonly ISqliteConnectionProvider _connectionProvider;
-
-    public SqliteAuthenticationRateLimitAdministrationRepository(ISqliteConnectionProvider connectionProvider)
-    {
-        _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
-    }
+    private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
     public async Task<IReadOnlyList<AuthenticationRateLimitBucketSummary>> SearchBucketsAsync(SearchAuthenticationRateLimitBucketsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {

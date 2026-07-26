@@ -30,50 +30,40 @@ public enum MfaAuthenticationStatus
 /// <summary>
 /// Result returned by MFA-aware authentication flows.
 /// </summary>
-public sealed class MfaAuthenticationResult
+/// <param name="Status">Outcome of the MFA-aware authentication flow.</param>
+/// <param name="User">The authenticated user when authentication succeeds.</param>
+/// <param name="HandshakeToken">The raw handshake token when more MFA factors are required. Do not log or persist this value.</param>
+/// <param name="RequiredFactors">The MFA factors still required for the handshake.</param>
+/// <param name="Claims">Additional claims produced by the authentication provider.</param>
+/// <param name="ErrorMessage">A generic, display-safe error message when authentication fails.</param>
+/// <param name="FreshMfaSatisfied">Whether this result came from a fresh MFA ceremony suitable for step-up decisions.</param>
+/// <remarks>
+/// Creates an MFA authentication result.
+/// </remarks>
+public sealed class MfaAuthenticationResult(
+    MfaAuthenticationStatus Status,
+    IUser? User = null,
+    string? HandshakeToken = null,
+    IEnumerable<string>? RequiredFactors = null,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null,
+    string? ErrorMessage = null,
+    bool FreshMfaSatisfied = false)
 {
-    /// <summary>
-    /// Creates an MFA authentication result.
-    /// </summary>
-    /// <param name="Status">Outcome of the MFA-aware authentication flow.</param>
-    /// <param name="User">The authenticated user when authentication succeeds.</param>
-    /// <param name="HandshakeToken">The raw handshake token when more MFA factors are required. Do not log or persist this value.</param>
-    /// <param name="RequiredFactors">The MFA factors still required for the handshake.</param>
-    /// <param name="Claims">Additional claims produced by the authentication provider.</param>
-    /// <param name="ErrorMessage">A generic, display-safe error message when authentication fails.</param>
-    /// <param name="FreshMfaSatisfied">Whether this result came from a fresh MFA ceremony suitable for step-up decisions.</param>
-    public MfaAuthenticationResult(
-        MfaAuthenticationStatus Status,
-        IUser? User = null,
-        string? HandshakeToken = null,
-        IEnumerable<string>? RequiredFactors = null,
-        IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null,
-        string? ErrorMessage = null,
-        bool FreshMfaSatisfied = false)
-    {
-        this.Status = Status;
-        this.User = User;
-        this.HandshakeToken = HandshakeToken;
-        this.RequiredFactors = RequiredFactors;
-        this.Claims = Claims;
-        this.ErrorMessage = ErrorMessage;
-        this.FreshMfaSatisfied = FreshMfaSatisfied;
-    }
 
     /// <summary>Gets the outcome of the MFA-aware authentication flow.</summary>
-    public MfaAuthenticationStatus Status { get; }
+    public MfaAuthenticationStatus Status { get; } = Status;
     /// <summary>Gets the authenticated user when authentication succeeds.</summary>
-    public IUser? User { get; }
+    public IUser? User { get; } = User;
     /// <summary>Gets the raw handshake token when more MFA factors are required.</summary>
-    public string? HandshakeToken { get; }
+    public string? HandshakeToken { get; } = HandshakeToken;
     /// <summary>Gets the MFA factors still required for the handshake.</summary>
-    public IEnumerable<string>? RequiredFactors { get; }
+    public IEnumerable<string>? RequiredFactors { get; } = RequiredFactors;
     /// <summary>Gets additional claims produced by the authentication provider.</summary>
-    public IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims { get; }
+    public IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims { get; } = Claims;
     /// <summary>Gets a display-safe error message when authentication fails.</summary>
-    public string? ErrorMessage { get; }
+    public string? ErrorMessage { get; } = ErrorMessage;
     /// <summary>Gets whether this result came from a fresh MFA ceremony.</summary>
-    public bool FreshMfaSatisfied { get; }
+    public bool FreshMfaSatisfied { get; } = FreshMfaSatisfied;
     /// <summary>Gets whether provider-requested credential changes were persisted.</summary>
     public bool CredentialUpdatePersisted { get; init; }
 

@@ -9,32 +9,24 @@ namespace Ashlar.OAuth;
 /// <summary>
 /// Maps ASP.NET Core external identities to Ashlar assertions.
 /// </summary>
-public sealed class AshlarExternalCredentialAuthenticationService
+/// <param name="primaryRateLimiter">The provider-neutral primary authentication rate limiter.</param>
+/// <param name="options">The OAuth options monitor.</param>
+/// <param name="securityEventSink">The optional security event sink.</param>
+/// <param name="timeProvider">The optional time provider.</param>
+/// <remarks>
+/// Initializes a new instance of the external credential authentication service.
+/// </remarks>
+public sealed class AshlarExternalCredentialAuthenticationService(
+    IPrimaryAuthenticationRateLimiter primaryRateLimiter,
+    IOptionsMonitor<AshlarOAuthOptions> options,
+    ISecurityEventSink? securityEventSink = null,
+    TimeProvider? timeProvider = null)
 {
     private const string UnsupportedProviderNameFallback = "unsupported";
-    private readonly IPrimaryAuthenticationRateLimiter _primaryRateLimiter;
-    private readonly ISecurityEventSink? _securityEventSink;
-    private readonly IOptionsMonitor<AshlarOAuthOptions> _options;
-    private readonly TimeProvider _timeProvider;
-
-    /// <summary>
-    /// Initializes a new instance of the external credential authentication service.
-    /// </summary>
-    /// <param name="primaryRateLimiter">The provider-neutral primary authentication rate limiter.</param>
-    /// <param name="options">The OAuth options monitor.</param>
-    /// <param name="securityEventSink">The optional security event sink.</param>
-    /// <param name="timeProvider">The optional time provider.</param>
-    public AshlarExternalCredentialAuthenticationService(
-        IPrimaryAuthenticationRateLimiter primaryRateLimiter,
-        IOptionsMonitor<AshlarOAuthOptions> options,
-        ISecurityEventSink? securityEventSink = null,
-        TimeProvider? timeProvider = null)
-    {
-        _primaryRateLimiter = primaryRateLimiter ?? throw new ArgumentNullException(nameof(primaryRateLimiter));
-        _options = options ?? throw new ArgumentNullException(nameof(options));
-        _securityEventSink = securityEventSink;
-        _timeProvider = timeProvider ?? TimeProvider.System;
-    }
+    private readonly IPrimaryAuthenticationRateLimiter _primaryRateLimiter = primaryRateLimiter ?? throw new ArgumentNullException(nameof(primaryRateLimiter));
+    private readonly ISecurityEventSink? _securityEventSink = securityEventSink;
+    private readonly IOptionsMonitor<AshlarOAuthOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
     /// <summary>
     /// Completes callback handling only up to a mapped Ashlar external identity assertion.

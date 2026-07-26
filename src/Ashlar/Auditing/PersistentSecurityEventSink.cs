@@ -5,7 +5,11 @@ namespace Ashlar.Auditing;
 /// <summary>
 /// Provides durable persistence for security event sinks.
 /// </summary>
-public abstract class PersistentSecurityEventSink : IPersistentSecurityEventSink
+/// <param name="logger">Logger used when persistence fails.</param>
+/// <remarks>
+/// Initializes a new persistent security event sink.
+/// </remarks>
+public abstract class PersistentSecurityEventSink(ILogger logger) : IPersistentSecurityEventSink
 {
     private static readonly Action<ILogger, string, Guid?, Guid?, string?, string?, Exception?> SecurityEventPersistenceFailed =
         LoggerMessage.Define<string, Guid?, Guid?, string?, string?>(
@@ -13,16 +17,7 @@ public abstract class PersistentSecurityEventSink : IPersistentSecurityEventSink
             new EventId(1000, nameof(SecurityEventPersistenceFailed)),
             "Security event persistence failed. EventType={EventType} UserId={UserId} SessionId={SessionId} ProviderType={ProviderType} ProviderName={ProviderName}");
 
-    private readonly ILogger _logger;
-
-    /// <summary>
-    /// Initializes a new persistent security event sink.
-    /// </summary>
-    /// <param name="logger">Logger used when persistence fails.</param>
-    protected PersistentSecurityEventSink(ILogger logger)
-    {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
+    private readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     /// <inheritdoc />
     public async Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)

@@ -30,6 +30,8 @@ dotnet_diagnostic.IDE0059.severity = warning
 dotnet_diagnostic.IDE0060.severity = warning
 # namespace matches folder
 dotnet_diagnostic.IDE0130.severity = warning
+# use primary constructor
+dotnet_diagnostic.IDE0290.severity = warning
 # prefer Assert.EnterMultipleScope
 dotnet_diagnostic.NUnit2045.severity = warning
 dotnet_diagnostic.NUnit2056.severity = warning

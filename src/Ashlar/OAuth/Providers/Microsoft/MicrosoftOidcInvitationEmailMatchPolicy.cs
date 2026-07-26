@@ -18,27 +18,20 @@ public sealed class MicrosoftOidcInvitationEmailMatchOptions
 /// <summary>
 /// Invitation email policy for Microsoft identity platform providers.
 /// </summary>
-public sealed class MicrosoftOidcInvitationEmailMatchPolicy : IOidcInvitationEmailMatchPolicy
+/// <param name="providerName">The configured Microsoft provider name.</param>
+/// <param name="fallbackPolicy">The fallback policy for non-Microsoft providers.</param>
+/// <param name="allowedEmailLikeClaimTypes">Microsoft claim types the deployment explicitly trusts for invitation matching when standard verified <c>email</c> is unavailable. Leave empty unless tenant policy makes these claims authoritative for the invited mailbox.</param>
+/// <remarks>
+/// Initializes a new instance of the Microsoft invitation email policy.
+/// </remarks>
+public sealed class MicrosoftOidcInvitationEmailMatchPolicy(
+    string providerName,
+    IOidcInvitationEmailMatchPolicy fallbackPolicy,
+    IEnumerable<string>? allowedEmailLikeClaimTypes = null) : IOidcInvitationEmailMatchPolicy
 {
-    private readonly string _providerName;
-    private readonly IOidcInvitationEmailMatchPolicy _fallbackPolicy;
-    private readonly string[] _allowedEmailLikeClaimTypes;
-
-    /// <summary>
-    /// Initializes a new instance of the Microsoft invitation email policy.
-    /// </summary>
-    /// <param name="providerName">The configured Microsoft provider name.</param>
-    /// <param name="fallbackPolicy">The fallback policy for non-Microsoft providers.</param>
-    /// <param name="allowedEmailLikeClaimTypes">Microsoft claim types the deployment explicitly trusts for invitation matching when standard verified <c>email</c> is unavailable. Leave empty unless tenant policy makes these claims authoritative for the invited mailbox.</param>
-    public MicrosoftOidcInvitationEmailMatchPolicy(
-        string providerName,
-        IOidcInvitationEmailMatchPolicy fallbackPolicy,
-        IEnumerable<string>? allowedEmailLikeClaimTypes = null)
-    {
-        _providerName = AshlarOAuthOptions.NormalizeProviderName(providerName);
-        _fallbackPolicy = fallbackPolicy ?? throw new ArgumentNullException(nameof(fallbackPolicy));
-        _allowedEmailLikeClaimTypes = NormalizeClaimTypes(allowedEmailLikeClaimTypes);
-    }
+    private readonly string _providerName = AshlarOAuthOptions.NormalizeProviderName(providerName);
+    private readonly IOidcInvitationEmailMatchPolicy _fallbackPolicy = fallbackPolicy ?? throw new ArgumentNullException(nameof(fallbackPolicy));
+    private readonly string[] _allowedEmailLikeClaimTypes = NormalizeClaimTypes(allowedEmailLikeClaimTypes);
 
     /// <inheritdoc />
     public OidcInvitationEmailMatchResult Validate(OidcInvitationEmailMatchContext context)
