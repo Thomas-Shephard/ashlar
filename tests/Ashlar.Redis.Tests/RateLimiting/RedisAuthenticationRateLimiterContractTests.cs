@@ -10,7 +10,18 @@ internal sealed class RedisAuthenticationRateLimiterContractTests : Authenticati
     private readonly RedisTestHost _redis = new();
     private FakeTimeProvider _timeProvider = null!;
 
-    protected override DateTimeOffset Now => _timeProvider.GetUtcNow();
+    protected override DateTimeOffset Now
+    {
+        get
+        {
+            var time = (RedisResult[])_redis.Connection.GetDatabase().Execute("TIME")!;
+            return DateTimeOffset.FromUnixTimeMilliseconds((long)time[0] * 1000 + (long)time[1] / 1000);
+        }
+    }
+
+    protected override TimeSpan TimestampTolerance => TimeSpan.FromSeconds(5);
+
+    protected override TimeSpan RateLimitWindow => TimeSpan.FromMilliseconds(250);
 
     protected override async Task<IServiceProvider> CreateInitializedServiceProviderAsync()
     {
@@ -26,7 +37,7 @@ internal sealed class RedisAuthenticationRateLimiterContractTests : Authenticati
 
     protected override void AdvanceTime(TimeSpan duration)
     {
-        _timeProvider.Advance(duration);
+        Thread.Sleep(duration + TimeSpan.FromMilliseconds(250));
     }
 
     private sealed class RedisTestHost : RedisTestBase

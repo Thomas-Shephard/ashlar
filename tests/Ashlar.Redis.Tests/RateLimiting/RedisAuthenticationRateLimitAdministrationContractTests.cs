@@ -14,11 +14,17 @@ namespace Ashlar.Redis.Tests.RateLimiting;
 
 internal sealed class RedisAuthenticationRateLimitAdministrationContractTests : AuthenticationRateLimitAdministrationContractTests
 {
-    private static readonly DateTimeOffset Start = new(2026, 6, 1, 12, 0, 0, TimeSpan.Zero);
     private readonly RedisTestHost _redis = new();
     private FakeTimeProvider _timeProvider = null!;
 
-    protected override DateTimeOffset Now => _timeProvider.GetUtcNow();
+    protected override DateTimeOffset Now
+    {
+        get
+        {
+            var time = (RedisResult[])_redis.Connection.GetDatabase().Execute("TIME")!;
+            return DateTimeOffset.FromUnixTimeMilliseconds((long)time[0] * 1000 + (long)time[1] / 1000);
+        }
+    }
 
     protected override bool SupportsReset => false;
 
@@ -32,7 +38,7 @@ internal sealed class RedisAuthenticationRateLimitAdministrationContractTests : 
     {
         await _redis.InitializeAsync();
 
-        _timeProvider = new FakeTimeProvider(Start);
+        _timeProvider = new FakeTimeProvider(Now);
         var services = new ServiceCollection();
         AuthenticationSession? storedSession = null;
         var sessions = new Mock<IAuthenticationSessionRepository>();
@@ -59,8 +65,13 @@ internal sealed class RedisAuthenticationRateLimitAdministrationContractTests : 
 
     protected override void AdvanceTime(TimeSpan duration)
     {
+        Thread.Sleep(duration);
         _timeProvider.Advance(duration);
     }
+
+    protected override TimeSpan TimeTravelDuration(TimeSpan duration) => duration / 240;
+
+    protected override TimeSpan TimeTravelTolerance => TimeSpan.FromSeconds(1);
 
     private sealed class RedisTestHost : RedisTestBase
     {

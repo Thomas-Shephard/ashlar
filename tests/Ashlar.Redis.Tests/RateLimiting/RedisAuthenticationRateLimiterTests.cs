@@ -2,6 +2,7 @@ using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using StackExchange.Redis;
 
 namespace Ashlar.Redis.Tests.RateLimiting;
 
@@ -114,5 +115,66 @@ internal sealed class RedisAuthenticationRateLimiterTests : RedisTestBase
         var keys = server.Keys(pattern: $"{keyPrefix}:auth:*").ToArray();
 
         Assert.That(keys, Is.Empty);
+    }
+
+    [Test]
+    public async Task CheckAsyncUsesRedisTimeDespiteSlowApplicationClock()
+    {
+        var limiter = _provider.GetRequiredService<IAuthenticationRateLimiter>();
+        await using var slowNode = CreateProvider(new FakeTimeProvider(DateTimeOffset.UnixEpoch));
+        var attempt = new RateLimitAttempt { Purpose = "login", Key = "slow-clock" };
+        var rule = new RateLimitRule { PermitLimit = 2, Window = TimeSpan.FromMinutes(5) };
+
+        var key = RedisRateLimitKeyBuilder.Build(_keyPrefix, attempt.Purpose, attempt.Key);
+        var database = GetConnection().GetDatabase();
+        var redisBefore = await GetRedisTimeAsync(database);
+        await limiter.CheckAsync(attempt, rule);
+        var redisAfter = await GetRedisTimeAsync(database);
+        var originalWindowStart = (long)await database.HashGetAsync(key, "windowStart");
+        var decision = await slowNode.GetRequiredService<IAuthenticationRateLimiter>().CheckAsync(attempt, rule);
+        var windowStart = (long)await database.HashGetAsync(key, "windowStart");
+        var ttl = await database.KeyTimeToLiveAsync(key);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decision.Remaining, Is.Zero);
+            Assert.That(windowStart, Is.EqualTo(originalWindowStart));
+            Assert.That(DateTimeOffset.FromUnixTimeMilliseconds(windowStart), Is.InRange(redisBefore, redisAfter));
+            Assert.That(decision.WindowResetAt, Is.EqualTo(DateTimeOffset.FromUnixTimeMilliseconds(windowStart) + rule.Window));
+            Assert.That(ttl, Is.Not.Null.And.InRange(TimeSpan.Zero, rule.Window + TimeSpan.FromSeconds(5)));
+        }
+    }
+
+    [Test]
+    public async Task CheckAsyncFastApplicationClockCannotExpireBlockEarly()
+    {
+        var limiter = _provider.GetRequiredService<IAuthenticationRateLimiter>();
+        await using var fastNode = CreateProvider(new FakeTimeProvider(DateTimeOffset.MaxValue));
+        var attempt = new RateLimitAttempt { Purpose = "login", Key = "fast-clock" };
+        var rule = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(5), BlockDuration = TimeSpan.FromMinutes(15) };
+
+        await limiter.CheckAsync(attempt, rule);
+        var blocked = await limiter.CheckAsync(attempt, rule);
+        var stillBlocked = await fastNode.GetRequiredService<IAuthenticationRateLimiter>().CheckAsync(attempt, rule);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stillBlocked.IsAllowed, Is.False);
+            Assert.That(stillBlocked.RetryAfter, Is.EqualTo(blocked.RetryAfter));
+        }
+    }
+
+    private ServiceProvider CreateProvider(TimeProvider timeProvider)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(timeProvider);
+        services.AddAshlarRedisRateLimiting(GetConnection(), options => options.KeyPrefix = _keyPrefix);
+        return services.BuildServiceProvider();
+    }
+
+    private static async Task<DateTimeOffset> GetRedisTimeAsync(IDatabase database)
+    {
+        var time = (RedisResult[])(await database.ExecuteAsync("TIME"))!;
+        return DateTimeOffset.FromUnixTimeMilliseconds((long)time[0] * 1000 + (long)time[1] / 1000);
     }
 }

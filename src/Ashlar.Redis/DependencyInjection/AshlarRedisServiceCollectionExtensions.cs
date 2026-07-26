@@ -76,8 +76,7 @@ public static class AshlarRedisServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Singleton<IAuthenticationRateLimiter>(provider =>
             new RedisAuthenticationRateLimiter(
                 provider.GetRequiredService<RedisAuthenticationRateLimiterConnection>(),
-                provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<RedisAuthenticationRateLimiterOptions>>(),
-                provider.GetRequiredService<TimeProvider>())));
+                provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<RedisAuthenticationRateLimiterOptions>>())));
         services.Replace(ServiceDescriptor.Singleton<IAuthenticationRateLimiterDiagnostics>(provider =>
             ActivatorUtilities.CreateInstance<RedisAuthenticationRateLimiterDiagnostics>(provider)));
         services.AddAshlarAuthenticationRateLimitAdministrationReader(provider =>
