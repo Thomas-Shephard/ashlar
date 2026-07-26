@@ -117,9 +117,9 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
         return new MfaAuthenticationResult(
             MfaAuthenticationStatus.Succeeded,
             response.User,
-            Claims: response.Claims,
-            CredentialUpdatePersisted: response.CredentialUpdatePersisted)
+            Claims: response.Claims)
         {
+            CredentialUpdatePersisted = response.CredentialUpdatePersisted,
             SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(
                 response.User.Id, primaryAssertion.ProviderIdentity, _timeProvider.GetUtcNow())
         };
@@ -265,9 +265,9 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
                 MfaAuthenticationStatus.Succeeded,
                 User: user,
                 Claims: claims,
-                FreshMfaSatisfied: true,
-                CredentialUpdatePersisted: credentialUpdatePersisted)
+                FreshMfaSatisfied: true)
             {
+                CredentialUpdatePersisted = credentialUpdatePersisted,
                 RememberedDeviceCreationProof = RememberedMfaDeviceCreationProof.Create(handshake.UserId, handshake.TenantId, handshake.Id, now),
                 SessionIssuanceProof = sessionProof,
                 StepUpSessionMarkingProof = stepUpProof
@@ -280,8 +280,10 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             HandshakeToken: handshakeToken,
             RequiredFactors: handshake.RequiredFactors
                 .Where(requiredFactor => !handshake.VerifiedFactors.Any(verifiedFactor => AuthenticationFactorTypes.Matches(requiredFactor, verifiedFactor)))
-                .ToArray(),
-            CredentialUpdatePersisted: credentialUpdatePersisted);
+                .ToArray())
+        {
+            CredentialUpdatePersisted = credentialUpdatePersisted
+        };
     }
 
     private async Task<MfaAuthenticationResult> CreateMfaRequiredResultAsync(
@@ -308,9 +310,9 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             return new MfaAuthenticationResult(
                 MfaAuthenticationStatus.Succeeded,
                 user,
-                Claims: response.Claims,
-                CredentialUpdatePersisted: response.CredentialUpdatePersisted)
+                Claims: response.Claims)
             {
+                CredentialUpdatePersisted = response.CredentialUpdatePersisted,
                 SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(
                     response.User!.Id, primaryAssertion.ProviderIdentity, _timeProvider.GetUtcNow())
             };
@@ -330,8 +332,10 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             MfaAuthenticationStatus.MfaRequired,
             user,
             created.Token,
-            created.Handshake.RequiredFactors,
-            CredentialUpdatePersisted: response.CredentialUpdatePersisted);
+            created.Handshake.RequiredFactors)
+        {
+            CredentialUpdatePersisted = response.CredentialUpdatePersisted
+        };
     }
 
     private async Task<bool> TryValidateRememberedMfaDeviceAsync(

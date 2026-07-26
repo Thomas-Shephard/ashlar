@@ -55,12 +55,12 @@ internal sealed class AuthenticationSessionService(
     {
         ArgumentNullException.ThrowIfNull(authenticationResult);
         ArgumentNullException.ThrowIfNull(request);
-        var (lifetime, ipAddress, userAgent, metadata) = ValidateCreateSessionRequest(request);
+        var validatedRequest = ValidateCreateSessionRequest(request);
         var user = authenticationResult.User;
         var presentedUserId = user?.Id ?? Guid.Empty;
         var proof = authenticationResult.SessionIssuanceProof;
         var now = _timeProvider.GetUtcNow();
-        if (DateTimeOffset.MaxValue - now < lifetime)
+        if (DateTimeOffset.MaxValue - now < validatedRequest.Lifetime)
         {
             throw new ArgumentOutOfRangeException(
                 $"{nameof(request)}.{nameof(request.Lifetime)}",
@@ -102,15 +102,12 @@ internal sealed class AuthenticationSessionService(
         }
 
         var persistedUser = await GetUserForTenantValidationAsync(
-            proof.UserId, request, ipAddress, userAgent, cancellationToken);
+            proof.UserId, request, validatedRequest.IpAddress, validatedRequest.UserAgent, cancellationToken);
         var created = await CreateSessionForAuthenticatedUserAsync(
             persistedUser,
             proof.UserId,
             request with { AuthenticatedAt = proof.IssuedAt },
-            lifetime,
-            ipAddress,
-            userAgent,
-            metadata,
+            validatedRequest,
             now,
             proof,
             cancellationToken);
@@ -126,17 +123,15 @@ internal sealed class AuthenticationSessionService(
         if (userId == Guid.Empty) throw new ArgumentException(UserIdCannotBeEmptyMessage, nameof(userId));
         ArgumentNullException.ThrowIfNull(request);
 
-        var (lifetime, ipAddress, userAgent, metadata) = ValidateCreateSessionRequest(request);
+        var validatedRequest = ValidateCreateSessionRequest(request);
 
-        var user = await GetUserForTenantValidationAsync(userId, request, ipAddress, userAgent, cancellationToken);
+        var user = await GetUserForTenantValidationAsync(
+            userId, request, validatedRequest.IpAddress, validatedRequest.UserAgent, cancellationToken);
         return await CreateSessionForAuthenticatedUserAsync(
             user,
             userId,
             request,
-            lifetime,
-            ipAddress,
-            userAgent,
-            metadata,
+            validatedRequest,
             createdAt: null,
             authenticationProof: null,
             cancellationToken: cancellationToken);
@@ -169,14 +164,12 @@ internal sealed class AuthenticationSessionService(
         IUser user,
         Guid userId,
         CreateAuthenticationSessionRequest request,
-        TimeSpan lifetime,
-        string? ipAddress,
-        string? userAgent,
-        string? metadata,
+        (TimeSpan Lifetime, string? IpAddress, string? UserAgent, string? Metadata) validatedRequest,
         DateTimeOffset? createdAt,
         AuthenticationSessionIssuanceProof? authenticationProof,
         CancellationToken cancellationToken)
     {
+        var (lifetime, ipAddress, userAgent, metadata) = validatedRequest;
         var userTenantId = (user as ITenantUser)?.TenantId;
         var accountState = user.AccountState;
         if (userTenantId != request.TenantId)

@@ -171,7 +171,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var claims = new Dictionary<string, string> { ["test"] = "value" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success, claims));
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success, AuthenticationClaims.FromSingleValues(claims)));
 
         var requiredFactors = new[] { "totp" };
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
@@ -449,7 +449,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var claims = new Dictionary<string, string> { ["mfa_factors"] = "totp, email_code, " };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, claims));
+            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
@@ -480,7 +480,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var claims = new Dictionary<string, string> { ["provider_factors"] = "email_code" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, claims));
+            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
@@ -516,7 +516,7 @@ internal sealed class AuthenticationOrchestratorTests
 
         var claims = new Dictionary<string, string> { ["provider_factors"] = "email_code" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, claims));
+            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
@@ -541,7 +541,7 @@ internal sealed class AuthenticationOrchestratorTests
         // ReSharper disable once NullableWarningSuppressionIsUsed
         var claims = new Dictionary<string, string> { ["mfa_factors"] = null! };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, claims));
+            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
@@ -562,7 +562,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var claims = new Dictionary<string, string> { ["mfa_factors"] = "   " };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, claims));
+            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
 
@@ -577,7 +577,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var claims = new Dictionary<string, string>();
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, claims));
+            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
 
@@ -620,7 +620,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var claims = new Dictionary<string, string> { ["mfa_factors"] = "email_code" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success, claims));
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success, AuthenticationClaims.FromSingleValues(claims)));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());

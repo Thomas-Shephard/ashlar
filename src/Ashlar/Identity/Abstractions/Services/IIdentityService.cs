@@ -107,21 +107,5 @@ public sealed class AuthenticationResponse
     /// <summary>Gets whether a provider-requested credential update was persisted.</summary>
     public bool CredentialUpdatePersisted { get; }
 
-    /// <summary>
-    /// Creates an authentication response from single-value provider claims.
-    /// </summary>
-    /// <param name="succeeded">Whether authentication completed successfully.</param>
-    /// <param name="user">The authenticated user when available.</param>
-    /// <param name="status">Outcome of the credential authentication attempt.</param>
-    /// <param name="claims">Additional single-value claims produced by the authentication provider.</param>
-    public AuthenticationResponse(
-        bool succeeded,
-        IUser? user,
-        AuthenticationStatus status,
-        IDictionary<string, string>? claims)
-        : this(succeeded, user, status, AuthenticationClaims.FromSingleValues(claims))
-    {
-    }
-
     internal StepUpSessionMarkingProof? StepUpSessionMarkingProof { get; init; }
 }

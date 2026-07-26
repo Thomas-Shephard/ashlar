@@ -42,7 +42,6 @@ public sealed class MfaAuthenticationResult
     /// <param name="Claims">Additional claims produced by the authentication provider.</param>
     /// <param name="ErrorMessage">A generic, display-safe error message when authentication fails.</param>
     /// <param name="FreshMfaSatisfied">Whether this result came from a fresh MFA ceremony suitable for step-up decisions.</param>
-    /// <param name="CredentialUpdatePersisted">Whether all provider-requested credential data changes were persisted.</param>
     public MfaAuthenticationResult(
         MfaAuthenticationStatus Status,
         IUser? User = null,
@@ -50,8 +49,7 @@ public sealed class MfaAuthenticationResult
         IEnumerable<string>? RequiredFactors = null,
         IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null,
         string? ErrorMessage = null,
-        bool FreshMfaSatisfied = false,
-        bool CredentialUpdatePersisted = false)
+        bool FreshMfaSatisfied = false)
     {
         this.Status = Status;
         this.User = User;
@@ -60,7 +58,6 @@ public sealed class MfaAuthenticationResult
         this.Claims = Claims;
         this.ErrorMessage = ErrorMessage;
         this.FreshMfaSatisfied = FreshMfaSatisfied;
-        this.CredentialUpdatePersisted = CredentialUpdatePersisted;
     }
 
     /// <summary>Gets the outcome of the MFA-aware authentication flow.</summary>
@@ -78,31 +75,7 @@ public sealed class MfaAuthenticationResult
     /// <summary>Gets whether this result came from a fresh MFA ceremony.</summary>
     public bool FreshMfaSatisfied { get; }
     /// <summary>Gets whether provider-requested credential changes were persisted.</summary>
-    public bool CredentialUpdatePersisted { get; }
-
-    /// <summary>
-    /// Creates an MFA authentication result from single-value provider claims.
-    /// </summary>
-    /// <param name="status">Outcome of the MFA-aware authentication flow.</param>
-    /// <param name="user">The authenticated user when authentication succeeds.</param>
-    /// <param name="handshakeToken">The raw handshake token when more MFA factors are required. Do not log or persist this value.</param>
-    /// <param name="requiredFactors">The MFA factors still required for the handshake.</param>
-    /// <param name="claims">Additional single-value claims produced by the authentication provider.</param>
-    /// <param name="errorMessage">A generic, display-safe error message when authentication fails.</param>
-    /// <param name="freshMfaSatisfied">Whether this result came from a fresh MFA ceremony suitable for step-up decisions.</param>
-    /// <param name="credentialUpdatePersisted">Whether all provider-requested credential data changes were actually persisted during authentication.</param>
-    public MfaAuthenticationResult(
-        MfaAuthenticationStatus status,
-        IUser? user,
-        string? handshakeToken,
-        IEnumerable<string>? requiredFactors,
-        IDictionary<string, string>? claims,
-        string? errorMessage = null,
-        bool freshMfaSatisfied = false,
-        bool credentialUpdatePersisted = false)
-        : this(status, user, handshakeToken, requiredFactors, AuthenticationClaims.FromSingleValues(claims), errorMessage, freshMfaSatisfied, credentialUpdatePersisted)
-    {
-    }
+    public bool CredentialUpdatePersisted { get; init; }
 
     internal RememberedMfaDeviceCreationProof? RememberedDeviceCreationProof { get; init; }
 
