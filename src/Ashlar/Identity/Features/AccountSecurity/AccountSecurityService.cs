@@ -319,7 +319,9 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         ValidateUserId(userId);
         request = request with { Tenant = request.Tenant ?? TenantContext.Global };
         var now = _timeProvider.GetUtcNow();
-        if (!TryGetEventStart(now, request.RecentSecurityEventWindow, out var eventStart))
+        var eventStart = default(DateTimeOffset?);
+        if (request.RecentSecurityEventWindow is { } window
+            && !TryGetEventStart(now, window, out eventStart))
             return Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.ValidationError);
 
         var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
@@ -379,17 +381,15 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         return Result.Success(posture);
     }
 
-    private static bool TryGetEventStart(DateTimeOffset now, TimeSpan? window, out DateTimeOffset? eventStart)
+    private static bool TryGetEventStart(DateTimeOffset now, TimeSpan window, out DateTimeOffset? eventStart)
     {
         eventStart = null;
-        if (window is null)
-            return true;
         if (window <= TimeSpan.Zero)
             return false;
 
         try
         {
-            eventStart = now.Subtract(window.Value);
+            eventStart = now.Subtract(window);
             return true;
         }
         catch (ArgumentOutOfRangeException)
