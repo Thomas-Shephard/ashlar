@@ -57,6 +57,21 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
+    public async Task HandleAsyncShouldRejectLookalikePrincipalThatIsNotCurrentHttpContextUser()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-1);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var currentUser = new ClaimsPrincipal(new ClaimsIdentity(CreateClaims(session), "Ashlar"));
+        var context = CreateContext(session, new AshlarStepUpRequirement(TimeSpan.FromMinutes(5)));
+
+        await CreateHandler(session, currentUser: currentUser).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
     public async Task AuthorizationPolicyShouldChallengeUnauthenticatedUsersThroughRequireAuthenticatedUser()
     {
         var services = new ServiceCollection();
@@ -92,7 +107,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var session = CreateSession();
         var context = CreateContext(session, new AshlarStepUpRequirement(TimeSpan.FromMinutes(5)));
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -108,7 +123,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
             session,
             new AshlarStepUpRequirement(TimeSpan.FromMinutes(5), allowedFactors: [AuthenticationFactorTypes.Totp]));
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -123,7 +138,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
         var context = CreateContext(session, new AshlarStepUpRequirement(TimeSpan.FromMinutes(5)));
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -151,7 +166,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
         var context = CreateContext(session, new AshlarStepUpRequirement(TimeSpan.FromMinutes(5)));
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -200,7 +215,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
             session,
             new AshlarStepUpRequirement(TimeSpan.FromMinutes(5), allowedFactors: [AuthenticationFactorTypes.Passkey]));
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -216,7 +231,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
             session,
             new AshlarStepUpRequirement(TimeSpan.FromMinutes(5), allowedProviders: [AuthenticationProviderKey.Passkey]));
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -232,7 +247,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
                 allowedFactors: [AuthenticationFactorTypes.Totp],
                 mode: AshlarStepUpMode.IfAvailable));
 
-        await CreateHandler(session, CreateAccountSecurityService(session.UserId)).HandleAsync(context);
+        await CreateHandler(session, CreateAccountSecurityService(session.UserId), currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -253,7 +268,8 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
 
         await CreateHandler(
             session,
-            CreateAccountSecurityService(session.UserId, [CreateFactor(AuthenticationFactorTypes.Totp)])).HandleAsync(context);
+            CreateAccountSecurityService(session.UserId, [CreateFactor(AuthenticationFactorTypes.Totp)]),
+            currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -324,7 +340,8 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
 
         await CreateHandler(
             session,
-            CreateAccountSecurityService(session.UserId, [CreateFactor(AuthenticationFactorTypes.Passkey)])).HandleAsync(context);
+            CreateAccountSecurityService(session.UserId, [CreateFactor(AuthenticationFactorTypes.Passkey)]),
+            currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -342,7 +359,8 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
 
         await CreateHandler(
             session,
-            CreateAccountSecurityService(session.UserId, [CreateFactor(AuthenticationFactorTypes.Totp, isUsable: false)])).HandleAsync(context);
+            CreateAccountSecurityService(session.UserId, [CreateFactor(AuthenticationFactorTypes.Totp, isUsable: false)]),
+            currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -386,7 +404,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
                 allowedFactors: [AuthenticationFactorTypes.Totp],
                 mode: AshlarStepUpMode.IfAvailable));
 
-        await CreateHandler(session, accountSecurity.Object).HandleAsync(context);
+        await CreateHandler(session, accountSecurity.Object, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -423,7 +441,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
                 allowedFactors: [AuthenticationFactorTypes.Totp],
                 mode: AshlarStepUpMode.IfAvailable));
 
-        await CreateHandler(session, accountSecurity.Object).HandleAsync(context);
+        await CreateHandler(session, accountSecurity.Object, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -442,7 +460,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
                 allowedFactors: [AuthenticationFactorTypes.Totp],
                 mode: AshlarStepUpMode.IfAvailable));
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -468,7 +486,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
                 allowedFactors: [AuthenticationFactorTypes.Totp],
                 mode: AshlarStepUpMode.IfAvailable));
 
-        await CreateHandler(session, accountSecurity.Object).HandleAsync(context);
+        await CreateHandler(session, accountSecurity.Object, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -503,7 +521,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
             new ClaimsPrincipal(new ClaimsIdentity(CreateClaims(session), "TestAuth")),
             null);
 
-        await CreateHandler(session, accountSecurity.Object).HandleAsync(context);
+        await CreateHandler(session, accountSecurity.Object, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -562,6 +580,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
                 TimeSpan.FromMinutes(5),
                 allowedFactors: [AuthenticationFactorTypes.Totp],
                 mode: AshlarStepUpMode.IfAvailable));
+        httpContextAccessor.HttpContext.User = context.User;
         var handler = new AshlarStepUpAuthorizationHandler(
             new StepUpAuthenticationService(new FixedTimeProvider(Now)),
             httpContextAccessor);
@@ -585,7 +604,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
                 allowedProviders: [AuthenticationProviderKey.Passkey],
                 allowedFactors: [AuthenticationFactorTypes.Passkey]));
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -603,7 +622,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var requirement = new AshlarStepUpRequirement(TimeSpan.FromMinutes(5));
         var context = new AuthorizationHandlerContext([requirement], principal, null);
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -620,7 +639,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var requirement = new AshlarStepUpRequirement(TimeSpan.FromMinutes(5));
         var context = new AuthorizationHandlerContext([requirement], principal, null);
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -638,7 +657,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         currentSession.AdditionalVerificationFactor = session.AdditionalVerificationFactor;
         var context = CreateContext(session, new AshlarStepUpRequirement(TimeSpan.FromMinutes(5)));
 
-        await CreateHandler(currentSession).HandleAsync(context);
+        await CreateHandler(currentSession, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -663,7 +682,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         };
         var context = CreateContext(session, new AshlarStepUpRequirement(TimeSpan.FromMinutes(5)));
 
-        await CreateHandler(currentSession).HandleAsync(context);
+        await CreateHandler(currentSession, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -681,7 +700,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -698,7 +717,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -715,7 +734,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -732,7 +751,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -749,7 +768,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -766,7 +785,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -783,7 +802,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -801,7 +820,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -824,7 +843,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -841,7 +860,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
-        await CreateHandler(session).HandleAsync(context);
+        await CreateHandler(session, currentUser: context.User).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.True);
     }
@@ -1100,12 +1119,13 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     private static AshlarStepUpAuthorizationHandler CreateHandler(
         AuthenticationSession? session = null,
         IAccountSecurityService? accountSecurity = null,
-        bool rawOnly = false)
+        bool rawOnly = false,
+        ClaimsPrincipal? currentUser = null)
     {
         var httpContextAccessor = new HttpContextAccessor();
         if (session != null)
         {
-            httpContextAccessor.HttpContext = new DefaultHttpContext();
+            httpContextAccessor.HttpContext = new DefaultHttpContext { User = currentUser ?? new ClaimsPrincipal() };
             httpContextAccessor.HttpContext.Items[rawOnly
                 ? "Ashlar.AspNetCore.AuthenticationSession"
                 : AshlarHttpContextItems.ValidatedAuthenticationSession] = rawOnly ? session : CreateValidatedSession(session);

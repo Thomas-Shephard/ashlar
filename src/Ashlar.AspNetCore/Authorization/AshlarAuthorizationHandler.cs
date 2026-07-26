@@ -1,4 +1,4 @@
-using System.Security.Claims;
+using Ashlar.AspNetCore.Authentication;
 using Ashlar.Authorization.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.AspNetCore.Authorization;
 
 /// <summary>
-/// Handles Ashlar authorization requirements by calling <see cref="IAuthorizationEvaluator"/>.
+/// Handles Ashlar authorization requirements for a validated Ashlar session by calling <see cref="IAuthorizationEvaluator"/>.
 /// </summary>
 /// <param name="evaluator">The evaluator value.</param>
 /// <param name="httpContextAccessor">The http context accessor value.</param>
@@ -38,14 +38,15 @@ public sealed class AshlarAuthorizationHandler(
             return;
         }
 
-        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
-        if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))
+        var httpContext = _httpContextAccessor.HttpContext;
+        if (httpContext?.Items[AshlarHttpContextItems.ValidatedAuthenticationSession] is not ValidatedAuthenticationSession session
+            || !ReferenceEquals(user, httpContext.User)
+            || !AshlarStepUpClaims.MatchesSession(user, session))
         {
             return;
         }
 
-        var httpContext = _httpContextAccessor.HttpContext;
-        var routeData = httpContext?.GetRouteData();
+        var routeData = httpContext.GetRouteData();
 
         foreach (var requirement in context.PendingRequirements.ToList())
         {
@@ -53,11 +54,11 @@ public sealed class AshlarAuthorizationHandler(
 
             if (requirement is AshlarPermissionRequirement permissionRequirement)
             {
-                request = CreateRequest(userId, permissionRequirement.Permission, null, permissionRequirement.PolicyName, context, routeData);
+                request = CreateRequest(session, permissionRequirement.Permission, null, permissionRequirement.PolicyName, context, routeData);
             }
             else if (requirement is AshlarRoleRequirement roleRequirement)
             {
-                request = CreateRequest(userId, null, roleRequirement.Role, roleRequirement.PolicyName, context, routeData);
+                request = CreateRequest(session, null, roleRequirement.Role, roleRequirement.PolicyName, context, routeData);
             }
 
             if (request != null)
@@ -72,16 +73,16 @@ public sealed class AshlarAuthorizationHandler(
     }
 
     private AuthorizationEvaluationRequest? CreateRequest(
-        Guid userId,
+        ValidatedAuthenticationSession session,
         string? permission,
         string? role,
         string policyName,
         AuthorizationHandlerContext context,
-        RouteData? routeData)
+        RouteData routeData)
     {
         if (!_options.PolicyScopes.TryGetValue(policyName, out var scopeOptions))
         {
-            return new AuthorizationEvaluationRequest(userId, permission, role);
+            return new AuthorizationEvaluationRequest(session.UserId, permission, role);
         }
 
         Guid? tenantId = null;
@@ -89,9 +90,14 @@ public sealed class AshlarAuthorizationHandler(
         {
             var tenantValue = scopeOptions.UseClaimForTenantId
                 ? context.User.FindFirst(scopeOptions.TenantIdSource)?.Value
-                : routeData?.Values[scopeOptions.TenantIdSource]?.ToString();
+                : routeData.Values[scopeOptions.TenantIdSource]?.ToString();
 
             if (!Guid.TryParse(tenantValue, out var parsedTenantId))
+            {
+                return null;
+            }
+
+            if (session.TenantId != parsedTenantId)
             {
                 return null;
             }
@@ -102,7 +108,7 @@ public sealed class AshlarAuthorizationHandler(
         var scopeId = scopeOptions.FixedScopeId;
         if (!string.IsNullOrWhiteSpace(scopeOptions.ScopeIdRouteValueName) && string.IsNullOrEmpty(scopeId))
         {
-            scopeId = routeData?.Values[scopeOptions.ScopeIdRouteValueName]?.ToString();
+            scopeId = routeData.Values[scopeOptions.ScopeIdRouteValueName]?.ToString();
             if (string.IsNullOrWhiteSpace(scopeId))
             {
                 return null;
@@ -110,7 +116,7 @@ public sealed class AshlarAuthorizationHandler(
         }
 
         return new AuthorizationEvaluationRequest(
-            UserId: userId,
+            UserId: session.UserId,
             Permission: permission,
             Role: role,
             TenantId: tenantId,

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Authorization;
 using Ashlar.Authorization.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -42,7 +43,11 @@ internal sealed class AshlarAuthorizationHandlerTests
     [Test]
     public async Task HandleAsyncShouldDoNothingIfUserIdClaimMissing()
     {
-        var user = new ClaimsPrincipal(new ClaimsIdentity("TestAuth"));
+        var userId = Guid.NewGuid();
+        var user = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(AshlarClaimTypes.SessionId, SessionId.ToString())],
+            "Ashlar"));
+        SetValidatedSession(user, userId);
         var context = new AuthorizationHandlerContext([new AshlarPermissionRequirement("p", "policy")], user, null);
 
         await _handler.HandleAsync(context);
@@ -54,7 +59,14 @@ internal sealed class AshlarAuthorizationHandlerTests
     [Test]
     public async Task HandleAsyncShouldDoNothingIfUserIdClaimInvalid()
     {
-        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "not-a-guid")], "TestAuth"));
+        var userId = Guid.NewGuid();
+        var user = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, "not-a-guid"),
+                new Claim(AshlarClaimTypes.SessionId, SessionId.ToString())
+            ],
+            "Ashlar"));
+        SetValidatedSession(user, userId);
         var context = new AuthorizationHandlerContext([new AshlarPermissionRequirement("p", "policy")], user, null);
 
         await _handler.HandleAsync(context);
@@ -67,7 +79,8 @@ internal sealed class AshlarAuthorizationHandlerTests
     public async Task HandleAsyncShouldSucceedIfEvaluatorSucceedsForPermission()
     {
         var userId = Guid.NewGuid();
-        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "TestAuth"));
+        var user = CreateAshlarUser(userId);
+        SetValidatedSession(user, userId);
         var requirement = new AshlarPermissionRequirement("posts:edit", "EditPostPolicy");
         var context = new AuthorizationHandlerContext([requirement], user, null);
 
@@ -89,7 +102,8 @@ internal sealed class AshlarAuthorizationHandlerTests
     public async Task HandleAsyncShouldSucceedIfEvaluatorSucceedsForRole()
     {
         var userId = Guid.NewGuid();
-        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "TestAuth"));
+        var user = CreateAshlarUser(userId);
+        SetValidatedSession(user, userId);
         var requirement = new AshlarRoleRequirement("admin", "AdminPolicy");
         var context = new AuthorizationHandlerContext([requirement], user, null);
 
@@ -107,7 +121,7 @@ internal sealed class AshlarAuthorizationHandlerTests
     public async Task HandleAsyncShouldResolveScopeFromRouteData()
     {
         var userId = Guid.NewGuid();
-        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "TestAuth"));
+        var user = CreateAshlarUser(userId);
         var requirement = new AshlarPermissionRequirement("posts:edit", "EditPostPolicy");
         var context = new AuthorizationHandlerContext([requirement], user, null);
 
@@ -115,9 +129,10 @@ internal sealed class AshlarAuthorizationHandlerTests
         {
             scope.ScopeType = "post";
             scope.ScopeIdRouteValueName = "postId";
+            scope.FixedScopeId = string.Empty;
         });
 
-        var httpContext = new DefaultHttpContext();
+        var httpContext = SetValidatedSession(user, userId);
         httpContext.GetRouteData().Values["postId"] = "123";
         _httpContextAccessorMock.Setup(h => h.HttpContext).Returns(httpContext);
 
@@ -140,7 +155,7 @@ internal sealed class AshlarAuthorizationHandlerTests
     {
         var userId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
-        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "TestAuth"));
+        var user = CreateAshlarUser(userId, tenantId);
         var requirement = new AshlarPermissionRequirement("posts:edit", "EditPostPolicy");
         var context = new AuthorizationHandlerContext([requirement], user, null);
 
@@ -149,7 +164,7 @@ internal sealed class AshlarAuthorizationHandlerTests
             scope.TenantIdSource = "tenantId";
         });
 
-        var httpContext = new DefaultHttpContext();
+        var httpContext = SetValidatedSession(user, userId, tenantId);
         httpContext.Request.RouteValues["tenantId"] = tenantId.ToString();
         _httpContextAccessorMock.Setup(h => h.HttpContext).Returns(httpContext);
 
@@ -170,10 +185,8 @@ internal sealed class AshlarAuthorizationHandlerTests
     {
         var userId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
-        var user = new ClaimsPrincipal(new ClaimsIdentity([
-            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
-            new Claim("my_tenant_id", tenantId.ToString())
-        ], "TestAuth"));
+        var user = CreateAshlarUser(userId, tenantId, new Claim("my_tenant_id", tenantId.ToString()));
+        SetValidatedSession(user, userId, tenantId);
 
         var requirement = new AshlarPermissionRequirement("posts:edit", "EditPostPolicy");
         var context = new AuthorizationHandlerContext([requirement], user, null);
@@ -200,7 +213,7 @@ internal sealed class AshlarAuthorizationHandlerTests
     public async Task HandleAsyncShouldFailSafelyIfRouteValueMissing()
     {
         var userId = Guid.NewGuid();
-        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "TestAuth"));
+        var user = CreateAshlarUser(userId);
         var requirement = new AshlarPermissionRequirement("posts:edit", "EditPostPolicy");
         var context = new AuthorizationHandlerContext([requirement], user, null);
 
@@ -209,7 +222,7 @@ internal sealed class AshlarAuthorizationHandlerTests
             scope.ScopeIdRouteValueName = "postId";
         });
 
-        var httpContext = new DefaultHttpContext();
+        var httpContext = SetValidatedSession(user, userId);
         _httpContextAccessorMock.Setup(h => h.HttpContext).Returns(httpContext);
 
         await _handler.HandleAsync(context);
@@ -222,7 +235,7 @@ internal sealed class AshlarAuthorizationHandlerTests
     public async Task HandleAsyncShouldFailSafelyIfTenantIdInvalid()
     {
         var userId = Guid.NewGuid();
-        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "TestAuth"));
+        var user = CreateAshlarUser(userId);
         var requirement = new AshlarPermissionRequirement("posts:edit", "EditPostPolicy");
         var context = new AuthorizationHandlerContext([requirement], user, null);
 
@@ -231,7 +244,7 @@ internal sealed class AshlarAuthorizationHandlerTests
             scope.TenantIdSource = "tenantId";
         });
 
-        var httpContext = new DefaultHttpContext();
+        var httpContext = SetValidatedSession(user, userId);
         httpContext.Request.RouteValues["tenantId"] = "not-a-guid";
 
         _httpContextAccessorMock.Setup(h => h.HttpContext).Returns(httpContext);
@@ -257,7 +270,8 @@ internal sealed class AshlarAuthorizationHandlerTests
     public async Task HandleAsyncShouldUseFixedScopeIdEvenIfRouteValueNameIsProvided()
     {
         var userId = Guid.NewGuid();
-        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "TestAuth"));
+        var user = CreateAshlarUser(userId);
+        SetValidatedSession(user, userId);
         var requirement = new AshlarPermissionRequirement("posts:edit", "EditPostPolicy");
         var context = new AuthorizationHandlerContext([requirement], user, null);
 
@@ -281,7 +295,7 @@ internal sealed class AshlarAuthorizationHandlerTests
     public async Task HandleAsyncShouldFailIfTenantIdRequestedButHttpContextIsNull()
     {
         var userId = Guid.NewGuid();
-        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "TestAuth"));
+        var user = CreateAshlarUser(userId);
         var requirement = new AshlarPermissionRequirement("posts:edit", "EditPostPolicy");
         var context = new AuthorizationHandlerContext([requirement], user, null);
 
@@ -301,7 +315,8 @@ internal sealed class AshlarAuthorizationHandlerTests
     public async Task HandleAsyncShouldFailIfTenantIdRequestedFromClaimButMissing()
     {
         var userId = Guid.NewGuid();
-        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "TestAuth"));
+        var user = CreateAshlarUser(userId);
+        SetValidatedSession(user, userId);
         var requirement = new AshlarPermissionRequirement("posts:edit", "EditPostPolicy");
         var context = new AuthorizationHandlerContext([requirement], user, null);
 
@@ -320,7 +335,7 @@ internal sealed class AshlarAuthorizationHandlerTests
     public async Task HandleAsyncShouldFailIfTenantIdSourceProvidedButRouteValueMissing()
     {
         var userId = Guid.NewGuid();
-        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "TestAuth"));
+        var user = CreateAshlarUser(userId);
         var requirement = new AshlarPermissionRequirement("posts:edit", "EditPostPolicy");
         var context = new AuthorizationHandlerContext([requirement], user, null);
 
@@ -330,7 +345,7 @@ internal sealed class AshlarAuthorizationHandlerTests
             scope.UseClaimForTenantId = false;
         });
 
-        var httpContext = new DefaultHttpContext();
+        var httpContext = SetValidatedSession(user, userId);
         _httpContextAccessorMock.Setup(h => h.HttpContext).Returns(httpContext);
 
         await _handler.HandleAsync(context);
@@ -342,7 +357,8 @@ internal sealed class AshlarAuthorizationHandlerTests
     public async Task HandleAsyncShouldNotAttemptToResolveScopeIdIfNoRouteValueNameProvided()
     {
         var userId = Guid.NewGuid();
-        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "TestAuth"));
+        var user = CreateAshlarUser(userId);
+        SetValidatedSession(user, userId);
         var requirement = new AshlarPermissionRequirement("posts:edit", "EditPostPolicy");
         var context = new AuthorizationHandlerContext([requirement], user, null);
 
@@ -364,7 +380,7 @@ internal sealed class AshlarAuthorizationHandlerTests
     public async Task HandleAsyncShouldFailIfScopeIdRequestedButHttpContextIsNull()
     {
         var userId = Guid.NewGuid();
-        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "TestAuth"));
+        var user = CreateAshlarUser(userId);
         var requirement = new AshlarPermissionRequirement("posts:edit", "EditPostPolicy");
         var context = new AuthorizationHandlerContext([requirement], user, null);
 
@@ -379,4 +395,144 @@ internal sealed class AshlarAuthorizationHandlerTests
 
         Assert.That(context.HasSucceeded, Is.False);
     }
+
+    [Test]
+    public async Task HandleAsyncRejectsRawSessionItem()
+    {
+        var userId = Guid.NewGuid();
+        var user = CreateAshlarUser(userId);
+        var httpContext = new DefaultHttpContext { User = user };
+        httpContext.Items[AshlarHttpContextItems.ValidatedAuthenticationSession] = CreateSession(userId);
+        _httpContextAccessorMock.Setup(h => h.HttpContext).Returns(httpContext);
+        var context = new AuthorizationHandlerContext([new AshlarPermissionRequirement("p", "policy")], user, null);
+
+        await _handler.HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+        _evaluatorMock.Verify(e => e.EvaluateAsync(It.IsAny<AuthorizationEvaluationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task HandleAsyncRejectsAuthenticatedNonAshlarPrincipalWithoutValidatedSession()
+    {
+        var userId = Guid.NewGuid();
+        var user = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.NameIdentifier, userId.ToString())],
+            "TestAuth"));
+        var context = new AuthorizationHandlerContext([new AshlarPermissionRequirement("p", "policy")], user, null);
+
+        await _handler.HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+        _evaluatorMock.Verify(e => e.EvaluateAsync(It.IsAny<AuthorizationEvaluationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task HandleAsyncRejectsLookalikePrincipalThatIsNotCurrentHttpContextUser()
+    {
+        var userId = Guid.NewGuid();
+        var currentUser = CreateAshlarUser(userId);
+        var lookalikeUser = CreateAshlarUser(userId);
+        SetValidatedSession(currentUser, userId);
+        var context = new AuthorizationHandlerContext(
+            [new AshlarPermissionRequirement("p", "policy")],
+            lookalikeUser,
+            null);
+
+        await _handler.HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+        _evaluatorMock.Verify(e => e.EvaluateAsync(It.IsAny<AuthorizationEvaluationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task HandleAsyncRejectsMismatchedValidatedSession(bool mismatchUser)
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var user = CreateAshlarUser(userId, tenantId);
+        SetValidatedSession(user, mismatchUser ? Guid.NewGuid() : userId, mismatchUser ? tenantId : Guid.NewGuid());
+        var context = new AuthorizationHandlerContext([new AshlarPermissionRequirement("p", "policy")], user, null);
+
+        await _handler.HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+        _evaluatorMock.Verify(e => e.EvaluateAsync(It.IsAny<AuthorizationEvaluationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task HandleAsyncRejectsRouteTenantDifferentFromValidatedSession()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var user = CreateAshlarUser(userId, tenantId);
+        var httpContext = SetValidatedSession(user, userId, tenantId);
+        httpContext.Request.RouteValues["tenantId"] = Guid.NewGuid().ToString();
+        _options.AddPermissionPolicy("policy", "p", scope => scope.TenantIdSource = "tenantId");
+        var context = new AuthorizationHandlerContext([new AshlarPermissionRequirement("p", "policy")], user, null);
+
+        await _handler.HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+        _evaluatorMock.Verify(e => e.EvaluateAsync(It.IsAny<AuthorizationEvaluationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task HandleAsyncRejectsRouteTenantWhenValidatedSessionHasNoTenant()
+    {
+        var userId = Guid.NewGuid();
+        var user = CreateAshlarUser(userId);
+        var httpContext = SetValidatedSession(user, userId);
+        httpContext.Request.RouteValues["tenantId"] = Guid.NewGuid().ToString();
+        _options.AddPermissionPolicy("policy", "p", scope => scope.TenantIdSource = "tenantId");
+        var context = new AuthorizationHandlerContext([new AshlarPermissionRequirement("p", "policy")], user, null);
+
+        await _handler.HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    private DefaultHttpContext SetValidatedSession(ClaimsPrincipal user, Guid userId, Guid? tenantId = null)
+    {
+        var httpContext = new DefaultHttpContext { User = user };
+        var session = CreateSession(userId, tenantId);
+        httpContext.Items[AshlarHttpContextItems.ValidatedAuthenticationSession] =
+            (ValidatedAuthenticationSession)Activator.CreateInstance(
+                typeof(ValidatedAuthenticationSession),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                null,
+                [session],
+                null)!;
+        _httpContextAccessorMock.Setup(h => h.HttpContext).Returns(httpContext);
+        return httpContext;
+    }
+
+    private static ClaimsPrincipal CreateAshlarUser(Guid userId, Guid? tenantId = null, params Claim[] extraClaims)
+    {
+        var session = CreateSession(userId, tenantId);
+        var claims = new List<Claim>(extraClaims)
+        {
+            new(ClaimTypes.NameIdentifier, userId.ToString()),
+            new(AshlarClaimTypes.SessionId, session.Id.ToString())
+        };
+        if (tenantId.HasValue)
+        {
+            claims.Add(new Claim(AshlarClaimTypes.TenantId, tenantId.Value.ToString()));
+        }
+
+        return new ClaimsPrincipal(new ClaimsIdentity(claims, "Ashlar"));
+    }
+
+    private static AuthenticationSession CreateSession(Guid userId, Guid? tenantId = null) => new()
+    {
+        Id = SessionId,
+        UserId = userId,
+        TenantId = tenantId,
+        TokenHash = "hash",
+        CreatedAt = DateTimeOffset.UtcNow,
+        ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
+    };
+
+    private static readonly Guid SessionId = Guid.NewGuid();
 }
