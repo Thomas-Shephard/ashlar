@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Ashlar.AspNetCore.Authorization;
 
 /// <summary>
-/// Handles Ashlar step-up authorization requirements using safe session claims.
+/// Handles Ashlar step-up authorization requirements for the current validated Ashlar session.
 /// </summary>
 /// <param name="stepUpAuthentication">The step-up authentication service.</param>
 /// <param name="httpContextAccessor">The HTTP context accessor.</param>
@@ -79,7 +79,8 @@ public sealed class AshlarStepUpAuthorizationHandler(
             return null;
         }
 
-        if (!AshlarStepUpClaims.MatchesSession(user, currentSession))
+        if (!ReferenceEquals(user, currentHttpContext.User)
+            || !AshlarStepUpClaims.MatchesSession(user, currentSession))
         {
             return null;
         }
