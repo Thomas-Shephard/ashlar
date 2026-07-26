@@ -667,6 +667,34 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         Assert.Throws<ArgumentException>(() => AshlarExternalAccountLinkService.CreateExternalLinkChallengeProperties(Guid.NewGuid(), Guid.Empty));
     }
 
+    [TestCase("/")]
+    [TestCase("/account/external/link/callback?tab=security#linked")]
+    public void CreateExternalLinkChallengePropertiesAcceptsLocalReturnPath(string returnPath)
+    {
+        var properties = AshlarExternalAccountLinkService.CreateExternalLinkChallengeProperties(
+            Guid.NewGuid(), Guid.NewGuid(), returnPath);
+
+        Assert.That(properties.RedirectUri, Is.EqualTo(returnPath));
+    }
+
+    [TestCase("https://evil.example")]
+    [TestCase("//evil.example")]
+    [TestCase("/\\evil.example")]
+    [TestCase("/%2f%2fevil.example")]
+    [TestCase("/%5cevil.example")]
+    [TestCase("/%255cevil.example")]
+    [TestCase("/%")]
+    [TestCase("/%E0%A4%A")]
+    [TestCase("/evil.example\r\nLocation: https://evil.example")]
+    [TestCase("/evil.example\0")]
+    [TestCase(" /account/external/link/callback")]
+    [TestCase("")]
+    public void CreateExternalLinkChallengePropertiesRejectsUnsafeReturnPath(string returnPath)
+    {
+        Assert.Throws<ArgumentException>(() => AshlarExternalAccountLinkService.CreateExternalLinkChallengeProperties(
+            Guid.NewGuid(), Guid.NewGuid(), returnPath));
+    }
+
     [Test]
     public async Task CompleteExternalLinkShouldNotLinkWhenClearingSuccessfulTicketThrows()
     {
@@ -1501,8 +1529,10 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         public void BindLinkingTicket(Guid userId, Guid sessionId)
         {
             if (result.Properties == null) return;
-            var binding = AshlarExternalAccountLinkService.CreateExternalLinkChallengeProperties(userId, sessionId);
+            var binding = AshlarExternalAccountLinkService.CreateExternalLinkChallengeProperties(
+                userId, sessionId, "/account/external/link/callback?tab=security#linked");
             foreach (var item in binding.Items) result.Properties.Items[item.Key] = item.Value;
+            result.Properties.RedirectUri = binding.RedirectUri;
         }
         public Task<AuthenticateResult> AuthenticateAsync(HttpContext context, string? scheme)
         {
