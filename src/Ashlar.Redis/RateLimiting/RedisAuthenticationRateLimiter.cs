@@ -11,15 +11,16 @@ namespace Ashlar.Redis.RateLimiting;
 public sealed class RedisAuthenticationRateLimiter : IAuthenticationRateLimiter
 {
     private static readonly LuaScript Script = LuaScript.Prepare("""
+        local serverTime = redis.call('TIME')
+        local now = tonumber(serverTime[1]) * 1000 + math.floor(tonumber(serverTime[2]) / 1000)
         local hash = redis.call('HMGET', @key, 'count', 'windowStart', 'blockedUntil')
         local count = tonumber(hash[1] or '0')
-        local windowStart = tonumber(hash[2] or @now)
+        local windowStart = tonumber(hash[2] or now)
         local blockedUntil = nil
         if hash[3] then
             blockedUntil = tonumber(hash[3])
         end
 
-        local now = tonumber(@now)
         local permitLimit = tonumber(@permitLimit)
         local windowMs = tonumber(@windowMs)
         local blockMs = tonumber(@blockMs)
@@ -80,27 +81,21 @@ public sealed class RedisAuthenticationRateLimiter : IAuthenticationRateLimiter
 
     private readonly Func<ValueTask<IConnectionMultiplexer>> _getConnectionAsync;
     private readonly RedisAuthenticationRateLimiterOptions _options;
-    private readonly TimeProvider _timeProvider;
 
     /// <summary>
     /// Initializes a configured Redis authentication rate limiter.
     /// </summary>
     /// <param name="connection">The Redis connection multiplexer.</param>
     /// <param name="options">The Redis rate limiter options.</param>
-    /// <param name="timeProvider">The time provider.</param>
     public RedisAuthenticationRateLimiter(
         IConnectionMultiplexer connection,
-        IOptions<RedisAuthenticationRateLimiterOptions> options,
-        TimeProvider timeProvider)
+        IOptions<RedisAuthenticationRateLimiterOptions> options)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(timeProvider);
 
         _getConnectionAsync = () => ValueTask.FromResult(connection);
         _options = options.Value;
-        _timeProvider = timeProvider;
-
         if (!RedisAuthenticationRateLimiterOptions.Validate(_options))
         {
             throw new ArgumentException("Redis rate limiter options are invalid.", nameof(options));
@@ -109,16 +104,13 @@ public sealed class RedisAuthenticationRateLimiter : IAuthenticationRateLimiter
 
     internal RedisAuthenticationRateLimiter(
         RedisAuthenticationRateLimiterConnection connectionWrapper,
-        IOptions<RedisAuthenticationRateLimiterOptions> options,
-        TimeProvider timeProvider)
+        IOptions<RedisAuthenticationRateLimiterOptions> options)
     {
         ArgumentNullException.ThrowIfNull(connectionWrapper);
         ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(timeProvider);
 
         _getConnectionAsync = connectionWrapper.GetConnectionAsync;
         _options = options.Value;
-        _timeProvider = timeProvider;
 
         if (!RedisAuthenticationRateLimiterOptions.Validate(_options))
         {
@@ -145,7 +137,6 @@ public sealed class RedisAuthenticationRateLimiter : IAuthenticationRateLimiter
         ValidateRule(rule);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var now = _timeProvider.GetUtcNow();
         var connection = await _getConnectionAsync();
         var database = connection.GetDatabase(_options.Database ?? -1);
         var redisKey = RedisRateLimitKeyBuilder.Build(_options.KeyPrefix, attempt.Purpose, attempt.Key);
@@ -154,7 +145,6 @@ public sealed class RedisAuthenticationRateLimiter : IAuthenticationRateLimiter
         {
             key = (RedisKey)redisKey,
             purpose = attempt.Purpose ?? string.Empty,
-            now = now.ToUnixTimeMilliseconds(),
             permitLimit = rule.PermitLimit,
             windowMs = ToPositiveMilliseconds(rule.Window, nameof(rule)),
             blockMs = rule.BlockDuration.HasValue ? ToPositiveMilliseconds(rule.BlockDuration.Value, nameof(rule)) : 0,

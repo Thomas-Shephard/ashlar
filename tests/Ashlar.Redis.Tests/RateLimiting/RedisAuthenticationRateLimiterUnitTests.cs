@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Time.Testing;
 using Moq;
 using StackExchange.Redis;
 
@@ -15,9 +14,8 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new RedisAuthenticationRateLimiter((IConnectionMultiplexer)null!, options, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => _ = new RedisAuthenticationRateLimiter(connection, null!, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => _ = new RedisAuthenticationRateLimiter(connection, options, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new RedisAuthenticationRateLimiter((IConnectionMultiplexer)null!, options));
+            Assert.Throws<ArgumentNullException>(() => _ = new RedisAuthenticationRateLimiter(connection, null!));
         }
     }
 
@@ -27,7 +25,7 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
         var connection = Mock.Of<IConnectionMultiplexer>();
         var options = Options.Create(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "invalid prefix" });
 
-        Assert.Throws<ArgumentException>(() => _ = new RedisAuthenticationRateLimiter(connection, options, TimeProvider.System));
+        Assert.Throws<ArgumentException>(() => _ = new RedisAuthenticationRateLimiter(connection, options));
     }
 
     [Test]
@@ -36,7 +34,7 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
         var connection = new RedisAuthenticationRateLimiterConnection(new Lazy<Task<IConnectionMultiplexer>>(() => Task.FromResult(Mock.Of<IConnectionMultiplexer>())), false);
         var options = Options.Create(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "invalid prefix" });
 
-        Assert.Throws<ArgumentException>(() => _ = new RedisAuthenticationRateLimiter(connection, options, TimeProvider.System));
+        Assert.Throws<ArgumentException>(() => _ = new RedisAuthenticationRateLimiter(connection, options));
     }
 
     [Test]
@@ -49,8 +47,7 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
             .Returns(database);
         var limiter = new RedisAuthenticationRateLimiter(
             connection.Object,
-            ValidOptions(),
-            new FakeTimeProvider());
+            ValidOptions());
 
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await limiter.CheckAsync(
             new Ashlar.Identity.RateLimiting.Models.RateLimitAttempt { Key = "test" },
@@ -63,8 +60,7 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
         var connection = new Mock<IConnectionMultiplexer>(MockBehavior.Strict);
         var limiter = new RedisAuthenticationRateLimiter(
             connection.Object,
-            ValidOptions(),
-            new FakeTimeProvider());
+            ValidOptions());
         using var cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.Cancel();
 
@@ -93,8 +89,7 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
             .Returns(database.Object);
         var limiter = new RedisAuthenticationRateLimiter(
             connection.Object,
-            ValidOptions(),
-            new FakeTimeProvider());
+            ValidOptions());
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await limiter.CheckAsync(
             new Ashlar.Identity.RateLimiting.Models.RateLimitAttempt { Key = "test" },
@@ -119,8 +114,7 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
             .Returns(database.Object);
         var limiter = new RedisAuthenticationRateLimiter(
             connection.Object,
-            ValidOptions(),
-            new FakeTimeProvider());
+            ValidOptions());
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await limiter.CheckAsync(
             new Ashlar.Identity.RateLimiting.Models.RateLimitAttempt { Key = "test" },
@@ -145,8 +139,7 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
             .Returns(database.Object);
         var limiter = new RedisAuthenticationRateLimiter(
             connection.Object,
-            ValidOptions(),
-            new FakeTimeProvider());
+            ValidOptions());
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await limiter.CheckAsync(
             new Ashlar.Identity.RateLimiting.Models.RateLimitAttempt { Key = "test" },

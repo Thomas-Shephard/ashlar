@@ -8,6 +8,10 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
 
     protected abstract void AdvanceTime(TimeSpan duration);
 
+    protected virtual TimeSpan TimestampTolerance => TimeSpan.Zero;
+
+    protected virtual TimeSpan RateLimitWindow => TimeSpan.FromMinutes(5);
+
     protected virtual bool SupportsRateLimiterTransactionRollback => false;
 
     [Test]
@@ -15,7 +19,7 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
     {
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
-        var rule = new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(5) };
+        var rule = new RateLimitRule { PermitLimit = 5, Window = RateLimitWindow };
 
         var decision = await limiter.CheckAsync(new RateLimitAttempt { Key = UniqueKey() }, rule);
 
@@ -25,7 +29,9 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
             Assert.That(decision.Status, Is.EqualTo(RateLimitStatus.Allowed));
             Assert.That(decision.Remaining, Is.EqualTo(4));
             Assert.That(decision.RetryAfter, Is.Null);
-            Assert.That(decision.WindowResetAt, Is.EqualTo(Now + rule.Window));
+            Assert.That(decision.WindowResetAt, Is.InRange(
+                Now + rule.Window - TimestampTolerance,
+                Now + rule.Window + TimestampTolerance));
         }
     }
 
@@ -35,7 +41,7 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
         var attempt = new RateLimitAttempt { Key = UniqueKey() };
-        var rule = new RateLimitRule { PermitLimit = 3, Window = TimeSpan.FromMinutes(5) };
+        var rule = new RateLimitRule { PermitLimit = 3, Window = RateLimitWindow };
 
         var first = await limiter.CheckAsync(attempt, rule);
         var second = await limiter.CheckAsync(attempt, rule);
@@ -56,7 +62,7 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
         var attempt = new RateLimitAttempt { Key = UniqueKey() };
-        var rule = new RateLimitRule { PermitLimit = 2, Window = TimeSpan.FromMinutes(5) };
+        var rule = new RateLimitRule { PermitLimit = 2, Window = RateLimitWindow };
 
         await limiter.CheckAsync(attempt, rule);
         await limiter.CheckAsync(attempt, rule);
@@ -67,7 +73,9 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
             Assert.That(decision.IsAllowed, Is.False);
             Assert.That(decision.Status, Is.EqualTo(RateLimitStatus.Blocked));
             Assert.That(decision.Remaining, Is.Zero);
-            Assert.That(decision.RetryAfter, Is.EqualTo(Now + rule.Window));
+            Assert.That(decision.RetryAfter, Is.InRange(
+                Now + rule.Window - TimestampTolerance,
+                Now + rule.Window + TimestampTolerance));
         }
     }
 
@@ -80,7 +88,7 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
         var rule = new RateLimitRule
         {
             PermitLimit = 1,
-            Window = TimeSpan.FromMinutes(5),
+            Window = RateLimitWindow,
             BlockDuration = TimeSpan.FromMinutes(15)
         };
 
@@ -91,7 +99,9 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decision.IsAllowed, Is.False);
-            Assert.That(decision.RetryAfter, Is.EqualTo(start + rule.BlockDuration));
+            Assert.That(decision.RetryAfter, Is.InRange(
+                start + rule.BlockDuration - TimestampTolerance,
+                Now + rule.BlockDuration + TimestampTolerance));
         }
     }
 
@@ -101,7 +111,7 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
         var attempt = new RateLimitAttempt { Key = UniqueKey() };
-        var rule = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(5) };
+        var rule = new RateLimitRule { PermitLimit = 1, Window = RateLimitWindow };
 
         await limiter.CheckAsync(attempt, rule);
         Assert.That((await limiter.CheckAsync(attempt, rule)).IsAllowed, Is.False);
@@ -117,7 +127,7 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
     {
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
-        var rule = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(5) };
+        var rule = new RateLimitRule { PermitLimit = 1, Window = RateLimitWindow };
         var first = UniqueKey();
         var second = UniqueKey();
 
@@ -137,7 +147,7 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
     {
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
-        var rule = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(5) };
+        var rule = new RateLimitRule { PermitLimit = 1, Window = RateLimitWindow };
         var key = UniqueKey();
 
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "login", Key = key }, rule);
@@ -155,7 +165,7 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
     public async Task CheckAsyncStatePersistsAcrossServiceProviderScopes()
     {
         var key = UniqueKey();
-        var rule = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(5) };
+        var rule = new RateLimitRule { PermitLimit = 1, Window = RateLimitWindow };
         await using (var scope = CreateAsyncScope())
         {
             await GetAuthenticationRateLimiter(scope.ServiceProvider).CheckAsync(new RateLimitAttempt { Key = key }, rule);
@@ -176,9 +186,9 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await limiter.CheckAsync(attempt, new RateLimitRule { PermitLimit = 0, Window = TimeSpan.FromMinutes(5) }));
+            Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await limiter.CheckAsync(attempt, new RateLimitRule { PermitLimit = 0, Window = RateLimitWindow }));
             Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await limiter.CheckAsync(attempt, new RateLimitRule { PermitLimit = 1, Window = TimeSpan.Zero }));
-            Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await limiter.CheckAsync(attempt, new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(5), BlockDuration = TimeSpan.Zero }));
+            Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await limiter.CheckAsync(attempt, new RateLimitRule { PermitLimit = 1, Window = RateLimitWindow, BlockDuration = TimeSpan.Zero }));
         }
     }
 
@@ -193,7 +203,7 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
         await using var scope = CreateAsyncScope();
         var transactionProvider = GetTransactionProvider(scope.ServiceProvider) ?? throw new InvalidOperationException("Transaction provider is not registered.");
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
-        var rule = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(5) };
+        var rule = new RateLimitRule { PermitLimit = 1, Window = RateLimitWindow };
         var key = UniqueKey();
 
         await using (var transaction = await transactionProvider.BeginTransactionAsync())

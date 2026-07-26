@@ -21,7 +21,7 @@ namespace Ashlar.Redis.Tests.RateLimiting;
 
 internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTestBase
 {
-    private static readonly DateTimeOffset Start = new(2026, 6, 1, 12, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset Start = DateTimeOffset.UtcNow;
     private FakeTimeProvider _timeProvider = null!;
     private ServiceProvider _provider = null!;
     private string _keyPrefix = null!;

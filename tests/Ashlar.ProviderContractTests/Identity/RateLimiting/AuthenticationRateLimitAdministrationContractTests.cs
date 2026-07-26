@@ -14,6 +14,10 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
 
     protected abstract void AdvanceTime(TimeSpan duration);
 
+    protected virtual TimeSpan TimeTravelDuration(TimeSpan duration) => duration;
+
+    protected virtual TimeSpan TimeTravelTolerance => TimeSpan.Zero;
+
     [Test]
     public async Task SearchBucketsAsyncFiltersByPurposeAndStatus()
     {
@@ -85,7 +89,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         var rule = new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) };
 
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "paging", Key = UniqueKey() }, rule);
-        AdvanceTime(TimeSpan.FromMinutes(1));
+        AdvanceTime(TimeTravelDuration(TimeSpan.FromMinutes(1)));
         var secondStart = Now;
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "paging", Key = UniqueKey() }, rule);
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "paging", Key = UniqueKey() }, rule);
@@ -94,9 +98,9 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         {
             Purpose = "paging",
             WindowStartFrom = secondStart,
-            WindowStartTo = secondStart,
+            WindowStartTo = secondStart + TimeTravelTolerance,
             ExpiresFrom = secondStart + rule.Window,
-            ExpiresTo = secondStart + rule.Window,
+            ExpiresTo = secondStart + rule.Window + TimeTravelTolerance,
             Limit = 1
         });
         var secondPage = await administration.SearchBucketsAsync(actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest
@@ -123,10 +127,10 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         var actor = await CreateActorAsync(scope.ServiceProvider, AccountSecurityActorContext.AdministrationReadProofPurpose);
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
         var administration = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
-        var rule = new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(1) };
+        var rule = new RateLimitRule { PermitLimit = 5, Window = TimeTravelDuration(TimeSpan.FromMinutes(1)) };
 
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "expired", Key = UniqueKey() }, rule);
-        AdvanceTime(TimeSpan.FromMinutes(2));
+        AdvanceTime(TimeTravelDuration(TimeSpan.FromMinutes(2)));
 
         var expired = await administration.SearchBucketsAsync(actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest
         {
