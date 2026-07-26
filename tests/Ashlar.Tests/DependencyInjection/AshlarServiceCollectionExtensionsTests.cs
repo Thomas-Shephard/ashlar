@@ -1062,6 +1062,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
         services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddAshlarEmailVerification();
         services.AddDurableAuditForTests();

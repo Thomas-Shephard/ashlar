@@ -6,9 +6,9 @@ namespace Ashlar.Identity.Abstractions.Services;
 public interface IEmailVerificationService
 {
     /// <summary>
-    /// Enqueues or sends a verification message for the requested user.
+    /// Enqueues or sends a verification message for the current validated session user.
     /// </summary>
-    /// <param name="request">User, callback base URI, and audit context for issuing the verification message.</param>
+    /// <param name="request">Ashlar-issued validated session, callback base URI, and required matching audit actor.</param>
     /// <param name="cancellationToken">A token that can cancel the request.</param>
     /// <returns>A success result when the verification message is queued or sent; otherwise, a failure describing why the request was rejected.</returns>
     Task<Result> RequestVerificationAsync(EmailVerificationRequest request, CancellationToken cancellationToken = default);

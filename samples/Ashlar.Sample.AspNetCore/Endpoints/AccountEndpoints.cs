@@ -77,15 +77,15 @@ internal static class AccountEndpoints
     private static async Task<IResult> RequestEmailVerificationAsync(
         IEmailVerificationService emailVerification,
         HttpContext httpContext,
-        ClaimsPrincipal userPrincipal,
         IOptions<SampleAshlarOptions> options,
         CancellationToken cancellationToken)
     {
-        var userId = userPrincipal.GetAshlarUserId();
+        var session = httpContext.GetValidatedAuthenticationSession();
+        if (session == null) return Results.Unauthorized();
         var callback = new Uri(new Uri(options.Value.PublicAppUrl), "/account/verify-email");
         var result = await emailVerification.RequestVerificationAsync(new EmailVerificationRequest
         {
-            UserId = userId,
+            Session = session,
             CallbackBaseUri = callback,
             Audit = httpContext.ToAuditContext()
         }, cancellationToken);

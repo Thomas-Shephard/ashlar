@@ -122,6 +122,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<SecureTokenContext>(),
             provider.GetRequiredService<IdentityInfrastructureContext>(),
             provider.GetRequiredService<IdentityAuditContext>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
             provider.GetService<IOptions<EmailVerificationOptions>>()));
         services.TryAddScoped<IEmailVerificationService, EmailVerificationService>();
 

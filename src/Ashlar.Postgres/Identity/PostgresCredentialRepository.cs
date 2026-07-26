@@ -43,7 +43,7 @@ internal sealed class PostgresCredentialRepository(IPostgresConnectionProvider c
             var command = new CommandDefinition(sql, new { UserId = userId }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             if (await connectionHandle.Connection.QuerySingleOrDefaultAsync<int?>(command) == null)
             {
-                throw new InvalidOperationException("The credential mutation lock user does not exist.");
+                throw new UserMutationLockNotFoundException();
             }
         }
     }

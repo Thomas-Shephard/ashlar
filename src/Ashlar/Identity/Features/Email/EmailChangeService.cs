@@ -353,8 +353,11 @@ internal sealed class EmailChangeService(
 
         await using var transaction = await _dependencies.IdentityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
-        var user = await _dependencies.IdentityContext.UserRepository.GetUserByIdAsync(request.UserId, cancellationToken);
-        if (user == null || !user.CanSignIn())
+        try
+        {
+            await _dependencies.IdentityContext.CredentialRepository.AcquireUserMutationLockAsync(request.UserId, cancellationToken);
+        }
+        catch (UserMutationLockNotFoundException)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -364,6 +367,21 @@ internal sealed class EmailChangeService(
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.UserNotFoundOrUnavailable.Value
             }, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return Result.Failure(AshlarFailureCodes.UserNotFoundOrUnavailable, InvalidOrExpiredTokenMessage);
+        }
+        var user = (await _dependencies.IdentityContext.UserRepository.GetUserByIdAsync(request.UserId, cancellationToken))!;
+        if (!user.CanSignIn())
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailChangeFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = request.UserId,
+                Audit = request.Audit,
+                FailureReason = AshlarFailureCodes.UserNotFoundOrUnavailable.Value
+            }, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return Result.Failure(AshlarFailureCodes.UserNotFoundOrUnavailable, InvalidOrExpiredTokenMessage);
         }
 
@@ -378,6 +396,7 @@ internal sealed class EmailChangeService(
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.TokenConsumptionFailed.Value
             }, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return Result.Failure(AshlarFailureCodes.TokenConsumptionFailed, InvalidOrExpiredTokenMessage);
         }
 

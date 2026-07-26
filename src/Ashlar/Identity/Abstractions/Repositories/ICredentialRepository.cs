@@ -10,7 +10,8 @@ public interface ICredentialRepository : ICredentialLookup
     /// </summary>
     /// <param name="userId">The user whose credential state will be mutated.</param>
     /// <param name="cancellationToken">A token that can cancel lock acquisition.</param>
-    /// <exception cref="InvalidOperationException">No transaction is active, or the user does not exist.</exception>
+    /// <exception cref="InvalidOperationException">No transaction is active.</exception>
+    /// <exception cref="UserMutationLockNotFoundException">The user does not exist.</exception>
     /// <remarks>
     /// Callers must hold an active <see cref="IAshlarTransactionProvider" /> transaction until all dependent credential
     /// reads and writes complete. Implementations must serialize calls for the same user across application instances.
@@ -76,4 +77,16 @@ public interface ICredentialRepository : ICredentialLookup
     /// <param name="cancellationToken">A token that can cancel credential revocation.</param>
     /// <returns>The number of credentials revoked.</returns>
     Task<int> RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Indicates that a credential mutation lock could not be acquired because its user no longer exists.
+/// </summary>
+public sealed class UserMutationLockNotFoundException : InvalidOperationException
+{
+    /// <summary>Creates the exception for a missing user.</summary>
+    public UserMutationLockNotFoundException()
+        : base("The credential mutation lock user does not exist.")
+    {
+    }
 }

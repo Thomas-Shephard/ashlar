@@ -268,6 +268,8 @@ internal sealed class EmailChangeServiceTests
             Assert.That(fixture.SessionRepository.RevokedTenant?.TenantId, Is.EqualTo(tenantId));
             Assert.That(fixture.SessionRepository.RevokedIncludeAllTenants, Is.False);
             Assert.That(securityEvent.TenantId, Is.EqualTo(tenantId));
+            Assert.That(fixture.UserCredentialStore.MutationLockUserId, Is.EqualTo(user.Id));
+            Assert.That(fixture.UserCredentialStore.UpdateOccurredUnderMutationLock, Is.True);
         }
     }
 
@@ -559,6 +561,26 @@ internal sealed class EmailChangeServiceTests
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
         }
+    }
+
+    [Test]
+    public async Task ConfirmChangeFailsIfUserWasDisabled()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest
+        {
+            Session = fixture.SessionRepository.Session(user.Id),
+            Audit = new(user.Id),
+            NewEmail = "new@example.com",
+            CallbackBaseUri = new Uri("http://localhost")
+        });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+        fixture.UserCredentialStore.Users[0] = user with { AccountState = UserAccountState.Disabled };
+
+        var result = await fixture.Service.ConfirmChangeAsync(new() { UserId = user.Id, Token = token });
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
     }
 
     [Test]
@@ -859,7 +881,14 @@ internal sealed class EmailChangeServiceTests
 
     private sealed class InMemoryUserCredentialStore : IUserRepository, ICredentialRepository
     {
-        public Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Guid? MutationLockUserId { get; private set; }
+        public bool UpdateOccurredUnderMutationLock { get; private set; }
+        public Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default)
+        {
+            if (!Users.Any(user => user.Id == userId)) throw new UserMutationLockNotFoundException();
+            MutationLockUserId = userId;
+            return Task.CompletedTask;
+        }
 
         public List<IUser> Users { get; } = [];
         public List<UserCredential> Credentials { get; } = [];
@@ -881,6 +910,7 @@ internal sealed class EmailChangeServiceTests
         public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default)
         {
+            UpdateOccurredUnderMutationLock = MutationLockUserId == user.Id;
             var existing = Users.Single(u => u.Id == user.Id);
             switch (existing)
             {
