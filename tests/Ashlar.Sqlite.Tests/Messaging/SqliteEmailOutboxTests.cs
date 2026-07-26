@@ -64,6 +64,10 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(SqliteEmailOutboxOptions.Validate(new SqliteEmailOutboxOptions { LockDuration = TimeSpan.Zero }), Is.False);
+            Assert.That(SqliteEmailOutboxOptions.Validate(new SqliteEmailOutboxOptions { LockDuration = TimeSpan.FromTicks(1) }), Is.False);
+            Assert.That(SqliteEmailOutboxOptions.Validate(new SqliteEmailOutboxOptions { DeliveryTimeout = TimeSpan.Zero }), Is.False);
+            Assert.That(SqliteEmailOutboxOptions.Validate(new SqliteEmailOutboxOptions { DeliveryTimeout = TimeSpan.MaxValue }), Is.False);
+            Assert.That(SqliteEmailOutboxOptions.Validate(new SqliteEmailOutboxOptions { LockDuration = TimeSpan.MaxValue }), Is.False);
             Assert.That(SqliteEmailOutboxOptions.Validate(new SqliteEmailOutboxOptions { MaxAttempts = 0 }), Is.False);
             Assert.That(SqliteEmailOutboxOptions.Validate(new SqliteEmailOutboxOptions { InitialRetryDelay = TimeSpan.Zero }), Is.False);
             Assert.That(SqliteEmailOutboxOptions.Validate(new SqliteEmailOutboxOptions { BatchSize = 0 }), Is.False);
@@ -317,6 +321,82 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             Assert.That(transport.DeliveredCount, Is.EqualTo(1));
             Assert.That(row.SentAt, Is.EqualTo(_now));
             Assert.That(row.AttemptCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task DispatcherRenewsLeaseBeforeSlowDelivery()
+    {
+        var deliveryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseDelivery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new TestTransport { OnDeliver = async (_, _) => { deliveryStarted.SetResult(); await releaseDelivery.Task; } };
+        var options = new SqliteEmailOutboxOptions { LockDuration = TimeSpan.FromMinutes(1) };
+        var protector = _serviceProvider.GetRequiredService<ISecretProtector>();
+        var firstDispatcher = BuildDispatcher(transport, options, protector);
+        var secondDispatcher = new SqliteEmailOutboxDispatcher<TestTransport>(
+            BuildDispatcherProvider(transport, options, secretProtector: protector),
+            new FakeTimeProvider(_now.AddMinutes(1)),
+            Options.Create(options));
+        await ExecuteAsync(
+            """
+            INSERT INTO ashlar_email_outbox
+                (id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at)
+            VALUES
+                ($id, 'slow-token@example.com', 'Subject', $body, 'ContainsLiveSecret', 'SecretProtector', $now, $now)
+            """,
+            command =>
+            {
+                command.AddGuidParameter("$id", Guid.NewGuid());
+                command.AddParameter("$body", protector.Protect("live-token"));
+                command.AddDateTimeOffsetParameter("$now", _now);
+            });
+
+        var first = firstDispatcher.ProcessBatchAsync();
+        await deliveryStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var second = await secondDispatcher.ProcessBatchAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        releaseDelivery.SetResult();
+        await first.WaitAsync(TimeSpan.FromSeconds(5));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.Zero);
+            Assert.That(transport.DeliveredCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task DispatcherDoesNotSendEntryWhoseClaimWasLostBeforeDelivery()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var firstAddress = $"first-{suffix}@example.com";
+        var secondAddress = $"second-{suffix}@example.com";
+        var firstDelivery = true;
+        var transport = new TestTransport
+        {
+            OnDeliver = async (message, _) =>
+            {
+                if (firstDelivery)
+                {
+                    firstDelivery = false;
+                    await ExecuteAsync(
+                        "UPDATE ashlar_email_outbox SET locked_by = 'other' WHERE to_address IN ($firstAddress, $secondAddress) AND to_address <> $deliveredAddress",
+                        command =>
+                        {
+                            command.AddParameter("$firstAddress", firstAddress);
+                            command.AddParameter("$secondAddress", secondAddress);
+                            command.AddParameter("$deliveredAddress", message.To);
+                        });
+                }
+            }
+        };
+        var dispatcher = BuildDispatcher(transport);
+        await SeedMessageAsync(firstAddress);
+        await SeedMessageAsync(secondAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await dispatcher.ProcessBatchAsync(), Is.EqualTo(2));
+            Assert.That(transport.DeliveredCount, Is.EqualTo(1));
         }
     }
 
@@ -720,6 +800,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             if (options != null)
             {
                 _.BatchSize = options.BatchSize;
+                _.DeliveryTimeout = options.DeliveryTimeout;
                 _.InitialRetryDelay = options.InitialRetryDelay;
                 _.LockDuration = options.LockDuration;
                 _.MaxAttempts = options.MaxAttempts;

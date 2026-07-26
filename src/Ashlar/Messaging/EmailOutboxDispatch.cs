@@ -111,6 +111,9 @@ public sealed record EmailOutboxStoredBodies(
 /// <param name="MarkAsSentAsync">Callback that persists successful delivery state and returns whether the row was updated.</param>
 /// <param name="MarkAsFailedAsync">Callback that persists failed delivery state.</param>
 /// <param name="LogDeliveryFailed">Callback that logs failed delivery attempts.</param>
+/// <param name="RenewLockAsync">Callback that renews lock ownership and returns whether the row remains owned.</param>
+/// <param name="DeliveryTimeout">Maximum time allowed for external delivery.</param>
+/// <param name="LockRenewalInterval">Interval between ownership renewals while delivery remains in progress.</param>
 /// <param name="SecretProtector">Optional secret protector used to unprotect protected bodies.</param>
 /// <param name="LogSentStateConflict">Optional callback that logs when delivery succeeds but sent-state persistence does not update the row.</param>
 public sealed record EmailOutboxDispatchContext(
@@ -119,6 +122,9 @@ public sealed record EmailOutboxDispatchContext(
     Func<Guid, CancellationToken, Task<bool>> MarkAsSentAsync,
     Func<EmailOutboxEntry, Exception, CancellationToken, Task> MarkAsFailedAsync,
     Action<Guid, int, bool, Exception?> LogDeliveryFailed,
+    Func<Guid, CancellationToken, Task<bool>> RenewLockAsync,
+    TimeSpan DeliveryTimeout,
+    TimeSpan LockRenewalInterval,
     ISecretProtector? SecretProtector = null,
     Action<Guid>? LogSentStateConflict = null);
 
@@ -149,6 +155,7 @@ public enum EmailOutboxBodyProtection
 public static class EmailOutboxDispatch
 {
     private const int MaxLastErrorLength = 1000;
+    private static readonly TimeSpan MaxTimerDuration = TimeSpan.FromMilliseconds(uint.MaxValue - 1d);
     private const string SafeLastError = "Email outbox delivery failed. Error details were suppressed because the message may contain sensitive content.";
     private const string MissingSecretProtectorMessage = "Email outbox body protection requires an ISecretProtector.";
 
@@ -170,11 +177,57 @@ public static class EmailOutboxDispatch
         ArgumentNullException.ThrowIfNull(context.MarkAsSentAsync);
         ArgumentNullException.ThrowIfNull(context.MarkAsFailedAsync);
         ArgumentNullException.ThrowIfNull(context.LogDeliveryFailed);
+        ArgumentNullException.ThrowIfNull(context.RenewLockAsync);
+        if (context.DeliveryTimeout <= TimeSpan.Zero || context.DeliveryTimeout > MaxTimerDuration)
+        {
+            throw new ArgumentOutOfRangeException(nameof(context), "Delivery timeout is outside the supported timer range.");
+        }
+
+        if (context.LockRenewalInterval <= TimeSpan.Zero || context.LockRenewalInterval > MaxTimerDuration)
+        {
+            throw new ArgumentOutOfRangeException(nameof(context), "Lock renewal interval is outside the supported timer range.");
+        }
 
         try
         {
             var message = MapToEmailMessage(entry, context.SecretProtector);
-            await context.Transport.DeliverAsync(message, cancellationToken).ConfigureAwait(false);
+            if (!await context.RenewLockAsync(entry.Id, cancellationToken).ConfigureAwait(false))
+            {
+                return;
+            }
+
+            using var deliveryCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deliveryCancellation.CancelAfter(context.DeliveryTimeout);
+            var delivery = Task.Run(
+                () => context.Transport.DeliverAsync(message, deliveryCancellation.Token),
+                CancellationToken.None);
+            while (!delivery.IsCompleted)
+            {
+                var delay = Task.Delay(context.LockRenewalInterval, CancellationToken.None);
+                if (await Task.WhenAny(delivery, delay).ConfigureAwait(false) == delivery)
+                {
+                    break;
+                }
+
+                bool ownsLock;
+                try
+                {
+                    ownsLock = await context.RenewLockAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (!ownsLock)
+                {
+                    await deliveryCancellation.CancelAsync().ConfigureAwait(false);
+                    await delivery.ConfigureAwait(false);
+                    return;
+                }
+            }
+
+            await delivery.ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

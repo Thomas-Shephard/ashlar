@@ -75,6 +75,18 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
         var options = new PostgresEmailOutboxOptions { LockDuration = TimeSpan.Zero };
         Assert.That(PostgresEmailOutboxOptions.Validate(options), Is.False);
 
+        options = new PostgresEmailOutboxOptions { LockDuration = TimeSpan.FromTicks(1) };
+        Assert.That(PostgresEmailOutboxOptions.Validate(options), Is.False);
+
+        options = new PostgresEmailOutboxOptions { DeliveryTimeout = TimeSpan.Zero };
+        Assert.That(PostgresEmailOutboxOptions.Validate(options), Is.False);
+
+        options = new PostgresEmailOutboxOptions { DeliveryTimeout = TimeSpan.MaxValue };
+        Assert.That(PostgresEmailOutboxOptions.Validate(options), Is.False);
+
+        options = new PostgresEmailOutboxOptions { LockDuration = TimeSpan.MaxValue };
+        Assert.That(PostgresEmailOutboxOptions.Validate(options), Is.False);
+
         options = new PostgresEmailOutboxOptions { MaxAttempts = 0 };
         Assert.That(PostgresEmailOutboxOptions.Validate(options), Is.False);
 
@@ -448,6 +460,86 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
             Assert.That(finalRow.SentAt, Is.EqualTo(_timeProvider.GetUtcNow()));
             Assert.That(finalRow.AttemptCount, Is.EqualTo(1));
             Assert.That(finalRow.LockedBy, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task DispatcherProcessBatchAsyncRenewsLeaseBeforeSlowDelivery()
+    {
+        var deliveryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseDelivery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new TestTransport { OnDeliver = async (_, _) => { deliveryStarted.SetResult(); await releaseDelivery.Task; } };
+        var services = new ServiceCollection();
+        services.AddSingleton(transport);
+        services.AddSingleton(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>());
+        services.AddSingleton(_serviceProvider.GetRequiredService<ISecretProtector>());
+        var provider = services.BuildServiceProvider();
+        var options = Options.Create(new PostgresEmailOutboxOptions { LockDuration = TimeSpan.FromMinutes(1) });
+        var firstDispatcher = new PostgresEmailOutboxDispatcher<TestTransport>(provider, _timeProvider, options);
+        var secondDispatcher = new PostgresEmailOutboxDispatcher<TestTransport>(provider, new FakeTimeProvider(_now.AddMinutes(1)), options);
+        var protector = _serviceProvider.GetRequiredService<ISecretProtector>();
+        await using (var connection = await GetDataSource().OpenConnectionAsync())
+        {
+            await connection.ExecuteAsync(
+                """
+                INSERT INTO ashlar_email_outbox
+                    (id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at)
+                VALUES
+                    (@id, 'slow-token@example.com', 'Subject', @body, 'ContainsLiveSecret', 'SecretProtector', @now, @now)
+                """,
+                new { id = Guid.NewGuid(), body = protector.Protect("live-token"), now = _now });
+        }
+
+        var first = firstDispatcher.ProcessBatchAsync();
+        await deliveryStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var second = await secondDispatcher.ProcessBatchAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        releaseDelivery.SetResult();
+        await first.WaitAsync(TimeSpan.FromSeconds(5));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.Zero);
+            Assert.That(transport.DeliveredCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task DispatcherProcessBatchAsyncDoesNotSendEntryWhoseClaimWasLostBeforeDelivery()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var firstAddress = $"first-{suffix}@example.com";
+        var secondAddress = $"second-{suffix}@example.com";
+        var firstDelivery = true;
+        var transport = new TestTransport
+        {
+            OnDeliver = async (message, _) =>
+            {
+                if (firstDelivery)
+                {
+                    firstDelivery = false;
+                    await using var connection = await GetDataSource().OpenConnectionAsync(CancellationToken.None);
+                    await connection.ExecuteAsync(
+                        "UPDATE ashlar_email_outbox SET locked_by = 'other' WHERE to_address IN (@firstAddress, @secondAddress) AND to_address <> @deliveredAddress",
+                        new { firstAddress, secondAddress, deliveredAddress = message.To });
+                }
+            }
+        };
+        var services = new ServiceCollection();
+        services.AddSingleton(transport);
+        services.AddSingleton(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>());
+        var provider = services.BuildServiceProvider();
+        await SeedMessageAsync(firstAddress);
+        await SeedMessageAsync(secondAddress);
+
+        var dispatcher = new PostgresEmailOutboxDispatcher<TestTransport>(
+            provider,
+            _timeProvider,
+            Options.Create(new PostgresEmailOutboxOptions()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await dispatcher.ProcessBatchAsync(), Is.EqualTo(2));
+            Assert.That(transport.DeliveredCount, Is.EqualTo(1));
         }
     }
 
