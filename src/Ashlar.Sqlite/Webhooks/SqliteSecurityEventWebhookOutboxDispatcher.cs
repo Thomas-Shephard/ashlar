@@ -11,11 +11,9 @@ internal sealed class SqliteSecurityEventWebhookOutboxDispatcher(
     TimeProvider timeProvider,
     IOptions<SqliteSecurityEventWebhookOutboxOptions> options,
     IOptions<AshlarSecurityEventWebhookOptions> webhookOptions,
-    IHttpClientFactory httpClientFactory,
+    AshlarSecurityEventWebhookTransport transport,
     AshlarSecurityEventWebhookDestinationValidator destinationValidator)
 {
-    public const string HttpClientName = "Ashlar.Sqlite.SecurityEventWebhookOutbox";
-
     private const string LockedByParameter = "$lockedBy";
     private const string ClaimSql = """
         UPDATE ashlar_security_event_webhook_outbox
@@ -65,7 +63,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxDispatcher(
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly SqliteSecurityEventWebhookOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
     private readonly AshlarSecurityEventWebhookOptions _webhookOptions = (webhookOptions ?? throw new ArgumentNullException(nameof(webhookOptions))).Value;
-    private readonly IHttpClientFactory _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+    private readonly AshlarSecurityEventWebhookTransport _transport = transport ?? throw new ArgumentNullException(nameof(transport));
     private readonly ILogger<SqliteSecurityEventWebhookOutboxDispatcher> _logger = serviceProvider.GetService<ILogger<SqliteSecurityEventWebhookOutboxDispatcher>>() ?? NullLogger<SqliteSecurityEventWebhookOutboxDispatcher>.Instance;
     private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver = serviceProvider.GetService<IAshlarSecurityEventWebhookDeliveryObserver>() ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
     private readonly AshlarSecurityEventWebhookDestinationValidator _destinationValidator = destinationValidator ?? throw new ArgumentNullException(nameof(destinationValidator));
@@ -139,8 +137,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxDispatcher(
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
             entry,
             new AshlarSecurityEventWebhookOutboxDispatchContext(
-                _httpClientFactory,
-                HttpClientName,
+                _transport,
                 _options.MaxAttempts,
                 (id, token) => MarkAsSentAsync(id, provider, lockId, token),
                 (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, lockId, token),

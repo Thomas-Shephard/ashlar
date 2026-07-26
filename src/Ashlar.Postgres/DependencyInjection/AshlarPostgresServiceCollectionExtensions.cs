@@ -441,23 +441,8 @@ public static class AshlarPostgresServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        services.AddAshlarSecurityEventWebhookOutbox(configureWebhooks, configureHttpClient);
         services.AddAshlarPostgresSecurityEventWebhookOutbox(configure);
-        services.AddOptions<AshlarSecurityEventWebhookOptions>()
-            .Validate(AshlarSecurityEventWebhookOptions.Validate, "Ashlar security event webhook options are invalid.")
-            .ValidateOnStart();
-        if (configureWebhooks != null)
-        {
-            services.Configure(configureWebhooks);
-        }
-
-        services.TryAddSingleton<IAshlarSecurityEventWebhookDestinationResolver, DnsAshlarSecurityEventWebhookDestinationResolver>();
-        services.TryAddSingleton<AshlarSecurityEventWebhookDestinationValidator>();
-        var httpClientBuilder = services.AddHttpClient(PostgresSecurityEventWebhookOutboxDispatcher.HttpClientName)
-            .ConfigurePrimaryHttpMessageHandler(CreateWebhookHttpMessageHandler);
-        if (configureHttpClient != null)
-        {
-            httpClientBuilder.ConfigureHttpClient(configureHttpClient);
-        }
         services.TryAddScoped<PostgresSecurityEventWebhookOutboxDispatcher>();
 
         return services;
@@ -483,11 +468,5 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, PostgresSecurityEventWebhookOutboxHostedService>());
 
         return services;
-    }
-
-    private static HttpMessageHandler CreateWebhookHttpMessageHandler(IServiceProvider provider)
-    {
-        var destinationValidator = provider.GetRequiredService<AshlarSecurityEventWebhookDestinationValidator>();
-        return AshlarSecurityEventWebhookHttpMessageHandlerFactory.Create(destinationValidator);
     }
 }

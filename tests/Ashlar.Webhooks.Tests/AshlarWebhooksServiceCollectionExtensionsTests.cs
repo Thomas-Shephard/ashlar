@@ -202,6 +202,21 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarSecurityEventWebhookOutboxAggregatesSafeClientConfigurationAcrossRegistrations()
+    {
+        var configured = new List<string>();
+        var services = new ServiceCollection();
+        services.AddAshlarSecurityEventWebhookOutbox(configureHttpClient: _ => configured.Add("first"));
+        services.AddAshlarSecurityEventWebhookOutbox();
+        services.AddAshlarSecurityEventWebhookOutbox(configureHttpClient: _ => configured.Add("second"));
+
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<AshlarSecurityEventWebhookTransport>();
+
+        Assert.That(string.Join(",", configured), Is.EqualTo("first,second"));
+    }
+
+    [Test]
     public void AddAshlarSecurityEventWebhookDeliveryObserverComposesWithExistingObserverAndSkipsNoOp()
     {
         var existingObserver = new RecordingDeliveryObserver();

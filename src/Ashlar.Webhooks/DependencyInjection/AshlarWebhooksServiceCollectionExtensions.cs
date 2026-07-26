@@ -5,6 +5,7 @@ namespace Microsoft.Extensions.DependencyInjection;
 
 using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 /// <summary>
 /// Extension methods for registering Ashlar webhook services.
@@ -56,10 +57,12 @@ public static class AshlarWebhooksServiceCollectionExtensions
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="configure">Optional webhook configuration.</param>
+    /// <param name="configureHttpClient">Optional safe <see cref="HttpClient" /> configuration. Ashlar owns the primary handler.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarSecurityEventWebhookOutbox(
         this IServiceCollection services,
-        Action<AshlarSecurityEventWebhookOptions>? configure = null)
+        Action<AshlarSecurityEventWebhookOptions>? configure = null,
+        Action<HttpClient>? configureHttpClient = null)
     {
         ArgumentNullException.ThrowIfNull(services);
 
@@ -75,6 +78,14 @@ public static class AshlarWebhooksServiceCollectionExtensions
         services.TryAddSingleton<AshlarSecurityEventWebhookDeliveryFactory>();
         services.TryAddSingleton<IAshlarSecurityEventWebhookDestinationResolver, DnsAshlarSecurityEventWebhookDestinationResolver>();
         services.TryAddSingleton<AshlarSecurityEventWebhookDestinationValidator>();
+        services.AddOptions<AshlarSecurityEventWebhookTransportOptions>();
+        if (configureHttpClient != null)
+        {
+            services.Configure<AshlarSecurityEventWebhookTransportOptions>(options => options.Configurations.Add(configureHttpClient));
+        }
+        services.TryAddSingleton(provider => new AshlarSecurityEventWebhookTransport(
+            provider.GetRequiredService<AshlarSecurityEventWebhookDestinationValidator>(),
+            provider.GetRequiredService<IOptions<AshlarSecurityEventWebhookTransportOptions>>().Value.Configurations));
         services.TryAddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance);
 
         return services;

@@ -12,16 +12,14 @@ internal sealed class PostgresSecurityEventWebhookOutboxDispatcher(
     TimeProvider timeProvider,
     IOptions<PostgresSecurityEventWebhookOutboxOptions> options,
     IOptions<AshlarSecurityEventWebhookOptions> webhookOptions,
-    IHttpClientFactory httpClientFactory,
+    AshlarSecurityEventWebhookTransport transport,
     AshlarSecurityEventWebhookDestinationValidator destinationValidator)
 {
-    public const string HttpClientName = "Ashlar.Postgres.SecurityEventWebhookOutbox";
-
     private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly PostgresSecurityEventWebhookOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
     private readonly AshlarSecurityEventWebhookOptions _webhookOptions = (webhookOptions ?? throw new ArgumentNullException(nameof(webhookOptions))).Value;
-    private readonly IHttpClientFactory _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+    private readonly AshlarSecurityEventWebhookTransport _transport = transport ?? throw new ArgumentNullException(nameof(transport));
     private readonly ILogger<PostgresSecurityEventWebhookOutboxDispatcher> _logger = serviceProvider.GetService<ILogger<PostgresSecurityEventWebhookOutboxDispatcher>>() ?? NullLogger<PostgresSecurityEventWebhookOutboxDispatcher>.Instance;
     private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver = serviceProvider.GetService<IAshlarSecurityEventWebhookDeliveryObserver>() ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
     private readonly AshlarSecurityEventWebhookDestinationValidator _destinationValidator = destinationValidator ?? throw new ArgumentNullException(nameof(destinationValidator));
@@ -91,8 +89,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxDispatcher(
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
             entry,
             new AshlarSecurityEventWebhookOutboxDispatchContext(
-                _httpClientFactory,
-                HttpClientName,
+                _transport,
                 _options.MaxAttempts,
                 (id, token) => MarkAsSentAsync(id, lockId, provider, token),
                 (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, lockId, provider, token),

@@ -293,23 +293,8 @@ public static class AshlarSqliteServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        services.AddAshlarSecurityEventWebhookOutbox(configureWebhooks, configureHttpClient);
         services.AddAshlarSqliteSecurityEventWebhookOutbox(configure);
-        services.AddOptions<AshlarSecurityEventWebhookOptions>()
-            .Validate(AshlarSecurityEventWebhookOptions.Validate, "Ashlar security event webhook options are invalid.")
-            .ValidateOnStart();
-        if (configureWebhooks != null)
-        {
-            services.Configure(configureWebhooks);
-        }
-
-        services.TryAddSingleton<IAshlarSecurityEventWebhookDestinationResolver, DnsAshlarSecurityEventWebhookDestinationResolver>();
-        services.TryAddSingleton<AshlarSecurityEventWebhookDestinationValidator>();
-        var httpClientBuilder = services.AddHttpClient(SqliteSecurityEventWebhookOutboxDispatcher.HttpClientName)
-            .ConfigurePrimaryHttpMessageHandler(CreateWebhookHttpMessageHandler);
-        if (configureHttpClient != null)
-        {
-            httpClientBuilder.ConfigureHttpClient(configureHttpClient);
-        }
         services.TryAddScoped<SqliteSecurityEventWebhookOutboxDispatcher>();
 
         return services;
@@ -335,11 +320,5 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, SqliteSecurityEventWebhookOutboxHostedService>());
 
         return services;
-    }
-
-    private static HttpMessageHandler CreateWebhookHttpMessageHandler(IServiceProvider provider)
-    {
-        var destinationValidator = provider.GetRequiredService<AshlarSecurityEventWebhookDestinationValidator>();
-        return AshlarSecurityEventWebhookHttpMessageHandlerFactory.Create(destinationValidator);
     }
 }
