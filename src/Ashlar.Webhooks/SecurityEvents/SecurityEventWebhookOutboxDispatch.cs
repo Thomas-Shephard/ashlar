@@ -68,8 +68,7 @@ public sealed class AshlarSecurityEventWebhookOutboxEntry
 /// <summary>
 /// Provides callbacks and options for dispatching a durable security event webhook outbox entry.
 /// </summary>
-/// <param name="HttpClientFactory">The HTTP client factory.</param>
-/// <param name="HttpClientName">The named HTTP client to use.</param>
+/// <param name="Transport">The Ashlar-owned SSRF-hardened webhook transport.</param>
 /// <param name="MaxAttempts">The maximum configured delivery attempts.</param>
 /// <param name="MarkAsSentAsync">The callback that persists successful delivery state and returns whether the row was updated.</param>
 /// <param name="MarkAsFailedAsync">The callback that persists failed delivery state.</param>
@@ -80,8 +79,7 @@ public sealed class AshlarSecurityEventWebhookOutboxEntry
 /// <param name="DeliveryObserver">The provider-neutral delivery observer.</param>
 /// <param name="RenewLockAsync">The callback that renews lock ownership immediately before sending and returns whether the row remains owned.</param>
 public sealed record AshlarSecurityEventWebhookOutboxDispatchContext(
-    IHttpClientFactory HttpClientFactory,
-    string HttpClientName,
+    AshlarSecurityEventWebhookTransport Transport,
     int MaxAttempts,
     Func<Guid, CancellationToken, Task<bool>> MarkAsSentAsync,
     Func<AshlarSecurityEventWebhookOutboxEntry, Exception, CancellationToken, Task> MarkAsFailedAsync,
@@ -148,8 +146,7 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(context.HttpClientFactory);
-        ArgumentException.ThrowIfNullOrWhiteSpace(context.HttpClientName);
+        ArgumentNullException.ThrowIfNull(context.Transport);
         ArgumentNullException.ThrowIfNull(context.MarkAsSentAsync);
         ArgumentNullException.ThrowIfNull(context.MarkAsFailedAsync);
         ArgumentNullException.ThrowIfNull(context.LogDeliveryFailed);
@@ -198,8 +195,7 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
                 return;
             }
 
-            var client = context.HttpClientFactory.CreateClient(context.HttpClientName);
-            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
+            using var response = await context.Transport.SendAsync(request, timeout.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 var exception = new HttpRequestException(null, null, response.StatusCode);
