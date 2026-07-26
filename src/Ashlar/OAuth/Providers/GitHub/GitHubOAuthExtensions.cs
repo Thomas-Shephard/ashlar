@@ -41,9 +41,9 @@ public static class GitHubOAuthExtensions
             oauthOptions.AuthorizationEndpoint = GitHubOAuthDefaults.AuthorizationEndpoint;
             oauthOptions.TokenEndpoint = GitHubOAuthDefaults.TokenEndpoint;
             oauthOptions.UserInformationEndpoint = GitHubOAuthDefaults.UserInformationEndpoint;
-            oauthOptions.UsePkce = true;
             oauthOptions.Scope.Clear();
             configure?.Invoke(oauthOptions);
+            oauthOptions.UsePkce = true;
             ConfigureUserInformationEndpoint(oauthOptions);
         }));
     }

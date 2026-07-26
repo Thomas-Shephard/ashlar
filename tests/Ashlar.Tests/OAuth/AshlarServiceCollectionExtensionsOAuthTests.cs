@@ -289,6 +289,7 @@ internal sealed class AshlarServiceCollectionExtensionsOAuthTests
         {
             oauth.ClientId = "client";
             oauth.Scope.Add("read:user");
+            oauth.UsePkce = false;
         });
         var oauthOptions = new OAuthOptions();
         options.OAuth2Providers["GitHub"].Configure(oauthOptions);
@@ -297,6 +298,7 @@ internal sealed class AshlarServiceCollectionExtensionsOAuthTests
         {
             Assert.That(oauthOptions.ClientId, Is.EqualTo("client"));
             Assert.That(oauthOptions.Scope, Does.Contain("read:user"));
+            Assert.That(oauthOptions.UsePkce, Is.True);
         }
     }
 
