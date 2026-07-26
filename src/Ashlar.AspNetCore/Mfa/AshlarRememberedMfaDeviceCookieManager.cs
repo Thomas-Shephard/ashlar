@@ -43,8 +43,43 @@ public sealed class AshlarRememberedMfaDeviceCookieManager(
 
         var cookieOptions = _options.Cookie.Build(httpContext);
         cookieOptions.Expires = result.Value.Device.ExpiresAt;
-        httpContext.Response.Cookies.Append(_options.CookieName, result.Value.Token, cookieOptions);
+        try
+        {
+            httpContext.Response.Cookies.Append(_options.CookieName, result.Value.Token, cookieOptions);
+        }
+        catch (Exception exception)
+        {
+            await RollBackRememberedDeviceAsync(result.Value, creationRequest.Audit!, exception);
+            throw;
+        }
+
         return result.Value.Device;
+    }
+
+    private async Task RollBackRememberedDeviceAsync(
+        RememberedMfaDeviceCreated created,
+        AuditContext audit,
+        Exception originalException)
+    {
+        try
+        {
+            var ownerAudit = audit with { ActorUserId = created.Device.UserId };
+            if (!await _rememberedMfaDevices.RevokeCurrentAsync(
+                new RevokeCurrentRememberedMfaDeviceRequest(
+                    created.Device.UserId,
+                    created.Token,
+                    created.Device.TenantId is { } tenantId ? new TenantContext(tenantId) : TenantContext.Global,
+                    ownerAudit,
+                    "cookie-delivery-failed"),
+                CancellationToken.None))
+            {
+                throw new InvalidOperationException("Remembered MFA device rollback did not revoke the device.");
+            }
+        }
+        catch (Exception rollbackException)
+        {
+            originalException.Data["AshlarRememberedMfaDeviceRollbackException"] = rollbackException;
+        }
     }
 
     public AuthenticationContext EnrichContext(HttpContext httpContext, AuthenticationContext context)

@@ -50,6 +50,7 @@ internal sealed class AuthenticationPipeline(
     private readonly bool _accountLockoutFailOpen = dependencies?.AccountLockoutOptions?.FailOpenOnBackendFailure ?? false;
     private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider ?? TimeProvider.System);
     private readonly ILogger<AuthenticationPipeline> _logger = dependencies?.Logger ?? NullLogger<AuthenticationPipeline>.Instance;
+    private readonly TimeProvider _timeProvider = dependencies?.TimeProvider ?? TimeProvider.System;
 
     public Task<AuthenticationResponse> LoginAsync(
         AuthenticationContext context,
@@ -95,7 +96,7 @@ internal sealed class AuthenticationPipeline(
             return await RecordFailureAsync(context, provider.Key, null, SecurityEventFailureReasons.InvalidCredentials, cancellationToken);
         }
 
-        return await ExecuteProviderAsync(context, assertion, provider, cancellationToken);
+        return await ExecuteProviderAsync(context, assertion, provider, isFactor: false, cancellationToken);
     }
 
     private async Task<AuthenticationResponse> ExecuteFactorAsync(
@@ -137,13 +138,14 @@ internal sealed class AuthenticationPipeline(
             return await RecordFailureAsync(context, provider.Key, context.UserId, SecurityEventFailureReasons.InvalidCredentials, cancellationToken);
         }
 
-        return await ExecuteProviderAsync(context, assertion, provider, cancellationToken);
+        return await ExecuteProviderAsync(context, assertion, provider, isFactor: true, cancellationToken);
     }
 
     private async Task<AuthenticationResponse> ExecuteProviderAsync(
         AuthenticationContext context,
         IAuthenticationAssertion assertion,
         IAuthenticationProvider provider,
+        bool isFactor,
         CancellationToken cancellationToken)
     {
         var (user, credential, originalCredential, unprotectFailed) = await _credentialService.ResolveAsync(context, assertion, provider, cancellationToken);
@@ -182,7 +184,7 @@ internal sealed class AuthenticationPipeline(
         await ResetAccountLockoutIfApplicableAsync(shouldApplyAccountLockout, user, provider.Key, context, cancellationToken);
 
         return await ProcessCredentialLifecycleAsync(
-            new CredentialLifecycleContext(user, credential, originalCredential, result, provider, context, status),
+            new CredentialLifecycleContext(user, credential, originalCredential, result, provider, context, status, isFactor),
             cancellationToken);
     }
 
@@ -494,7 +496,14 @@ internal sealed class AuthenticationPipeline(
         await transaction.CommitAsync(cancellationToken);
         return new AuthenticationResponse(true, lifecycle.User, lifecycle.Status, lifecycle.Result.Claims, credentialUpdatePersisted)
         {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+            StepUpSessionMarkingProof = lifecycle.IsFactor && lifecycle.Context.CurrentSessionId is { } sessionId
+                ? StepUpSessionMarkingProof.Create(
+                    lifecycle.User.Id,
+                    sessionId,
+                    lifecycle.Provider.Key,
+                    ((ISecondaryAuthenticationFactorProvider)lifecycle.Provider).FactorType,
+                    _timeProvider.GetUtcNow())
+                : null
         };
     }
 
@@ -505,7 +514,8 @@ internal sealed class AuthenticationPipeline(
         AuthenticationResult Result,
         IAuthenticationProvider Provider,
         AuthenticationContext Context,
-        AuthenticationStatus Status);
+        AuthenticationStatus Status,
+        bool IsFactor);
 
     private enum AccountLockoutAuthenticationStatus
     {

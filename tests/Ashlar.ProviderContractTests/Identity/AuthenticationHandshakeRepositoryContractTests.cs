@@ -17,7 +17,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
         var tenantId = Guid.NewGuid();
         var user = await CreateUserAsync(userRepository, tenantId: tenantId);
-        var handshake = CreateHandshake(user.Id, tenantId, requiredFactors: new HashSet<string>(TotpAndEmailFactors), verifiedFactors: new HashSet<string>(TotpFactor), metadata: new Dictionary<string, string> { ["device"] = "test", ["risk"] = "low" });
+        var handshake = CreateHandshake(user.Id, tenantId, requiredFactors: new HashSet<string>(TotpAndEmailFactors), verifiedFactors: new HashSet<string>(TotpFactor), metadata: new Dictionary<string, string> { ["device"] = "test", ["risk"] = "low" }, targetSessionId: Guid.NewGuid());
 
         await repository.CreateAsync(handshake);
 
@@ -394,7 +394,8 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         string? tokenHash = null,
         IReadOnlySet<string>? requiredFactors = null,
         IReadOnlySet<string>? verifiedFactors = null,
-        IDictionary<string, string>? metadata = null)
+        IDictionary<string, string>? metadata = null,
+        Guid? targetSessionId = null)
     {
         var id = Guid.NewGuid();
         return new AuthenticationHandshake(
@@ -409,7 +410,9 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
             verifiedFactors ?? new HashSet<string>(),
             metadata)
         {
-            TenantId = tenantId
+            TenantId = tenantId,
+            Purpose = targetSessionId == null ? AuthenticationHandshakePurpose.LoginSession : AuthenticationHandshakePurpose.ExistingSessionStepUp,
+            TargetSessionId = targetSessionId
         };
     }
 
@@ -420,6 +423,8 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
             Assert.That(actual.Id, Is.EqualTo(expected.Id));
             Assert.That(actual.UserId, Is.EqualTo(expected.UserId));
             Assert.That(actual.TenantId, Is.EqualTo(expected.TenantId));
+            Assert.That(actual.Purpose, Is.EqualTo(expected.Purpose));
+            Assert.That(actual.TargetSessionId, Is.EqualTo(expected.TargetSessionId));
             Assert.That(actual.TokenHash, Is.EqualTo(expected.TokenHash));
             Assert.That(actual.CreatedAt, Is.EqualTo(expected.CreatedAt));
             Assert.That(actual.ExpiresAt, Is.EqualTo(expected.ExpiresAt));

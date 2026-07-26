@@ -13,8 +13,8 @@ internal sealed class SqliteAuthenticationHandshakeRepository(ISqliteConnectionP
         ArgumentNullException.ThrowIfNull(handshake);
 
         const string sql = """
-            INSERT INTO ashlar_mfa_handshakes (id, user_id, tenant_id, token_hash, created_at, expires_at, is_revoked, is_completed, revoked_at, completed_at, required_factors, verified_factors, metadata)
-            VALUES ($id, $userId, $tenantId, $tokenHash, $createdAt, $expiresAt, $isRevoked, $isCompleted, $revokedAt, $completedAt, $requiredFactors, $verifiedFactors, $metadata);
+            INSERT INTO ashlar_mfa_handshakes (id, user_id, tenant_id, purpose, target_session_id, token_hash, created_at, expires_at, is_revoked, is_completed, revoked_at, completed_at, required_factors, verified_factors, metadata)
+            VALUES ($id, $userId, $tenantId, $purpose, $targetSessionId, $tokenHash, $createdAt, $expiresAt, $isRevoked, $isCompleted, $revokedAt, $completedAt, $requiredFactors, $verifiedFactors, $metadata);
             """;
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -31,7 +31,7 @@ internal sealed class SqliteAuthenticationHandshakeRepository(ISqliteConnectionP
         _ = forUpdate; // SQLite write intent is provided by SqliteTransactionManager BEGIN IMMEDIATE root transactions.
 
         const string sql = """
-            SELECT id, user_id, tenant_id, token_hash, created_at, expires_at, is_revoked, is_completed, revoked_at, completed_at, required_factors, verified_factors, metadata
+            SELECT id, user_id, tenant_id, purpose, target_session_id, token_hash, created_at, expires_at, is_revoked, is_completed, revoked_at, completed_at, required_factors, verified_factors, metadata
             FROM ashlar_mfa_handshakes
             WHERE token_hash = $tokenHash;
             """;
@@ -77,6 +77,8 @@ internal sealed class SqliteAuthenticationHandshakeRepository(ISqliteConnectionP
         command.AddGuidParameter("$id", handshake.Id);
         command.AddGuidParameter("$userId", handshake.UserId);
         command.AddNullableGuidParameter("$tenantId", handshake.TenantId);
+        command.AddParameter("$purpose", (int)handshake.Purpose);
+        command.AddNullableGuidParameter("$targetSessionId", handshake.TargetSessionId);
         command.AddParameter("$tokenHash", handshake.TokenHash);
         command.AddDateTimeOffsetParameter("$createdAt", handshake.CreatedAt);
         command.AddDateTimeOffsetParameter("$expiresAt", handshake.ExpiresAt);
@@ -118,7 +120,9 @@ internal sealed class SqliteAuthenticationHandshakeRepository(ISqliteConnectionP
             reader.GetNullableDateTimeOffsetFromText("revoked_at"),
             reader.GetNullableDateTimeOffsetFromText("completed_at"))
         {
-            TenantId = reader.GetNullableGuidFromText("tenant_id")
+            TenantId = reader.GetNullableGuidFromText("tenant_id"),
+            Purpose = (AuthenticationHandshakePurpose)reader.GetInt32(reader.GetOrdinal("purpose")),
+            TargetSessionId = reader.GetNullableGuidFromText("target_session_id")
         };
     }
 

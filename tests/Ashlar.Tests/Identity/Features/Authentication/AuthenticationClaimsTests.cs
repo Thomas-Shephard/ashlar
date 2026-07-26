@@ -54,17 +54,4 @@ internal sealed class AuthenticationClaimsTests
             Assert.That(AuthenticationClaims.FirstValueOrDefault(null, "role"), Is.Null);
         }
     }
-
-    [Test]
-    public void MfaAuthenticationResultShouldAcceptSingleValueClaims()
-    {
-        var result = new MfaAuthenticationResult(
-            MfaAuthenticationStatus.Succeeded,
-            user: null,
-            handshakeToken: null,
-            requiredFactors: null,
-            claims: new Dictionary<string, string> { ["amr"] = "pwd" });
-
-        Assert.That(result.Claims?["amr"], Is.EqualTo(["pwd"]));
-    }
 }

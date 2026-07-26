@@ -68,13 +68,13 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
             ($i5, 'e@example.com', 'E@EXAMPLE.COM', 'recent-accepted-invite', $now, $future, $recent, NULL, 'v1'),
             ($i6, 'f@example.com', 'F@EXAMPLE.COM', 'recent-revoked-invite', $now, $future, NULL, $recent, 'v1');
 
-            INSERT INTO ashlar_mfa_handshakes (id, user_id, token_hash, created_at, expires_at, is_revoked, is_completed, revoked_at, completed_at, required_factors, verified_factors) VALUES
-            ($h1, $userId, 'expired-handshake', $old, $old, 0, 0, NULL, NULL, '[]', '[]'),
-            ($h2, $userId, 'completed-handshake', $old, $future, 0, 1, NULL, $old, '[]', '[]'),
-            ($h3, $userId, 'revoked-handshake', $old, $future, 1, 0, $old, NULL, '[]', '[]'),
-            ($h4, $userId, 'pending-handshake', $now, $future, 0, 0, NULL, NULL, '[]', '[]'),
-            ($h5, $userId, 'recent-completed-handshake', $now, $future, 0, 1, NULL, $recent, '[]', '[]'),
-            ($h6, $userId, 'recent-revoked-handshake', $now, $future, 1, 0, $recent, NULL, '[]', '[]');
+            INSERT INTO ashlar_mfa_handshakes (id, user_id, purpose, token_hash, created_at, expires_at, is_revoked, is_completed, revoked_at, completed_at, required_factors, verified_factors) VALUES
+            ($h1, $userId, 1, 'expired-handshake', $old, $old, 0, 0, NULL, NULL, '[]', '[]'),
+            ($h2, $userId, 1, 'completed-handshake', $old, $future, 0, 1, NULL, $old, '[]', '[]'),
+            ($h3, $userId, 1, 'revoked-handshake', $old, $future, 1, 0, $old, NULL, '[]', '[]'),
+            ($h4, $userId, 1, 'pending-handshake', $now, $future, 0, 0, NULL, NULL, '[]', '[]'),
+            ($h5, $userId, 1, 'recent-completed-handshake', $now, $future, 0, 1, NULL, $recent, '[]', '[]'),
+            ($h6, $userId, 1, 'recent-revoked-handshake', $now, $future, 1, 0, $recent, NULL, '[]', '[]');
 
             INSERT INTO ashlar_remembered_mfa_devices (id, user_id, token_selector, token_hash, created_at, expires_at, revoked_at) VALUES
             ($r1, $userId, 'expired-remembered-device', 'hash-1', $old, $old, NULL),

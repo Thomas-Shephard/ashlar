@@ -30,92 +30,163 @@ public enum MfaAuthenticationStatus
 /// <summary>
 /// Result returned by MFA-aware authentication flows.
 /// </summary>
-/// <param name="Status">Outcome of the MFA-aware authentication flow.</param>
-/// <param name="User">The authenticated user when authentication succeeds.</param>
-/// <param name="HandshakeToken">The raw handshake token when more MFA factors are required. Do not log or persist this value.</param>
-/// <param name="RequiredFactors">The MFA factors still required for the handshake.</param>
-/// <param name="Claims">Additional claims produced by the authentication provider.</param>
-/// <param name="ErrorMessage">A generic, display-safe error message when authentication fails.</param>
-/// <param name="FreshMfaSatisfied">Whether this result came from a fresh MFA ceremony suitable for step-up decisions. This public signal is not proof for remembered-device token issuance.</param>
-/// <param name="CredentialUpdatePersisted">Whether all provider-requested credential data changes were actually persisted during authentication.</param>
-public sealed record MfaAuthenticationResult(
-    MfaAuthenticationStatus Status,
-    IUser? User = null,
-    string? HandshakeToken = null,
-    IEnumerable<string>? RequiredFactors = null,
-    IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null,
-    string? ErrorMessage = null,
-    bool FreshMfaSatisfied = false,
-    bool CredentialUpdatePersisted = false)
+public sealed class MfaAuthenticationResult
 {
     /// <summary>
-    /// Creates an MFA authentication result from single-value provider claims.
+    /// Creates an MFA authentication result.
     /// </summary>
-    /// <param name="status">Outcome of the MFA-aware authentication flow.</param>
-    /// <param name="user">The authenticated user when authentication succeeds.</param>
-    /// <param name="handshakeToken">The raw handshake token when more MFA factors are required. Do not log or persist this value.</param>
-    /// <param name="requiredFactors">The MFA factors still required for the handshake.</param>
-    /// <param name="claims">Additional single-value claims produced by the authentication provider.</param>
-    /// <param name="errorMessage">A generic, display-safe error message when authentication fails.</param>
-    /// <param name="freshMfaSatisfied">Whether this result came from a fresh MFA ceremony suitable for step-up decisions.</param>
-    /// <param name="credentialUpdatePersisted">Whether all provider-requested credential data changes were actually persisted during authentication.</param>
+    /// <param name="Status">Outcome of the MFA-aware authentication flow.</param>
+    /// <param name="User">The authenticated user when authentication succeeds.</param>
+    /// <param name="HandshakeToken">The raw handshake token when more MFA factors are required. Do not log or persist this value.</param>
+    /// <param name="RequiredFactors">The MFA factors still required for the handshake.</param>
+    /// <param name="Claims">Additional claims produced by the authentication provider.</param>
+    /// <param name="ErrorMessage">A generic, display-safe error message when authentication fails.</param>
+    /// <param name="FreshMfaSatisfied">Whether this result came from a fresh MFA ceremony suitable for step-up decisions.</param>
     public MfaAuthenticationResult(
-        MfaAuthenticationStatus status,
-        IUser? user,
-        string? handshakeToken,
-        IEnumerable<string>? requiredFactors,
-        IDictionary<string, string>? claims,
-        string? errorMessage = null,
-        bool freshMfaSatisfied = false,
-        bool credentialUpdatePersisted = false)
-        : this(status, user, handshakeToken, requiredFactors, AuthenticationClaims.FromSingleValues(claims), errorMessage, freshMfaSatisfied, credentialUpdatePersisted)
+        MfaAuthenticationStatus Status,
+        IUser? User = null,
+        string? HandshakeToken = null,
+        IEnumerable<string>? RequiredFactors = null,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null,
+        string? ErrorMessage = null,
+        bool FreshMfaSatisfied = false)
     {
+        this.Status = Status;
+        this.User = User;
+        this.HandshakeToken = HandshakeToken;
+        this.RequiredFactors = RequiredFactors;
+        this.Claims = Claims;
+        this.ErrorMessage = ErrorMessage;
+        this.FreshMfaSatisfied = FreshMfaSatisfied;
     }
+
+    /// <summary>Gets the outcome of the MFA-aware authentication flow.</summary>
+    public MfaAuthenticationStatus Status { get; }
+    /// <summary>Gets the authenticated user when authentication succeeds.</summary>
+    public IUser? User { get; }
+    /// <summary>Gets the raw handshake token when more MFA factors are required.</summary>
+    public string? HandshakeToken { get; }
+    /// <summary>Gets the MFA factors still required for the handshake.</summary>
+    public IEnumerable<string>? RequiredFactors { get; }
+    /// <summary>Gets additional claims produced by the authentication provider.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims { get; }
+    /// <summary>Gets a display-safe error message when authentication fails.</summary>
+    public string? ErrorMessage { get; }
+    /// <summary>Gets whether this result came from a fresh MFA ceremony.</summary>
+    public bool FreshMfaSatisfied { get; }
+    /// <summary>Gets whether provider-requested credential changes were persisted.</summary>
+    public bool CredentialUpdatePersisted { get; init; }
 
     internal RememberedMfaDeviceCreationProof? RememberedDeviceCreationProof { get; init; }
 
-    internal bool CanCreateRememberedMfaDevice => Status == MfaAuthenticationStatus.Succeeded
-        && FreshMfaSatisfied
-        && User is { Id: var userId }
-        && userId != Guid.Empty
-        && RememberedDeviceCreationProof is { } proof
-        && proof.UserId == userId
-        && proof.SourceHandshakeId != Guid.Empty;
-
     internal AuthenticationSessionIssuanceProof? SessionIssuanceProof { get; init; }
 
-    internal bool CanIssueAuthenticationSession => Status == MfaAuthenticationStatus.Succeeded && HasUserId(User) && SessionIssuanceProof != null;
-
-    internal IUser? AuthenticationSessionIssuanceUser => CanIssueAuthenticationSession ? User : null;
-
     internal StepUpSessionMarkingProof? StepUpSessionMarkingProof { get; init; }
-
-    internal bool CanMarkSessionStepUpVerified => Status == MfaAuthenticationStatus.Succeeded && HasUserId(User) && FreshMfaSatisfied && StepUpSessionMarkingProof != null;
-
-    internal IUser? StepUpVerifiedUser => CanMarkSessionStepUpVerified ? User : null;
-
-    private static bool HasUserId(IUser? user)
-    {
-        return user != null && user.Id != Guid.Empty;
-    }
 }
 
-internal sealed record RememberedMfaDeviceCreationProof(Guid UserId, Guid? TenantId, Guid SourceHandshakeId);
-
-internal sealed class AuthenticationSessionIssuanceProof
+internal sealed class RememberedMfaDeviceCreationProof(
+    Guid userId,
+    Guid? tenantId,
+    Guid sourceHandshakeId,
+    DateTimeOffset issuedAt,
+    DateTimeOffset expiresAt)
 {
-    internal static AuthenticationSessionIssuanceProof Instance { get; } = new();
+    private int _consumed;
 
-    private AuthenticationSessionIssuanceProof()
-    {
-    }
+    internal Guid UserId { get; } = userId;
+    internal Guid? TenantId { get; } = tenantId;
+    internal Guid SourceHandshakeId { get; } = sourceHandshakeId;
+
+    internal bool TryConsume(DateTimeOffset now) =>
+        now >= issuedAt && now < expiresAt && Interlocked.Exchange(ref _consumed, 1) == 0;
+
+    internal static RememberedMfaDeviceCreationProof Create(
+        Guid userId,
+        Guid? tenantId,
+        Guid sourceHandshakeId,
+        DateTimeOffset now) => new(userId, tenantId, sourceHandshakeId, now, AuthenticationProofExpiry.From(now));
 }
 
-internal sealed class StepUpSessionMarkingProof
+internal enum AuthenticationSessionIssuanceAudience
 {
-    internal static StepUpSessionMarkingProof Instance { get; } = new();
+    PrimaryAuthentication,
+    LoginTimeMfa
+}
 
-    private StepUpSessionMarkingProof()
+internal sealed class AuthenticationSessionIssuanceProof(
+    Guid userId,
+    AuthenticationSessionIssuanceAudience audience,
+    AuthenticationProviderKey? primaryProvider,
+    AuthenticationProviderKey? additionalVerificationProvider,
+    string? additionalVerificationFactor,
+    DateTimeOffset issuedAt,
+    DateTimeOffset expiresAt)
+{
+    private int _consumed;
+
+    internal Guid UserId { get; } = userId;
+    internal AuthenticationSessionIssuanceAudience Audience { get; } = audience;
+    internal AuthenticationProviderKey? PrimaryProvider { get; } = primaryProvider;
+    internal AuthenticationProviderKey? AdditionalVerificationProvider { get; } = additionalVerificationProvider;
+    internal string? AdditionalVerificationFactor { get; } = additionalVerificationFactor;
+    internal DateTimeOffset IssuedAt { get; } = issuedAt;
+
+    internal bool TryConsume(DateTimeOffset now) =>
+        now >= IssuedAt && now < expiresAt && Interlocked.Exchange(ref _consumed, 1) == 0;
+
+    internal static AuthenticationSessionIssuanceProof CreatePrimary(
+        Guid userId,
+        AuthenticationProviderKey? primaryProvider,
+        DateTimeOffset now) =>
+        new(userId, AuthenticationSessionIssuanceAudience.PrimaryAuthentication, primaryProvider, null, null, now, AuthenticationProofExpiry.From(now));
+
+    internal static AuthenticationSessionIssuanceProof CreateLoginMfa(
+        Guid userId,
+        AuthenticationProviderKey? primaryProvider,
+        AuthenticationProviderKey provider,
+        string factor,
+        DateTimeOffset now) =>
+        new(userId, AuthenticationSessionIssuanceAudience.LoginTimeMfa, primaryProvider, provider, factor, now, AuthenticationProofExpiry.From(now));
+}
+
+internal sealed class StepUpSessionMarkingProof(
+    Guid userId,
+    Guid targetSessionId,
+    AuthenticationProviderKey provider,
+    string factor,
+    DateTimeOffset issuedAt,
+    DateTimeOffset expiresAt)
+{
+    private int _consumed;
+
+    internal Guid UserId { get; } = userId;
+    internal AuthenticationProviderKey Provider { get; } = provider;
+    internal string Factor { get; } = factor;
+    internal DateTimeOffset IssuedAt { get; } = issuedAt;
+
+    internal bool TryConsume(Guid sessionId, DateTimeOffset now)
     {
+        if (sessionId != targetSessionId || now < IssuedAt || now >= expiresAt)
+        {
+            return false;
+        }
+
+        return Interlocked.Exchange(ref _consumed, 1) == 0;
     }
+
+    internal static StepUpSessionMarkingProof Create(
+        Guid userId,
+        Guid targetSessionId,
+        AuthenticationProviderKey provider,
+        string factor,
+        DateTimeOffset now) =>
+        new(userId, targetSessionId, provider, factor, now, AuthenticationProofExpiry.From(now));
+}
+
+file static class AuthenticationProofExpiry
+{
+    private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
+
+    internal static DateTimeOffset From(DateTimeOffset issuedAt) =>
+        DateTimeOffset.MaxValue - issuedAt < Lifetime ? DateTimeOffset.MaxValue : issuedAt.Add(Lifetime);
 }

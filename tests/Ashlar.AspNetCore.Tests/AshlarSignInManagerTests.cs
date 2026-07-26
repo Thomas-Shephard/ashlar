@@ -139,6 +139,126 @@ internal sealed class AshlarSignInManagerTests
     }
 
     [Test]
+    public void SignInAsyncShouldLeaveExistingSessionActiveWhenReplacementCreationFails()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var session = new AuthenticationSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            TokenHash = "hash",
+            CreatedAt = now,
+            ExpiresAt = now.AddHours(1)
+        };
+        var validated = (ValidatedAuthenticationSession)Activator.CreateInstance(
+            typeof(ValidatedAuthenticationSession),
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+            null, [session], null)!;
+        var validation = (ValidateAuthenticationSessionResult)Activator.CreateInstance(
+            typeof(ValidateAuthenticationSessionResult),
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+            null, [AuthenticationSessionValidationStatus.Succeeded, validated], null)!;
+        var service = new Mock<IAuthenticationSessionService>();
+        service.Setup(s => s.ValidateSessionAsync("existing-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(validation);
+        service.Setup(s => s.CreateSessionAsync(It.IsAny<MfaAuthenticationResult>(), It.IsAny<CreateAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AshlarOperationException(AshlarFailureCodes.ValidationError, "Consumed result."));
+        var manager = new AshlarSignInManager(service.Object, Mock.Of<IAuthenticationSessionReader>(), CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var context = new DefaultHttpContext();
+        context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=existing-token";
+
+        Assert.ThrowsAsync<AshlarOperationException>(() => manager.SignInAsync(context, CreateAuthResult()));
+        service.Verify(s => s.RevokeValidatedSessionAsync(It.IsAny<RevokeValidatedAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void SignInAsyncShouldRollbackNewSessionWhenOldSessionRevocationFails(bool rollbackSucceeded)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var oldSession = new AuthenticationSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            TokenHash = "old-hash",
+            CreatedAt = now,
+            ExpiresAt = now.AddHours(1)
+        };
+        var validated = (ValidatedAuthenticationSession)Activator.CreateInstance(
+            typeof(ValidatedAuthenticationSession),
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+            null, [oldSession], null)!;
+        var validation = (ValidateAuthenticationSessionResult)Activator.CreateInstance(
+            typeof(ValidateAuthenticationSessionResult),
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+            null, [AuthenticationSessionValidationStatus.Succeeded, validated], null)!;
+        var created = new CreatedAuthenticationSession(
+            Guid.NewGuid(), oldSession.UserId, null, now, now, null, now.AddHours(1), null, null, null);
+        var service = new Mock<IAuthenticationSessionService>();
+        service.Setup(s => s.ValidateSessionAsync("existing-token", It.IsAny<CancellationToken>())).ReturnsAsync(validation);
+        service.Setup(s => s.CreateSessionAsync(It.IsAny<MfaAuthenticationResult>(), It.IsAny<CreateAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CreateAuthenticationSessionResult("new-token", created));
+        service.Setup(s => s.RevokeValidatedSessionAsync(It.IsAny<RevokeValidatedAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("revocation failed"));
+        service.Setup(s => s.RevokeIssuedSessionAsync(It.IsAny<RevokeIssuedAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(rollbackSucceeded);
+        var manager = new AshlarSignInManager(service.Object, Mock.Of<IAuthenticationSessionReader>(), CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var context = new DefaultHttpContext();
+        context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=existing-token";
+
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(() => manager.SignInAsync(context, CreateAuthResult()));
+        service.Verify(s => s.RevokeIssuedSessionAsync(
+            It.Is<RevokeIssuedAuthenticationSessionRequest>(r =>
+                r.Session == created
+                && r.Audit.ActorUserId == created.UserId
+                && r.Reason == "session-replacement-failed"),
+            CancellationToken.None), Times.Once);
+        Assert.That(exception!.Data.Contains("AshlarSessionRollbackException"), Is.EqualTo(!rollbackSucceeded));
+    }
+
+    [Test]
+    public void SignInAsyncShouldPreserveReplacementFailureWhenRollbackAlsoFails()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var oldSession = new AuthenticationSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            TokenHash = "old-hash",
+            CreatedAt = now,
+            ExpiresAt = now.AddHours(1)
+        };
+        var validated = (ValidatedAuthenticationSession)Activator.CreateInstance(
+            typeof(ValidatedAuthenticationSession),
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+            null, [oldSession], null)!;
+        var validation = (ValidateAuthenticationSessionResult)Activator.CreateInstance(
+            typeof(ValidateAuthenticationSessionResult),
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+            null, [AuthenticationSessionValidationStatus.Succeeded, validated], null)!;
+        var service = new Mock<IAuthenticationSessionService>();
+        var created = new CreatedAuthenticationSession(
+            Guid.NewGuid(), oldSession.UserId, null, now, null, null, now.AddHours(1), null, null, null);
+        service.Setup(s => s.ValidateSessionAsync("existing-token", It.IsAny<CancellationToken>())).ReturnsAsync(validation);
+        service.Setup(s => s.CreateSessionAsync(It.IsAny<MfaAuthenticationResult>(), It.IsAny<CreateAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CreateAuthenticationSessionResult("new-token", created));
+        service.Setup(s => s.RevokeValidatedSessionAsync(It.IsAny<RevokeValidatedAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new NotSupportedException("replacement failed"));
+        service.Setup(s => s.RevokeIssuedSessionAsync(It.IsAny<RevokeIssuedAuthenticationSessionRequest>(), CancellationToken.None))
+            .ThrowsAsync(new InvalidOperationException("rollback failed"));
+        var manager = new AshlarSignInManager(service.Object, Mock.Of<IAuthenticationSessionReader>(), CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var context = new DefaultHttpContext();
+        context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=existing-token";
+
+        var exception = Assert.ThrowsAsync<NotSupportedException>(() => manager.SignInAsync(context, CreateAuthResult()));
+
+        Assert.That(exception!.Data["AshlarSessionRollbackException"], Is.TypeOf<InvalidOperationException>());
+    }
+
+    [Test]
     public async Task SignInAndSignOutShouldRespectConfiguredCookieName()
     {
         await using var provider = CreateProvider(out var repository, options => options.CookieName = "Custom.Session");
@@ -267,12 +387,14 @@ internal sealed class AshlarSignInManagerTests
         service.Setup(s => s.RevokeSessionForCurrentUserAsync(It.IsAny<RevokeOwnAuthenticationSessionRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var manager = new AshlarSignInManager(service.Object, Mock.Of<IAuthenticationSessionReader>(), CreateOptionsMonitor(), new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
         var context = CreateAuthenticatedContext(userId, currentSessionId);
+        var tenantId = Guid.NewGuid();
+        ((ClaimsIdentity)context.User.Identity!).AddClaim(new Claim(AshlarClaimTypes.TenantId, tenantId.ToString("D")));
 
         Assert.That(await manager.RevokeSessionForCurrentUserAsync(context, targetSessionId, proof, "cleanup"), Is.True);
 
         service.Verify(s => s.RevokeSessionForCurrentUserAsync(It.Is<RevokeOwnAuthenticationSessionRequest>(r =>
             r.ActorUserId == userId && r.CurrentSessionId == currentSessionId && r.SessionId == targetSessionId &&
-            r.Audit.ActorUserId == userId && r.ActorTenant.TenantId == null && r.FreshMfaProof == proof && r.Reason == "cleanup"),
+            r.Audit.ActorUserId == userId && r.ActorTenant.TenantId == tenantId && r.FreshMfaProof == proof && r.Reason == "cleanup"),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -617,6 +739,14 @@ internal sealed class AshlarSignInManagerTests
             var validation = await ValidateSessionAsync(request.Token, cancellationToken);
             return validation.ValidatedSession is { } session && await repository.RevokeSessionByIdAsync(session.Id, session.UserId,
                 DateTimeOffset.UtcNow, request.Reason, session.TenantId is { } tenantId ? new TenantContext(tenantId) : TenantContext.Global,
+                false, cancellationToken);
+        }
+
+        public Task<bool> RevokeValidatedSessionAsync(RevokeValidatedAuthenticationSessionRequest request, CancellationToken cancellationToken = default)
+        {
+            return repository.RevokeSessionByIdAsync(request.Session.Id, request.Session.UserId,
+                DateTimeOffset.UtcNow, request.Reason,
+                request.Session.TenantId is { } tenantId ? new TenantContext(tenantId) : TenantContext.Global,
                 false, cancellationToken);
         }
 

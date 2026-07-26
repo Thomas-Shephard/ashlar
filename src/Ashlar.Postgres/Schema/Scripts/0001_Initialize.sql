@@ -279,6 +279,8 @@ CREATE TABLE IF NOT EXISTS ashlar_mfa_handshakes (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
     tenant_id UUID,
+    purpose INTEGER NOT NULL CHECK (purpose IN (1, 2)),
+    target_session_id UUID,
     token_hash TEXT NOT NULL UNIQUE,
     created_at TIMESTAMPTZ NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
@@ -290,6 +292,10 @@ CREATE TABLE IF NOT EXISTS ashlar_mfa_handshakes (
     verified_factors JSONB NOT NULL,
     metadata JSONB,
     CONSTRAINT ck_ashlar_mfa_handshakes_expiry_after_creation CHECK (expires_at >= created_at),
+    CONSTRAINT ck_ashlar_mfa_handshakes_purpose CHECK (
+        (purpose = 1 AND target_session_id IS NULL) OR
+        (purpose = 2 AND target_session_id IS NOT NULL AND target_session_id <> '00000000-0000-0000-0000-000000000000'::uuid)
+    ),
     CONSTRAINT ck_ashlar_mfa_handshakes_revoked_state CHECK (
         (is_revoked = FALSE AND revoked_at IS NULL) OR (is_revoked = TRUE AND revoked_at IS NOT NULL)
     ),

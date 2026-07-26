@@ -11,6 +11,7 @@ namespace Ashlar.Identity.Models.Authentication;
 /// <param name="ReturnUrl">Post-authentication return URL validated by the host application.</param>
 /// <param name="Items">Additional host-defined context. Do not include secrets, credentials, or bearer tokens.</param>
 /// <param name="UserId">Known user identifier when the request has already resolved an account.</param>
+/// <param name="CurrentSessionId">Existing session targeted by a step-up authentication ceremony.</param>
 public sealed record AuthenticationContext(
     string? Email = null,
     Guid? TenantId = null,
@@ -19,4 +20,5 @@ public sealed record AuthenticationContext(
     string? CorrelationId = null,
     string? ReturnUrl = null,
     IReadOnlyDictionary<string, string>? Items = null,
-    Guid? UserId = null);
+    Guid? UserId = null,
+    Guid? CurrentSessionId = null);

@@ -34,22 +34,52 @@ public sealed class AshlarSignInManager(
         ArgumentNullException.ThrowIfNull(authenticationResult);
 
         var authenticationOptions = GetOptions();
+        var cookieOptions = authenticationOptions.Cookie.Build(httpContext);
 
-        // If there is an existing session in the request, revoke it before creating a new one.
-        var existingSession = await GetExistingSessionContextAsync(httpContext, authenticationOptions, cancellationToken);
-        if (existingSession != null)
-        {
-            await RevokeCurrentSessionAsync(httpContext, "session-replaced", cancellationToken);
-        }
-
+        var existingSession = await GetExistingValidatedSessionAsync(httpContext, cancellationToken);
         var sessionRequest = request ?? CreateRequestFromHttpContext(httpContext);
         var result = await _sessionService.CreateSessionAsync(authenticationResult, sessionRequest, cancellationToken);
 
-        var cookieOptions = authenticationOptions.Cookie.Build(httpContext);
-        cookieOptions.Expires = result.Session.ExpiresAt;
-        httpContext.Response.Cookies.Append(authenticationOptions.CookieName, result.Token, cookieOptions);
+        try
+        {
+            if (existingSession != null)
+            {
+                await _sessionService.RevokeValidatedSessionAsync(
+                    new RevokeValidatedAuthenticationSessionRequest(existingSession, CreateAuditContextFromHttpContext(httpContext), "session-replaced"),
+                    cancellationToken);
+            }
+
+            cookieOptions.Expires = result.Session.ExpiresAt;
+            httpContext.Response.Cookies.Append(authenticationOptions.CookieName, result.Token, cookieOptions);
+        }
+        catch (Exception exception)
+        {
+            await RollBackIssuedSessionAsync(httpContext, result.Session, exception);
+            throw;
+        }
 
         return result.Session;
+    }
+
+    private async Task RollBackIssuedSessionAsync(
+        HttpContext httpContext,
+        CreatedAuthenticationSession session,
+        Exception originalException)
+    {
+        try
+        {
+            var ownerAudit = CreateAuditContextFromHttpContext(httpContext) with { ActorUserId = session.UserId };
+            if (!await _sessionService.RevokeIssuedSessionAsync(
+                new RevokeIssuedAuthenticationSessionRequest(session, ownerAudit, "session-replacement-failed"),
+                CancellationToken.None))
+            {
+                throw new InvalidOperationException("Newly issued session rollback did not revoke the session.");
+            }
+        }
+        catch (Exception rollbackException)
+        {
+            originalException.Data["AshlarSessionRollbackException"] = rollbackException;
+        }
     }
 
     public async Task SignOutAsync(
@@ -60,7 +90,7 @@ public sealed class AshlarSignInManager(
         ArgumentNullException.ThrowIfNull(httpContext);
 
         var authenticationOptions = GetOptions();
-        var session = await GetExistingSessionContextAsync(httpContext, authenticationOptions, cancellationToken);
+        var session = await GetExistingValidatedSessionAsync(httpContext, cancellationToken);
 
         if (session != null)
         {
@@ -123,33 +153,15 @@ public sealed class AshlarSignInManager(
             cancellationToken);
     }
 
-    private async Task<CurrentSessionContext?> GetExistingSessionContextAsync(
+    private async Task<ValidatedAuthenticationSession?> GetExistingValidatedSessionAsync(
         HttpContext httpContext,
-        AshlarSessionAuthenticationOptions authenticationOptions,
         CancellationToken cancellationToken)
     {
-        var sessionId = TryGetSessionId(httpContext.User);
-        var userId = TryGetUserId(httpContext.User);
-        var tenantClaim = ResolveTenantClaim(httpContext.User);
-        if (sessionId.HasValue && userId.HasValue && tenantClaim.Status == TenantClaimStatus.Tenant)
-        {
-            return new CurrentSessionContext(sessionId.Value, userId.Value, tenantClaim.Context);
-        }
-
+        var authenticationOptions = GetOptions();
         if (httpContext.Request.Cookies.TryGetValue(authenticationOptions.CookieName, out var token) && !string.IsNullOrWhiteSpace(token))
         {
             var validation = await _sessionService.ValidateSessionAsync(token, cancellationToken);
-            if (validation.ValidatedSession is { } session)
-            {
-                return new CurrentSessionContext(session.Id, session.UserId, ToTenantContext(session.TenantId));
-            }
-        }
-
-        if (sessionId.HasValue && userId.HasValue)
-        {
-            return tenantClaim.Status == TenantClaimStatus.Global
-                ? new CurrentSessionContext(sessionId.Value, userId.Value, tenantClaim.Context)
-                : null;
+            return validation.ValidatedSession;
         }
 
         return null;
@@ -161,10 +173,10 @@ public sealed class AshlarSignInManager(
         CancellationToken cancellationToken)
     {
         var authenticationOptions = GetOptions();
-        var token = httpContext.Request.Cookies[authenticationOptions.CookieName];
-        return !string.IsNullOrWhiteSpace(token)
-            ? _sessionService.RevokeCurrentSessionAsync(new RevokeCurrentAuthenticationSessionRequest(token, CreateAuditContextFromHttpContext(httpContext), reason), cancellationToken)
-            : Task.FromResult(false);
+        var token = httpContext.Request.Cookies[authenticationOptions.CookieName]!;
+        return _sessionService.RevokeCurrentSessionAsync(
+            new RevokeCurrentAuthenticationSessionRequest(token, CreateAuditContextFromHttpContext(httpContext), reason),
+            cancellationToken);
     }
 
     private AshlarSessionAuthenticationOptions GetOptions()
@@ -212,11 +224,6 @@ public sealed class AshlarSignInManager(
         return tenantClaim.Context;
     }
 
-    private static TenantContext ToTenantContext(Guid? tenantId)
-    {
-        return tenantId.HasValue ? new TenantContext(tenantId) : TenantContext.Global;
-    }
-
     private static TenantClaim ResolveTenantClaim(ClaimsPrincipal principal)
     {
         var value = principal.FindFirst(AshlarClaimTypes.TenantId)?.Value;
@@ -230,7 +237,6 @@ public sealed class AshlarSignInManager(
             : new TenantClaim(TenantClaimStatus.Invalid, TenantContext.Global);
     }
 
-    private sealed record CurrentSessionContext(Guid SessionId, Guid UserId, TenantContext Tenant);
     private sealed record TenantClaim(TenantClaimStatus Status, TenantContext Context);
 
     private enum TenantClaimStatus

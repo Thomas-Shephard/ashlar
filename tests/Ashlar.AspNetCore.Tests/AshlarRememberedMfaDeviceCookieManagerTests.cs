@@ -63,6 +63,94 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
             r.Audit.UserAgent == "unit-test"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void IssueAsyncShouldRollbackRememberedDeviceWhenCookieDeliveryFails(bool rollbackSucceeded)
+    {
+        var userId = Guid.NewGuid();
+        var persistedTenantId = Guid.NewGuid();
+        var device = CreateSummary(userId, persistedTenantId);
+        var changedUserId = Guid.NewGuid();
+        var user = new Mock<IUser>();
+        user.SetupSequence(candidate => candidate.Id)
+            .Returns(userId)
+            .Returns(userId)
+            .Returns(changedUserId);
+        var mfaResult = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded, user.Object, FreshMfaSatisfied: true);
+        var service = new Mock<IRememberedMfaDeviceService>();
+        service
+            .Setup(candidate => candidate.CreateAfterSuccessfulMfaAsync(
+                mfaResult, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(new RememberedMfaDeviceCreated(device, "raw-remembered-token")));
+        service
+            .Setup(candidate => candidate.RevokeCurrentAsync(
+                It.IsAny<RevokeCurrentRememberedMfaDeviceRequest>(), CancellationToken.None))
+            .ReturnsAsync(rollbackSucceeded);
+        var cookies = new Mock<IResponseCookies>();
+        cookies
+            .Setup(candidate => candidate.Append(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CookieOptions>()))
+            .Throws(new InvalidOperationException("Cookie delivery failed."));
+        var cookieFeature = new Mock<IResponseCookiesFeature>();
+        cookieFeature.SetupGet(feature => feature.Cookies).Returns(cookies.Object);
+        var context = CreateContext();
+        context.Features.Set(cookieFeature.Object);
+
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateManager(service.Object).IssueAfterSuccessfulMfaAsync(
+                context, CreateAuthenticationContext(Guid.NewGuid()), mfaResult));
+        service.Verify(candidate => candidate.RevokeCurrentAsync(
+            It.Is<RevokeCurrentRememberedMfaDeviceRequest>(request =>
+                request.ActorUserId == userId
+                && request.Token == "raw-remembered-token"
+                && request.Tenant.TenantId == persistedTenantId
+                && request.Reason == "cookie-delivery-failed"),
+            CancellationToken.None), Times.Once);
+        Assert.That(
+            exception!.Data.Contains("AshlarRememberedMfaDeviceRollbackException"),
+            Is.EqualTo(!rollbackSucceeded));
+    }
+
+    [Test]
+    public void IssueAsyncShouldPreserveCookieFailureWhenRollbackThrows()
+    {
+        var userId = Guid.NewGuid();
+        var mfaResult = CreatePublicFreshMfaSignalOnlyResult(userId);
+        var service = new Mock<IRememberedMfaDeviceService>();
+        service
+            .Setup(candidate => candidate.CreateAfterSuccessfulMfaAsync(
+                mfaResult, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(new RememberedMfaDeviceCreated(
+                CreateSummary(userId, null), "raw-remembered-token")));
+        var rollbackException = new InvalidOperationException("Rollback failed.");
+        service
+            .Setup(candidate => candidate.RevokeCurrentAsync(
+                It.IsAny<RevokeCurrentRememberedMfaDeviceRequest>(), CancellationToken.None))
+            .ThrowsAsync(rollbackException);
+        var cookies = new Mock<IResponseCookies>();
+        cookies
+            .Setup(candidate => candidate.Append(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CookieOptions>()))
+            .Throws(new InvalidOperationException("Cookie delivery failed."));
+        var cookieFeature = new Mock<IResponseCookiesFeature>();
+        cookieFeature.SetupGet(feature => feature.Cookies).Returns(cookies.Object);
+        var context = CreateContext();
+        context.Features.Set(cookieFeature.Object);
+
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateManager(service.Object).IssueAfterSuccessfulMfaAsync(
+                context, CreateAuthenticationContext(), mfaResult));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception!.Message, Is.EqualTo("Cookie delivery failed."));
+            Assert.That(
+                exception.Data["AshlarRememberedMfaDeviceRollbackException"],
+                Is.SameAs(rollbackException));
+        }
+    }
+
     [Test]
     public async Task IssueAsyncDoesNotCreateOrExtendSessionCookie()
     {

@@ -148,7 +148,8 @@ internal sealed class TotpService : ITotpService
                     Code = request.Code,
                     Tenant = request.Tenant,
                     Audit = request.Audit,
-                    User = user
+                    User = user,
+                    CurrentSessionId = request.CurrentSessionId
                 }, transaction, cancellationToken);
             }
 
@@ -207,7 +208,8 @@ internal sealed class TotpService : ITotpService
             context.UserId,
             new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, context.User, FreshMfaSatisfied: true)
             {
-                StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+                StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(
+                    context.User.Id, context.CurrentSessionId, _options.ProviderKey, AuthenticationFactorTypes.Totp, now)
             }));
     }
 
@@ -521,6 +523,7 @@ internal sealed class TotpEnrollmentCompletionContext
     public required TenantContext Tenant { get; init; }
     public required AuditContext Audit { get; init; }
     public required IUser User { get; init; }
+    public required Guid CurrentSessionId { get; init; }
 }
 
 internal sealed class TotpServiceDependencies(

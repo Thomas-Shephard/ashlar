@@ -54,16 +54,65 @@ internal sealed class AuthenticationSessionService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(authenticationResult);
-        var user = authenticationResult.AuthenticationSessionIssuanceUser;
-        if (user == null)
+        ArgumentNullException.ThrowIfNull(request);
+        var validatedRequest = ValidateCreateSessionRequest(request);
+        var user = authenticationResult.User;
+        var presentedUserId = user?.Id ?? Guid.Empty;
+        var proof = authenticationResult.SessionIssuanceProof;
+        var now = _timeProvider.GetUtcNow();
+        if (DateTimeOffset.MaxValue - now < validatedRequest.Lifetime)
+        {
+            throw new ArgumentOutOfRangeException(
+                $"{nameof(request)}.{nameof(request.Lifetime)}",
+                request.Lifetime,
+                "Session lifetime exceeds the maximum representable expiry.");
+        }
+
+        var hasValidCapabilityShape = proof?.Audience switch
+        {
+            AuthenticationSessionIssuanceAudience.PrimaryAuthentication =>
+                !authenticationResult.FreshMfaSatisfied
+                && authenticationResult.StepUpSessionMarkingProof == null
+                && PrimaryProviderMatches(request.PrimaryProvider, proof.PrimaryProvider)
+                && proof.AdditionalVerificationProvider == null
+                && proof.AdditionalVerificationFactor == null,
+            AuthenticationSessionIssuanceAudience.LoginTimeMfa =>
+                authenticationResult.FreshMfaSatisfied
+                && authenticationResult.StepUpSessionMarkingProof == null
+                && PrimaryProviderMatches(request.PrimaryProvider, proof.PrimaryProvider)
+                && proof.AdditionalVerificationProvider is { IsConfigured: true }
+                && proof.AdditionalVerificationFactor is { Length: > 0 and <= MaxStepUpFactorLength } factor
+                && string.Equals(factor, factor.Trim(), StringComparison.Ordinal),
+            _ => false
+        };
+        if (authenticationResult.Status != MfaAuthenticationStatus.Succeeded
+            || user == null
+            || presentedUserId == Guid.Empty
+            || proof == null
+            || proof.UserId != presentedUserId
+            || !hasValidCapabilityShape)
         {
             throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Session issuance requires a successful Ashlar authentication result.");
         }
 
-        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!proof.TryConsume(now))
+        {
+            throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Session issuance requires a successful Ashlar authentication result.");
+        }
 
-        var (lifetime, ipAddress, userAgent, metadata) = ValidateCreateSessionRequest(request);
-        return await CreateSessionForAuthenticatedUserAsync(user, request, lifetime, ipAddress, userAgent, metadata, cancellationToken);
+        var persistedUser = await GetUserForTenantValidationAsync(
+            proof.UserId, request, validatedRequest.IpAddress, validatedRequest.UserAgent, cancellationToken);
+        var created = await CreateSessionForAuthenticatedUserAsync(
+            persistedUser,
+            proof.UserId,
+            request with { AuthenticatedAt = proof.IssuedAt },
+            validatedRequest,
+            now,
+            proof,
+            cancellationToken);
+
+        return created;
     }
 
     internal async Task<CreateAuthenticationSessionResult> CreateSessionForAuthenticatedUserAsync(
@@ -74,10 +123,18 @@ internal sealed class AuthenticationSessionService(
         if (userId == Guid.Empty) throw new ArgumentException(UserIdCannotBeEmptyMessage, nameof(userId));
         ArgumentNullException.ThrowIfNull(request);
 
-        var (lifetime, ipAddress, userAgent, metadata) = ValidateCreateSessionRequest(request);
+        var validatedRequest = ValidateCreateSessionRequest(request);
 
-        var user = await GetUserForTenantValidationAsync(userId, request, ipAddress, userAgent, cancellationToken);
-        return await CreateSessionForAuthenticatedUserAsync(user, request, lifetime, ipAddress, userAgent, metadata, cancellationToken);
+        var user = await GetUserForTenantValidationAsync(
+            userId, request, validatedRequest.IpAddress, validatedRequest.UserAgent, cancellationToken);
+        return await CreateSessionForAuthenticatedUserAsync(
+            user,
+            userId,
+            request,
+            validatedRequest,
+            createdAt: null,
+            authenticationProof: null,
+            cancellationToken: cancellationToken);
     }
 
     private (TimeSpan Lifetime, string? IpAddress, string? UserAgent, string? Metadata) ValidateCreateSessionRequest(CreateAuthenticationSessionRequest request)
@@ -105,15 +162,17 @@ internal sealed class AuthenticationSessionService(
 
     private async Task<CreateAuthenticationSessionResult> CreateSessionForAuthenticatedUserAsync(
         IUser user,
+        Guid userId,
         CreateAuthenticationSessionRequest request,
-        TimeSpan lifetime,
-        string? ipAddress,
-        string? userAgent,
-        string? metadata,
+        (TimeSpan Lifetime, string? IpAddress, string? UserAgent, string? Metadata) validatedRequest,
+        DateTimeOffset? createdAt,
+        AuthenticationSessionIssuanceProof? authenticationProof,
         CancellationToken cancellationToken)
     {
-        var userId = user.Id;
-        if (!UserTenantOwnership.Matches(user, request.TenantId))
+        var (lifetime, ipAddress, userAgent, metadata) = validatedRequest;
+        var userTenantId = (user as ITenantUser)?.TenantId;
+        var accountState = user.AccountState;
+        if (userTenantId != request.TenantId)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -130,7 +189,7 @@ internal sealed class AuthenticationSessionService(
             throw new AshlarOperationException(AshlarFailureCodes.TenantMismatch, "Session tenant must match the referenced user's tenant.");
         }
 
-        if (!user.CanSignIn())
+        if (!accountState.CanSignIn())
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -141,7 +200,7 @@ internal sealed class AuthenticationSessionService(
                 IpAddress = ipAddress,
                 UserAgent = userAgent,
                 CorrelationId = request.CorrelationId,
-                FailureReason = user.AccountState.ToSecurityFailureReason()
+                FailureReason = accountState.ToSecurityFailureReason()
             }, cancellationToken);
 
             throw new AshlarOperationException(AshlarFailureCodes.UserNotFoundOrUnavailable, "Session user was not found or cannot currently sign in.");
@@ -149,7 +208,7 @@ internal sealed class AuthenticationSessionService(
 
         var token = _tokenGenerator.GenerateToken(_options.TokenByteLength);
         var tokenHash = _tokenHasher.HashToken(token);
-        var now = _timeProvider.GetUtcNow();
+        var now = createdAt ?? _timeProvider.GetUtcNow();
 
         var session = new AuthenticationSession
         {
@@ -159,10 +218,12 @@ internal sealed class AuthenticationSessionService(
             TenantId = request.TenantId,
             CreatedAt = now,
             AuthenticatedAt = request.AuthenticatedAt ?? now,
-            PrimaryProvider = request.PrimaryProvider,
-            AdditionalVerificationAt = null,
-            AdditionalVerificationProvider = null,
-            AdditionalVerificationFactor = null,
+            PrimaryProvider = authenticationProof?.PrimaryProvider ?? request.PrimaryProvider,
+            AdditionalVerificationAt = authenticationProof?.Audience == AuthenticationSessionIssuanceAudience.LoginTimeMfa
+                ? authenticationProof.IssuedAt
+                : null,
+            AdditionalVerificationProvider = authenticationProof?.AdditionalVerificationProvider,
+            AdditionalVerificationFactor = authenticationProof?.AdditionalVerificationFactor,
             ExpiresAt = now.Add(lifetime),
             LastSeenAt = null,
             RevokedAt = null,
@@ -345,16 +406,52 @@ internal sealed class AuthenticationSessionService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(authenticationResult);
-        var user = authenticationResult.StepUpVerifiedUser;
-        if (user == null)
+        ArgumentNullException.ThrowIfNull(request);
+        var verifiedFactor = ValidateStepUpRequest(request);
+        var user = authenticationResult.User;
+        var presentedUserId = user?.Id ?? Guid.Empty;
+        var proof = authenticationResult.StepUpSessionMarkingProof;
+        var now = _timeProvider.GetUtcNow();
+        if (authenticationResult.Status != MfaAuthenticationStatus.Succeeded
+            || !authenticationResult.FreshMfaSatisfied
+            || user == null
+            || presentedUserId == Guid.Empty
+            || proof == null
+            || proof.UserId != presentedUserId
+            || proof.Provider != request.VerifiedProvider
+            || !string.Equals(proof.Factor, verifiedFactor, StringComparison.Ordinal)
+            || !AuditActorMatches(request.Audit, proof.UserId))
         {
             return Task.FromResult(Result.Failure<AuthenticationSession>(AshlarFailureCodes.StepUpRequired, "Step-up marking requires a successful Ashlar MFA verification result."));
         }
 
-        ArgumentNullException.ThrowIfNull(request);
-        var verifiedFactor = ValidateStepUpRequest(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!proof.TryConsume(request.SessionId, now))
+        {
+            return Task.FromResult(Result.Failure<AuthenticationSession>(AshlarFailureCodes.StepUpRequired, "Step-up marking requires a successful Ashlar MFA verification result."));
+        }
 
-        return MarkStepUpVerifiedForVerifiedUserAsync(user, request, verifiedFactor, _timeProvider.GetUtcNow(), cancellationToken);
+        return MarkStepUpVerifiedForPersistedUserAsync(
+            proof.UserId, request, verifiedFactor, proof.IssuedAt, cancellationToken);
+    }
+
+    private async Task<Result<AuthenticationSession>> MarkStepUpVerifiedForPersistedUserAsync(
+        Guid userId,
+        MarkSessionStepUpVerifiedRequest request,
+        string verifiedFactor,
+        DateTimeOffset verifiedAt,
+        CancellationToken cancellationToken)
+    {
+        var userResult = await UserTenantValidator.GetUserInTenantAsync(
+            _userRepository, userId, request.Tenant, cancellationToken);
+        if (!userResult.TryGetValue(out var user))
+        {
+            return await RecordStepUpUserFailureAsync(
+                userId, request, verifiedFactor, userResult.GetFailureOr(AshlarFailureCodes.UserNotFound), cancellationToken);
+        }
+
+        return await MarkStepUpVerifiedForVerifiedUserAsync(
+            user, userId, request, verifiedFactor, verifiedAt, cancellationToken);
     }
 
     internal async Task<Result<AuthenticationSession>> MarkStepUpVerifiedForVerifiedUserAsync(
@@ -370,24 +467,34 @@ internal sealed class AuthenticationSessionService(
         var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
         if (!userResult.TryGetValue(out var user))
         {
-            var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.SessionStepUpVerified,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                TenantId = request.Tenant?.TenantId,
-                SessionId = request.SessionId,
-                Provider = request.VerifiedProvider,
-                Audit = request.Audit,
-                FailureReason = failure.Code.Value,
-                Properties = new Dictionary<string, string> { [StepUpFactorPropertyName] = verifiedFactor }
-            }, cancellationToken);
-
-            return Result.Failure<AuthenticationSession>(failure);
+            return await RecordStepUpUserFailureAsync(
+                userId, request, verifiedFactor, userResult.GetFailureOr(AshlarFailureCodes.UserNotFound), cancellationToken);
         }
 
-        return await MarkStepUpVerifiedForVerifiedUserAsync(user, request, verifiedFactor, now, cancellationToken);
+        return await MarkStepUpVerifiedForVerifiedUserAsync(user, userId, request, verifiedFactor, now, cancellationToken);
+    }
+
+    private async Task<Result<AuthenticationSession>> RecordStepUpUserFailureAsync(
+        Guid userId,
+        MarkSessionStepUpVerifiedRequest request,
+        string verifiedFactor,
+        AshlarFailure failure,
+        CancellationToken cancellationToken)
+    {
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.SessionStepUpVerified,
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = userId,
+            TenantId = request.Tenant?.TenantId,
+            SessionId = request.SessionId,
+            Provider = request.VerifiedProvider,
+            Audit = request.Audit,
+            FailureReason = failure.Code.Value,
+            Properties = new Dictionary<string, string> { [StepUpFactorPropertyName] = verifiedFactor }
+        }, cancellationToken);
+
+        return Result.Failure<AuthenticationSession>(failure);
     }
 
     private static string ValidateStepUpRequest(MarkSessionStepUpVerifiedRequest request)
@@ -399,13 +506,14 @@ internal sealed class AuthenticationSessionService(
 
     private async Task<Result<AuthenticationSession>> MarkStepUpVerifiedForVerifiedUserAsync(
         IUser user,
+        Guid userId,
         MarkSessionStepUpVerifiedRequest request,
         string verifiedFactor,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var userId = user.Id;
-        if (!UserTenantOwnership.Matches(user, request.Tenant?.TenantId))
+        var accountState = user.AccountState;
+        if (!accountState.CanSignIn())
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -416,25 +524,7 @@ internal sealed class AuthenticationSessionService(
                 SessionId = request.SessionId,
                 Provider = request.VerifiedProvider,
                 Audit = request.Audit,
-                FailureReason = AshlarFailureCodes.TenantMismatchValue,
-                Properties = new Dictionary<string, string> { [StepUpFactorPropertyName] = verifiedFactor }
-            }, cancellationToken);
-
-            return Result.Failure<AuthenticationSession>(AshlarFailureCodes.TenantMismatch, "Session user does not belong to the requested tenant.");
-        }
-
-        if (!user.CanSignIn())
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.SessionStepUpVerified,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                TenantId = request.Tenant?.TenantId,
-                SessionId = request.SessionId,
-                Provider = request.VerifiedProvider,
-                Audit = request.Audit,
-                FailureReason = user.AccountState.ToSecurityFailureReason(),
+                FailureReason = accountState.ToSecurityFailureReason(),
                 Properties = new Dictionary<string, string> { [StepUpFactorPropertyName] = verifiedFactor }
             }, cancellationToken);
 
@@ -537,6 +627,26 @@ internal sealed class AuthenticationSessionService(
         {
             SessionId = session.Id,
             Tenant = session.TenantId is { } tenantId ? new TenantContext(tenantId) : TenantContext.Global,
+            Audit = request.Audit,
+            Reason = request.Reason
+        }, cancellationToken);
+    }
+
+    public Task<bool> RevokeValidatedSessionAsync(
+        RevokeValidatedAuthenticationSessionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Session);
+        ArgumentNullException.ThrowIfNull(request.Audit);
+        if (request.Audit.ActorUserId is { } actorUserId && actorUserId != request.Session.UserId)
+            throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Audit actor must match the validated session owner.");
+        ValidateRevocationReason(request.Reason, nameof(request));
+
+        return RevokeSessionForUserAsync(request.Session.UserId, new RevokeAuthenticationSessionRequest
+        {
+            SessionId = request.Session.Id,
+            Tenant = request.Session.TenantId is { } tenantId ? new TenantContext(tenantId) : TenantContext.Global,
             Audit = request.Audit,
             Reason = request.Reason
         }, cancellationToken);
@@ -929,6 +1039,23 @@ internal sealed class AuthenticationSessionService(
         {
             AuthenticationProviderKey.ThrowIfNotConfigured(value, parameterName);
         }
+    }
+
+    private static bool PrimaryProviderMatches(
+        AuthenticationProviderKey? requestedProvider,
+        AuthenticationProviderKey? proofProvider)
+    {
+        if (!requestedProvider.HasValue)
+        {
+            return true;
+        }
+
+        return proofProvider.HasValue && requestedProvider.Value == proofProvider.Value;
+    }
+
+    private static bool AuditActorMatches(AuditContext? audit, Guid userId)
+    {
+        return audit == null || audit.ActorUserId == userId;
     }
 
     private static void ValidateStepUpProvider(AuthenticationProviderKey provider, string parameterName)

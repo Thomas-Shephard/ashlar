@@ -40,7 +40,7 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
         var repository = GetRepository();
         var user = await CreateTestUser(userRepository);
 
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             user.Id,
             "hashed:raw-token",
@@ -87,7 +87,7 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
         var repository = GetRepository();
         var user = await CreateTestUser(userRepository);
 
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             user.Id,
             "hashed:update",
@@ -150,7 +150,7 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
         var repository = GetRepository();
         var user = await CreateTestUser(userRepository);
 
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             user.Id,
             "hashed:for-update",
@@ -186,7 +186,7 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
         var repository = GetRepository();
         var user = await CreateTestUser(userRepository);
 
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             user.Id,
             "hashed:null-metadata",
@@ -218,7 +218,7 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
         var repository = GetRepository();
         var user = await CreateTestUser(userRepository);
 
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             user.Id,
             "hashed:update-null-metadata",
@@ -279,7 +279,7 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
         await using (connectionHandle)
         {
             await connectionHandle.Connection.ExecuteAsync(
-                "INSERT INTO ashlar_mfa_handshakes (id, user_id, token_hash, created_at, expires_at, required_factors, verified_factors) VALUES (@Id, @UserId, @TokenHash, @Now, @Now, 'null'::jsonb, 'null'::jsonb)",
+                "INSERT INTO ashlar_mfa_handshakes (id, user_id, purpose, token_hash, created_at, expires_at, required_factors, verified_factors) VALUES (@Id, @UserId, 1, @TokenHash, @Now, @Now, 'null'::jsonb, 'null'::jsonb)",
                 new { Id = Guid.NewGuid(), UserId = user.Id, TokenHash = tokenHash, Now = DateTimeOffset.UtcNow },
                 transaction: connectionHandle.Transaction);
         }
@@ -295,6 +295,17 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
     }
 
     private IAuthenticationHandshakeRepository GetRepository() => _serviceProvider.GetRequiredService<IAuthenticationHandshakeRepository>();
+
+    private static AuthenticationHandshake CreateLoginHandshake(
+        Guid id, Guid userId, string tokenHash, DateTimeOffset createdAt, DateTimeOffset expiresAt,
+        bool isRevoked, bool isCompleted, IReadOnlySet<string> requiredFactors,
+        IReadOnlySet<string> verifiedFactors, IDictionary<string, string>? metadata = null) =>
+        new(id, userId, tokenHash, createdAt, expiresAt, isRevoked, isCompleted,
+            requiredFactors, verifiedFactors, metadata)
+        {
+            Purpose = AuthenticationHandshakePurpose.LoginSession
+        };
+
     private IUserRepository GetUserRepository() => _serviceProvider.GetRequiredService<IUserRepository>();
 
     private async Task<bool> IsHandshakeMetadataSqlNullAsync(Guid handshakeId)

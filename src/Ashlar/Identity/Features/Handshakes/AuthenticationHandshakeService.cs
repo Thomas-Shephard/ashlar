@@ -73,6 +73,10 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeO
         {
             throw new ArgumentException("User ID cannot be empty.", nameof(request));
         }
+        if (request.Context?.CurrentSessionId == Guid.Empty)
+        {
+            throw new ArgumentException("Current session ID cannot be empty.", nameof(request));
+        }
         ArgumentNullException.ThrowIfNull(request.RequiredFactors);
 
         var requiredFactors = request.RequiredFactors.ToHashSet();
@@ -137,7 +141,11 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeO
             new HashSet<string>(),
             metadata)
         {
-            TenantId = request.Context?.TenantId
+            TenantId = request.Context?.TenantId,
+            Purpose = request.Context?.CurrentSessionId == null
+                ? AuthenticationHandshakePurpose.LoginSession
+                : AuthenticationHandshakePurpose.ExistingSessionStepUp,
+            TargetSessionId = request.Context?.CurrentSessionId
         };
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
@@ -464,7 +472,13 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeO
 
     private static bool TenantMatches(AuthenticationHandshake handshake, AuthenticationContext? context)
     {
-        return handshake.TenantId == context?.TenantId;
+        var currentSessionId = context?.CurrentSessionId;
+        var expectedPurpose = currentSessionId.HasValue
+            ? AuthenticationHandshakePurpose.ExistingSessionStepUp
+            : AuthenticationHandshakePurpose.LoginSession;
+        return handshake.TenantId == context?.TenantId
+            && handshake.TargetSessionId == currentSessionId
+            && handshake.Purpose == expectedPurpose;
     }
 
     private async Task<Result<AuthenticationHandshake>?> CheckRateLimitAsync(AuthenticationHandshake handshake, AuthenticationContext? context, CancellationToken cancellationToken)

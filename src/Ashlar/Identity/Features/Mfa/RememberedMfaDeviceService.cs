@@ -59,7 +59,12 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
         var tenant = request.Tenant ?? TenantContext.Global;
         var userId = mfaResult.User?.Id ?? Guid.Empty;
         var proof = mfaResult.RememberedDeviceCreationProof;
-        if (proof is null || !mfaResult.CanCreateRememberedMfaDevice)
+        if (mfaResult.Status != MfaAuthenticationStatus.Succeeded
+            || !mfaResult.FreshMfaSatisfied
+            || userId == Guid.Empty
+            || proof is null
+            || proof.UserId != userId
+            || proof.SourceHandshakeId == Guid.Empty)
         {
             await RecordCreateRejectedAsync(userId, tenant, request.Audit, AshlarFailureCodes.ValidationError, cancellationToken);
             return Result.Failure<RememberedMfaDeviceCreated>(AshlarFailureCodes.ValidationError);
@@ -77,15 +82,31 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
             return Result.Failure<RememberedMfaDeviceCreated>(AshlarFailureCodes.ValidationError);
         }
 
-        return await CreateForVerifiedOwnerAsync(userId, request, cancellationToken);
+        return await CreateForVerifiedOwnerAsync(userId, request, proof, cancellationToken);
     }
 
-    private async Task<Result<RememberedMfaDeviceCreated>> CreateForVerifiedOwnerAsync(Guid userId, CreateRememberedMfaDeviceRequest request, CancellationToken cancellationToken)
+    private async Task<Result<RememberedMfaDeviceCreated>> CreateForVerifiedOwnerAsync(
+        Guid userId,
+        CreateRememberedMfaDeviceRequest request,
+        RememberedMfaDeviceCreationProof proof,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         var tenant = request.Tenant ?? TenantContext.Global;
         var displayName = ValidateOptionalLength(request.DisplayName, _options.MaxDisplayNameLength, $"{nameof(request)}.{nameof(request.DisplayName)}");
         var lifetime = ValidateLifetime(request.Lifetime ?? _options.DefaultLifetime, request.Lifetime, $"{nameof(request)}.{nameof(request.Lifetime)}");
+        var now = _timeProvider.GetUtcNow();
+        if (DateTimeOffset.MaxValue - now < lifetime)
+        {
+            throw new ArgumentOutOfRangeException($"{nameof(request)}.{nameof(request.Lifetime)}", request.Lifetime, "Remembered MFA device lifetime exceeds the maximum representable expiry.");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!proof.TryConsume(now))
+        {
+            await RecordCreateRejectedAsync(userId, tenant, request.Audit, AshlarFailureCodes.ValidationError, cancellationToken);
+            return Result.Failure<RememberedMfaDeviceCreated>(AshlarFailureCodes.ValidationError);
+        }
 
         var userResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.RememberedMfaDeviceCreated, cancellationToken);
         if (!userResult.TryGetValue(out var user))
@@ -93,16 +114,11 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
             return Result.Failure<RememberedMfaDeviceCreated>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFound));
         }
 
-        if (!user.CanSignIn())
+        var accountState = user.AccountState;
+        if (!accountState.CanSignIn())
         {
-            await RecordCreateRejectedAsync(userId, tenant, request.Audit, user.AccountState.ToSecurityFailureReason(), cancellationToken);
+            await RecordCreateRejectedAsync(userId, tenant, request.Audit, accountState.ToSecurityFailureReason(), cancellationToken);
             return Result.Failure<RememberedMfaDeviceCreated>(AshlarFailureCodes.UserNotFoundOrUnavailable);
-        }
-
-        var now = _timeProvider.GetUtcNow();
-        if (DateTimeOffset.MaxValue - now < lifetime)
-        {
-            throw new ArgumentOutOfRangeException($"{nameof(request)}.{nameof(request.Lifetime)}", request.Lifetime, "Remembered MFA device lifetime exceeds the maximum representable expiry.");
         }
 
         var activeCount = await _repository.CountForUserAsync(userId, tenant, activeOnly: true, now, cancellationToken);

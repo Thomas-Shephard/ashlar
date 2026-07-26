@@ -52,6 +52,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
     private readonly MfaOrchestrationOptions _globalOptions;
     private readonly IServiceProvider? _serviceProvider;
     private readonly ILogger<AuthenticationOrchestrator> _logger;
+    private readonly TimeProvider _timeProvider;
 
     internal AuthenticationOrchestrator(
         IAuthenticationPipeline pipeline,
@@ -76,6 +77,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
         _globalOptions = validatedDependencies.GlobalOptions?.Value ?? new MfaOrchestrationOptions();
         _serviceProvider = validatedDependencies.ServiceProvider;
         _logger = validatedDependencies.Logger ?? NullLogger<AuthenticationOrchestrator>.Instance;
+        _timeProvider = validatedDependencies.TimeProvider ?? TimeProvider.System;
     }
 
     public async Task<MfaAuthenticationResult> AuthenticateAsync(
@@ -115,10 +117,11 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
         return new MfaAuthenticationResult(
             MfaAuthenticationStatus.Succeeded,
             response.User,
-            Claims: response.Claims,
-            CredentialUpdatePersisted: response.CredentialUpdatePersisted)
+            Claims: response.Claims)
         {
-            SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance
+            CredentialUpdatePersisted = response.CredentialUpdatePersisted,
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(
+                response.User.Id, primaryAssertion.ProviderIdentity, _timeProvider.GetUtcNow())
         };
     }
 
@@ -173,7 +176,9 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: GetHandshakeVerificationFailureMessage(result.FailureCode));
         }
 
-        return CreateResultFromHandshake(result.Value, response.User, handshakeToken, response.CredentialUpdatePersisted);
+        return CreateResultFromHandshake(
+            result.Value, response.User, handshakeToken, response.CredentialUpdatePersisted,
+            factorProvider.Key, factorProvider.FactorType);
     }
 
     private MfaAuthenticationResult CreateFactorAuthenticationFailureResult(Guid userId, AuthenticationResponse response)
@@ -215,22 +220,57 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
         return new MfaAuthenticationResult(status, ErrorMessage: GetHandshakeVerificationFailureMessage(failureCode));
     }
 
-    private static MfaAuthenticationResult CreateResultFromHandshake(AuthenticationHandshake handshake, IUser user, string? handshakeToken, bool credentialUpdatePersisted)
+    private MfaAuthenticationResult CreateResultFromHandshake(
+        AuthenticationHandshake handshake,
+        IUser user,
+        string? handshakeToken,
+        bool credentialUpdatePersisted,
+        AuthenticationProviderKey verifiedProvider,
+        string verifiedFactor)
     {
         if (handshake.IsCompleted)
         {
+            var hasValidPurposeBinding = handshake.Purpose switch
+            {
+                AuthenticationHandshakePurpose.LoginSession => handshake.TargetSessionId == null,
+                AuthenticationHandshakePurpose.ExistingSessionStepUp => handshake.TargetSessionId is { } targetSessionId && targetSessionId != Guid.Empty,
+                _ => false
+            };
+            if (!hasValidPurposeBinding)
+            {
+                return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: FactorVerificationFailedMessage);
+            }
+
             var claims = ExtractClaims(handshake.Metadata);
+
+            var now = _timeProvider.GetUtcNow();
+            AuthenticationSessionIssuanceProof? sessionProof = null;
+            StepUpSessionMarkingProof? stepUpProof = null;
+            if (handshake.Purpose == AuthenticationHandshakePurpose.ExistingSessionStepUp)
+            {
+                stepUpProof = StepUpSessionMarkingProof.Create(
+                    user.Id, handshake.TargetSessionId!.Value, verifiedProvider, verifiedFactor, now);
+            }
+            else
+            {
+                sessionProof = AuthenticationSessionIssuanceProof.CreateLoginMfa(
+                    user.Id,
+                    TryGetPrimaryProvider(handshake, out var primaryProvider) ? primaryProvider : null,
+                    verifiedProvider,
+                    verifiedFactor,
+                    now);
+            }
 
             return new MfaAuthenticationResult(
                 MfaAuthenticationStatus.Succeeded,
                 User: user,
                 Claims: claims,
-                FreshMfaSatisfied: true,
-                CredentialUpdatePersisted: credentialUpdatePersisted)
+                FreshMfaSatisfied: true)
             {
-                RememberedDeviceCreationProof = new RememberedMfaDeviceCreationProof(handshake.UserId, handshake.TenantId, handshake.Id),
-                SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance,
-                StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+                CredentialUpdatePersisted = credentialUpdatePersisted,
+                RememberedDeviceCreationProof = RememberedMfaDeviceCreationProof.Create(handshake.UserId, handshake.TenantId, handshake.Id, now),
+                SessionIssuanceProof = sessionProof,
+                StepUpSessionMarkingProof = stepUpProof
             };
         }
 
@@ -240,8 +280,10 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             HandshakeToken: handshakeToken,
             RequiredFactors: handshake.RequiredFactors
                 .Where(requiredFactor => !handshake.VerifiedFactors.Any(verifiedFactor => AuthenticationFactorTypes.Matches(requiredFactor, verifiedFactor)))
-                .ToArray(),
-            CredentialUpdatePersisted: credentialUpdatePersisted);
+                .ToArray())
+        {
+            CredentialUpdatePersisted = credentialUpdatePersisted
+        };
     }
 
     private async Task<MfaAuthenticationResult> CreateMfaRequiredResultAsync(
@@ -268,10 +310,11 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             return new MfaAuthenticationResult(
                 MfaAuthenticationStatus.Succeeded,
                 user,
-                Claims: response.Claims,
-                CredentialUpdatePersisted: response.CredentialUpdatePersisted)
+                Claims: response.Claims)
             {
-                SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance
+                CredentialUpdatePersisted = response.CredentialUpdatePersisted,
+                SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(
+                    response.User!.Id, primaryAssertion.ProviderIdentity, _timeProvider.GetUtcNow())
             };
         }
 
@@ -289,8 +332,10 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             MfaAuthenticationStatus.MfaRequired,
             user,
             created.Token,
-            created.Handshake.RequiredFactors,
-            CredentialUpdatePersisted: response.CredentialUpdatePersisted);
+            created.Handshake.RequiredFactors)
+        {
+            CredentialUpdatePersisted = response.CredentialUpdatePersisted
+        };
     }
 
     private async Task<bool> TryValidateRememberedMfaDeviceAsync(
@@ -365,6 +410,24 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             && string.Equals(providerType, assertion.ProviderIdentity.Type.Value, StringComparison.OrdinalIgnoreCase)
             && string.Equals(providerName, assertion.ProviderIdentity.Name, StringComparison.OrdinalIgnoreCase)
             && string.Equals(credentialKey, credentialAssertion.CredentialKey, StringComparison.Ordinal);
+    }
+
+    private static bool TryGetPrimaryProvider(
+        AuthenticationHandshake handshake,
+        out AuthenticationProviderKey provider)
+    {
+        if (handshake.Metadata != null
+            && handshake.Metadata.TryGetValue(PrimaryProviderTypeMetadataKey, out var providerType)
+            && handshake.Metadata.TryGetValue(PrimaryProviderNameMetadataKey, out var providerName)
+            && !string.IsNullOrWhiteSpace(providerType)
+            && !string.IsNullOrWhiteSpace(providerName))
+        {
+            provider = new AuthenticationProviderKey(providerType, providerName);
+            return provider.IsConfigured;
+        }
+
+        provider = default;
+        return false;
     }
 
     private static Dictionary<string, string> BuildClaimMetadata(IReadOnlyDictionary<string, IReadOnlyList<string>>? claims, IAuthenticationAssertion primaryAssertion)
@@ -484,4 +547,5 @@ internal sealed record AuthenticationOrchestratorDependencies(
     IOptions<MfaOrchestrationOptions>? GlobalOptions = null,
     IServiceProvider? ServiceProvider = null,
     ILogger<AuthenticationOrchestrator>? Logger = null,
-    IAuthenticationHandshakeOrchestrationService? HandshakeCreationService = null);
+    IAuthenticationHandshakeOrchestrationService? HandshakeCreationService = null,
+    TimeProvider? TimeProvider = null);

@@ -174,16 +174,23 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
         }
 
         ArgumentNullException.ThrowIfNull(authenticationResponse);
-        var user = authenticationResponse.StepUpVerifiedUser;
-        if (user == null)
+        var user = authenticationResponse.User;
+        var presentedUserId = user?.Id ?? Guid.Empty;
+        var proof = authenticationResponse.StepUpSessionMarkingProof;
+        if (!authenticationResponse.Succeeded
+            || user == null
+            || presentedUserId == Guid.Empty
+            || proof == null
+            || proof.UserId != presentedUserId)
         {
             return Task.FromResult(Result.Failure<AuthenticationSession>(AshlarFailureCodes.StepUpRequired, "Step-up marking requires a successful Ashlar factor verification response."));
         }
 
         var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user, FreshMfaSatisfied: true)
         {
-            StepUpSessionMarkingProof = authenticationResponse.StepUpSessionMarkingProof
+            StepUpSessionMarkingProof = proof
         };
+
         return _sessionService.MarkStepUpVerifiedAsync(result, request, cancellationToken);
     }
 
