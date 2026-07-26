@@ -319,20 +319,9 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         ValidateUserId(userId);
         request = request with { Tenant = request.Tenant ?? TenantContext.Global };
         var now = _timeProvider.GetUtcNow();
-        DateTimeOffset? eventStart = null;
-        if (request.RecentSecurityEventWindow is { } window)
-        {
-            if (window <= TimeSpan.Zero)
-                return Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.ValidationError);
-            try
-            {
-                eventStart = now.Subtract(window);
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                return Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.ValidationError);
-            }
-        }
+        if (!TryGetEventStart(now, request.RecentSecurityEventWindow, out var eventStart))
+            return Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.ValidationError);
+
         var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
         if (!userResult.TryGetValue(out var user))
         {
@@ -342,11 +331,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
             return Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.UserNotFound);
 
         var credentials = await _credentialRepository.ListCredentialsForUserAsync(userId, activeOnly: false, cancellationToken);
-        if (credentials is null || credentials.Any(credential => credential.Id == Guid.Empty || credential.UserId != userId
-            || !Enum.IsDefined(credential.Status) || credential.ProviderType == default
-            || credential.ProviderType.IsStorageFallback || string.IsNullOrWhiteSpace(credential.ProviderName)
-            || credential.CreatedAt > now
-            || credential.ExpiresAt is { } expiresAt && expiresAt <= credential.CreatedAt))
+        if (credentials is null || credentials.Any(credential => IsInvalidCredential(credential, userId, now)))
             return Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.UserNotFound);
         var sessions = await _sessionReader.ListSessionsForUserAsync(userId, request.Tenant.TenantId,
             new ListAuthenticationSessionsRequest { ActiveOnly = true }, cancellationToken);
@@ -393,6 +378,32 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
 
         return Result.Success(posture);
     }
+
+    private static bool TryGetEventStart(DateTimeOffset now, TimeSpan? window, out DateTimeOffset? eventStart)
+    {
+        eventStart = null;
+        if (window is null)
+            return true;
+        if (window <= TimeSpan.Zero)
+            return false;
+
+        try
+        {
+            eventStart = now.Subtract(window.Value);
+            return true;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsInvalidCredential(UserCredential credential, Guid userId, DateTimeOffset now) =>
+        credential.Id == Guid.Empty || credential.UserId != userId
+        || !Enum.IsDefined(credential.Status) || credential.ProviderType == default
+        || credential.ProviderType.IsStorageFallback || string.IsNullOrWhiteSpace(credential.ProviderName)
+        || credential.CreatedAt > now
+        || credential.ExpiresAt is { } expiresAt && expiresAt <= credential.CreatedAt;
 
     private static TRequest RequireAudit<TRequest>(TRequest? request)
         where TRequest : AccountSecurityOperationRequest

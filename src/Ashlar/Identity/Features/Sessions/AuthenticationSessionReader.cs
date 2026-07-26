@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Features.Sessions;
 
 internal sealed class AuthenticationSessionReader(IAuthenticationSessionRepository repository, TimeProvider? timeProvider = null)
-    : IAuthenticationSessionReader, IAuthenticationSessionInventoryReader
+    : IAuthenticationSessionInventoryReader
 {
     private readonly IAuthenticationSessionRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
