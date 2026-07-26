@@ -221,7 +221,7 @@ public static class EmailOutboxDispatch
 
                 if (!ownsLock)
                 {
-                    deliveryCancellation.Cancel();
+                    await deliveryCancellation.CancelAsync().ConfigureAwait(false);
                     await delivery.ConfigureAwait(false);
                     return;
                 }
