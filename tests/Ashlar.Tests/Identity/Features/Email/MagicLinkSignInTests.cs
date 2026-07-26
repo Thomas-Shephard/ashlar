@@ -787,7 +787,6 @@ internal sealed class MagicLinkSignInTests
             AllowAuthenticationFactorRateLimiter.Instance,
             new AuthenticationPipelineDependencies(audit, time));
         var identity = identityService ?? new IdentityService(
-            repository,
             registry,
             pipeline);
         var orchestrator = authenticationOrchestrator ?? CreateOrchestrator(pipeline, user, requireMfa);

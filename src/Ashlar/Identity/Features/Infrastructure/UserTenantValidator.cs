@@ -11,7 +11,7 @@ internal static class UserTenantValidator
         ArgumentNullException.ThrowIfNull(userRepository);
 
         var user = await userRepository.GetUserByIdAsync(userId, cancellationToken);
-        if (user == null)
+        if (user == null || user.Id != userId)
         {
             return Result.Failure<IUser>(AshlarFailureCodes.UserNotFound);
         }

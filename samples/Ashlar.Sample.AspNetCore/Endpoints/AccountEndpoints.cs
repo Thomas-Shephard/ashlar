@@ -44,7 +44,7 @@ internal static class AccountEndpoints
         if (!profile.Succeeded) return profile.FailureCode == AshlarFailureCodes.SessionNotFoundOrInactive ? Results.Unauthorized() : Results.NotFound();
         var ashlarUser = profile.Value!;
 
-        var posture = await accountSecurity.GetUserSecurityPostureAsync(userId, cancellationToken: cancellationToken);
+        var posture = await accountSecurity.GetSecurityPostureAsync(session, cancellationToken: cancellationToken);
         if (!posture.Succeeded || posture.Value == null) return Results.NotFound();
         var isAdmin = (await auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), cancellationToken)).Succeeded;
 

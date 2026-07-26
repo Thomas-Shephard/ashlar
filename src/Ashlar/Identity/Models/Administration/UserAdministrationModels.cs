@@ -91,7 +91,7 @@ public sealed record UserAdministrationDetail(
 /// <param name="UserId">User to load.</param>
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
 /// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
-/// <param name="RecentSecurityEventWindow">Optional recent security event window for the embedded account-security posture.</param>
+/// <param name="RecentSecurityEventWindow">Optional positive recent security event window for the embedded account-security posture; it must fit within the UTC timestamp range.</param>
 /// <param name="Actor">Authenticated actor, active session, fresh proof, and audit metadata.</param>
 public sealed record UserAdministrationDetailRequest(
     Guid UserId,

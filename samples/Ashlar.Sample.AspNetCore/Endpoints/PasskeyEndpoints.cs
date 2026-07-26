@@ -86,7 +86,9 @@ internal static class PasskeyEndpoints
 
     private static async Task<PasskeyRegistrationProof?> CreateRegistrationProofAsync(IAccountSecurityService accountSecurity, StepUpAuthenticationService stepUp, Guid userId, HttpContext httpContext, CancellationToken cancellationToken)
     {
-        var posture = await accountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(httpContext.ToTenantContext()), cancellationToken);
+        var session = httpContext.GetValidatedAuthenticationSession();
+        if (session == null || session.UserId != userId) return null;
+        var posture = await accountSecurity.GetSecurityPostureAsync(session, cancellationToken: cancellationToken);
         if (!posture.Succeeded || posture.Value == null) return null;
 
         if (posture.Value.AdditionalVerificationFactors.Any(factor => factor.IsUsable))

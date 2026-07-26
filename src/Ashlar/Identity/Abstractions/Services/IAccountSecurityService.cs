@@ -1,16 +1,16 @@
 namespace Ashlar.Identity.Abstractions.Services;
 
 /// <summary>
-/// Provides non-secret account security posture reads.
+/// Provides validated-session self-service account security posture reads.
 /// </summary>
 public interface IAccountSecurityService
 {
     /// <summary>
-    /// Returns a non-secret account-security posture summary for a user account.
+    /// Returns the current user's non-secret account-security posture after revalidating the supplied Ashlar session capability.
     /// </summary>
-    /// <param name="userId">The user account whose posture should be returned.</param>
-    /// <param name="request">Tenant scope and recent-event window options for the lookup.</param>
+    /// <param name="session">Capability produced by successful Ashlar session validation; its user and tenant are the only permitted target.</param>
+    /// <param name="recentSecurityEventWindow">Optional positive recent-event window that must fit within the UTC timestamp range.</param>
     /// <param name="cancellationToken">A token that can cancel posture lookup.</param>
     /// <returns>The non-secret posture summary or a lookup failure.</returns>
-    Task<Result<AccountSecurityPosture>> GetUserSecurityPostureAsync(Guid userId, AccountSecurityPostureRequest? request = null, CancellationToken cancellationToken = default);
+    Task<Result<AccountSecurityPosture>> GetSecurityPostureAsync(ValidatedAuthenticationSession session, TimeSpan? recentSecurityEventWindow = null, CancellationToken cancellationToken = default);
 }

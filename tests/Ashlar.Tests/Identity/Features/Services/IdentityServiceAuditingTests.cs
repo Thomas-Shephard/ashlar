@@ -27,7 +27,6 @@ internal sealed class IdentityServiceAuditingTests
             new AuthenticationPipelineDependencies(SecurityEventSink: sinkMock.Object));
 
         var service = new IdentityService(
-            repositoryMock.Object,
             providerRegistry,
             pipeline);
 

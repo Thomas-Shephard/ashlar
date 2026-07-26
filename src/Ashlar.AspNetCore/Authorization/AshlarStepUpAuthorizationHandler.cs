@@ -104,11 +104,8 @@ public sealed class AshlarStepUpAuthorizationHandler(
             return null;
         }
 
-        var postureRequest = new AccountSecurityPostureRequest(GetTenant(session));
-        var posture = await accountSecurityService.GetUserSecurityPostureAsync(
-            session.UserId,
-            postureRequest,
-            httpContext.RequestAborted);
+        var posture = await accountSecurityService.GetSecurityPostureAsync(
+            session, cancellationToken: httpContext.RequestAborted);
 
         if (!posture.Succeeded || posture.Value == null)
         {
@@ -116,16 +113,6 @@ public sealed class AshlarStepUpAuthorizationHandler(
         }
 
         return posture.Value.AdditionalVerificationFactors.Any(factor => IsEligibleFactor(factor, requirement));
-    }
-
-    private static TenantContext? GetTenant(ValidatedAuthenticationSession session)
-    {
-        if (!session.TenantId.HasValue)
-        {
-            return null;
-        }
-
-        return new TenantContext(session.TenantId.Value);
     }
 
     private static bool IsEligibleFactor(AdditionalVerificationFactorPosture factor, AshlarStepUpRequirement requirement)

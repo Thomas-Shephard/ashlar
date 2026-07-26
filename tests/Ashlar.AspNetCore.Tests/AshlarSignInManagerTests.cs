@@ -366,13 +366,34 @@ internal sealed class AshlarSignInManagerTests
             new Claim(ClaimTypes.NameIdentifier, userId.ToString("D")),
             new Claim(AshlarClaimTypes.SessionId, sessionId.ToString("D"))
         ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
+        await repository.CreateSessionAsync(new AuthenticationSession
+        {
+            Id = sessionId,
+            UserId = userId,
+            TokenHash = "hashed:raw-token",
+            CreatedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
+        });
+        context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=raw-token";
 
         await manager.ListSessionsForCurrentUserAsync(context);
+        var failingReader = new Mock<IAuthenticationSessionReader>();
+        failingReader.Setup(reader => reader.ListSessionsAsync(
+                It.IsAny<ValidatedAuthenticationSession>(), It.IsAny<ListAuthenticationSessionsRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure<IReadOnlyList<AuthenticationSessionSummary>>(AshlarFailureCodes.SessionNotFoundOrInactive));
+        var failingManager = new AshlarSignInManager(
+            provider.GetRequiredService<IAuthenticationSessionService>(), failingReader.Object,
+            CreateOptionsMonitor(), new AshlarSessionRegistration
+            {
+                SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme
+            });
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(repository.ListUserId, Is.EqualTo(userId));
             Assert.That(repository.ListActiveOnly, Is.True);
+            Assert.ThrowsAsync<InvalidOperationException>(() => failingManager.ListSessionsForCurrentUserAsync(context));
         }
     }
 

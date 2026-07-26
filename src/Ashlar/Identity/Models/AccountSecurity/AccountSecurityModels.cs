@@ -88,12 +88,7 @@ public sealed record AccountSecurityOperationResult(
     UserAccountState? CurrentState = null,
     int RememberedMfaDevicesRevoked = 0);
 
-/// <summary>
-/// Request metadata for an account-security posture lookup.
-/// </summary>
-/// <param name="Tenant">Tenant scope that must match the inspected user. Use <see cref="TenantContext.Global" /> for global users; this request does not use <see langword="null" /> as an all-scope lookup.</param>
-/// <param name="RecentSecurityEventWindow">Optional window used to count recent security events.</param>
-public record AccountSecurityPostureRequest(
+internal record AccountSecurityPostureRequest(
     TenantContext? Tenant = null,
     TimeSpan? RecentSecurityEventWindow = null);
 

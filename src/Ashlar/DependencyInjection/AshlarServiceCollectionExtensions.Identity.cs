@@ -117,7 +117,6 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAdd(new ServiceDescriptor(
             typeof(IIdentityService),
             provider => new IdentityService(
-                provider.GetRequiredAshlarProviderService<IUserRepository>(),
                 provider.GetRequiredService<IAuthenticationProviderRegistry>(),
                 provider.GetRequiredService<IAuthenticationPipeline>()),
             ServiceLifetime.Scoped));
@@ -175,12 +174,13 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredAshlarProviderService<IUserRepository>(),
             provider.GetRequiredAshlarProviderService<ICredentialRepository>(),
             provider.GetRequiredService<IAuthenticationSessionMutationExecutor>(),
-            provider.GetRequiredService<IAuthenticationSessionReader>(),
+            provider.GetRequiredService<IAuthenticationSessionInventoryReader>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             provider.GetRequiredService<IAccountSecurityGuard>(),
             provider.GetRequiredService<AccountSecurityServiceDependencies>()));
         services.TryAddScoped<IAccountSecurityService>(provider => provider.GetRequiredService<AccountSecurityService>());
         services.TryAddScoped<IAccountSecurityMutationExecutor>(provider => provider.GetRequiredService<AccountSecurityService>());
+        services.TryAddScoped<IAccountSecurityPostureReader>(provider => provider.GetRequiredService<AccountSecurityService>());
         services.TryAddScoped<IAccountSecurityAdministrationService>(provider => new AccountSecurityAdministrationService(
             provider.GetRequiredService<IAccountSecurityMutationExecutor>(),
             provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
@@ -202,7 +202,7 @@ public static partial class AshlarServiceCollectionExtensions
         });
         services.TryAddScoped<IUserAdministrationService>(provider => new UserAdministrationService(
             provider.GetRequiredAshlarProviderService<IUserAdministrationRepository>(),
-            provider.GetRequiredService<IAccountSecurityService>(),
+            provider.GetRequiredService<IAccountSecurityPostureReader>(),
             provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
             provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
             provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(),
@@ -261,8 +261,10 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<AuthenticationSessionServiceDependencies>(),
             provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationSessionService>>()));
         services.TryAddScoped<IAuthenticationSessionService>(provider => provider.GetRequiredService<AuthenticationSessionService>());
-        services.TryAddScoped<IAuthenticationSessionReader>(provider => new AuthenticationSessionReader(
+        services.TryAddScoped(provider => new AuthenticationSessionReader(
             provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(), provider.GetService<TimeProvider>()));
+        services.TryAddScoped<IAuthenticationSessionReader>(provider => provider.GetRequiredService<AuthenticationSessionReader>());
+        services.TryAddScoped<IAuthenticationSessionInventoryReader>(provider => provider.GetRequiredService<AuthenticationSessionReader>());
         services.TryAddScoped<IAuthenticationSessionMutationExecutor>(provider => provider.GetRequiredService<AuthenticationSessionService>());
         services.TryAddScoped<StepUpAuthenticationService>();
         services.TryAddScoped<IStepUpAuthenticationService>(provider => provider.GetRequiredService<StepUpAuthenticationService>());

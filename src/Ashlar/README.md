@@ -57,7 +57,7 @@ Account linking consumes Ashlar-validated temporary external tickets and require
 
 ## Account Security Posture
 
-`IAccountSecurityService.GetUserSecurityPostureAsync` returns a non-secret posture model for account and admin screens. It separates primary sign-in methods from additional verification factors, reports the current MFA policy requirement, tells whether the user is ready for required verification, and lists missing factor families with display-safe names.
+`IAccountSecurityService.GetSecurityPostureAsync` returns the validated current session's non-secret posture model for self-service account screens. Administrator screens use the actor-bound administration reader. The posture separates primary sign-in methods from additional verification factors, reports the current MFA policy requirement, tells whether the user is ready for required verification, and lists missing factor families with display-safe names.
 
 Use `PrimaryCredentials` for sign-in methods, `AdditionalVerificationFactors` for authenticator apps, recovery codes, and policy-eligible passkeys, and `Policy` for readiness and missing factors. Do not render raw provider keys as the main UI label. The posture model does not expose credential values, token hashes, public keys, passkey ceremony JSON, recovery codes, password hashes, or protected secrets.
 

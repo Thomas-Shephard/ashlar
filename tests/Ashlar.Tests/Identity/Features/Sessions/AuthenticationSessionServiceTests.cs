@@ -2654,7 +2654,7 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
-    public async Task ListSessionsForUserAsyncShouldReturnSummaries()
+    public async Task ListSessionsAsyncShouldRequireActiveValidatedSessionAndReturnSummaries()
     {
         var userId = Guid.NewGuid();
         var sessions = new List<AuthenticationSession>
@@ -2668,17 +2668,76 @@ internal sealed class AuthenticationSessionServiceTests
         _repositoryMock
             .Setup(r => r.ListSessionsForUserAsync(userId, true, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(sessions.Where(s => s.IsActive(_timeProvider.GetUtcNow())).ToList().AsReadOnly());
+        _repositoryMock.Setup(r => r.GetSessionAsync(sessions[0].Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(sessions[0]);
 
-        var result = await _reader.ListSessionsForUserAsync(userId, new ListAuthenticationSessionsRequest { ActiveOnly = true, CurrentSessionId = sessions[0].Id });
+        var capability = ValidateAuthenticationSessionResult.Success(sessions[0]).ValidatedSession!;
+        var result = await ((IAuthenticationSessionReader)_reader).ListSessionsAsync(
+            capability, new ListAuthenticationSessionsRequest { ActiveOnly = true });
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Has.Count.EqualTo(1));
-            Assert.That(result[0].Id, Is.EqualTo(sessions[0].Id));
-            Assert.That(result[0].IpAddress, Is.EqualTo("1.1.1.1"));
-            Assert.That(result[0].UserAgent, Is.EqualTo("agent-1"));
-            Assert.That(result[0].IsCurrent, Is.True);
-            Assert.That(result[0].IsActive, Is.True);
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value, Has.Count.EqualTo(1));
+            Assert.That(result.Value![0].Id, Is.EqualTo(sessions[0].Id));
+            Assert.That(result.Value[0].IpAddress, Is.EqualTo("1.1.1.1"));
+            Assert.That(result.Value[0].UserAgent, Is.EqualTo("agent-1"));
+            Assert.That(result.Value[0].IsCurrent, Is.True);
+            Assert.That(result.Value[0].IsActive, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task ListSessionsAsyncRejectsInactiveCapabilityAndHostileProviderResult()
+    {
+        var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1));
+        var capability = ValidateAuthenticationSessionResult.Success(session).ValidatedSession!;
+        var inactive = await ((IAuthenticationSessionReader)_reader).ListSessionsAsync(capability, new ListAuthenticationSessionsRequest());
+        var swapped = CreateSession(expiresAt: session.ExpiresAt, userId: session.UserId);
+        _repositoryMock.Setup(r => r.GetSessionAsync(session.Id, It.IsAny<CancellationToken>())).ReturnsAsync(swapped);
+        var swappedResult = await ((IAuthenticationSessionReader)_reader).ListSessionsAsync(capability, new ListAuthenticationSessionsRequest());
+        var futureCurrent = new AuthenticationSession
+        {
+            Id = session.Id,
+            UserId = session.UserId,
+            TenantId = session.TenantId,
+            TokenHash = session.TokenHash,
+            CreatedAt = _timeProvider.GetUtcNow().AddMinutes(1),
+            ExpiresAt = session.ExpiresAt
+        };
+        _repositoryMock.Setup(r => r.GetSessionAsync(session.Id, It.IsAny<CancellationToken>())).ReturnsAsync(futureCurrent);
+        var futureCurrentResult = await ((IAuthenticationSessionReader)_reader).ListSessionsAsync(capability, new ListAuthenticationSessionsRequest());
+        _repositoryMock.Setup(r => r.GetSessionAsync(session.Id, It.IsAny<CancellationToken>())).ReturnsAsync(session);
+        _repositoryMock.Setup(r => r.ListSessionsForUserAsync(session.UserId, true, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(-1), userId: session.UserId)]);
+        var hostile = await ((IAuthenticationSessionReader)_reader).ListSessionsAsync(capability, new ListAuthenticationSessionsRequest());
+        _repositoryMock.Setup(r => r.ListSessionsForUserAsync(session.UserId, true, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AuthenticationSession>)null!);
+        var nullInventory = await ((IAuthenticationSessionReader)_reader).ListSessionsAsync(capability, new ListAuthenticationSessionsRequest());
+        var emptyId = new AuthenticationSession
+        {
+            Id = Guid.Empty,
+            UserId = session.UserId,
+            TokenHash = "hash",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            ExpiresAt = _timeProvider.GetUtcNow().AddHours(1)
+        };
+        _repositoryMock.Setup(r => r.ListSessionsForUserAsync(session.UserId, true, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([emptyId]);
+        var emptyIdResult = await ((IAuthenticationSessionReader)_reader).ListSessionsAsync(capability, new ListAuthenticationSessionsRequest());
+        _repositoryMock.Setup(r => r.ListSessionsForUserAsync(session.UserId, true, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1), userId: Guid.NewGuid())]);
+        var wrongUserResult = await ((IAuthenticationSessionReader)_reader).ListSessionsAsync(capability, new ListAuthenticationSessionsRequest());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inactive.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
+            Assert.That(swappedResult.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
+            Assert.That(futureCurrentResult.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
+            Assert.That(hostile.Succeeded, Is.False);
+            Assert.That(nullInventory.Succeeded, Is.False);
+            Assert.That(emptyIdResult.Succeeded, Is.False);
+            Assert.That(wrongUserResult.Succeeded, Is.False);
         }
     }
 
@@ -2696,27 +2755,43 @@ internal sealed class AuthenticationSessionServiceTests
             .Setup(r => r.ListSessionsForUserAsync(userId, false, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(sessions.AsReadOnly());
 
-        var result = await _reader.ListSessionsForUserAsync(userId, new ListAuthenticationSessionsRequest { ActiveOnly = false });
+        var result = await _reader.ListSessionsForUserAsync(userId, null,
+            new ListAuthenticationSessionsRequest { ActiveOnly = false });
+        var impossible = new AuthenticationSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            TokenHash = "hash",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            ExpiresAt = _timeProvider.GetUtcNow().AddHours(-1)
+        };
+        _repositoryMock
+            .Setup(r => r.ListSessionsForUserAsync(userId, false, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([impossible]);
+        var malformed = await _reader.ListSessionsForUserAsync(userId, null,
+            new ListAuthenticationSessionsRequest { ActiveOnly = false });
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Has.Count.EqualTo(2));
-            Assert.That(result[0].IsActive, Is.True);
-            Assert.That(result[1].IsActive, Is.False);
+            Assert.That(result.Value, Has.Count.EqualTo(2));
+            Assert.That(result.Value![0].IsActive, Is.True);
+            Assert.That(result.Value[1].IsActive, Is.False);
+            Assert.That(malformed.Succeeded, Is.False);
         }
     }
 
     [Test]
     public void ListSessionsForUserAsyncShouldRejectEmptyUserId()
     {
-        Assert.ThrowsAsync<ArgumentException>(() => _reader.ListSessionsForUserAsync(Guid.Empty, new ListAuthenticationSessionsRequest()));
+        Assert.ThrowsAsync<ArgumentException>(() => _reader.ListSessionsForUserAsync(
+            Guid.Empty, null, new ListAuthenticationSessionsRequest()));
     }
 
     [Test]
     public void ListSessionsForUserAsyncShouldRejectNullRequest()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _reader.ListSessionsForUserAsync(Guid.NewGuid(), null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _reader.ListSessionsForUserAsync(Guid.NewGuid(), null, null!));
     }
 
     [Test]

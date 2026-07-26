@@ -1,5 +1,6 @@
 namespace Ashlar.Tests.Identity.Features.Administration;
 
+using Ashlar.Auditing;
 using Ashlar.Tests.Support;
 
 internal sealed class UserAdministrationServiceTests
@@ -48,6 +49,28 @@ internal sealed class UserAdministrationServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+        }
+    }
+
+    [Test]
+    public async Task SearchUsersAsyncDurablyAuditsValidatedActorRequestRejection()
+    {
+        var boundary = new AdminReadTestBoundary(DateTimeOffset.UtcNow);
+        var service = new UserAdministrationService(new RecordingUserAdministrationRepository(),
+            new RecordingAccountSecurityService(), boundary.Sessions, boundary.Authorizer, boundary.Sink,
+            boundary.TimeProvider);
+
+        var result = await service.SearchUsersAsync(new SearchUsersRequest
+        {
+            Actor = boundary.Actor,
+            Tenant = TenantContext.Global,
+            Limit = 0
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(boundary.Sink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
         }
     }
 
@@ -328,6 +351,34 @@ internal sealed class UserAdministrationServiceTests
             new SearchUsersRequest { Tenant = tenant, Limit = 1 }));
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void SearchUsersAsyncRejectsInvalidProviderProjection(bool emptyUserId)
+    {
+        var repository = new RecordingUserAdministrationRepository();
+        var summary = CreateSummary("hostile@example.com");
+        repository.SearchResults.Add(emptyUserId
+            ? summary with { UserId = Guid.Empty }
+            : summary with { CanSignIn = false });
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository).SearchUsersAsync(
+            new SearchUsersRequest { Tenant = TenantContext.Global }));
+    }
+
+    [Test]
+    public void SearchUsersAsyncRejectsUndefinedProviderAccountState()
+    {
+        var repository = new RecordingUserAdministrationRepository();
+        repository.SearchResults.Add(CreateSummary("hostile@example.com") with
+        {
+            AccountState = (UserAccountState)int.MaxValue,
+            CanSignIn = false
+        });
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository).SearchUsersAsync(
+            new SearchUsersRequest { Tenant = TenantContext.Global }));
+    }
+
     [Test]
     public async Task GetUserDetailAsyncRejectsMismatchedProviderIdentities()
     {
@@ -353,6 +404,21 @@ internal sealed class UserAdministrationServiceTests
             Assert.That(wrongUser.Succeeded, Is.False);
             Assert.That(wrongPosture.Succeeded, Is.False);
         }
+    }
+
+    [Test]
+    public async Task GetUserDetailAsyncRejectsInvalidProviderProjection()
+    {
+        var userId = Guid.NewGuid();
+        var repository = new RecordingUserAdministrationRepository
+        {
+            UserSummary = CreateSummary("hostile@example.com") with { UserId = userId, CanSignIn = false }
+        };
+
+        var result = await CreateService(repository).GetUserDetailAsync(
+            new UserAdministrationDetailRequest(userId, TenantContext.Global));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
     }
 
     private static AuthorizedUserAdministrationService CreateService(
@@ -416,14 +482,14 @@ internal sealed class UserAdministrationServiceTests
         }
     }
 
-    private sealed class RecordingAccountSecurityService : IAccountSecurityService
+    private sealed class RecordingAccountSecurityService : IAccountSecurityPostureReader
     {
         public Result<AccountSecurityPosture> PostureResult { get; init; } = Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.UserNotFound);
         public int PostureCalls { get; private set; }
         public Guid LastPostureUserId { get; private set; }
         public AccountSecurityPostureRequest? LastPostureRequest { get; private set; }
 
-        public Task<Result<AccountSecurityPosture>> GetUserSecurityPostureAsync(Guid userId, AccountSecurityPostureRequest? request = null, CancellationToken cancellationToken = default)
+        public Task<Result<AccountSecurityPosture>> GetUserSecurityPostureAsync(Guid userId, AccountSecurityPostureRequest request, CancellationToken cancellationToken = default)
         {
             PostureCalls++;
             LastPostureUserId = userId;

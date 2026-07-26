@@ -914,6 +914,9 @@ internal sealed class AccountSecurityServiceTests
         await _events.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "test", UserId = _userId, OccurredAt = _timeProvider.GetUtcNow() });
 
         var result = await _service.GetUserSecurityPostureAsync(_userId, new AccountSecurityPostureRequest(RecentSecurityEventWindow: TimeSpan.FromDays(1)));
+        _events.CountOverride = -1;
+        var hostileCount = await _service.GetUserSecurityPostureAsync(
+            _userId, new AccountSecurityPostureRequest(RecentSecurityEventWindow: TimeSpan.FromDays(1)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -923,6 +926,7 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(result.Value?.IsMfaConfigured, Is.True);
             Assert.That(result.Value?.ActiveSessionCount, Is.EqualTo(1));
             Assert.That(result.Value?.RecentSecurityEventCount, Is.EqualTo(1));
+            Assert.That(hostileCount.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
             Assert.That(result.Value?.GetConfiguredCredentials(), Has.Count.EqualTo(2));
         }
     }
@@ -1426,8 +1430,9 @@ internal sealed class AccountSecurityServiceTests
         var revokedPasskey = CreateCredential(_userId, AuthenticationProviderKey.Passkey);
         revokedPasskey.Status = CredentialStatus.Revoked;
         revokedPasskey.RevokedAt = _timeProvider.GetUtcNow();
-        var expiredTotp = CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
-        expiredTotp.ExpiresAt = _timeProvider.GetUtcNow().AddMinutes(-1);
+        var expiredTotp = CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp"),
+            createdAt: _timeProvider.GetUtcNow().AddHours(-1),
+            expiresAt: _timeProvider.GetUtcNow().AddMinutes(-1));
         _userRepository.Credentials.Add(revokedPasskey);
         _userRepository.Credentials.Add(expiredTotp);
         var service = CreateService(new StaticMfaPolicyEvaluator(true, [AuthenticationFactorTypes.Totp]));
@@ -1713,13 +1718,14 @@ internal sealed class AccountSecurityServiceTests
         IMfaPolicyEvaluator? mfaPolicyEvaluator = null,
         IAuthenticationProviderRegistry? providerRegistry = null,
         bool includeDefaultProviderRegistry = true,
-        IRememberedMfaDeviceMutationExecutor? rememberedMfaDevices = null)
+        IRememberedMfaDeviceMutationExecutor? rememberedMfaDevices = null,
+        IAuthenticationSessionInventoryReader? sessionReader = null)
     {
         return new AccountSecurityService(
             _userRepository,
             _userRepository,
             new TestAuthenticationSessionMutationExecutor(),
-            new TestAuthenticationSessionReader(),
+            sessionReader ?? new TestAuthenticationSessionReader(),
             _sessionComposition.Transactions,
             new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(
@@ -1805,18 +1811,22 @@ internal sealed class AccountSecurityServiceTests
         return provider;
     }
 
-    private UserCredential CreateCredential(Guid userId, AuthenticationProviderKey provider)
+    private UserCredential CreateCredential(Guid userId, AuthenticationProviderKey provider,
+        Guid? credentialId = null, CredentialStatus status = CredentialStatus.Active,
+        ProviderType? providerType = null, string? providerName = null,
+        DateTimeOffset? createdAt = null, DateTimeOffset? expiresAt = null)
     {
         return new UserCredential
         {
-            Id = Guid.NewGuid(),
+            Id = credentialId ?? Guid.NewGuid(),
             UserId = userId,
-            ProviderType = provider.Type,
-            ProviderName = provider.Name,
+            ProviderType = providerType ?? provider.Type,
+            ProviderName = providerName ?? provider.Name,
             ProviderKey = Guid.NewGuid().ToString("N"),
             Version = "v1",
-            Status = CredentialStatus.Active,
-            CreatedAt = _timeProvider.GetUtcNow()
+            Status = status,
+            CreatedAt = createdAt ?? _timeProvider.GetUtcNow(),
+            ExpiresAt = expiresAt
         };
     }
 
@@ -1837,6 +1847,7 @@ internal sealed class AccountSecurityServiceTests
     private sealed class RecordingSecurityEventSink : ISecurityEventSink, IUserSecurityEventSummaryRepository
     {
         public List<AshlarSecurityEvent> Events { get; } = [];
+        public int? CountOverride { get; set; }
 
         public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
         {
@@ -1846,7 +1857,8 @@ internal sealed class AccountSecurityServiceTests
 
         public Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(Events.Count(e => e.UserId == userId && e.OccurredAt >= since));
+            return Task.FromResult(CountOverride
+                ?? Events.Count(e => e.UserId == userId && e.OccurredAt >= since));
         }
     }
 
@@ -1895,6 +1907,9 @@ internal sealed class AccountSecurityServiceTests
 
     private sealed class InMemoryUserCredentialStore : IUserRepository, ICredentialRepository
     {
+        public bool ReturnAllCredentials { get; set; }
+        public bool ReturnNullCredentials { get; set; }
+
         public Action? OnMutationLock { get; set; }
         public int MutationLockCalls { get; private set; }
         public Task AcquireUserMutationLockAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -1933,7 +1948,8 @@ internal sealed class AccountSecurityServiceTests
 
         public Task<IReadOnlyList<UserCredential>> ListCredentialsForUserAsync(Guid userId, bool activeOnly = true, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult<IReadOnlyList<UserCredential>>(Credentials.Where(c => c.UserId == userId && (!activeOnly || c.RevokedAt == null)).ToList().AsReadOnly());
+            if (ReturnNullCredentials) return Task.FromResult<IReadOnlyList<UserCredential>>(null!);
+            return Task.FromResult<IReadOnlyList<UserCredential>>(Credentials.Where(c => (ReturnAllCredentials || c.UserId == userId) && (!activeOnly || c.RevokedAt == null)).ToList().AsReadOnly());
         }
 
         public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
@@ -1990,10 +2006,214 @@ internal sealed class AccountSecurityServiceTests
         public Task<int> RevokeOtherSessionsAsync(Guid userId, RevokeOtherAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) => Task.FromResult(0);
     }
 
-    private sealed class TestAuthenticationSessionReader : IAuthenticationSessionReader
+    private sealed class TestAuthenticationSessionReader(bool fail = false) : IAuthenticationSessionInventoryReader
     {
-        public Task<IReadOnlyList<AuthenticationSessionSummary>> ListSessionsForUserAsync(Guid userId, ListAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<AuthenticationSessionSummary>>([]);
+        public Task<Result<IReadOnlyList<AuthenticationSessionSummary>>> ListSessionsAsync(ValidatedAuthenticationSession session, ListAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result.Success<IReadOnlyList<AuthenticationSessionSummary>>([]));
+
+        public Task<Result<IReadOnlyList<AuthenticationSessionSummary>>> ListSessionsForUserAsync(Guid userId, Guid? tenantId, ListAuthenticationSessionsRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(fail
+                ? Result.Failure<IReadOnlyList<AuthenticationSessionSummary>>(AshlarFailureCodes.TenantMismatch)
+                : Result.Success<IReadOnlyList<AuthenticationSessionSummary>>([]));
+    }
+
+    [Test]
+    public async Task PublicPostureReadDerivesIdentityFromActiveValidatedSession()
+    {
+        _userRepository.Users[_userId] = new User
+        {
+            Id = _userId,
+            DisplayEmail = "user@example.com",
+            AccountState = UserAccountState.Active
+        };
+        var session = CreateSession(_userId);
+        var capability = ValidateAuthenticationSessionResult.Success(session).ValidatedSession!;
+
+        var inactive = await ((IAccountSecurityService)_service).GetSecurityPostureAsync(capability);
+        _sessionRepository.Sessions.Add(session);
+        var result = await ((IAccountSecurityService)_service).GetSecurityPostureAsync(capability);
+        var zeroWindow = await ((IAccountSecurityService)_service).GetSecurityPostureAsync(capability, TimeSpan.Zero);
+        var overflowingWindow = await ((IAccountSecurityService)_service).GetSecurityPostureAsync(capability, TimeSpan.MaxValue);
+        _userRepository.Users[_userId] = new User
+        {
+            Id = _userId,
+            DisplayEmail = "user@example.com",
+            AccountState = UserAccountState.Disabled
+        };
+        var disabled = await ((IAccountSecurityService)_service).GetSecurityPostureAsync(capability);
+        var methods = typeof(IAccountSecurityService).GetMethods().Select(method => method.Name);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.UserId, Is.EqualTo(_userId));
+            Assert.That(inactive.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
+            Assert.That(zeroWindow.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(overflowingWindow.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(disabled.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
+            Assert.That(methods, Does.Not.Contain("GetUserSecurityPostureAsync"));
+        }
+    }
+
+    [Test]
+    public async Task RevokeCredentialsAsyncShouldAuditPostureFailureWhenPreservingPrimaryMethod()
+    {
+        _userRepository.Users[_userId] = new User
+        {
+            Id = _userId,
+            DisplayEmail = "user@example.com",
+            AccountState = UserAccountState.Active
+        };
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        _userRepository.ReturnNullCredentials = true;
+
+        var result = await _service.RevokeCredentialsAsync(
+            _userId,
+            AuthenticationProviderKey.Local,
+            CreateRequest(preservePrimarySignInMethod: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Null);
+            Assert.That(_events.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.UserNotFound.Value));
+        }
+    }
+
+    [Test]
+    public async Task InternalPostureReadRejectsHostileSessionInventory()
+    {
+        _userRepository.Users[_userId] = new User
+        {
+            Id = _userId,
+            DisplayEmail = "user@example.com",
+            AccountState = UserAccountState.Active
+        };
+
+        var result = await CreateService(sessionReader: new TestAuthenticationSessionReader(fail: true))
+            .GetUserSecurityPostureAsync(_userId);
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+    }
+
+    [Test]
+    public async Task InternalPostureReadRejectsHostileCredentialInventory()
+    {
+        _userRepository.Users[_userId] = new User
+        {
+            Id = _userId,
+            DisplayEmail = "user@example.com",
+            AccountState = UserAccountState.Active
+        };
+        _userRepository.ReturnAllCredentials = true;
+        _userRepository.Credentials.Add(CreateCredential(Guid.NewGuid(), AuthenticationProviderKey.Local));
+
+        var result = await _service.GetUserSecurityPostureAsync(_userId);
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+    }
+
+    [Test]
+    public async Task InternalPostureReadRejectsMalformedCredentialInventory()
+    {
+        _userRepository.Users[_userId] = new User
+        {
+            Id = _userId,
+            DisplayEmail = "user@example.com",
+            AccountState = UserAccountState.Active
+        };
+        _userRepository.ReturnNullCredentials = true;
+        var nullInventory = await _service.GetUserSecurityPostureAsync(_userId);
+        _userRepository.ReturnNullCredentials = false;
+        _userRepository.Credentials.Add(CreateCredential(
+            _userId, AuthenticationProviderKey.Local, Guid.Empty));
+        var emptyId = await _service.GetUserSecurityPostureAsync(_userId);
+
+        _userRepository.Credentials.Clear();
+        _userRepository.Credentials.Add(CreateCredential(
+            _userId, AuthenticationProviderKey.Local, status: (CredentialStatus)int.MaxValue));
+        var invalidStatus = await _service.GetUserSecurityPostureAsync(_userId);
+
+        _userRepository.Credentials.Clear();
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local,
+            providerType: (ProviderType)ProviderType.StorageFallbackValue));
+        var fallbackType = await _service.GetUserSecurityPostureAsync(_userId);
+
+        _userRepository.Credentials.Clear();
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local,
+            providerName: " "));
+        var blankName = await _service.GetUserSecurityPostureAsync(_userId);
+
+        _userRepository.Credentials.Clear();
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local,
+            createdAt: _timeProvider.GetUtcNow().AddMinutes(1)));
+        var futureCreated = await _service.GetUserSecurityPostureAsync(_userId);
+
+        _userRepository.Credentials.Clear();
+        var createdAt = _timeProvider.GetUtcNow();
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local,
+            createdAt: createdAt, expiresAt: createdAt));
+        var impossibleExpiry = await _service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nullInventory.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(emptyId.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(invalidStatus.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(fallbackType.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(blankName.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(futureCreated.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(impossibleExpiry.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+        }
+    }
+
+    [Test]
+    public async Task InternalPostureReadRejectsNullMfaPolicyEvaluation()
+    {
+        _userRepository.Users[_userId] = new User
+        {
+            Id = _userId,
+            DisplayEmail = "user@example.com",
+            AccountState = UserAccountState.Active
+        };
+        var evaluator = new Mock<IMfaPolicyEvaluator>();
+        evaluator.Setup(item => item.EvaluateAsync(
+                It.IsAny<IUser>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((MfaPolicyEvaluation)null!);
+
+        var result = await CreateService(mfaPolicyEvaluator: evaluator.Object)
+            .GetUserSecurityPostureAsync(_userId);
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+    }
+
+    [Test]
+    public async Task InternalPostureReadRejectsUndefinedUserAccountState()
+    {
+        _userRepository.Users[_userId] = new User
+        {
+            Id = _userId,
+            DisplayEmail = "user@example.com",
+            AccountState = (UserAccountState)int.MaxValue
+        };
+
+        var result = await _service.GetUserSecurityPostureAsync(_userId);
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+    }
+
+    [Test]
+    public async Task InternalPostureReadRejectsHostileUserResult()
+    {
+        _userRepository.Users[_userId] = new User
+        {
+            Id = Guid.NewGuid(),
+            DisplayEmail = "other@example.com",
+            AccountState = UserAccountState.Active
+        };
+
+        var result = await _service.GetUserSecurityPostureAsync(_userId);
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
     }
 
     [Test]
@@ -2118,4 +2338,13 @@ internal sealed class AccountSecurityServiceTests
             return count;
         }
     }
+}
+
+internal static class AccountSecurityServiceTestExtensions
+{
+    public static Task<Result<AccountSecurityPosture>> GetUserSecurityPostureAsync(
+        this AccountSecurityService service, Guid userId,
+        AccountSecurityPostureRequest? request = null, CancellationToken cancellationToken = default) =>
+        ((IAccountSecurityPostureReader)service).GetUserSecurityPostureAsync(
+            userId, request ?? new AccountSecurityPostureRequest(), cancellationToken);
 }
