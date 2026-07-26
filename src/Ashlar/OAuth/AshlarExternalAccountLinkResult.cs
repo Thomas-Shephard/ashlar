@@ -1,16 +1,12 @@
-using Ashlar.Identity.Providers.External;
-
 namespace Ashlar.OAuth;
 
 /// <summary>
 /// Describes the outcome of linking a validated external account to an existing Ashlar user.
 /// </summary>
 /// <param name="Status">The link outcome status.</param>
-/// <param name="Assertion">The mapped external identity assertion, when mapping succeeded.</param>
 /// <param name="CredentialLink">The underlying credential link result, when credential linking was attempted.</param>
 public sealed record AshlarExternalAccountLinkResult(
     AshlarExternalAccountLinkStatus Status,
-    ExternalIdentityAssertion? Assertion = null,
     Result? CredentialLink = null)
 {
     /// <summary>

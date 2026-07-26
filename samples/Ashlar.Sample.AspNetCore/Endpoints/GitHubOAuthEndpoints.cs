@@ -41,16 +41,10 @@ internal static class GitHubOAuthEndpoints
         }
 
         var externalCredentialAuthentication = services.GetRequiredService<AshlarExternalCredentialAuthenticationService>();
-        var orchestrator = services.GetRequiredService<IAuthenticationOrchestrator>();
         var signInManager = services.GetRequiredService<IAshlarSignInManager>();
-        var result = await externalCredentialAuthentication.CompleteExternalAssertionAsync(httpContext, SampleGitHubOAuth.ProviderName, cancellationToken);
-        if (result.Succeeded && result.Assertion != null)
+        var result = await externalCredentialAuthentication.CompleteExternalAuthenticationAsync(httpContext, SampleGitHubOAuth.ProviderName, cancellationToken);
+        if (result.Succeeded && result.Authentication is { } mfaResult)
         {
-            var mfaResult = await orchestrator.AuthenticateAsync(
-                httpContext.ToAuthenticationContext(),
-                result.Assertion,
-                cancellationToken: cancellationToken);
-
             if (mfaResult.Status == MfaAuthenticationStatus.MfaRequired && mfaResult.HandshakeToken != null)
             {
                 return AppViews.RenderExternalProviderMfaCallback("GitHub", "github", mfaResult.HandshakeToken, mfaResult.RequiredFactors ?? []);
@@ -78,21 +72,21 @@ internal static class GitHubOAuthEndpoints
             return Results.Redirect("/?signedInWith=github");
         }
 
-        if (result.Status == AshlarExternalAssertionStatus.AuthenticationFailed)
+        if (result.Status == AshlarExternalAuthenticationStatus.AuthenticationFailed)
         {
             return AppViews.RenderExternalProviderResult(
                 GitHubSignInFailedTitle,
                 "GitHub sign-in was not completed. Try again, or use another sign-in method.");
         }
 
-        if (result.Status == AshlarExternalAssertionStatus.RateLimited)
+        if (result.Status == AshlarExternalAuthenticationStatus.RateLimited)
         {
             return AppViews.RenderExternalProviderResult(
                 GitHubSignInFailedTitle,
                 "Too many GitHub sign-in attempts were made. Wait a few minutes and try again.");
         }
 
-        if (result.Status == AshlarExternalAssertionStatus.InvalidPrincipal)
+        if (result.Status == AshlarExternalAuthenticationStatus.InvalidPrincipal)
         {
             return AppViews.RenderExternalProviderResult(
                 GitHubSignInFailedTitle,

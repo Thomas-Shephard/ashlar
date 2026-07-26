@@ -1,34 +1,32 @@
-using Ashlar.Identity.Providers.External;
-
 namespace Ashlar.OAuth;
 
 /// <summary>
-/// Describes the result of completing an external callback into a mapped Ashlar external identity without authenticating it.
+/// Describes the result of authenticating a validated external callback.
 /// </summary>
 /// <param name="Status">The external completion status.</param>
-/// <param name="Assertion">The mapped external identity when available.</param>
-public sealed record AshlarExternalAssertionResult(
-    AshlarExternalAssertionStatus Status,
-    ExternalIdentityAssertion? Assertion = null)
+/// <param name="Authentication">The MFA-aware authentication result when the ticket was mapped.</param>
+public sealed record AshlarExternalAuthenticationResult(
+    AshlarExternalAuthenticationStatus Status,
+    MfaAuthenticationResult? Authentication = null)
 {
     /// <summary>
-    /// Gets a value indicating whether the external assertion was mapped successfully.
+    /// Gets a value indicating whether the external ticket was accepted.
     /// </summary>
-    public bool Succeeded => Status == AshlarExternalAssertionStatus.Succeeded;
+    public bool Succeeded => Status == AshlarExternalAuthenticationStatus.Succeeded;
 }
 
 /// <summary>
-/// Defines external assertion completion states.
+/// Defines external authentication completion states.
 /// </summary>
-public enum AshlarExternalAssertionStatus
+public enum AshlarExternalAuthenticationStatus
 {
     /// <summary>
-    /// The external assertion status is unknown.
+    /// The external authentication status is unknown.
     /// </summary>
     Unknown = 0,
 
     /// <summary>
-    /// The external callback was mapped successfully.
+    /// Primary external authentication succeeded or requires MFA completion.
     /// </summary>
     Succeeded = 1,
 
@@ -53,7 +51,7 @@ public enum AshlarExternalAssertionStatus
     ProviderMismatch = 5,
 
     /// <summary>
-    /// The external assertion attempt was blocked by rate limiting.
+    /// The external authentication attempt was blocked by rate limiting.
     /// </summary>
     RateLimited = 6
 }

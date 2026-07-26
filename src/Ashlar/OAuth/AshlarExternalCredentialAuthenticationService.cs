@@ -1,16 +1,18 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using Ashlar.Auditing;
+using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 
 namespace Ashlar.OAuth;
 
 /// <summary>
-/// Maps ASP.NET Core external identities to Ashlar assertions.
+/// Authenticates ASP.NET Core external identities through Ashlar.
 /// </summary>
 /// <param name="primaryRateLimiter">The provider-neutral primary authentication rate limiter.</param>
 /// <param name="options">The OAuth options monitor.</param>
+/// <param name="authenticationOrchestrator">The Ashlar authentication orchestrator.</param>
 /// <param name="securityEventSink">The optional security event sink.</param>
 /// <param name="timeProvider">The optional time provider.</param>
 /// <remarks>
@@ -19,6 +21,7 @@ namespace Ashlar.OAuth;
 public sealed class AshlarExternalCredentialAuthenticationService(
     IPrimaryAuthenticationRateLimiter primaryRateLimiter,
     IOptionsMonitor<AshlarOAuthOptions> options,
+    IAuthenticationOrchestrator authenticationOrchestrator,
     ISecurityEventSink? securityEventSink = null,
     TimeProvider? timeProvider = null)
 {
@@ -26,24 +29,47 @@ public sealed class AshlarExternalCredentialAuthenticationService(
     private readonly IPrimaryAuthenticationRateLimiter _primaryRateLimiter = primaryRateLimiter ?? throw new ArgumentNullException(nameof(primaryRateLimiter));
     private readonly ISecurityEventSink? _securityEventSink = securityEventSink;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
+    private readonly IAuthenticationOrchestrator _authenticationOrchestrator = authenticationOrchestrator ?? throw new ArgumentNullException(nameof(authenticationOrchestrator));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
     /// <summary>
-    /// Completes callback handling only up to a mapped Ashlar external identity assertion.
+    /// Completes external callback authentication through Ashlar's MFA-aware orchestration.
     /// </summary>
     /// <param name="httpContext">The current HTTP context.</param>
     /// <param name="providerName">The configured Ashlar provider name.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The mapped external assertion result, or a failure status when the ticket is absent, invalid, mismatched, or rate limited.</returns>
+    /// <returns>The MFA-aware external authentication result, or a failure status when the ticket is absent, invalid, mismatched, or rate limited.</returns>
     /// <remarks>
     /// The ASP.NET Core external authentication middleware must have already validated the remote provider response
     /// and written the temporary external ticket. This method authenticates that ticket, verifies that it was issued
-    /// for the configured Ashlar provider, clears it, and maps only stable provider key data. A successful result
-    /// means the external credential was validated and mapped; it does not mean an application session may be issued.
-    /// Pass the assertion through the host application's authentication orchestration, including MFA policy, before
-    /// issuing a session.
+    /// for the configured Ashlar provider, clears it, maps only stable provider key data, and runs Ashlar's
+    /// authentication orchestration. Issue an application session only when the nested MFA result is successful.
     /// </remarks>
-    public async Task<AshlarExternalAssertionResult> CompleteExternalAssertionAsync(
+    public async Task<AshlarExternalAuthenticationResult> CompleteExternalAuthenticationAsync(
+        HttpContext httpContext,
+        string providerName,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await CompleteExternalTicketAsync(httpContext, providerName, cancellationToken);
+        if (result.Assertion is not { } assertion)
+        {
+            return new AshlarExternalAuthenticationResult(result.Status);
+        }
+
+        var authentication = await _authenticationOrchestrator.AuthenticateAsync(
+            CreateAuthenticationContext(httpContext, null),
+            assertion,
+            cancellationToken: cancellationToken);
+        var status = authentication.Status switch
+        {
+            MfaAuthenticationStatus.Succeeded or MfaAuthenticationStatus.MfaRequired => AshlarExternalAuthenticationStatus.Succeeded,
+            MfaAuthenticationStatus.RateLimited => AshlarExternalAuthenticationStatus.RateLimited,
+            _ => AshlarExternalAuthenticationStatus.AuthenticationFailed
+        };
+        return new AshlarExternalAuthenticationResult(status, authentication);
+    }
+
+    private async Task<ExternalTicketCompletion> CompleteExternalTicketAsync(
         HttpContext httpContext,
         string providerName,
         CancellationToken cancellationToken = default)
@@ -58,7 +84,7 @@ public sealed class AshlarExternalCredentialAuthenticationService(
             return await CreateFailureResultAsync(
                 CreateAuthenticationContext(httpContext, null),
                 unsupportedProviderKey,
-                AshlarExternalAssertionStatus.UnsupportedProvider,
+                AshlarExternalAuthenticationStatus.UnsupportedProvider,
                 cancellationToken);
         }
 
@@ -68,20 +94,20 @@ public sealed class AshlarExternalCredentialAuthenticationService(
 
         if (!result.Succeeded || result.Principal == null)
         {
-            return await CreateFailureResultAsync(context, providerKey, AshlarExternalAssertionStatus.AuthenticationFailed, cancellationToken);
+            return await CreateFailureResultAsync(context, providerKey, AshlarExternalAuthenticationStatus.AuthenticationFailed, cancellationToken);
         }
 
         if (!AshlarExternalProviderResolver.MatchesProvider(result, provider))
         {
-            return await CreateFailureResultAsync(context, providerKey, AshlarExternalAssertionStatus.ProviderMismatch, cancellationToken);
+            return await CreateFailureResultAsync(context, providerKey, AshlarExternalAuthenticationStatus.ProviderMismatch, cancellationToken);
         }
 
         if (AshlarExternalProviderResolver.TryMapAssertion(provider, result.Principal, out var assertion))
         {
-            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.Succeeded, assertion);
+            return new ExternalTicketCompletion(AshlarExternalAuthenticationStatus.Succeeded, assertion);
         }
 
-        return await CreateFailureResultAsync(context, providerKey, AshlarExternalAssertionStatus.InvalidPrincipal, cancellationToken);
+        return await CreateFailureResultAsync(context, providerKey, AshlarExternalAuthenticationStatus.InvalidPrincipal, cancellationToken);
     }
 
     private static AuthenticationContext CreateAuthenticationContext(HttpContext httpContext, Guid? tenantId)
@@ -109,15 +135,15 @@ public sealed class AshlarExternalCredentialAuthenticationService(
         return true;
     }
 
-    private async Task<AshlarExternalAssertionResult> CreateFailureResultAsync(
+    private async Task<ExternalTicketCompletion> CreateFailureResultAsync(
         AuthenticationContext context,
         AuthenticationProviderKey providerKey,
-        AshlarExternalAssertionStatus status,
+        AshlarExternalAuthenticationStatus status,
         CancellationToken cancellationToken)
     {
         return await ConsumeExternalFailureRateLimitAsync(context, providerKey, cancellationToken)
-            ? new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.RateLimited)
-            : new AshlarExternalAssertionResult(status);
+            ? new ExternalTicketCompletion(AshlarExternalAuthenticationStatus.RateLimited)
+            : new ExternalTicketCompletion(status);
     }
 
     private async Task RecordRateLimitedAsync(
@@ -164,4 +190,8 @@ public sealed class AshlarExternalCredentialAuthenticationService(
     {
         public AuthenticationProviderKey ProviderIdentity { get; } = providerIdentity;
     }
+
+    private sealed record ExternalTicketCompletion(
+        AshlarExternalAuthenticationStatus Status,
+        ExternalIdentityAssertion? Assertion = null);
 }

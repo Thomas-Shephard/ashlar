@@ -34,10 +34,8 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
             Assert.That(result.Registered, Is.True);
             Assert.That(result.UserId, Is.EqualTo(userId));
-            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo(CreateExpectedIssuerSubjectKey("https://issuer.example", "subject")));
-            Assert.That(observedRequest?.ProviderKey, Is.EqualTo(result.Assertion?.ProviderKey));
+            Assert.That(observedRequest?.ProviderKey, Is.EqualTo(CreateExpectedIssuerSubjectKey("https://issuer.example", "subject")));
             Assert.That(observedRequest?.UserId, Is.EqualTo(userId));
-            Assert.That(result.Assertion?.Claims, Does.Not.ContainKey("access_token"));
             invitations.Verify(s => s.AcceptInvitationAsync(
                 It.Is<AcceptInvitationRequest>(r => r.UserName == "Invitee"),
                 It.IsAny<AuthenticationContext?>(),
@@ -183,7 +181,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
-            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo(CreateExpectedIssuerSubjectKey("https://issuer.example/tenant", "subject")));
+            Assert.That(observedRequest?.ProviderKey, Is.EqualTo(CreateExpectedIssuerSubjectKey("https://issuer.example/tenant", "subject")));
             Assert.That(observedRequest?.ProviderKey, Is.EqualTo(CreateExpectedIssuerSubjectKey("https://issuer.example/tenant", "subject")));
         }
     }
@@ -254,11 +252,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
 
         var result = await service.RegisterOidcInvitationAsync(overlongToken, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
-            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo(CreateExpectedIssuerSubjectKey("https://issuer.example", "subject")));
-        }
+        Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
 
         invitations.Verify(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()), Times.Never);
     }

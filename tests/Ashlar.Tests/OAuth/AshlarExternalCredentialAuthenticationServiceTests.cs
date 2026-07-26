@@ -15,27 +15,26 @@ namespace Ashlar.Tests.OAuth;
 internal sealed class AshlarExternalCredentialAuthenticationServiceTests
 {
     [Test]
-    public async Task CompleteExternalAssertionShouldMapMatchingExternalTicketWithoutCallingAuthenticationPipeline()
+    public async Task CompleteExternalAuthenticationShouldAuthenticateMatchingExternalTicket()
     {
         var limiter = new Mock<IPrimaryAuthenticationRateLimiter>(MockBehavior.Strict);
         var service = CreateService(limiter.Object);
         var httpContext = CreateHttpContextWithExternalTicket("Google", "Google", "subject");
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "Google");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.Succeeded));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.Succeeded));
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Assertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
-            Assert.That(result.Assertion?.ProviderKey, Does.StartWith("oidc-sha256:"));
+            Assert.That(result.Authentication?.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
         }
 
         limiter.VerifyNoOtherCalls();
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldReturnProviderMismatchForOidcTicketWithoutProviderType()
+    public async Task CompleteExternalAuthenticationShouldReturnProviderMismatchForOidcTicketWithoutProviderType()
     {
         var limiter = CreateAllowingLimiter();
         var service = CreateService(limiter.Object);
@@ -45,46 +44,44 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
                 CreateProperties("Google", "Google", includeProviderType: false),
                 "Ashlar.OAuth.External"))));
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "Google");
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.ProviderMismatch));
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.ProviderMismatch));
 
         limiter.Verify(l => l.CheckAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), new AuthenticationProviderKey(ProviderType.Oidc, "Google"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldMapGitHubTicketAsOAuthAssertion()
+    public async Task CompleteExternalAuthenticationShouldMapGitHubTicketAsOAuthAssertion()
     {
         var limiter = new Mock<IPrimaryAuthenticationRateLimiter>(MockBehavior.Strict);
         var service = CreateService(limiter.Object, includeGitHub: true);
         var httpContext = CreateHttpContextWithExternalTicket("GitHub", "GitHub", ProviderType.OAuth, CreateGitHubPrincipal("12345"));
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "GitHub");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "GitHub");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.Succeeded));
-            Assert.That(result.Assertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey(ProviderType.OAuth, "GitHub")));
-            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("12345"));
-            Assert.That(result.Assertion?.Claims["login"], Is.EqualTo(["octocat"]));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.Succeeded));
+            Assert.That(result.Authentication?.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
         }
 
         limiter.VerifyNoOtherCalls();
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldReturnProviderMismatchForWrongProviderType()
+    public async Task CompleteExternalAuthenticationShouldReturnProviderMismatchForWrongProviderType()
     {
         var service = CreateService(new AuthenticationResponse(false), includeGitHub: true);
         var httpContext = CreateHttpContextWithExternalTicket("GitHub", "GitHub", ProviderType.Oidc, CreateGitHubPrincipal("12345"));
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "GitHub");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "GitHub");
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.ProviderMismatch));
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.ProviderMismatch));
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldReturnProviderMismatchForOAuthTicketWithoutProviderType()
+    public async Task CompleteExternalAuthenticationShouldReturnProviderMismatchForOAuthTicketWithoutProviderType()
     {
         var service = CreateService(new AuthenticationResponse(false), includeGitHub: true);
         var httpContext = CreateHttpContext(new TestAuthenticationService(
@@ -93,57 +90,60 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
                 CreateProperties("GitHub", "GitHub", includeProviderType: false),
                 "Ashlar.OAuth.External"))));
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "GitHub");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "GitHub");
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.ProviderMismatch));
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.ProviderMismatch));
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldUseConfiguredOAuth2ProviderKeyClaim()
+    public async Task CompleteExternalAuthenticationShouldUseConfiguredOAuth2ProviderKeyClaim()
     {
         var limiter = CreateAllowingLimiter();
         var service = CreateService(limiter.Object, options => options.AddOAuth2Provider("CustomOAuth", "uid", _ => { }));
         var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("uid", "stable-uid"), new Claim("id", "not-used")], "oauth"));
         var httpContext = CreateHttpContextWithExternalTicket("CustomOAuth", "CustomOAuth", ProviderType.OAuth, principal);
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "CustomOAuth");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "CustomOAuth");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.Succeeded));
-            Assert.That(result.Assertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey(ProviderType.OAuth, "CustomOAuth")));
-            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("stable-uid"));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.Succeeded));
+            Assert.That(result.Authentication?.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
         }
 
         limiter.VerifyNoOtherCalls();
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldUseExplicitUnsafeOAuth2ProviderKeyClaimType()
+    public async Task CompleteExternalAuthenticationShouldUseExplicitUnsafeOAuth2ProviderKeyClaimType()
     {
         var limiter = CreateAllowingLimiter();
         var service = CreateService(limiter.Object, options => options.AddOAuth2ProviderWithUnsafeProviderKeyClaimType("CustomOAuth", "email", _ => { }));
         var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("email", "stable-provider-id")], "oauth"));
         var httpContext = CreateHttpContextWithExternalTicket("CustomOAuth", "CustomOAuth", ProviderType.OAuth, principal);
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "CustomOAuth");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "CustomOAuth");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.Succeeded));
-            Assert.That(result.Assertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey(ProviderType.OAuth, "CustomOAuth")));
-            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("stable-provider-id"));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.Succeeded));
+            Assert.That(result.Authentication?.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
         }
 
         limiter.VerifyNoOtherCalls();
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldLeaveSessionIssuanceToHostOrchestration()
+    public async Task CompleteExternalAuthenticationShouldRunOrchestrationInsideValidatedTicketBoundary()
     {
         var limiter = new Mock<IPrimaryAuthenticationRateLimiter>(MockBehavior.Strict);
         var orchestrator = new Mock<IAuthenticationOrchestrator>(MockBehavior.Strict);
-        var service = CreateService(limiter.Object);
+        var options = new AshlarOAuthOptions();
+        options.AddOidcProvider("Google", _ => { });
+        var service = new AshlarExternalCredentialAuthenticationService(
+            limiter.Object,
+            new TestOptionsMonitor(options),
+            orchestrator.Object);
         var httpContext = CreateHttpContextWithExternalTicket("Google", "Google", "subject");
         var user = new Mock<IUser>();
         AuthenticationProviderKey? observedProvider = null;
@@ -159,8 +159,8 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
             })
             .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user.Object));
 
-        var assertionResult = await service.CompleteExternalAssertionAsync(httpContext, "Google");
-        var authentication = await orchestrator.Object.AuthenticateAsync(new AuthenticationContext(), assertionResult.Assertion!, cancellationToken: CancellationToken.None);
+        var assertionResult = await service.CompleteExternalAuthenticationAsync(httpContext, "Google");
+        var authentication = assertionResult.Authentication!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -175,45 +175,101 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldReturnProviderMismatchForMismatchedExternalTicketProvider()
+    public async Task CompleteExternalAuthenticationShouldNotOrchestrateInvalidTicket()
+    {
+        var orchestrator = new Mock<IAuthenticationOrchestrator>(MockBehavior.Strict);
+        var options = new AshlarOAuthOptions();
+        options.AddOidcProvider("Google", _ => { });
+        var service = new AshlarExternalCredentialAuthenticationService(
+            CreateAllowingLimiter().Object,
+            new TestOptionsMonitor(options),
+            orchestrator.Object);
+
+        var result = await service.CompleteExternalAuthenticationAsync(
+            CreateHttpContext(new TestAuthenticationService(AuthenticateResult.NoResult())),
+            "Google");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.AuthenticationFailed));
+        orchestrator.VerifyNoOtherCalls();
+    }
+
+    [TestCase(MfaAuthenticationStatus.Failed, AshlarExternalAuthenticationStatus.AuthenticationFailed, false)]
+    [TestCase(MfaAuthenticationStatus.Succeeded, AshlarExternalAuthenticationStatus.Succeeded, true)]
+    [TestCase(MfaAuthenticationStatus.MfaRequired, AshlarExternalAuthenticationStatus.Succeeded, true)]
+    [TestCase(MfaAuthenticationStatus.HandshakeIncomplete, AshlarExternalAuthenticationStatus.AuthenticationFailed, false)]
+    [TestCase(MfaAuthenticationStatus.RateLimited, AshlarExternalAuthenticationStatus.RateLimited, false)]
+    [TestCase((MfaAuthenticationStatus)int.MaxValue, AshlarExternalAuthenticationStatus.AuthenticationFailed, false)]
+    public async Task CompleteExternalAuthenticationShouldMapEveryOrchestrationStatusDefensively(
+        MfaAuthenticationStatus authenticationStatus,
+        AshlarExternalAuthenticationStatus expectedStatus,
+        bool expectedSucceeded)
+    {
+        var orchestrator = new Mock<IAuthenticationOrchestrator>();
+        orchestrator.Setup(service => service.AuthenticateAsync(
+                It.IsAny<AuthenticationContext>(),
+                It.IsAny<IAuthenticationAssertion>(),
+                It.IsAny<MfaOrchestrationOptions?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaAuthenticationResult(authenticationStatus));
+        var options = new AshlarOAuthOptions();
+        options.AddOidcProvider("Google", _ => { });
+        var service = new AshlarExternalCredentialAuthenticationService(
+            CreateAllowingLimiter().Object,
+            new TestOptionsMonitor(options),
+            orchestrator.Object);
+
+        var result = await service.CompleteExternalAuthenticationAsync(
+            CreateHttpContextWithExternalTicket("Google", "Google", "subject"),
+            "Google");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(expectedStatus));
+            Assert.That(result.Succeeded, Is.EqualTo(expectedSucceeded));
+            Assert.That(result.Authentication?.Status, Is.EqualTo(authenticationStatus));
+        }
+    }
+
+    [Test]
+    public async Task CompleteExternalAuthenticationShouldReturnProviderMismatchForMismatchedExternalTicketProvider()
     {
         var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
         var httpContext = CreateHttpContextWithExternalTicket("Microsoft", "Microsoft", "subject");
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "Google");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.ProviderMismatch));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.ProviderMismatch));
             Assert.That(result.Succeeded, Is.False);
         }
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldReturnAuthenticationFailedForFailedTicket()
+    public async Task CompleteExternalAuthenticationShouldReturnAuthenticationFailedForFailedTicket()
     {
         var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
         var httpContext = CreateHttpContext(new TestAuthenticationService(AuthenticateResult.Fail("failed")));
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "Google");
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.AuthenticationFailed));
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.AuthenticationFailed));
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldReturnProviderMismatchWhenTicketPropertiesAreMissing()
+    public async Task CompleteExternalAuthenticationShouldReturnProviderMismatchWhenTicketPropertiesAreMissing()
     {
         var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
         var httpContext = CreateHttpContext(new TestAuthenticationService(
             AuthenticateResult.Success(new AuthenticationTicket(CreatePrincipal("subject"), "Ashlar.OAuth.External"))));
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "Google");
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.ProviderMismatch));
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.ProviderMismatch));
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldReturnInvalidPrincipalForMissingSubject()
+    public async Task CompleteExternalAuthenticationShouldReturnInvalidPrincipalForMissingSubject()
     {
         var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
         var httpContext = CreateHttpContext(new TestAuthenticationService(
@@ -222,24 +278,24 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
                 CreateProperties("Google", "Google"),
                 "Ashlar.OAuth.External"))));
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "Google");
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.InvalidPrincipal));
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.InvalidPrincipal));
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
+    public async Task CompleteExternalAuthenticationShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
     {
         var service = CreateServiceWithProvider(new AshlarOidcProviderOptions(" ", "Google", _ => { }));
         var httpContext = CreateHttpContextWithExternalTicket(" ", "Google", "subject");
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "Google");
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.InvalidPrincipal));
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.InvalidPrincipal));
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldReturnRateLimitedWhenMissingSubjectIsRateLimited()
+    public async Task CompleteExternalAuthenticationShouldReturnRateLimitedWhenMissingSubjectIsRateLimited()
     {
         var limiter = CreateBlockedLimiter();
         var service = CreateService(limiter.Object);
@@ -249,41 +305,41 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
                 CreateProperties("Google", "Google"),
                 "Ashlar.OAuth.External"))));
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "Google");
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.RateLimited));
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.RateLimited));
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldReturnRateLimitedWhenInvalidProviderNameIsRateLimited()
+    public async Task CompleteExternalAuthenticationShouldReturnRateLimitedWhenInvalidProviderNameIsRateLimited()
     {
         var limiter = CreateBlockedLimiter();
         var service = CreateServiceWithProvider(new AshlarOidcProviderOptions(" ", "Google", _ => { }), limiter.Object);
         var httpContext = CreateHttpContextWithExternalTicket(" ", "Google", "subject");
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "Google");
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.RateLimited));
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.RateLimited));
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldClearExternalTicketForUnsupportedProvider()
+    public async Task CompleteExternalAuthenticationShouldClearExternalTicketForUnsupportedProvider()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult());
         var httpContext = CreateHttpContext(authService);
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, " ");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, " ");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.UnsupportedProvider));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.UnsupportedProvider));
             Assert.That(authService.SignOutCount, Is.EqualTo(1));
         }
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldClearUnsupportedProviderTicketWhenRequestIsCanceled()
+    public async Task CompleteExternalAuthenticationShouldClearUnsupportedProviderTicketWhenRequestIsCanceled()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult());
@@ -291,17 +347,17 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, " ", cts.Token);
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, " ", cts.Token);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.UnsupportedProvider));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.UnsupportedProvider));
             Assert.That(authService.SignOutCount, Is.EqualTo(1));
         }
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldRateLimitUnsupportedProviderBeforeReturning()
+    public async Task CompleteExternalAuthenticationShouldRateLimitUnsupportedProviderBeforeReturning()
     {
         AuthenticationContext? observedContext = null;
         IAuthenticationAssertion? observedAssertion = null;
@@ -319,11 +375,11 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
         httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("127.0.0.1");
         httpContext.TraceIdentifier = "trace-unsupported";
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, " ");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, " ");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.UnsupportedProvider));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.UnsupportedProvider));
             Assert.That(observedContext?.IpAddress, Is.EqualTo("127.0.0.1"));
             Assert.That(observedContext?.CorrelationId, Is.EqualTo("trace-unsupported"));
             Assert.That(observedAssertion, Is.Not.InstanceOf<ICredentialKeyAuthenticationAssertion>());
@@ -335,7 +391,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldNormalizeUnsupportedProviderNameForRateLimitKey()
+    public async Task CompleteExternalAuthenticationShouldNormalizeUnsupportedProviderNameForRateLimitKey()
     {
         IAuthenticationAssertion? observedAssertion = null;
         var limiter = new Mock<IPrimaryAuthenticationRateLimiter>(MockBehavior.Strict);
@@ -346,11 +402,11 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult());
         var httpContext = CreateHttpContext(authService);
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, " Missing ");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, " Missing ");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.UnsupportedProvider));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.UnsupportedProvider));
             Assert.That(observedAssertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey((ProviderType)"EXTERNAL_UNSUPPORTED", "Missing")));
             Assert.That(authService.SignOutCount, Is.EqualTo(1));
         }
@@ -359,7 +415,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldReturnRateLimitedWhenUnsupportedProviderIsRateLimited()
+    public async Task CompleteExternalAuthenticationShouldReturnRateLimitedWhenUnsupportedProviderIsRateLimited()
     {
         var limiter = CreateBlockedLimiter();
         var events = new RecordingSecurityEventSink();
@@ -367,11 +423,11 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult());
         var httpContext = CreateHttpContext(authService);
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "Missing");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "Missing");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.RateLimited));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.RateLimited));
             Assert.That(authService.SignOutCount, Is.EqualTo(1));
             Assert.That(events.Events, Has.Count.EqualTo(1));
             Assert.That(events.Events[0].EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationRateLimited));
@@ -381,38 +437,39 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldAllowMissingSecurityEventSinkWhenRateLimited()
+    public async Task CompleteExternalAuthenticationShouldAllowMissingSecurityEventSinkWhenRateLimited()
     {
         var options = new AshlarOAuthOptions();
         options.AddGoogle();
         var service = new AshlarExternalCredentialAuthenticationService(
             CreateBlockedLimiter().Object,
-            new TestOptionsMonitor(options));
+            new TestOptionsMonitor(options),
+            Mock.Of<IAuthenticationOrchestrator>());
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult());
         var httpContext = CreateHttpContext(authService);
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "Missing");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "Missing");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.RateLimited));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.RateLimited));
             Assert.That(authService.SignOutCount, Is.EqualTo(1));
         }
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldReturnRateLimitedWhenProviderMismatchIsRateLimited()
+    public async Task CompleteExternalAuthenticationShouldReturnRateLimitedWhenProviderMismatchIsRateLimited()
     {
         var limiter = CreateBlockedLimiter();
         var events = new RecordingSecurityEventSink();
         var service = CreateService(limiter.Object, securityEventSink: events);
         var httpContext = CreateHttpContextWithExternalTicket("Microsoft", "Microsoft", "subject");
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, "Google");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.RateLimited));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.RateLimited));
             Assert.That(events.Events, Has.Count.EqualTo(1));
             Assert.That(events.Events[0].EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationRateLimited));
             Assert.That(events.Events[0].Provider, Is.EqualTo(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
@@ -420,51 +477,51 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldIgnoreCleanupFailureForUnsupportedProvider()
+    public async Task CompleteExternalAuthenticationShouldIgnoreCleanupFailureForUnsupportedProvider()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult(), signOutException: new InvalidOperationException("cleanup failed"));
         var httpContext = CreateHttpContext(authService);
 
-        var result = await service.CompleteExternalAssertionAsync(httpContext, " ");
+        var result = await service.CompleteExternalAuthenticationAsync(httpContext, " ");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.UnsupportedProvider));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.UnsupportedProvider));
             Assert.That(authService.SignOutCount, Is.EqualTo(1));
         }
     }
 
     [Test]
-    public void CompleteExternalAssertionShouldClearExternalTicketWhenAuthenticateThrows()
+    public void CompleteExternalAuthenticationShouldClearExternalTicketWhenAuthenticateThrows()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult(), new InvalidOperationException("auth failed"));
         var httpContext = CreateHttpContext(authService);
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteExternalAssertionAsync(httpContext, "Google"));
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteExternalAuthenticationAsync(httpContext, "Google"));
         Assert.That(authService.SignOutCount, Is.EqualTo(1));
     }
 
     [Test]
-    public async Task CompleteExternalAssertionShouldFailWhenClearingSuccessfulTicketThrows()
+    public async Task CompleteExternalAuthenticationShouldFailWhenClearingSuccessfulTicketThrows()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var authService = new TestAuthenticationService(
             AuthenticateResult.Success(new AuthenticationTicket(CreatePrincipal("subject"), CreateProperties("Google", "Google"), "Ashlar.OAuth.External")),
             signOutException: new InvalidOperationException("clear failed"));
 
-        var result = await service.CompleteExternalAssertionAsync(CreateHttpContext(authService), "Google");
+        var result = await service.CompleteExternalAuthenticationAsync(CreateHttpContext(authService), "Google");
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.AuthenticationFailed));
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAuthenticationStatus.AuthenticationFailed));
     }
 
     [Test]
-    public void CompleteExternalAssertionShouldRejectNullHttpContext()
+    public void CompleteExternalAuthenticationShouldRejectNullHttpContext()
     {
         var service = CreateService(new AuthenticationResponse(false));
 
-        Assert.ThrowsAsync<ArgumentNullException>(() => service.CompleteExternalAssertionAsync(null!, "Google"));
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.CompleteExternalAuthenticationAsync(null!, "Google"));
     }
 
     [Test]
@@ -472,16 +529,18 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     {
         var limiter = new Mock<IPrimaryAuthenticationRateLimiter>().Object;
         var options = new TestOptionsMonitor(new AshlarOAuthOptions());
+        var orchestrator = Mock.Of<IAuthenticationOrchestrator>();
         var events = new NullSecurityEventSink();
         var timeProvider = TimeProvider.System;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalCredentialAuthenticationService(null!, options, events, timeProvider));
-            Assert.Throws<ArgumentNullException>(() => new AshlarExternalCredentialAuthenticationService(limiter, null!, events, timeProvider));
-            Assert.DoesNotThrow(() => new AshlarExternalCredentialAuthenticationService(limiter, options, null, timeProvider));
-            Assert.DoesNotThrow(() => new AshlarExternalCredentialAuthenticationService(limiter, options, events, null));
-            Assert.DoesNotThrow(() => new AshlarExternalCredentialAuthenticationService(limiter, options));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalCredentialAuthenticationService(null!, options, orchestrator, events, timeProvider));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalCredentialAuthenticationService(limiter, null!, orchestrator, events, timeProvider));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalCredentialAuthenticationService(limiter, options, null!, events, timeProvider));
+            Assert.DoesNotThrow(() => new AshlarExternalCredentialAuthenticationService(limiter, options, orchestrator, null, timeProvider));
+            Assert.DoesNotThrow(() => new AshlarExternalCredentialAuthenticationService(limiter, options, orchestrator, events, null));
+            Assert.DoesNotThrow(() => new AshlarExternalCredentialAuthenticationService(limiter, options, orchestrator));
         }
     }
 
@@ -521,7 +580,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
         configureOptions?.Invoke(options);
 
         var monitor = new TestOptionsMonitor(options);
-        return new AshlarExternalCredentialAuthenticationService(limiter, monitor, securityEventSink ?? new NullSecurityEventSink(), TimeProvider.System);
+        return new AshlarExternalCredentialAuthenticationService(limiter, monitor, CreateOrchestrator(), securityEventSink ?? new NullSecurityEventSink(), TimeProvider.System);
     }
 
     private static AshlarExternalCredentialAuthenticationService CreateServiceWithProvider(AshlarOidcProviderOptions provider)
@@ -536,7 +595,19 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
             .GetField("_oidcProviders", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .GetValue(options)!;
         providers["Google"] = provider;
-        return new AshlarExternalCredentialAuthenticationService(limiter, new TestOptionsMonitor(options), new NullSecurityEventSink(), TimeProvider.System);
+        return new AshlarExternalCredentialAuthenticationService(limiter, new TestOptionsMonitor(options), CreateOrchestrator(), new NullSecurityEventSink(), TimeProvider.System);
+    }
+
+    private static IAuthenticationOrchestrator CreateOrchestrator()
+    {
+        var orchestrator = new Mock<IAuthenticationOrchestrator>();
+        orchestrator.Setup(service => service.AuthenticateAsync(
+                It.IsAny<AuthenticationContext>(),
+                It.IsAny<IAuthenticationAssertion>(),
+                It.IsAny<MfaOrchestrationOptions?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded));
+        return orchestrator.Object;
     }
 
     private static Mock<IPrimaryAuthenticationRateLimiter> CreateAllowingLimiter()

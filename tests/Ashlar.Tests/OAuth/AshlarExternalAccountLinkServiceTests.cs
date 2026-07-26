@@ -178,8 +178,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
-            Assert.That(result.Assertion?.ProviderKey, Does.StartWith("oidc-sha256:"));
-            Assert.That(observedRequest?.ProviderKey, Is.EqualTo(result.Assertion?.ProviderKey));
+            Assert.That(observedRequest?.ProviderKey, Does.StartWith("oidc-sha256:"));
             Assert.That(new AuthenticationProviderKey(observedRequest!.ProviderType, observedRequest.ProviderName), Is.EqualTo(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
             Assert.That(observedAudit?.ActorUserId, Is.EqualTo(userId));
         }
@@ -274,8 +273,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
-            Assert.That(result.Assertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey(ProviderType.OAuth, "GitHub")));
-            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("12345"));
+            Assert.That(observedRequest?.ProviderType, Is.EqualTo(ProviderType.OAuth));
+            Assert.That(observedRequest?.ProviderName, Is.EqualTo("GitHub"));
+            Assert.That(observedRequest?.ProviderKey, Is.EqualTo("12345"));
             Assert.That(observedRequest?.ProviderKey, Is.EqualTo("12345"));
             Assert.That(new AuthenticationProviderKey(observedRequest!.ProviderType, observedRequest.ProviderName), Is.EqualTo(new AuthenticationProviderKey(ProviderType.OAuth, "GitHub")));
         }
@@ -302,7 +302,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
-            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("stable-uid"));
+            Assert.That(observedRequest?.ProviderKey, Is.EqualTo("stable-uid"));
             Assert.That(new AuthenticationProviderKey(observedRequest!.ProviderType, observedRequest.ProviderName), Is.EqualTo(new AuthenticationProviderKey(ProviderType.OAuth, "CustomOAuth")));
             Assert.That(observedRequest.ProviderKey, Is.EqualTo("stable-uid"));
         }

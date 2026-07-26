@@ -928,15 +928,14 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             "Endpoints",
             "GitHubOAuthEndpoints.cs"));
 
-        var assertionIndex = source.IndexOf("CompleteExternalAssertionAsync", StringComparison.Ordinal);
-        var orchestratorIndex = source.IndexOf("orchestrator.AuthenticateAsync", StringComparison.Ordinal);
+        var authenticationIndex = source.IndexOf("CompleteExternalAuthenticationAsync", StringComparison.Ordinal);
         var signInIndex = source.IndexOf("signInManager.SignInAsync", StringComparison.Ordinal);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(assertionIndex, Is.GreaterThanOrEqualTo(0));
-            Assert.That(orchestratorIndex, Is.GreaterThan(assertionIndex));
-            Assert.That(signInIndex, Is.GreaterThan(orchestratorIndex));
+            Assert.That(authenticationIndex, Is.GreaterThanOrEqualTo(0));
+            Assert.That(signInIndex, Is.GreaterThan(authenticationIndex));
+            Assert.That(source, Does.Not.Contain("orchestrator.AuthenticateAsync"));
             Assert.That(source, Does.Contain("new AuthenticationProviderKey(ProviderType.OAuth, SampleGitHubOAuth.ProviderName)"));
             Assert.That(source, Does.Not.Contain("CompleteExternalCredentialAuthenticationAsync"));
         }

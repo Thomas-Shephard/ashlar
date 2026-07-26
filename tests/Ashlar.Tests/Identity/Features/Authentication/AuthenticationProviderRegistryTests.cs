@@ -1,4 +1,3 @@
-using Ashlar.Identity.Providers.External;
 using Moq;
 
 namespace Ashlar.Tests.Identity.Features.Authentication;
@@ -90,8 +89,8 @@ internal sealed class AuthenticationProviderRegistryTests
         var microsoft = CreateProvider(new AuthenticationProviderKey(ProviderType.Oidc, "Microsoft"));
         var registry = new AuthenticationProviderRegistry([google.Object, microsoft.Object]);
 
-        var googleFound = registry.TryGetProvider(new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>()), out var googleProvider);
-        var microsoftFound = registry.TryGetProvider(new ExternalIdentityAssertion(ProviderType.Oidc, "Microsoft", "sub", new Dictionary<string, string>()), out var microsoftProvider);
+        var googleFound = registry.TryGetProvider(ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>()), out var googleProvider);
+        var microsoftFound = registry.TryGetProvider(ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Microsoft", "sub", new Dictionary<string, string>()), out var microsoftProvider);
 
         using (Assert.EnterMultipleScope())
         {
@@ -107,7 +106,7 @@ internal sealed class AuthenticationProviderRegistryTests
     {
         var registry = new AuthenticationProviderRegistry([CreateProvider(new AuthenticationProviderKey(ProviderType.Oidc, "Google")).Object]);
 
-        var found = registry.TryGetProvider(new ExternalIdentityAssertion(ProviderType.Oidc, "Okta", "sub", new Dictionary<string, string>()), out _);
+        var found = registry.TryGetProvider(ExternalIdentityAssertionTestHelper.Create(ProviderType.Oidc, "Okta", "sub", new Dictionary<string, string>()), out _);
 
         Assert.That(found, Is.False);
     }

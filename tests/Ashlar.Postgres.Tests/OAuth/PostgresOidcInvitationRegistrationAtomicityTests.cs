@@ -137,7 +137,11 @@ internal sealed class PostgresOidcInvitationRegistrationAtomicityTests
         ], "oidc"));
     }
 
-    private static string CreateProviderKey(string subject) => OidcExternalIdentityAssertionMapper.Map("Google", CreatePrincipal(subject, "unused@example.com")).ProviderKey;
+    private static string CreateProviderKey(string subject)
+    {
+        var payload = System.Text.Json.JsonSerializer.Serialize(new { Issuer = "https://accounts.example", Subject = subject });
+        return string.Concat("oidc-sha256:", Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(payload))));
+    }
 
     private static AuthenticateResult CreateTicket(string subject, string email)
     {

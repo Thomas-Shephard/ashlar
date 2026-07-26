@@ -44,16 +44,10 @@ internal static class GoogleOidcEndpoints
         }
 
         var externalCredentialAuthentication = services.GetRequiredService<AshlarExternalCredentialAuthenticationService>();
-        var orchestrator = services.GetRequiredService<IAuthenticationOrchestrator>();
         var signInManager = services.GetRequiredService<IAshlarSignInManager>();
-        var result = await externalCredentialAuthentication.CompleteExternalAssertionAsync(httpContext, SampleGoogleOidc.ProviderName, cancellationToken);
-        if (result.Succeeded && result.Assertion != null)
+        var result = await externalCredentialAuthentication.CompleteExternalAuthenticationAsync(httpContext, SampleGoogleOidc.ProviderName, cancellationToken);
+        if (result.Succeeded && result.Authentication is { } mfaResult)
         {
-            var mfaResult = await orchestrator.AuthenticateAsync(
-                httpContext.ToAuthenticationContext(),
-                result.Assertion,
-                cancellationToken: cancellationToken);
-
             if (mfaResult.Status == MfaAuthenticationStatus.MfaRequired && mfaResult.HandshakeToken != null)
             {
                 return AppViews.RenderGoogleMfaCallback(mfaResult.HandshakeToken, mfaResult.RequiredFactors ?? []);
@@ -81,21 +75,21 @@ internal static class GoogleOidcEndpoints
             return Results.Redirect("/?signedInWith=google");
         }
 
-        if (result.Status == AshlarExternalAssertionStatus.AuthenticationFailed)
+        if (result.Status == AshlarExternalAuthenticationStatus.AuthenticationFailed)
         {
             return AppViews.RenderGoogleOidcResult(
                 GoogleSignInFailedTitle,
                 "Google sign-in was not completed. Try again, or use another sign-in method.");
         }
 
-        if (result.Status == AshlarExternalAssertionStatus.RateLimited)
+        if (result.Status == AshlarExternalAuthenticationStatus.RateLimited)
         {
             return AppViews.RenderGoogleOidcResult(
                 GoogleSignInFailedTitle,
                 "Too many Google sign-in attempts were made. Wait a few minutes and try again.");
         }
 
-        if (result.Status == AshlarExternalAssertionStatus.InvalidPrincipal)
+        if (result.Status == AshlarExternalAuthenticationStatus.InvalidPrincipal)
         {
             return AppViews.RenderGoogleOidcResult(
                 GoogleSignInFailedTitle,
