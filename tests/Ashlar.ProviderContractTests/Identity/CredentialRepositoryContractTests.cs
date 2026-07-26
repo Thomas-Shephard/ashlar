@@ -315,6 +315,21 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
     }
 
     [Test]
+    public async Task CredentialListingReturnsCompleteInventory()
+    {
+        await using var scope = CreateAsyncScope();
+        var users = GetUserRepository(scope.ServiceProvider);
+        var credentials = GetCredentialRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(users);
+        for (var i = 0; i < 101; i++)
+        {
+            await credentials.CreateCredentialAsync(CreateCredential(user.Id, ProviderType.Mfa, "factor", i.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        }
+
+        Assert.That(await credentials.ListCredentialsForUserAsync(user.Id), Has.Count.EqualTo(101));
+    }
+
+    [Test]
     public async Task UserAndCredentialWritesRollBackWhenProviderSupportsTransactions()
     {
         Guid userId;

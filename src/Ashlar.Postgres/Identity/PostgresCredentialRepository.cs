@@ -88,7 +88,7 @@ internal sealed class PostgresCredentialRepository(IPostgresConnectionProvider c
             sql += " AND revoked_at IS NULL AND status = @ActiveStatus";
         }
 
-        sql += " ORDER BY provider_type, provider_name, created_at DESC, id LIMIT 100";
+        sql += " ORDER BY provider_type, provider_name, created_at DESC, id";
 
         var parameters = new { UserId = userId, ActiveStatus = (int)CredentialStatus.Active };
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
