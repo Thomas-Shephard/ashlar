@@ -362,6 +362,34 @@ public static partial class AshlarServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>Records the authentication rate-limit provider and rejects a conflicting provider registration.</summary>
+    /// <param name="services">The service collection to configure.</param>
+    /// <param name="providerName">The provider name used in configuration diagnostics.</param>
+    /// <returns>The same service collection.</returns>
+    public static IServiceCollection AddAshlarAuthenticationRateLimitProviderMarker(
+        this IServiceCollection services,
+        string providerName)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(providerName);
+
+        var existing = services
+            .FirstOrDefault(descriptor => descriptor.ServiceType == typeof(AuthenticationRateLimitProviderRegistration))
+            ?.ImplementationInstance as AuthenticationRateLimitProviderRegistration;
+        if (existing != null && !string.Equals(existing.ProviderName, providerName, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Multiple authentication rate-limit providers are not supported. '{existing.ProviderName}' is already registered; cannot also register '{providerName}'.");
+        }
+
+        if (existing == null)
+        {
+            services.AddSingleton(new AuthenticationRateLimitProviderRegistration(providerName));
+        }
+
+        return services;
+    }
+
     /// <summary>Registers read-only rate-limit administration without exposing the provider repository through application DI.</summary>
     /// <param name="services">The service collection to configure.</param>
     /// <param name="repositoryFactory">Creates the scoped provider-internal repository used only inside the reader.</param>
@@ -382,6 +410,8 @@ public static partial class AshlarServiceCollectionExtensions
                 provider.GetService<TimeProvider>()));
         return services;
     }
+
+    private sealed record AuthenticationRateLimitProviderRegistration(string ProviderName);
 
     /// <summary>
     /// Registers a best-effort post-commit security event handler for Ashlar security event fan-out.

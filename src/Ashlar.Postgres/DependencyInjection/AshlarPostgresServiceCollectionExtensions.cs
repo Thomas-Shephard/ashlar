@@ -225,6 +225,7 @@ public static class AshlarPostgresServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        services.AddAshlarAuthenticationRateLimitProviderMarker("PostgreSQL");
         services.AddOptions<PostgresAuthenticationRateLimiterOptions>()
             .Validate(PostgresAuthenticationRateLimiter.ValidateOptions, "CleanupInterval must be greater than zero and MaxCleanupRows must be greater than zero.")
             .ValidateOnStart();
