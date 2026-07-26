@@ -16,8 +16,10 @@ internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, I
     private readonly ILogger<PostgresTransactionManager> _logger;
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
     private readonly List<Func<CancellationToken, Task>> _postCommitHooks = [];
+    private readonly AsyncLocal<object?> _ambientRoot = new();
     private NpgsqlConnection? _connection;
     private NpgsqlTransaction? _transaction;
+    private object? _activeRoot;
     private volatile bool _mustRollback;
 
     /// <summary>
@@ -51,6 +53,11 @@ internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, I
             // If there is an active transaction, use its connection.
             if (_connection != null)
             {
+                if (_transaction != null && !ReferenceEquals(_activeRoot, _ambientRoot.Value))
+                {
+                    throw new InvalidOperationException("The active transaction belongs to a different async flow.");
+                }
+
                 return new PostgresConnectionHandle(_connection, _transaction, shouldDispose: false);
             }
 
@@ -64,17 +71,34 @@ internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, I
         }
     }
 
-    public async Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+    public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+    {
+        var root = _ambientRoot.Value;
+        if (root is null || !ReferenceEquals(root, Volatile.Read(ref _activeRoot)))
+        {
+            _ambientRoot.Value = root = new object();
+        }
+
+        return BeginTransactionCoreAsync(root, cancellationToken);
+    }
+
+    private async Task<IAshlarTransaction> BeginTransactionCoreAsync(object root, CancellationToken cancellationToken)
     {
         await _connectionLock.WaitAsync(cancellationToken);
         try
         {
             if (_transaction != null)
             {
+                if (!ReferenceEquals(_activeRoot, root))
+                {
+                    throw new InvalidOperationException("A concurrent independent transaction root is already active in this transaction manager.");
+                }
+
                 // Join the existing transaction.
                 return new JointTransaction(this);
             }
 
+            _activeRoot = root;
             _connection ??= await _openConnectionAsync(cancellationToken);
             _transaction = await _connection.BeginTransactionAsync(cancellationToken);
             _mustRollback = false;
@@ -82,11 +106,15 @@ internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, I
         }
         catch
         {
-            if (_connection != null)
+            if (ReferenceEquals(_activeRoot, root))
             {
                 var conn = _connection;
                 _connection = null;
-                await conn.DisposeAsync();
+                _activeRoot = null;
+                if (conn != null)
+                {
+                    await conn.DisposeAsync();
+                }
             }
             throw;
         }
@@ -151,6 +179,7 @@ internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, I
 
             _transaction = null;
             _connection = null;
+            _activeRoot = null;
             _mustRollback = false;
             _postCommitHooks.Clear();
         }

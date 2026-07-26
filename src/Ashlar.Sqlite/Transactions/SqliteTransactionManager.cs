@@ -10,8 +10,10 @@ internal sealed partial class SqliteTransactionManager : IAshlarTransactionProvi
     private readonly ILogger<SqliteTransactionManager> _logger;
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
     private readonly List<Func<CancellationToken, Task>> _postCommitHooks = [];
+    private readonly AsyncLocal<object?> _ambientRoot = new();
     private SqliteConnection? _connection;
     private SqliteTransaction? _transaction;
+    private object? _activeRoot;
     private volatile bool _mustRollback;
     private bool _disposed;
 
@@ -35,6 +37,11 @@ internal sealed partial class SqliteTransactionManager : IAshlarTransactionProvi
         {
             if (_connection != null)
             {
+                if (_transaction != null && !ReferenceEquals(_activeRoot, _ambientRoot.Value))
+                {
+                    throw new InvalidOperationException("The active transaction belongs to a different async flow.");
+                }
+
                 return new SqliteConnectionHandle(_connection, _transaction, shouldDispose: false);
             }
 
@@ -47,16 +54,33 @@ internal sealed partial class SqliteTransactionManager : IAshlarTransactionProvi
         }
     }
 
-    public async Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+    public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+    {
+        var root = _ambientRoot.Value;
+        if (root is null || !ReferenceEquals(root, Volatile.Read(ref _activeRoot)))
+        {
+            _ambientRoot.Value = root = new object();
+        }
+
+        return BeginTransactionCoreAsync(root, cancellationToken);
+    }
+
+    private async Task<IAshlarTransaction> BeginTransactionCoreAsync(object root, CancellationToken cancellationToken)
     {
         await _connectionLock.WaitAsync(cancellationToken);
         try
         {
             if (_transaction != null)
             {
+                if (!ReferenceEquals(_activeRoot, root))
+                {
+                    throw new InvalidOperationException("A concurrent independent transaction root is already active in this transaction manager.");
+                }
+
                 return new TransactionParticipant(this, transaction: null);
             }
 
+            _activeRoot = root;
             _connection ??= await _openConnectionAsync(cancellationToken);
             _transaction = await BeginImmediateTransactionAsync(_connection, cancellationToken);
             _mustRollback = false;
@@ -64,11 +88,15 @@ internal sealed partial class SqliteTransactionManager : IAshlarTransactionProvi
         }
         catch
         {
-            if (_connection != null)
+            if (ReferenceEquals(_activeRoot, root))
             {
                 var connection = _connection;
                 _connection = null;
-                await connection.DisposeAsync();
+                _activeRoot = null;
+                if (connection != null)
+                {
+                    await connection.DisposeAsync();
+                }
             }
 
             throw;
@@ -124,6 +152,7 @@ internal sealed partial class SqliteTransactionManager : IAshlarTransactionProvi
 
             _transaction = null;
             _connection = null;
+            _activeRoot = null;
             _mustRollback = false;
             _postCommitHooks.Clear();
         }
