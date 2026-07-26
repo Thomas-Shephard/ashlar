@@ -37,6 +37,86 @@ internal sealed class RememberedMfaDeviceServiceTests
     }
 
     [Test]
+    public async Task CreateAfterSuccessfulMfaAsyncShouldConsumeProofOnceAndRejectExpiredProof()
+    {
+        var fixture = CreateFixture(generator: new SequenceTokenGenerator("selector", "verifier"));
+        var user = fixture.Users.AddUser();
+        var result = SuccessfulMfa(user);
+
+        var first = await fixture.Service.CreateAfterSuccessfulMfaAsync(result, new CreateRememberedMfaDeviceRequest());
+        var replay = await fixture.Service.CreateAfterSuccessfulMfaAsync(result, new CreateRememberedMfaDeviceRequest());
+        var expired = SuccessfulMfa(user);
+        fixture.Time.Advance(TimeSpan.FromMinutes(5));
+        var afterExpiry = await fixture.Service.CreateAfterSuccessfulMfaAsync(expired, new CreateRememberedMfaDeviceRequest());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Succeeded, Is.True);
+            Assert.That(replay.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(afterExpiry.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(fixture.Repository.Devices, Has.Count.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task InvalidRememberedDeviceRequestShouldNotConsumeMfaProof()
+    {
+        var fixture = CreateFixture(generator: new SequenceTokenGenerator("selector", "verifier"));
+        var user = fixture.Users.AddUser();
+        var result = SuccessfulMfa(user);
+
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            fixture.Service.CreateAfterSuccessfulMfaAsync(
+                result,
+                new CreateRememberedMfaDeviceRequest { Lifetime = TimeSpan.Zero }));
+        var valid = await fixture.Service.CreateAfterSuccessfulMfaAsync(
+            result,
+            new CreateRememberedMfaDeviceRequest());
+
+        Assert.That(valid.Succeeded, Is.True);
+    }
+
+    [Test]
+    public async Task PreCancelledRememberedDeviceCreationShouldNotConsumeProof()
+    {
+        var fixture = CreateFixture(generator: new SequenceTokenGenerator("selector", "verifier"));
+        var user = fixture.Users.AddUser();
+        var result = SuccessfulMfa(user);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        Assert.ThrowsAsync<OperationCanceledException>(() =>
+            fixture.Service.CreateAfterSuccessfulMfaAsync(
+                result, new CreateRememberedMfaDeviceRequest(), cancellation.Token));
+        var created = await fixture.Service.CreateAfterSuccessfulMfaAsync(
+            result, new CreateRememberedMfaDeviceRequest());
+
+        Assert.That(created.Succeeded, Is.True);
+    }
+
+    [Test]
+    public async Task CancellationAfterRememberedDeviceProofConsumptionShouldRemainTerminal()
+    {
+        var fixture = CreateFixture(generator: new SequenceTokenGenerator("selector", "verifier"));
+        var user = fixture.Users.AddUser();
+        var result = SuccessfulMfa(user);
+        fixture.Repository.CreateException = new OperationCanceledException();
+
+        Assert.ThrowsAsync<OperationCanceledException>(() =>
+            fixture.Service.CreateAfterSuccessfulMfaAsync(
+                result, new CreateRememberedMfaDeviceRequest()));
+        fixture.Repository.CreateException = null;
+        var replay = await fixture.Service.CreateAfterSuccessfulMfaAsync(
+            result, new CreateRememberedMfaDeviceRequest());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replay.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(fixture.Repository.CreateAttempts, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task ValidateAsyncAcceptsActiveOwnedDeviceAndUpdatesLastUsed()
     {
         var fixture = CreateFixture(generator: new SequenceTokenGenerator("selector", "verifier"));
@@ -378,7 +458,9 @@ internal sealed class RememberedMfaDeviceServiceTests
             Assert.That(fixture.Events.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.RememberedMfaDeviceLimitExceededValue));
             Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => fixture.Service.CreateAfterSuccessfulMfaAsync(SuccessfulMfa(user), new CreateRememberedMfaDeviceRequest { Lifetime = TimeSpan.FromDays(366) }));
             Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => fixture.Service.CreateAfterSuccessfulMfaAsync(SuccessfulMfa(user), new CreateRememberedMfaDeviceRequest { Lifetime = TimeSpan.MaxValue }));
-            Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => overflowFixture.Service.CreateAfterSuccessfulMfaAsync(SuccessfulMfa(overflowUser), new CreateRememberedMfaDeviceRequest { Lifetime = TimeSpan.FromDays(2) }));
+            Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => overflowFixture.Service.CreateAfterSuccessfulMfaAsync(
+                AshlarFreshMfa(overflowUser, issuedAt: overflowFixture.Time.GetUtcNow()),
+                new CreateRememberedMfaDeviceRequest { Lifetime = TimeSpan.FromDays(2) }));
         }
     }
 
@@ -414,7 +496,7 @@ internal sealed class RememberedMfaDeviceServiceTests
             new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, User: user, FreshMfaSatisfied: true),
             new CreateRememberedMfaDeviceRequest());
         var failed = await fixture.Service.CreateAfterSuccessfulMfaAsync(
-            AshlarFreshMfa(user) with { Status = MfaAuthenticationStatus.Failed },
+            MfaWithRememberedDeviceProof(user, MfaAuthenticationStatus.Failed, true),
             new CreateRememberedMfaDeviceRequest());
         var notFresh = await fixture.Service.CreateAfterSuccessfulMfaAsync(
             new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, User: user),
@@ -423,19 +505,15 @@ internal sealed class RememberedMfaDeviceServiceTests
             new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, FreshMfaSatisfied: true),
             new CreateRememberedMfaDeviceRequest());
         var proofWithoutFreshSignal = await fixture.Service.CreateAfterSuccessfulMfaAsync(
-            AshlarFreshMfa(user) with { FreshMfaSatisfied = false },
+            MfaWithRememberedDeviceProof(user, MfaAuthenticationStatus.Succeeded, false),
             new CreateRememberedMfaDeviceRequest());
         var proofForAnotherUser = await fixture.Service.CreateAfterSuccessfulMfaAsync(
-            AshlarFreshMfa(user) with
-            {
-                RememberedDeviceCreationProof = new RememberedMfaDeviceCreationProof(Guid.NewGuid(), null, Guid.NewGuid())
-            },
+            MfaWithRememberedDeviceProof(user, MfaAuthenticationStatus.Succeeded, true,
+                RememberedMfaDeviceCreationProof.Create(Guid.NewGuid(), null, Guid.NewGuid(), Now)),
             new CreateRememberedMfaDeviceRequest());
         var proofWithoutCeremony = await fixture.Service.CreateAfterSuccessfulMfaAsync(
-            AshlarFreshMfa(user) with
-            {
-                RememberedDeviceCreationProof = new RememberedMfaDeviceCreationProof(user.Id, null, Guid.Empty)
-            },
+            MfaWithRememberedDeviceProof(user, MfaAuthenticationStatus.Succeeded, true,
+                RememberedMfaDeviceCreationProof.Create(user.Id, null, Guid.Empty, Now)),
             new CreateRememberedMfaDeviceRequest());
 
         using (Assert.EnterMultipleScope())
@@ -640,11 +718,24 @@ internal sealed class RememberedMfaDeviceServiceTests
         return AshlarFreshMfa(user, (user as User)?.TenantId);
     }
 
-    private static MfaAuthenticationResult AshlarFreshMfa(IUser user, Guid? tenantId = null)
+    private static MfaAuthenticationResult AshlarFreshMfa(
+        IUser user,
+        Guid? tenantId = null,
+        DateTimeOffset? issuedAt = null)
     {
-        return new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, User: user, FreshMfaSatisfied: true)
+        return MfaWithRememberedDeviceProof(user, MfaAuthenticationStatus.Succeeded, true,
+            RememberedMfaDeviceCreationProof.Create(user.Id, tenantId, Guid.NewGuid(), issuedAt ?? Now));
+    }
+
+    private static MfaAuthenticationResult MfaWithRememberedDeviceProof(
+        IUser user,
+        MfaAuthenticationStatus status,
+        bool freshMfaSatisfied,
+        RememberedMfaDeviceCreationProof? proof = null)
+    {
+        return new MfaAuthenticationResult(status, User: user, FreshMfaSatisfied: freshMfaSatisfied)
         {
-            RememberedDeviceCreationProof = new RememberedMfaDeviceCreationProof(user.Id, tenantId, Guid.NewGuid())
+            RememberedDeviceCreationProof = proof ?? RememberedMfaDeviceCreationProof.Create(user.Id, null, Guid.NewGuid(), Now)
         };
     }
 
@@ -712,9 +803,13 @@ internal sealed class RememberedMfaDeviceServiceTests
     {
         public List<RememberedMfaDevice> Devices { get; } = [];
         public bool FailLastUsedUpdate { get; set; }
+        public Exception? CreateException { get; set; }
+        public int CreateAttempts { get; private set; }
 
         public Task CreateAsync(RememberedMfaDevice device, CancellationToken cancellationToken = default)
         {
+            CreateAttempts++;
+            if (CreateException != null) throw CreateException;
             Devices.Add(device);
             return Task.CompletedTask;
         }

@@ -34,6 +34,15 @@ public sealed record RevokeCurrentAuthenticationSessionRequest(
     AuditContext Audit,
     string? Reason = null);
 
+/// <summary>Capability-bound request for revoking previously validated authentication state.</summary>
+/// <param name="Session">The Ashlar-validated session capability.</param>
+/// <param name="Audit">Required audit context.</param>
+/// <param name="Reason">Optional reason.</param>
+public sealed record RevokeValidatedAuthenticationSessionRequest(
+    ValidatedAuthenticationSession Session,
+    AuditContext Audit,
+    string? Reason = null);
+
 /// <summary>Capability-bound request for rolling back newly issued authentication state.</summary>
 /// <param name="Session">The session returned by Ashlar session issuance.</param><param name="Audit">Required audit context.</param><param name="Reason">Optional reason.</param>
 public sealed record RevokeIssuedAuthenticationSessionRequest(

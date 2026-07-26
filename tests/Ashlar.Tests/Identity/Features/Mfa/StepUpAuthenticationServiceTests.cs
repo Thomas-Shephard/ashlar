@@ -323,15 +323,15 @@ internal sealed class StepUpAuthenticationServiceTests
         var missingProof = new AuthenticationResponse(true, new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" }, AuthenticationStatus.Success, null);
         var missingUser = new AuthenticationResponse(true, null, AuthenticationStatus.Success, null)
         {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _now)
         };
         var emptyUserId = new AuthenticationResponse(true, new User { Id = Guid.Empty, DisplayEmail = "user@example.com" }, AuthenticationStatus.Success, null)
         {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _now)
         };
         var failed = new AuthenticationResponse(false, new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" }, AuthenticationStatus.Failed, null)
         {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _now)
         };
 
         var missingProofResult = await service.MarkVerifiedAsync(missingProof, request);
@@ -376,6 +376,32 @@ internal sealed class StepUpAuthenticationServiceTests
             Assert.That(capturedResult?.User?.Id, Is.EqualTo(userId));
             Assert.That(capturedResult?.FreshMfaSatisfied, Is.True);
         }
+    }
+
+    [Test]
+    public async Task MarkVerifiedAsyncShouldRejectResponseWhoseUserIdentityChanged()
+    {
+        var user = new MutableUser { Id = Guid.NewGuid() };
+        var response = new AuthenticationResponse(true, user, AuthenticationStatus.Success, null)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _now)
+        };
+        user.Id = Guid.NewGuid();
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        var service = new StepUpAuthenticationService(sessionService.Object, new FakeTimeProvider(_now));
+
+        var result = await service.MarkVerifiedAsync(response, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = Guid.NewGuid(),
+            VerifiedProvider = TotpProvider(),
+            VerifiedFactor = "totp"
+        });
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+        sessionService.Verify(
+            candidate => candidate.MarkStepUpVerifiedAsync(
+                It.IsAny<MfaAuthenticationResult>(), It.IsAny<MarkSessionStepUpVerifiedRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Test]
@@ -511,19 +537,28 @@ internal sealed class StepUpAuthenticationServiceTests
         return new AuthenticationProviderKey(ProviderType.Mfa, "totp");
     }
 
-    private static MfaAuthenticationResult CreateStepUpResult(Guid userId)
+    private MfaAuthenticationResult CreateStepUpResult(Guid userId)
     {
         return new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, new User { Id = userId, DisplayEmail = "user@example.com" }, FreshMfaSatisfied: true)
         {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(userId, Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _now)
         };
     }
 
-    private static AuthenticationResponse CreateStepUpResponse(Guid userId)
+    private AuthenticationResponse CreateStepUpResponse(Guid userId)
     {
         return new AuthenticationResponse(true, new User { Id = userId, DisplayEmail = "user@example.com" }, AuthenticationStatus.Success, null)
         {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(userId, Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _now)
         };
+    }
+
+    private sealed class MutableUser : IUser
+    {
+        public Guid Id { get; set; }
+        public string DisplayEmail => "user@example.com";
+        public string? Name => null;
+        public UserAccountState AccountState => UserAccountState.Active;
+        public DateTimeOffset? EmailVerifiedAt => null;
     }
 }

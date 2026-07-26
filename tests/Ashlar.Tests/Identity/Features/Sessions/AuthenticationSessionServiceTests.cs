@@ -87,15 +87,15 @@ internal sealed class AuthenticationSessionServiceTests
         var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
         var failed = new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, user)
         {
-            SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(user.Id, null, _timeProvider.GetUtcNow())
         };
         var missingUser = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, null)
         {
-            SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(Guid.Empty, null, _timeProvider.GetUtcNow())
         };
         var emptyUserId = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, new User { Id = Guid.Empty, DisplayEmail = "user@example.com" })
         {
-            SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(Guid.Empty, null, _timeProvider.GetUtcNow())
         };
 
         Assert.ThrowsAsync<AshlarOperationException>(() => _service.CreateSessionAsync(failed, new CreateAuthenticationSessionRequest()));
@@ -110,12 +110,561 @@ internal sealed class AuthenticationSessionServiceTests
         var userId = Guid.NewGuid();
         var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, new User { Id = userId, DisplayEmail = "user@example.com" })
         {
-            SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(userId, null, _timeProvider.GetUtcNow())
         };
 
         var session = await _service.CreateSessionAsync(result, new CreateAuthenticationSessionRequest());
 
         Assert.That(session.Session.UserId, Is.EqualTo(userId));
+    }
+
+    [Test]
+    public async Task CreateSessionAsyncShouldNotifyPersistedProofOwner()
+    {
+        var userId = Guid.NewGuid();
+        var notificationService = new Mock<ISecurityNotificationService>();
+        _userRepositoryMock
+            .Setup(repository => repository.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "persisted@example.com" });
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            _composition.Transactions,
+            new AuthenticationSessionServiceDependencies(
+                TimeProvider: _timeProvider,
+                UserRepository: _userRepositoryMock.Object,
+                SecurityEventSink: _composition.Events,
+                NotificationService: notificationService.Object));
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            new User { Id = userId, DisplayEmail = "presented@example.com" })
+        {
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(
+                userId, null, _timeProvider.GetUtcNow())
+        };
+
+        await service.CreateSessionAsync(result, new CreateAuthenticationSessionRequest());
+
+        notificationService.Verify(notification => notification.NotifyAsync(
+            It.Is<SecurityNotification>(message => message.RecipientEmail == "persisted@example.com"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public void CreateSessionAsyncShouldRejectUserWhoseIdentityChangedAfterProofIssuance()
+    {
+        var user = new MutableUser { Id = Guid.NewGuid() };
+        var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user)
+        {
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(
+                user.Id, null, _timeProvider.GetUtcNow())
+        };
+        user.Id = Guid.NewGuid();
+
+        Assert.ThrowsAsync<AshlarOperationException>(() =>
+            _service.CreateSessionAsync(result, new CreateAuthenticationSessionRequest()));
+        _repositoryMock.Verify(
+            repository => repository.CreateSessionAsync(It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
+    public void AuthenticationProofsShouldKeepFactoryBoundUser()
+    {
+        var firstUser = new User { Id = Guid.NewGuid(), DisplayEmail = "first@example.com" };
+        var secondUser = new User { Id = Guid.NewGuid(), DisplayEmail = "second@example.com" };
+        var sessionProof = AuthenticationSessionIssuanceProof.CreatePrimary(
+            firstUser.Id, null, _timeProvider.GetUtcNow());
+        var stepUpProof = StepUpSessionMarkingProof.Create(firstUser.Id, Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _timeProvider.GetUtcNow());
+        _ = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, firstUser)
+        {
+            SessionIssuanceProof = sessionProof,
+            StepUpSessionMarkingProof = stepUpProof
+        };
+
+        _ = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, secondUser)
+        {
+            SessionIssuanceProof = sessionProof,
+            StepUpSessionMarkingProof = stepUpProof
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sessionProof.UserId, Is.EqualTo(firstUser.Id));
+            Assert.That(stepUpProof.UserId, Is.EqualTo(firstUser.Id));
+        }
+    }
+
+    private sealed class MutableUser : IUser
+    {
+        public Guid Id { get; set; }
+        public string DisplayEmail => "user@example.com";
+        public string? Name => null;
+        public UserAccountState AccountState => UserAccountState.Active;
+        public DateTimeOffset? EmailVerifiedAt => null;
+    }
+
+    private sealed class SequencedUser(Guid firstId, Guid laterId) : IUser
+    {
+        private int _idReads;
+
+        public Guid Id => Interlocked.Increment(ref _idReads) == 1 ? firstId : laterId;
+        public string DisplayEmail => "user@example.com";
+        public string? Name => null;
+        public UserAccountState AccountState => UserAccountState.Active;
+        public DateTimeOffset? EmailVerifiedAt => null;
+    }
+
+    [Test]
+    public async Task CreateSessionAsyncShouldPersistProofSubjectWhenUserIdentityChangesAfterValidation()
+    {
+        var proofUserId = Guid.NewGuid();
+        var laterUserId = Guid.NewGuid();
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            new SequencedUser(proofUserId, laterUserId))
+        {
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(
+                proofUserId, null, _timeProvider.GetUtcNow())
+        };
+        AuthenticationSession? storedSession = null;
+        _repositoryMock
+            .Setup(repository => repository.CreateSessionAsync(It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()))
+            .Callback<AuthenticationSession, CancellationToken>((session, _) => storedSession = session)
+            .Returns(Task.CompletedTask);
+
+        await _service.CreateSessionAsync(result, new CreateAuthenticationSessionRequest());
+
+        Assert.That(storedSession?.UserId, Is.EqualTo(proofUserId));
+    }
+
+    [Test]
+    public async Task CreateSessionForAuthenticatedUserAsyncShouldAcceptGlobalNonTenantUser()
+    {
+        var userId = Guid.NewGuid();
+        _userRepositoryMock
+            .Setup(repository => repository.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MutableUser { Id = userId });
+
+        var created = await _service.CreateSessionForAuthenticatedUserAsync(
+            userId, new CreateAuthenticationSessionRequest());
+
+        Assert.That(created.Session.UserId, Is.EqualTo(userId));
+    }
+
+    [Test]
+    public async Task CreateSessionAsyncShouldNotConsumeProofForInvalidSessionRequest()
+    {
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            user)
+        {
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(
+                user.Id, null, _timeProvider.GetUtcNow())
+        };
+
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            _service.CreateSessionAsync(result, new CreateAuthenticationSessionRequest(Lifetime: TimeSpan.Zero)));
+        var created = await _service.CreateSessionAsync(result, new CreateAuthenticationSessionRequest());
+
+        Assert.That(created.Session.UserId, Is.EqualTo(result.User!.Id));
+    }
+
+    [Test]
+    public async Task SessionExpiryOverflowShouldNotConsumeProof()
+    {
+        var issuedAt = _timeProvider.GetUtcNow();
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            user)
+        {
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(
+                user.Id, null, issuedAt)
+        };
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            _service.CreateSessionAsync(
+                result,
+                new CreateAuthenticationSessionRequest(Lifetime: TimeSpan.MaxValue)));
+        var created = await _service.CreateSessionAsync(
+            result,
+            new CreateAuthenticationSessionRequest());
+
+        Assert.That(created.Session.UserId, Is.EqualTo(result.User!.Id));
+    }
+
+    [Test]
+    public void RevokeValidatedSessionAsyncShouldRejectMismatchedAuditActor()
+    {
+        var userId = Guid.NewGuid();
+        var session = new AuthenticationSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            TokenHash = "hash",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            ExpiresAt = _timeProvider.GetUtcNow().AddHours(1)
+        };
+        var validated = new ValidatedAuthenticationSession(session);
+
+        Assert.ThrowsAsync<AshlarOperationException>(() => _service.RevokeValidatedSessionAsync(
+            new RevokeValidatedAuthenticationSessionRequest(validated, new AuditContext(Guid.NewGuid()))));
+        _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
+            It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task RevokeValidatedSessionAsyncShouldAcceptAbsentOrMatchingAuditActor()
+    {
+        var userId = Guid.NewGuid();
+        var validated = new ValidatedAuthenticationSession(new AuthenticationSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            TokenHash = "hash",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            ExpiresAt = _timeProvider.GetUtcNow().AddHours(1)
+        });
+
+        await _service.RevokeValidatedSessionAsync(
+            new RevokeValidatedAuthenticationSessionRequest(validated, new AuditContext()));
+        await _service.RevokeValidatedSessionAsync(
+            new RevokeValidatedAuthenticationSessionRequest(validated, new AuditContext(userId)));
+
+        _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(
+            validated.Id, userId, It.IsAny<DateTimeOffset>(), null, TenantContext.Global, false,
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task CreateSessionAsyncShouldConsumeAuthenticationResultOnce(bool freshMfaSatisfied)
+    {
+        var issuedAt = _timeProvider.GetUtcNow();
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            user,
+            FreshMfaSatisfied: freshMfaSatisfied)
+        {
+            SessionIssuanceProof = freshMfaSatisfied
+                ? AuthenticationSessionIssuanceProof.CreateLoginMfa(user.Id, AuthenticationProviderKey.Local, AuthenticationProviderKey.Passkey, "passkey", issuedAt)
+                : AuthenticationSessionIssuanceProof.CreatePrimary(user.Id, null, issuedAt)
+        };
+        AuthenticationSession? storedSession = null;
+        _repositoryMock
+            .Setup(repository => repository.CreateSessionAsync(It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()))
+            .Callback<AuthenticationSession, CancellationToken>((session, _) => storedSession = session)
+            .Returns(Task.CompletedTask);
+
+        var request = new CreateAuthenticationSessionRequest(
+            PrimaryProvider: freshMfaSatisfied ? AuthenticationProviderKey.Local : null);
+        var first = await _service.CreateSessionAsync(result, request);
+        var replay = Assert.ThrowsAsync<AshlarOperationException>(
+            () => _service.CreateSessionAsync(result, request));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Session.AuthenticatedAt, Is.EqualTo(issuedAt));
+            Assert.That(storedSession?.AdditionalVerificationAt, Is.EqualTo(freshMfaSatisfied ? issuedAt : null));
+            Assert.That(storedSession?.AdditionalVerificationProvider, Is.EqualTo(freshMfaSatisfied ? AuthenticationProviderKey.Passkey : null));
+            Assert.That(storedSession?.AdditionalVerificationFactor, Is.EqualTo(freshMfaSatisfied ? "passkey" : null));
+            Assert.That(replay!.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            _repositoryMock.Verify(r => r.CreateSessionAsync(It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task PreCancelledSessionIssuanceShouldNotConsumeProof(bool loginTimeMfa)
+    {
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
+        var issuedAt = _timeProvider.GetUtcNow();
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            user,
+            FreshMfaSatisfied: loginTimeMfa)
+        {
+            SessionIssuanceProof = loginTimeMfa
+                ? AuthenticationSessionIssuanceProof.CreateLoginMfa(
+                    user.Id, null, AuthenticationProviderKey.Passkey, "passkey", issuedAt)
+                : AuthenticationSessionIssuanceProof.CreatePrimary(user.Id, null, issuedAt)
+        };
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        Assert.ThrowsAsync<OperationCanceledException>(() => _service.CreateSessionAsync(
+            result, new CreateAuthenticationSessionRequest(), cancellation.Token));
+        var created = await _service.CreateSessionAsync(result, new CreateAuthenticationSessionRequest());
+
+        Assert.That(created.Session.UserId, Is.EqualTo(user.Id));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task CancellationAfterSessionProofConsumptionShouldRemainTerminal(bool loginTimeMfa)
+    {
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
+        var issuedAt = _timeProvider.GetUtcNow();
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            user,
+            FreshMfaSatisfied: loginTimeMfa)
+        {
+            SessionIssuanceProof = loginTimeMfa
+                ? AuthenticationSessionIssuanceProof.CreateLoginMfa(
+                    user.Id, null, AuthenticationProviderKey.Passkey, "passkey", issuedAt)
+                : AuthenticationSessionIssuanceProof.CreatePrimary(user.Id, null, issuedAt)
+        };
+        _repositoryMock
+            .Setup(repository => repository.CreateSessionAsync(
+                It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException());
+
+        Assert.ThrowsAsync<OperationCanceledException>(() =>
+            _service.CreateSessionAsync(result, new CreateAuthenticationSessionRequest()));
+        _repositoryMock
+            .Setup(repository => repository.CreateSessionAsync(
+                It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var replay = Assert.ThrowsAsync<AshlarOperationException>(() =>
+            _service.CreateSessionAsync(result, new CreateAuthenticationSessionRequest()));
+
+        Assert.That(replay!.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+        _repositoryMock.Verify(repository => repository.CreateSessionAsync(
+            It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task CreateSessionAsyncShouldRejectPrimaryProviderSubstitutionWithoutConsumingProof()
+    {
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
+        var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user)
+        {
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(
+                user.Id, AuthenticationProviderKey.Local, _timeProvider.GetUtcNow())
+        };
+
+        Assert.ThrowsAsync<AshlarOperationException>(() => _service.CreateSessionAsync(
+            result, new CreateAuthenticationSessionRequest(PrimaryProvider: AuthenticationProviderKey.Passkey)));
+        var created = await _service.CreateSessionAsync(
+            result, new CreateAuthenticationSessionRequest(PrimaryProvider: AuthenticationProviderKey.Local));
+
+        Assert.That(created.Session.PrimaryProvider, Is.EqualTo(AuthenticationProviderKey.Local));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task CreateSessionAsyncShouldRejectSuppliedPrimaryProviderWhenProofHasNoneWithoutConsumingProof(
+        bool loginTimeMfa)
+    {
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
+        var issuedAt = _timeProvider.GetUtcNow();
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            user,
+            FreshMfaSatisfied: loginTimeMfa)
+        {
+            SessionIssuanceProof = loginTimeMfa
+                ? AuthenticationSessionIssuanceProof.CreateLoginMfa(
+                    user.Id, null, AuthenticationProviderKey.Passkey, "passkey", issuedAt)
+                : AuthenticationSessionIssuanceProof.CreatePrimary(user.Id, null, issuedAt)
+        };
+
+        Assert.ThrowsAsync<AshlarOperationException>(() => _service.CreateSessionAsync(
+            result, new CreateAuthenticationSessionRequest(PrimaryProvider: AuthenticationProviderKey.Local)));
+        var created = await _service.CreateSessionAsync(result, new CreateAuthenticationSessionRequest());
+
+        Assert.That(created.Session.PrimaryProvider, Is.Null);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task CreateSessionAsyncShouldUseProofPrimaryProviderWhenRequestOmitsIt(bool loginTimeMfa)
+    {
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
+        var issuedAt = _timeProvider.GetUtcNow();
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            user,
+            FreshMfaSatisfied: loginTimeMfa)
+        {
+            SessionIssuanceProof = loginTimeMfa
+                ? AuthenticationSessionIssuanceProof.CreateLoginMfa(
+                    user.Id, AuthenticationProviderKey.Local, AuthenticationProviderKey.Passkey, "passkey", issuedAt)
+                : AuthenticationSessionIssuanceProof.CreatePrimary(
+                    user.Id, AuthenticationProviderKey.Local, issuedAt)
+        };
+
+        var created = await _service.CreateSessionAsync(result, new CreateAuthenticationSessionRequest());
+
+        Assert.That(created.Session.PrimaryProvider, Is.EqualTo(AuthenticationProviderKey.Local));
+    }
+
+    [Test]
+    public void CreateSessionAsyncShouldRejectExpiredOrWrongAudienceProofs()
+    {
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
+        var issuedAt = _timeProvider.GetUtcNow();
+        var expired = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user)
+        {
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(Guid.NewGuid(), null, issuedAt)
+        };
+        var wrongAudience = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user, FreshMfaSatisfied: true)
+        {
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(Guid.NewGuid(), null, issuedAt)
+        };
+        var missingMfaState = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user)
+        {
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreateLoginMfa(Guid.NewGuid(), AuthenticationProviderKey.Local, AuthenticationProviderKey.Passkey, "passkey", issuedAt),
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", issuedAt)
+        };
+        var missingStepUpProof = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user, FreshMfaSatisfied: true)
+        {
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreateLoginMfa(Guid.NewGuid(), AuthenticationProviderKey.Local, AuthenticationProviderKey.Passkey, "passkey", issuedAt)
+        };
+        var mixedPrimaryState = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user)
+        {
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(Guid.NewGuid(), null, issuedAt),
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", issuedAt)
+        };
+        _timeProvider.Advance(TimeSpan.FromMinutes(5));
+
+        Assert.ThrowsAsync<AshlarOperationException>(() => _service.CreateSessionAsync(expired, new CreateAuthenticationSessionRequest()));
+        Assert.ThrowsAsync<AshlarOperationException>(() => _service.CreateSessionAsync(wrongAudience, new CreateAuthenticationSessionRequest()));
+        Assert.ThrowsAsync<AshlarOperationException>(() => _service.CreateSessionAsync(missingMfaState, new CreateAuthenticationSessionRequest()));
+        Assert.ThrowsAsync<AshlarOperationException>(() => _service.CreateSessionAsync(missingStepUpProof, new CreateAuthenticationSessionRequest()));
+        Assert.ThrowsAsync<AshlarOperationException>(() => _service.CreateSessionAsync(mixedPrimaryState, new CreateAuthenticationSessionRequest()));
+        _repositoryMock.Verify(r => r.CreateSessionAsync(It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public void CapabilityProofsShouldFailClosedForAllInvalidStates()
+    {
+        var now = _timeProvider.GetUtcNow();
+        var sessionId = Guid.NewGuid();
+        var primary = AuthenticationSessionIssuanceProof.CreatePrimary(Guid.NewGuid(), null, now);
+        var futurePrimary = AuthenticationSessionIssuanceProof.CreatePrimary(Guid.NewGuid(), null, now.AddMinutes(1));
+        var stepUp = StepUpSessionMarkingProof.Create(Guid.NewGuid(), sessionId, AuthenticationProviderKey.Passkey, "passkey", now);
+        var futureStepUp = StepUpSessionMarkingProof.Create(Guid.NewGuid(), sessionId, AuthenticationProviderKey.Passkey, "passkey", now.AddMinutes(1));
+        var expiredStepUp = StepUpSessionMarkingProof.Create(Guid.NewGuid(), sessionId, AuthenticationProviderKey.Passkey, "passkey", now.AddMinutes(-5));
+        var wrongTargetStepUp = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", now);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(futurePrimary.TryConsume(now), Is.False);
+            Assert.That(primary.TryConsume(now), Is.True);
+            Assert.That(primary.TryConsume(now), Is.False);
+            Assert.That(futureStepUp.TryConsume(sessionId, now), Is.False);
+            Assert.That(expiredStepUp.TryConsume(sessionId, now), Is.False);
+            Assert.That(wrongTargetStepUp.TryConsume(sessionId, now), Is.False);
+            Assert.That(stepUp.TryConsume(Guid.NewGuid(), now), Is.False);
+            Assert.That(stepUp.TryConsume(sessionId, now), Is.True);
+            Assert.That(stepUp.TryConsume(sessionId, now), Is.False);
+        }
+    }
+
+    [Test]
+    public void CapabilityProofCreationNearMaximumTimeShouldNotOverflow()
+    {
+        var issuedAt = DateTimeOffset.MaxValue.AddMinutes(-1);
+        var sessionId = Guid.NewGuid();
+
+        var session = AuthenticationSessionIssuanceProof.CreatePrimary(
+            Guid.NewGuid(), null, issuedAt);
+        var stepUp = StepUpSessionMarkingProof.Create(Guid.NewGuid(), sessionId, AuthenticationProviderKey.Passkey, "passkey", issuedAt);
+        var remembered = RememberedMfaDeviceCreationProof.Create(
+            Guid.NewGuid(), null, Guid.NewGuid(), issuedAt);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(session.TryConsume(issuedAt), Is.True);
+            Assert.That(stepUp.TryConsume(sessionId, issuedAt), Is.True);
+            Assert.That(remembered.TryConsume(issuedAt), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task CapabilityProofsShouldAllowOnlyOneConcurrentConsumer()
+    {
+        var now = _timeProvider.GetUtcNow();
+        var sessionId = Guid.NewGuid();
+        var session = AuthenticationSessionIssuanceProof.CreatePrimary(
+            Guid.NewGuid(), null, now);
+        var stepUp = StepUpSessionMarkingProof.Create(Guid.NewGuid(), sessionId, AuthenticationProviderKey.Passkey, "passkey", now);
+        var remembered = RememberedMfaDeviceCreationProof.Create(
+            Guid.NewGuid(), null, Guid.NewGuid(), now);
+
+        static async Task<int> CountWinners(Func<bool> consume)
+        {
+            var attempts = Enumerable.Range(0, 32)
+                .Select(_ => Task.Run(consume));
+            return (await Task.WhenAll(attempts)).Count(won => won);
+        }
+
+        var sessionWinners = await CountWinners(() => session.TryConsume(now));
+        var stepUpWinners = await CountWinners(() => stepUp.TryConsume(sessionId, now));
+        var rememberedWinners = await CountWinners(() => remembered.TryConsume(now));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sessionWinners, Is.EqualTo(1));
+            Assert.That(stepUpWinners, Is.EqualTo(1));
+            Assert.That(rememberedWinners, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task MarkStepUpVerifiedAsyncShouldEnforceTargetAndConsumeProofOnce()
+    {
+        var userId = Guid.NewGuid();
+        var targetSessionId = Guid.NewGuid();
+        var issuedAt = _timeProvider.GetUtcNow();
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            new User { Id = userId, DisplayEmail = "user@example.com" },
+            FreshMfaSatisfied: true)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(userId, targetSessionId, AuthenticationProviderKey.Passkey, "passkey", issuedAt)
+        };
+        var session = new AuthenticationSession
+        {
+            Id = targetSessionId,
+            UserId = userId,
+            TokenHash = "hash",
+            CreatedAt = issuedAt,
+            ExpiresAt = issuedAt.AddHours(1)
+        };
+        _repositoryMock.Setup(r => r.MarkStepUpVerifiedAsync(targetSessionId, userId, issuedAt, AuthenticationProviderKey.Passkey, "passkey", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        var request = new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = targetSessionId,
+            VerifiedProvider = AuthenticationProviderKey.Passkey,
+            VerifiedFactor = "passkey"
+        };
+
+        var first = await _service.MarkStepUpVerifiedAsync(result, request);
+        var replay = await _service.MarkStepUpVerifiedAsync(result, request with { SessionId = Guid.NewGuid() });
+        var mismatchResult = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            new User { Id = userId, DisplayEmail = "user@example.com" },
+            FreshMfaSatisfied: true)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), targetSessionId, AuthenticationProviderKey.Passkey, "passkey", issuedAt)
+        };
+        var mismatch = await _service.MarkStepUpVerifiedAsync(mismatchResult, request with { SessionId = Guid.NewGuid() });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Value, Is.SameAs(session));
+            Assert.That(mismatch.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(replay.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            _repositoryMock.Verify(r => r.MarkStepUpVerifiedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<AuthenticationProviderKey>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
     }
 
     [Test]
@@ -146,6 +695,244 @@ internal sealed class AuthenticationSessionServiceTests
         var revoked = await _service.RevokeIssuedSessionAsync(new RevokeIssuedAuthenticationSessionRequest(issued, new AuditContext(actor), "rollback"));
 
         Assert.That(revoked, Is.True);
+    }
+
+    [Test]
+    public async Task MarkStepUpVerifiedAsyncShouldRejectProviderOrFactorSubstitutionWithoutConsumingProof()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            new User { Id = userId, DisplayEmail = "user@example.com" },
+            FreshMfaSatisfied: true)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(
+                userId, sessionId, AuthenticationProviderKey.Passkey, "passkey", _timeProvider.GetUtcNow())
+        };
+        var request = new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = sessionId,
+            VerifiedProvider = AuthenticationProviderKey.Passkey,
+            VerifiedFactor = "passkey"
+        };
+        var session = new AuthenticationSession
+        {
+            Id = sessionId,
+            UserId = userId,
+            TokenHash = "hash",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            ExpiresAt = _timeProvider.GetUtcNow().AddHours(1)
+        };
+        _repositoryMock
+            .Setup(repository => repository.MarkStepUpVerifiedAsync(
+                sessionId, userId, _timeProvider.GetUtcNow(), AuthenticationProviderKey.Passkey, "passkey", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+
+        var wrongProvider = await _service.MarkStepUpVerifiedAsync(
+            result, request with { VerifiedProvider = new AuthenticationProviderKey(ProviderType.Mfa, "totp") });
+        var wrongFactor = await _service.MarkStepUpVerifiedAsync(
+            result, request with { VerifiedFactor = AuthenticationFactorTypes.Totp });
+        var correct = await _service.MarkStepUpVerifiedAsync(result, request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrongProvider.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(wrongFactor.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(correct.Value, Is.SameAs(session));
+        }
+    }
+
+    [Test]
+    public async Task MarkStepUpVerifiedAsyncShouldRejectAuditActorMismatchWithoutConsumingProof()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            new User { Id = userId, DisplayEmail = "user@example.com" },
+            FreshMfaSatisfied: true)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(
+                userId, sessionId, AuthenticationProviderKey.Passkey, "passkey", _timeProvider.GetUtcNow())
+        };
+        var request = new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = sessionId,
+            VerifiedProvider = AuthenticationProviderKey.Passkey,
+            VerifiedFactor = "passkey",
+            Audit = new AuditContext(userId)
+        };
+        var session = new AuthenticationSession
+        {
+            Id = sessionId,
+            UserId = userId,
+            TokenHash = "hash",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            ExpiresAt = _timeProvider.GetUtcNow().AddHours(1)
+        };
+        _repositoryMock
+            .Setup(repository => repository.MarkStepUpVerifiedAsync(
+                sessionId, userId, _timeProvider.GetUtcNow(), AuthenticationProviderKey.Passkey, "passkey",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+
+        var mismatch = await _service.MarkStepUpVerifiedAsync(
+            result, request with { Audit = new AuditContext(Guid.NewGuid()) });
+        var missingActor = await _service.MarkStepUpVerifiedAsync(
+            result, request with { Audit = new AuditContext() });
+        var correct = await _service.MarkStepUpVerifiedAsync(result, request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatch.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(missingActor.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(correct.Value, Is.SameAs(session));
+        }
+    }
+
+    [Test]
+    public async Task MarkStepUpVerifiedAsyncShouldAuthorizePersistedProofOwner()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        _userRepositoryMock
+            .Setup(repository => repository.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User
+            {
+                Id = userId,
+                DisplayEmail = "persisted@example.com",
+                AccountState = UserAccountState.Disabled
+            });
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            new User { Id = userId, DisplayEmail = "presented@example.com" },
+            FreshMfaSatisfied: true)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(
+                userId, sessionId, AuthenticationProviderKey.Passkey, "passkey", _timeProvider.GetUtcNow())
+        };
+
+        var mark = await _service.MarkStepUpVerifiedAsync(result, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = sessionId,
+            VerifiedProvider = AuthenticationProviderKey.Passkey,
+            VerifiedFactor = "passkey"
+        });
+
+        Assert.That(mark.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
+        _repositoryMock.Verify(repository => repository.MarkStepUpVerifiedAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
+            It.IsAny<AuthenticationProviderKey>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task CancellationAfterStepUpProofConsumptionShouldRemainTerminal()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var issuedAt = _timeProvider.GetUtcNow();
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            new User { Id = userId, DisplayEmail = "user@example.com" },
+            FreshMfaSatisfied: true)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(
+                userId, sessionId, AuthenticationProviderKey.Passkey, "passkey", issuedAt)
+        };
+        var request = new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = sessionId,
+            VerifiedProvider = AuthenticationProviderKey.Passkey,
+            VerifiedFactor = "passkey"
+        };
+        _repositoryMock
+            .Setup(repository => repository.MarkStepUpVerifiedAsync(
+                sessionId, userId, issuedAt, AuthenticationProviderKey.Passkey, "passkey",
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException());
+
+        Assert.ThrowsAsync<OperationCanceledException>(() =>
+            _service.MarkStepUpVerifiedAsync(result, request));
+        var replay = await _service.MarkStepUpVerifiedAsync(result, request);
+
+        Assert.That(replay.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+        _repositoryMock.Verify(repository => repository.MarkStepUpVerifiedAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
+            It.IsAny<AuthenticationProviderKey>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task PreCancelledStepUpMarkingShouldNotConsumeProof()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            new User { Id = userId, DisplayEmail = "user@example.com" },
+            FreshMfaSatisfied: true)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(
+                userId, sessionId, AuthenticationProviderKey.Passkey, "passkey", _timeProvider.GetUtcNow())
+        };
+        var request = new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = sessionId,
+            VerifiedProvider = AuthenticationProviderKey.Passkey,
+            VerifiedFactor = "passkey"
+        };
+        var session = new AuthenticationSession
+        {
+            Id = sessionId,
+            UserId = userId,
+            TokenHash = "hash",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            ExpiresAt = _timeProvider.GetUtcNow().AddHours(1)
+        };
+        _repositoryMock
+            .Setup(repository => repository.MarkStepUpVerifiedAsync(
+                sessionId, userId, _timeProvider.GetUtcNow(), AuthenticationProviderKey.Passkey, "passkey", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() =>
+            _service.MarkStepUpVerifiedAsync(result, request, cancellation.Token));
+        var marked = await _service.MarkStepUpVerifiedAsync(result, request);
+
+        Assert.That(marked.Value, Is.SameAs(session));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task RevokeValidatedSessionAsyncShouldRevokeExactValidatedSession(bool tenantScoped)
+    {
+        var tenantId = tenantScoped ? Guid.NewGuid() : (Guid?)null;
+        var session = CreateSession(_timeProvider.GetUtcNow().AddHours(1), userId: Guid.NewGuid(), tenantId: tenantId);
+        var tenant = tenantId is { } id ? new TenantContext(id) : TenantContext.Global;
+        _repositoryMock.Setup(r => r.RevokeSessionByIdAsync(
+            session.Id, session.UserId, _timeProvider.GetUtcNow(), "replaced", tenant, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var revoked = await _service.RevokeValidatedSessionAsync(new RevokeValidatedAuthenticationSessionRequest(
+            new ValidatedAuthenticationSession(session), new AuditContext(session.UserId), "replaced"));
+
+        Assert.That(revoked, Is.True);
+    }
+
+    [Test]
+    public void RevokeValidatedSessionAsyncShouldValidateRequest()
+    {
+        var session = new ValidatedAuthenticationSession(CreateSession(_timeProvider.GetUtcNow().AddHours(1)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeValidatedSessionAsync(null!));
+            Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeValidatedSessionAsync(
+                new RevokeValidatedAuthenticationSessionRequest(null!, new AuditContext())));
+            Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeValidatedSessionAsync(
+                new RevokeValidatedAuthenticationSessionRequest(session, null!)));
+        }
     }
 
     [Test]
@@ -374,7 +1161,7 @@ internal sealed class AuthenticationSessionServiceTests
     {
         var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" })
         {
-            SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(Guid.NewGuid(), null, _timeProvider.GetUtcNow())
         };
 
         Assert.ThrowsAsync<ArgumentNullException>(() => _service.CreateSessionAsync(result, null!));
@@ -396,9 +1183,10 @@ internal sealed class AuthenticationSessionServiceTests
                 StoreUserAgent = false,
                 StoreMetadata = false
             }, TimeProvider: _timeProvider, SecurityEventSink: _composition.Events));
-        var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" })
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
+        var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user)
         {
-            SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(user.Id, null, _timeProvider.GetUtcNow())
         };
 
         AuthenticationSession? storedSession = null;
@@ -443,25 +1231,92 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public async Task MarkStepUpVerifiedAsyncShouldRejectUserWhoseIdentityChangedAfterProofIssuance()
+    {
+        var user = new MutableUser { Id = Guid.NewGuid() };
+        var originalUserId = user.Id;
+        var sessionId = Guid.NewGuid();
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded, user, FreshMfaSatisfied: true)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(
+                originalUserId, sessionId, AuthenticationProviderKey.Passkey, "passkey", _timeProvider.GetUtcNow())
+        };
+        user.Id = Guid.NewGuid();
+
+        var mark = await _service.MarkStepUpVerifiedAsync(result, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = sessionId,
+            VerifiedProvider = AuthenticationProviderKey.Passkey,
+            VerifiedFactor = "passkey"
+        });
+
+        Assert.That(mark.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+        _repositoryMock.Verify(
+            repository => repository.MarkStepUpVerifiedAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
+                It.IsAny<AuthenticationProviderKey>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
+    public async Task MarkStepUpVerifiedAsyncShouldPersistProofSubjectWhenUserIdentityChangesAfterValidation()
+    {
+        var proofUserId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var result = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded,
+            new SequencedUser(proofUserId, Guid.NewGuid()),
+            FreshMfaSatisfied: true)
+        {
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(
+                proofUserId, sessionId, AuthenticationProviderKey.Passkey, "passkey", _timeProvider.GetUtcNow())
+        };
+        var session = new AuthenticationSession
+        {
+            Id = sessionId,
+            UserId = proofUserId,
+            TokenHash = "hash",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            ExpiresAt = _timeProvider.GetUtcNow().AddHours(1)
+        };
+        _repositoryMock
+            .Setup(repository => repository.MarkStepUpVerifiedAsync(
+                sessionId, proofUserId, _timeProvider.GetUtcNow(), AuthenticationProviderKey.Passkey, "passkey", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+
+        var mark = await _service.MarkStepUpVerifiedAsync(result, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = sessionId,
+            VerifiedProvider = AuthenticationProviderKey.Passkey,
+            VerifiedFactor = "passkey"
+        });
+
+        Assert.That(mark.Value, Is.SameAs(session));
+    }
+
+    [Test]
     public async Task MarkStepUpVerifiedAsyncShouldRejectIncompleteStepUpResultsBeforeMutation()
     {
         var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
         var failed = new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, user, FreshMfaSatisfied: true)
         {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _timeProvider.GetUtcNow())
         };
         var missingUser = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, null, FreshMfaSatisfied: true)
         {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _timeProvider.GetUtcNow())
         };
         var emptyUserId = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, new User { Id = Guid.Empty, DisplayEmail = "user@example.com" }, FreshMfaSatisfied: true)
         {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _timeProvider.GetUtcNow())
         };
         var staleMfa = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user)
         {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _timeProvider.GetUtcNow())
         };
+        var missingProof = new MfaAuthenticationResult(
+            MfaAuthenticationStatus.Succeeded, user, FreshMfaSatisfied: true);
         var request = new MarkSessionStepUpVerifiedRequest
         {
             SessionId = Guid.NewGuid(),
@@ -473,6 +1328,7 @@ internal sealed class AuthenticationSessionServiceTests
         var missingUserMark = await _service.MarkStepUpVerifiedAsync(missingUser, request);
         var emptyUserIdMark = await _service.MarkStepUpVerifiedAsync(emptyUserId, request);
         var staleMfaMark = await _service.MarkStepUpVerifiedAsync(staleMfa, request);
+        var missingProofMark = await _service.MarkStepUpVerifiedAsync(missingProof, request);
 
         using (Assert.EnterMultipleScope())
         {
@@ -480,6 +1336,7 @@ internal sealed class AuthenticationSessionServiceTests
             Assert.That(missingUserMark.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
             Assert.That(emptyUserIdMark.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
             Assert.That(staleMfaMark.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(missingProofMark.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
             _repositoryMock.Verify(r => r.MarkStepUpVerifiedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<AuthenticationProviderKey>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
@@ -502,9 +1359,12 @@ internal sealed class AuthenticationSessionServiceTests
         _repositoryMock
             .Setup(r => r.MarkStepUpVerifiedAsync(session.Id, userId, _timeProvider.GetUtcNow(), provider, "totp", It.IsAny<CancellationToken>()))
             .ReturnsAsync(session);
+        _userRepositoryMock
+            .Setup(repository => repository.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com", TenantId = tenantId });
         var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, new User { Id = userId, DisplayEmail = "user@example.com", TenantId = tenantId }, FreshMfaSatisfied: true)
         {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(userId, session.Id, provider, "totp", _timeProvider.GetUtcNow())
         };
 
         var mark = await _service.MarkStepUpVerifiedAsync(result, new MarkSessionStepUpVerifiedRequest
@@ -523,14 +1383,19 @@ internal sealed class AuthenticationSessionServiceTests
     public async Task MarkStepUpVerifiedAsyncShouldRejectTenantMismatchForAshlarStepUpResultBeforeMutation(bool requestedTenantIsNull)
     {
         var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
-        var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com", TenantId = Guid.NewGuid() }, FreshMfaSatisfied: true)
+        var sessionId = Guid.NewGuid();
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com", TenantId = Guid.NewGuid() };
+        var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user, FreshMfaSatisfied: true)
         {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(user.Id, sessionId, provider, "totp", _timeProvider.GetUtcNow())
         };
+        _userRepositoryMock
+            .Setup(repository => repository.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
 
         var mark = await _service.MarkStepUpVerifiedAsync(result, new MarkSessionStepUpVerifiedRequest
         {
-            SessionId = Guid.NewGuid(),
+            SessionId = sessionId,
             VerifiedProvider = provider,
             VerifiedFactor = "totp",
             Tenant = requestedTenantIsNull ? null : new TenantContext(Guid.NewGuid())
@@ -549,7 +1414,7 @@ internal sealed class AuthenticationSessionServiceTests
         var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
         var result = new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" }, FreshMfaSatisfied: true)
         {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Instance
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _timeProvider.GetUtcNow())
         };
 
         Assert.ThrowsAsync<ArgumentNullException>(() => _service.MarkStepUpVerifiedAsync(result, null!));

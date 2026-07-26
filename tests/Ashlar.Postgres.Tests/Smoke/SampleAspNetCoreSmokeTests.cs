@@ -306,9 +306,9 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     }
 
     [Test]
-    public async Task SampleMfaCompletedSignInUsesVerifiedSessionHelperWithCleanup()
+    public async Task SampleMfaCompletedSignInCreatesFreshSessionDirectly()
     {
-        await AssertSampleMfaCompletedSignInUsesVerifiedSessionHelperWithCleanupAsync();
+        await AssertSampleMfaCompletedSignInCreatesFreshSessionDirectlyAsync();
     }
 
     [Test]
@@ -961,7 +961,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         }
     }
 
-    private static async Task AssertSampleMfaCompletedSignInUsesVerifiedSessionHelperWithCleanupAsync()
+    private static async Task AssertSampleMfaCompletedSignInCreatesFreshSessionDirectlyAsync()
     {
         var root = LocateRepositoryRoot();
         var authExtensions = await File.ReadAllTextAsync(Path.Combine(
@@ -985,20 +985,13 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(authExtensions, Does.Contain("SignInAndMarkStepUpVerifiedAsync"));
-            Assert.That(authExtensions, Does.Contain("signInManager.SignInAsync"));
-            Assert.That(authExtensions, Does.Contain("sessionService.MarkStepUpVerifiedAsync"));
-            Assert.That(authExtensions, Does.Contain("if (!result.Succeeded)"));
-            Assert.That(authExtensions, Does.Contain("catch"));
-            Assert.That(authExtensions, Does.Contain("CleanupUnverifiedSessionAsync"));
-            Assert.That(authExtensions, Does.Contain("sessionService.RevokeIssuedSessionAsync"));
-            Assert.That(authExtensions, Does.Contain("signInManager.SignOutAsync"));
-            Assert.That(authExtensions, Does.Contain("TenantContext.Global"));
-            Assert.That(mfaEndpoints, Does.Contain("httpContext.SignInAndMarkStepUpVerifiedAsync"));
+            Assert.That(authExtensions, Does.Not.Contain("SignInAndMarkStepUpVerifiedAsync"));
+            Assert.That(mfaEndpoints, Does.Contain("SignInManager.SignInAsync"));
+            Assert.That(mfaEndpoints, Does.Not.Contain("MarkStepUpVerifiedAsync"));
             Assert.That(mfaEndpoints, Does.Not.Contain("additionalVerificationProvider"));
             Assert.That(mfaEndpoints, Does.Not.Contain("AdditionalVerificationAt"));
-            Assert.That(passkeyEndpoints, Does.Contain("httpContext.SignInAndMarkStepUpVerifiedAsync"));
-            Assert.That(passkeyEndpoints, Does.Contain("AuthenticationFactorTypes.Passkey"));
+            Assert.That(passkeyEndpoints, Does.Contain("signIn.SignInAsync"));
+            Assert.That(passkeyEndpoints, Does.Not.Contain("SignInAndMarkStepUpVerifiedAsync"));
             Assert.That(passkeyEndpoints, Does.Not.Contain("additionalVerificationProvider"));
             Assert.That(passkeyEndpoints, Does.Not.Contain("AdditionalVerificationAt"));
         }

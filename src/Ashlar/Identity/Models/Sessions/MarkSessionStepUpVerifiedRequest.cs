@@ -24,7 +24,7 @@ public sealed record MarkSessionStepUpVerifiedRequest
     /// </summary>
     public TenantContext? Tenant { get; init; }
     /// <summary>
-    /// Audit metadata recorded with the step-up verification update.
+    /// Audit metadata recorded with the step-up verification update. When supplied, its actor must match the verified user.
     /// </summary>
     public AuditContext? Audit { get; init; }
 }

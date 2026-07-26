@@ -225,7 +225,8 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<IOptions<MfaOrchestrationOptions>>(),
             provider,
             provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationOrchestrator>>(),
-            provider.GetRequiredService<IAuthenticationHandshakeOrchestrationService>()));
+            provider.GetRequiredService<IAuthenticationHandshakeOrchestrationService>(),
+            provider.GetService<TimeProvider>()));
         services.TryAddScoped<IAuthenticationOrchestrator>(provider => new AuthenticationOrchestrator(
             provider.GetRequiredService<IAuthenticationPipeline>(),
             provider.GetRequiredService<IAuthenticationFactorPipeline>(),

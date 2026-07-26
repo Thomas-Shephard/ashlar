@@ -1,5 +1,16 @@
 namespace Ashlar.Identity.Models.Handshakes;
 
+/// <summary>Capability purpose fixed when an MFA handshake is created.</summary>
+public enum AuthenticationHandshakePurpose
+{
+    /// <summary>No authentication authority has been assigned.</summary>
+    Unknown = 0,
+    /// <summary>Completes authentication before issuing a new session.</summary>
+    LoginSession = 1,
+    /// <summary>Marks one existing session as freshly MFA verified.</summary>
+    ExistingSessionStepUp = 2
+}
+
 /// <summary>
 /// Tracks a short-lived authentication handshake until required factors are verified.
 /// </summary>
@@ -34,4 +45,10 @@ public sealed record AuthenticationHandshake(
     /// Verification and revocation contexts must match this scope exactly.
     /// </summary>
     public Guid? TenantId { get; init; }
+
+    /// <summary>Capability purpose fixed at handshake creation.</summary>
+    public AuthenticationHandshakePurpose Purpose { get; init; }
+
+    /// <summary>Existing session targeted by step-up, when <see cref="Purpose"/> is <see cref="AuthenticationHandshakePurpose.ExistingSessionStepUp"/>.</summary>
+    public Guid? TargetSessionId { get; init; }
 }

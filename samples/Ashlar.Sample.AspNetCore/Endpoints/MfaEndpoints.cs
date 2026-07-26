@@ -253,7 +253,7 @@ internal static class MfaEndpoints
             ? new TotpAssertion(code)
             : new RecoveryCodeAssertion(code);
 
-        var authContext = httpContext.ToAuthenticationContext() with { UserId = userId };
+        var authContext = httpContext.ToAuthenticationContext() with { UserId = userId, CurrentSessionId = sessionId };
         var response = await factorPipeline.VerifyFactorAsync(authContext, assertion, cancellationToken);
         if (response.Status == AuthenticationStatus.RateLimited)
         {
@@ -343,8 +343,6 @@ internal static class MfaEndpoints
             services,
             httpContext,
             response,
-            TotpOptions.DefaultProviderKey,
-            AuthenticationFactorTypes.Totp,
             cancellationToken);
     }
 
@@ -382,8 +380,6 @@ internal static class MfaEndpoints
             services,
             httpContext,
             response,
-            new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode"),
-            AuthenticationFactorTypes.RecoveryCode,
             cancellationToken);
     }
 
@@ -391,21 +387,14 @@ internal static class MfaEndpoints
         MfaVerifyServices services,
         HttpContext httpContext,
         MfaAuthenticationResult authenticationResult,
-        AuthenticationProviderKey verifiedProvider,
-        string verifiedFactor,
         CancellationToken cancellationToken)
     {
-        var result = await httpContext.SignInAndMarkStepUpVerifiedAsync(
-            services.SignInManager,
-            services.SessionService,
+        await services.SignInManager.SignInAsync(
+            httpContext,
             authenticationResult,
-            verifiedProvider,
-            verifiedFactor,
+            httpContext.ToSessionRequest(authenticationResult.User),
             cancellationToken);
-
-        return result.Succeeded && authenticationResult.User is { } user
-            ? Results.Ok(new { userId = user.Id })
-            : Results.BadRequest(SampleResultErrors.From(result));
+        return Results.Ok(new { userId = authenticationResult.User!.Id });
     }
 
     private static IResult CreateIncompleteMfaResponse(MfaAuthenticationResult response)
@@ -420,8 +409,7 @@ internal static class MfaEndpoints
 
     private sealed record MfaVerifyServices(
         [FromServices] IAuthenticationOrchestrator Orchestrator,
-        [FromServices] IAshlarSignInManager SignInManager,
-        [FromServices] IAuthenticationSessionService SessionService);
+        [FromServices] IAshlarSignInManager SignInManager);
 
     private sealed record StepUpVerifyRequest(string Code);
 }

@@ -68,6 +68,12 @@ public interface IAuthenticationSessionService
     /// <returns><see langword="true" /> when the presented active session was revoked.</returns>
     Task<bool> RevokeCurrentSessionAsync(RevokeCurrentAuthenticationSessionRequest request, CancellationToken cancellationToken = default);
 
+    /// <summary>Revokes a session using the capability returned by successful validation.</summary>
+    /// <param name="request">The validated session capability, audit context, and optional reason.</param>
+    /// <param name="cancellationToken">A token that can cancel revocation.</param>
+    /// <returns><see langword="true" /> when the validated session was revoked.</returns>
+    Task<bool> RevokeValidatedSessionAsync(RevokeValidatedAuthenticationSessionRequest request, CancellationToken cancellationToken = default);
+
     /// <summary>Rolls back a newly issued session using its Ashlar-issued authentication capability.</summary>
     /// <param name="request">The issued session, audit context, and optional reason.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>

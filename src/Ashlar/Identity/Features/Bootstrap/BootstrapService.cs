@@ -236,11 +236,11 @@ internal sealed class BootstrapService(
         return false;
     }
 
-    private static MfaAuthenticationResult CreateSessionIssuanceResult(IUser user)
+    private MfaAuthenticationResult CreateSessionIssuanceResult(IUser user)
     {
         return new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user)
         {
-            SessionIssuanceProof = AuthenticationSessionIssuanceProof.Instance
+            SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(user.Id, null, _dependencies.TimeProvider.GetUtcNow())
         };
     }
 

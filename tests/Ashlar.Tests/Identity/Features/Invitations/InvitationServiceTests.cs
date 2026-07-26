@@ -240,7 +240,7 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value!.AuthenticationResult.CanIssueAuthenticationSession, Is.True);
+            Assert.That(result.Value!.AuthenticationResult.SessionIssuanceProof, Is.Not.Null);
         }
     }
 

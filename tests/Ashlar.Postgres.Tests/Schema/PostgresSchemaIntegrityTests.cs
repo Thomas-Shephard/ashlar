@@ -116,7 +116,7 @@ internal sealed class PostgresSchemaIntegrityTests : PostgresTestBase
             "INSERT INTO ashlar_invitations (id, display_email, normalized_email, token_hash, created_at, expires_at, version) VALUES (@id, 'invite@example.com', 'INVITE@EXAMPLE.COM', 'same-invite', @now, @expires, 'v1')",
             new { id = Guid.NewGuid(), now, expires = now.AddHours(1) });
         await connection.ExecuteAsync(
-            "INSERT INTO ashlar_mfa_handshakes (id, user_id, token_hash, created_at, expires_at, required_factors, verified_factors) VALUES (@id, @userId, 'same-handshake', @now, @expires, '[]'::jsonb, '[]'::jsonb)",
+            "INSERT INTO ashlar_mfa_handshakes (id, user_id, purpose, token_hash, created_at, expires_at, required_factors, verified_factors) VALUES (@id, @userId, 1, 'same-handshake', @now, @expires, '[]'::jsonb, '[]'::jsonb)",
             new { id = Guid.NewGuid(), userId, now, expires = now.AddHours(1) });
 
         var duplicateSession = Assert.ThrowsAsync<PostgresException>(async () =>
@@ -129,7 +129,7 @@ internal sealed class PostgresSchemaIntegrityTests : PostgresTestBase
                 new { id = Guid.NewGuid(), now, expires = now.AddHours(1) }));
         var duplicateHandshake = Assert.ThrowsAsync<PostgresException>(async () =>
             await connection.ExecuteAsync(
-                "INSERT INTO ashlar_mfa_handshakes (id, user_id, token_hash, created_at, expires_at, required_factors, verified_factors) VALUES (@id, @userId, 'same-handshake', @now, @expires, '[]'::jsonb, '[]'::jsonb)",
+                "INSERT INTO ashlar_mfa_handshakes (id, user_id, purpose, token_hash, created_at, expires_at, required_factors, verified_factors) VALUES (@id, @userId, 1, 'same-handshake', @now, @expires, '[]'::jsonb, '[]'::jsonb)",
                 new { id = Guid.NewGuid(), userId, now, expires = now.AddHours(1) }));
 
         using (Assert.EnterMultipleScope())
@@ -236,8 +236,8 @@ internal sealed class PostgresSchemaIntegrityTests : PostgresTestBase
                 """, new { id = Guid.NewGuid(), token = Guid.NewGuid().ToString("N"), now, expires = now.AddHours(1) }));
         var completedHandshakeWithoutTimestamp = Assert.ThrowsAsync<PostgresException>(async () =>
             await connection.ExecuteAsync("""
-                INSERT INTO ashlar_mfa_handshakes (id, user_id, token_hash, created_at, expires_at, is_completed, required_factors, verified_factors)
-                VALUES (@id, @userId, @token, @now, @expires, TRUE, '[]'::jsonb, '[]'::jsonb)
+                INSERT INTO ashlar_mfa_handshakes (id, user_id, purpose, token_hash, created_at, expires_at, is_completed, required_factors, verified_factors)
+                VALUES (@id, @userId, 1, @token, @now, @expires, TRUE, '[]'::jsonb, '[]'::jsonb)
                 """, new { id = Guid.NewGuid(), userId, token = Guid.NewGuid().ToString("N"), now, expires = now.AddHours(1) }));
         var outboxSentAndFailed = Assert.ThrowsAsync<PostgresException>(async () =>
             await connection.ExecuteAsync("""

@@ -186,6 +186,21 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
+    public async Task CreateHandshakeAsyncShouldBindStepUpPurposeAndTarget()
+    {
+        var sessionId = Guid.NewGuid();
+
+        await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(
+            Guid.NewGuid(),
+            ["totp"],
+            Context: new AuthenticationContext(CurrentSessionId: sessionId)));
+
+        _repositoryMock.Verify(r => r.CreateAsync(It.Is<AuthenticationHandshake>(h =>
+            h.Purpose == AuthenticationHandshakePurpose.ExistingSessionStepUp
+            && h.TargetSessionId == sessionId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
     public void CreateHandshakeAsyncShouldThrowOnNullRequest()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
@@ -196,6 +211,15 @@ internal sealed class AuthenticationHandshakeServiceTests
     public void CreateHandshakeAsyncShouldThrowOnEmptyUserId()
     {
         Assert.ThrowsAsync<ArgumentException>(() => _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.Empty, ["totp"])));
+    }
+
+    [Test]
+    public void CreateHandshakeAsyncShouldThrowOnEmptyTargetSessionId()
+    {
+        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(
+            Guid.NewGuid(),
+            ["totp"],
+            Context: new AuthenticationContext(CurrentSessionId: Guid.Empty))));
     }
 
     [Test]
@@ -302,7 +326,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     public async Task CompleteFactorVerificationAsyncShouldSucceedAndMarkAsCompletedWhenAllFactorsVerified()
     {
         var userId = Guid.NewGuid();
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             userId,
             "hashed:raw-token",
@@ -437,6 +461,39 @@ internal sealed class AuthenticationHandshakeServiceTests
             securityEvent.Properties == null), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task BeginVerificationAsyncShouldRejectChangedHandshakePurposeOrTarget(bool omitTarget)
+    {
+        var targetSessionId = Guid.NewGuid();
+        var handshake = CreateHandshake() with
+        {
+            Purpose = AuthenticationHandshakePurpose.ExistingSessionStepUp,
+            TargetSessionId = targetSessionId
+        };
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.BeginVerificationAsync(new BeginAuthenticationHandshakeVerificationRequest(
+            "raw-token",
+            new AuthenticationContext(CurrentSessionId: omitTarget ? null : Guid.NewGuid())));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
+    }
+
+    [Test]
+    public async Task BeginVerificationAsyncShouldRejectAddingStepUpTargetToLoginHandshake()
+    {
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateHandshake());
+
+        var result = await _service.BeginVerificationAsync(new BeginAuthenticationHandshakeVerificationRequest(
+            "raw-token",
+            new AuthenticationContext(CurrentSessionId: Guid.NewGuid())));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
+    }
+
     [Test]
     public async Task BeginFactorVerificationAsyncShouldFailGenericallyWhenTenantHandshakeOmitsTenant()
     {
@@ -456,7 +513,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task BeginVerificationAsyncShouldAllowOrchestrationToResolveBackupFactor()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -478,7 +535,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task BeginFactorVerificationAsyncShouldRejectUnrequiredFactor()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -504,7 +561,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task CompleteFactorVerificationAsyncShouldRejectUnrequiredFactor()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -544,7 +601,7 @@ internal sealed class AuthenticationHandshakeServiceTests
                 _timeProvider,
                 _eventSinkMock.Object,
                 _rateLimiterMock.Object));
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -594,7 +651,7 @@ internal sealed class AuthenticationHandshakeServiceTests
                 _timeProvider,
                 _eventSinkMock.Object,
                 _rateLimiterMock.Object));
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -647,7 +704,7 @@ internal sealed class AuthenticationHandshakeServiceTests
                 Options.Create(new AuthenticationHandshakeOptions()),
                 _timeProvider,
                 _eventSinkMock.Object));
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -684,7 +741,7 @@ internal sealed class AuthenticationHandshakeServiceTests
                 Options.Create(new AuthenticationHandshakeOptions()),
                 _timeProvider,
                 _eventSinkMock.Object));
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -707,7 +764,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task BeginFactorVerificationAsyncShouldSucceedWhenRateLimitAllowsAttempt()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -737,7 +794,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task BeginFactorChallengeAsyncShouldUseLookupRateLimitOnly()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -765,7 +822,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     public async Task CompleteFactorVerificationAsyncShouldSucceedAndNotMarkAsCompletedWhenFactorsRemaining()
     {
         var userId = Guid.NewGuid();
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             userId,
             "hashed:raw-token",
@@ -793,7 +850,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     public async Task CompleteFactorVerificationAsyncShouldNotMutateOriginalHandshakeMetadata()
     {
         var metadata = new Dictionary<string, string> { ["existing"] = "original" };
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -825,7 +882,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task CompleteFactorVerificationAsyncShouldAddRequestMetadataWhenHandshakeMetadataIsNull()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -982,7 +1039,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task CompleteFactorVerificationAsyncShouldFailWhenExpired()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -1008,7 +1065,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task CompleteFactorVerificationAsyncShouldFailWhenRevoked()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -1034,7 +1091,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task CompleteFactorVerificationAsyncShouldFailWhenAlreadyCompleted()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -1060,7 +1117,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task BeginFactorVerificationAsyncShouldFailWhenRateLimited()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -1101,7 +1158,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     public async Task BeginFactorVerificationAsyncShouldFailWhenUserRateLimitIsBlocked()
     {
         var userId = Guid.NewGuid();
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             userId,
             "hashed:raw-token",
@@ -1188,7 +1245,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task CompleteFactorVerificationAsyncShouldRejectOversizedMetadata()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -1216,7 +1273,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task CompleteFactorVerificationAsyncShouldTreatNullMetadataValueAsEmpty()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -1247,7 +1304,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     public async Task BeginFactorVerificationAsyncShouldNotTrustHandshakeMetadataContextInSuspiciousAttemptNotification()
     {
         var userId = Guid.NewGuid();
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             userId,
             "hashed:raw-token",
@@ -1307,7 +1364,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     public async Task BeginFactorVerificationAsyncShouldNotTrustRequestMetadataContextInSuspiciousAttemptNotification()
     {
         var userId = Guid.NewGuid();
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             userId,
             "hashed:raw-token",
@@ -1373,7 +1430,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task CompleteFactorVerificationAsyncShouldFailForInvalidFactorType()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -1399,7 +1456,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task CompleteFactorVerificationAsyncShouldUseCanonicalRequiredFactorMatching()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -1433,7 +1490,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task CompleteFactorVerificationAsyncShouldFailForAlreadyVerifiedFactor()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -1459,7 +1516,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task RevokeHandshakeAsyncShouldMarkAsRevoked()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -1512,7 +1569,7 @@ internal sealed class AuthenticationHandshakeServiceTests
                 _timeProvider,
                 _eventSinkMock.Object,
                 _rateLimiterMock.Object));
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -1601,7 +1658,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     [Test]
     public async Task RevokeHandshakeAsyncShouldDoNothingWhenAlreadyRevoked()
     {
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             Guid.NewGuid(),
             "hashed:raw-token",
@@ -1673,6 +1730,25 @@ internal sealed class AuthenticationHandshakeServiceTests
         Assert.That(service, Is.Not.Null);
     }
 
+    private static AuthenticationHandshake CreateLoginHandshake(
+        Guid id,
+        Guid userId,
+        string tokenHash,
+        DateTimeOffset createdAt,
+        DateTimeOffset expiresAt,
+        bool isRevoked,
+        bool isCompleted,
+        IReadOnlySet<string> requiredFactors,
+        IReadOnlySet<string> verifiedFactors,
+        IDictionary<string, string>? metadata = null,
+        DateTimeOffset? revokedAt = null,
+        DateTimeOffset? completedAt = null) =>
+        new(id, userId, tokenHash, createdAt, expiresAt, isRevoked, isCompleted,
+            requiredFactors, verifiedFactors, metadata, revokedAt, completedAt)
+        {
+            Purpose = AuthenticationHandshakePurpose.LoginSession
+        };
+
     private AuthenticationHandshake CreateHandshake(Guid? tenantId = null)
     {
         return new AuthenticationHandshake(
@@ -1686,7 +1762,8 @@ internal sealed class AuthenticationHandshakeServiceTests
             new HashSet<string> { "totp" },
             new HashSet<string>())
         {
-            TenantId = tenantId
+            TenantId = tenantId,
+            Purpose = AuthenticationHandshakePurpose.LoginSession
         };
     }
 

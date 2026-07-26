@@ -13,8 +13,8 @@ internal sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnect
         ArgumentNullException.ThrowIfNull(handshake);
 
         const string sql = """
-            INSERT INTO ashlar_mfa_handshakes (id, user_id, tenant_id, token_hash, created_at, expires_at, is_revoked, is_completed, revoked_at, completed_at, required_factors, verified_factors, metadata)
-            VALUES (@Id, @UserId, @TenantId, @TokenHash, @CreatedAt, @ExpiresAt, @IsRevoked, @IsCompleted, @RevokedAt, @CompletedAt, @RequiredFactors::jsonb, @VerifiedFactors::jsonb, @Metadata::jsonb)
+            INSERT INTO ashlar_mfa_handshakes (id, user_id, tenant_id, purpose, target_session_id, token_hash, created_at, expires_at, is_revoked, is_completed, revoked_at, completed_at, required_factors, verified_factors, metadata)
+            VALUES (@Id, @UserId, @TenantId, @Purpose, @TargetSessionId, @TokenHash, @CreatedAt, @ExpiresAt, @IsRevoked, @IsCompleted, @RevokedAt, @CompletedAt, @RequiredFactors::jsonb, @VerifiedFactors::jsonb, @Metadata::jsonb)
             """;
 
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -25,6 +25,8 @@ internal sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnect
                 handshake.Id,
                 handshake.UserId,
                 handshake.TenantId,
+                Purpose = (int)handshake.Purpose,
+                handshake.TargetSessionId,
                 handshake.TokenHash,
                 handshake.CreatedAt,
                 handshake.ExpiresAt,
@@ -45,7 +47,7 @@ internal sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnect
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
 
         var sql = """
-            SELECT id AS Id, user_id AS UserId, tenant_id AS TenantId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
+            SELECT id AS Id, user_id AS UserId, tenant_id AS TenantId, purpose AS Purpose, target_session_id AS TargetSessionId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
                    is_revoked AS IsRevoked, is_completed AS IsCompleted, revoked_at AS RevokedAt, completed_at AS CompletedAt, required_factors AS RequiredFactorsRaw,
                    verified_factors AS VerifiedFactorsRaw, metadata AS MetadataRaw
             FROM ashlar_mfa_handshakes
@@ -85,7 +87,9 @@ internal sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnect
                 await GetNullableDateTimeOffsetAsync(reader, "CompletedAt", cancellationToken)
             )
             {
-                TenantId = await GetNullableGuidAsync(reader, "TenantId", cancellationToken)
+                TenantId = await GetNullableGuidAsync(reader, "TenantId", cancellationToken),
+                Purpose = (AuthenticationHandshakePurpose)reader.GetInt32(reader.GetOrdinal("Purpose")),
+                TargetSessionId = await GetNullableGuidAsync(reader, "TargetSessionId", cancellationToken)
             };
         }
 

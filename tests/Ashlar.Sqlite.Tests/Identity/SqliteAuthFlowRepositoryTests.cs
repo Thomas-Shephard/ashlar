@@ -216,7 +216,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
     {
         var user = await CreateUserAsync();
         var repository = GetHandshakeRepository();
-        var handshake = new AuthenticationHandshake(
+        var handshake = CreateLoginHandshake(
             Guid.NewGuid(),
             user.Id,
             "handshake-token",
@@ -240,7 +240,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
 
         var updateApplied = await repository.UpdateAsync(updated);
         var afterUpdate = await repository.FindByTokenHashAsync(handshake.TokenHash);
-        var expired = new AuthenticationHandshake(Guid.NewGuid(), user.Id, "expired-handshake", DateTimeOffset.UtcNow.AddHours(-2), DateTimeOffset.UtcNow.AddHours(-1), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
+        var expired = CreateLoginHandshake(Guid.NewGuid(), user.Id, "expired-handshake", DateTimeOffset.UtcNow.AddHours(-2), DateTimeOffset.UtcNow.AddHours(-1), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
         await repository.CreateAsync(expired);
 
         using (Assert.EnterMultipleScope())
@@ -262,7 +262,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
     {
         var user = await CreateUserAsync();
         var repository = GetHandshakeRepository();
-        var terminal = new AuthenticationHandshake(
+        var terminal = CreateLoginHandshake(
             Guid.NewGuid(),
             user.Id,
             "terminal-handshake",
@@ -278,7 +278,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         var terminalUpdateApplied = await repository.UpdateAsync(terminal with { IsRevoked = false, IsCompleted = false, VerifiedFactors = new HashSet<string>(), Metadata = null });
         var terminalAfterStaleUpdate = await repository.FindByTokenHashAsync(terminal.TokenHash);
 
-        var resettable = new AuthenticationHandshake(
+        var resettable = CreateLoginHandshake(
             Guid.NewGuid(),
             user.Id,
             "resettable-handshake",
@@ -462,13 +462,23 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         };
     }
 
+    private static AuthenticationHandshake CreateLoginHandshake(
+        Guid id, Guid userId, string tokenHash, DateTimeOffset createdAt, DateTimeOffset expiresAt,
+        bool isRevoked, bool isCompleted, IReadOnlySet<string> requiredFactors,
+        IReadOnlySet<string> verifiedFactors, IDictionary<string, string>? metadata = null) =>
+        new(id, userId, tokenHash, createdAt, expiresAt, isRevoked, isCompleted,
+            requiredFactors, verifiedFactors, metadata)
+        {
+            Purpose = AuthenticationHandshakePurpose.LoginSession
+        };
+
     private async Task InsertHandshakeWithNullFactorJsonAsync(Guid userId, string tokenHash)
     {
         await using var connection = await OpenConnectionAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO ashlar_mfa_handshakes (id, user_id, token_hash, created_at, expires_at, required_factors, verified_factors)
-            VALUES ($id, $userId, $tokenHash, $createdAt, $expiresAt, 'null', 'null');
+            INSERT INTO ashlar_mfa_handshakes (id, user_id, purpose, token_hash, created_at, expires_at, required_factors, verified_factors)
+            VALUES ($id, $userId, 1, $tokenHash, $createdAt, $expiresAt, 'null', 'null');
             """;
         command.AddGuidParameter("$id", Guid.NewGuid());
         command.AddGuidParameter("$userId", userId);
