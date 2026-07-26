@@ -6,7 +6,7 @@ namespace Ashlar.Sqlite.Auditing;
 /// <summary>
 /// A SQLite-backed security event sink that persists audit events to the ashlar_security_events table.
 /// </summary>
-internal sealed class SqliteSecurityEventSink : PersistentSecurityEventSink
+internal sealed class SqliteSecurityEventSink(ISqliteConnectionProvider connectionProvider, ILogger<SqliteSecurityEventSink>? logger = null) : PersistentSecurityEventSink(logger ?? NullLogger<SqliteSecurityEventSink>.Instance)
 {
     private const string IdParameter = "$id";
     private const string EventTypeParameter = "$eventType";
@@ -24,13 +24,7 @@ internal sealed class SqliteSecurityEventSink : PersistentSecurityEventSink
     private const string FailureReasonParameter = "$failureReason";
     private const string PropertiesParameter = "$properties";
 
-    private readonly ISqliteConnectionProvider _connectionProvider;
-
-    public SqliteSecurityEventSink(ISqliteConnectionProvider connectionProvider, ILogger<SqliteSecurityEventSink>? logger = null)
-        : base(logger ?? NullLogger<SqliteSecurityEventSink>.Instance)
-    {
-        _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
-    }
+    private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
     protected override async Task PersistAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken)
     {

@@ -88,20 +88,14 @@ internal sealed class PersistentSecurityEventSinkTests
         Assert.That(logger.Entries, Is.Empty);
     }
 
-    private sealed class TestSink : PersistentSecurityEventSink
+    private sealed class TestSink(ILogger logger, Exception? exception = null) : PersistentSecurityEventSink(logger)
     {
         public TestSink()
             : this(NullLogger.Instance)
         {
         }
 
-        private readonly Exception? _exception;
-
-        public TestSink(ILogger logger, Exception? exception = null)
-            : base(logger)
-        {
-            _exception = exception;
-        }
+        private readonly Exception? _exception = exception;
 
         public List<AshlarSecurityEvent> Events { get; } = [];
 

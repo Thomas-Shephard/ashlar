@@ -10,27 +10,20 @@ namespace Ashlar.AspNetCore.Authorization;
 /// <summary>
 /// Handles Ashlar authorization requirements by calling <see cref="IAuthorizationEvaluator"/>.
 /// </summary>
-public sealed class AshlarAuthorizationHandler : IAuthorizationHandler
+/// <param name="evaluator">The evaluator value.</param>
+/// <param name="httpContextAccessor">The http context accessor value.</param>
+/// <param name="options">The options value.</param>
+/// <remarks>
+/// Initializes a new instance of the <see cref="AshlarAuthorizationHandler"/> class.
+/// </remarks>
+public sealed class AshlarAuthorizationHandler(
+    Ashlar.Authorization.Abstractions.IAuthorizationEvaluator evaluator,
+    IHttpContextAccessor httpContextAccessor,
+    IOptions<AshlarAuthorizationOptions> options) : IAuthorizationHandler
 {
-    private readonly Ashlar.Authorization.Abstractions.IAuthorizationEvaluator _evaluator;
-    private readonly IHttpContextAccessor _httpContextAccessor;
-    private readonly AshlarAuthorizationOptions _options;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="AshlarAuthorizationHandler"/> class.
-    /// </summary>
-    /// <param name="evaluator">The evaluator value.</param>
-    /// <param name="httpContextAccessor">The http context accessor value.</param>
-    /// <param name="options">The options value.</param>
-    public AshlarAuthorizationHandler(
-        Ashlar.Authorization.Abstractions.IAuthorizationEvaluator evaluator,
-        IHttpContextAccessor httpContextAccessor,
-        IOptions<AshlarAuthorizationOptions> options)
-    {
-        _evaluator = evaluator;
-        _httpContextAccessor = httpContextAccessor;
-        _options = options.Value;
-    }
+    private readonly Ashlar.Authorization.Abstractions.IAuthorizationEvaluator _evaluator = evaluator;
+    private readonly IHttpContextAccessor _httpContextAccessor = httpContextAccessor;
+    private readonly AshlarAuthorizationOptions _options = options.Value;
 
     /// <summary>
     /// Evaluates pending Ashlar authorization requirements for the current user.
