@@ -7,11 +7,12 @@ namespace Ashlar.Identity.Abstractions.Transactions;
 /// Providers define transaction scope at the persistence-provider boundary, typically one active durable
 /// transaction per dependency-injection scope. Nested calls must join the active transaction so repository
 /// mutations and durable audit share one commit or rollback; callers must not rely on savepoint semantics.
+/// Concurrent independent roots in the same dependency-injection scope are not supported.
 /// </remarks>
 public interface IAshlarTransactionProvider
 {
     /// <summary>
-    /// Starts a root transaction or joins the active transaction.
+    /// Starts a root transaction or joins the active transaction propagated in the current <see langword="async" /> flow.
     /// </summary>
     /// <param name="cancellationToken">A token that can cancel transaction creation.</param>
     /// <returns>An active transaction that must be disposed by the caller.</returns>
@@ -80,14 +81,24 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
     {
         var boundary = new TransactionBoundary { Active = _active, Busy = true };
         _active.Value = boundary;
-        return BeginRootTransactionAsync(boundary, cancellationToken);
+        try
+        {
+            return BeginRootTransactionAsync(boundary, _provider.BeginTransactionAsync(cancellationToken));
+        }
+        catch
+        {
+            boundary.Completed = true;
+            throw;
+        }
     }
 
-    private async Task<IAshlarTransaction> BeginRootTransactionAsync(TransactionBoundary boundary, CancellationToken cancellationToken)
+    private static async Task<IAshlarTransaction> BeginRootTransactionAsync(
+        TransactionBoundary boundary,
+        Task<IAshlarTransaction> transaction)
     {
         try
         {
-            boundary.Transaction = await _provider.BeginTransactionAsync(cancellationToken).ConfigureAwait(false)
+            boundary.Transaction = await transaction.ConfigureAwait(false)
                 ?? throw new InvalidOperationException("The transaction provider returned no transaction.");
             boundary.Busy = false;
             return new RootTransaction(boundary);

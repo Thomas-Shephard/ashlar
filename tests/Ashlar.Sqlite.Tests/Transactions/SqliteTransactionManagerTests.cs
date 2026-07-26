@@ -150,6 +150,70 @@ internal sealed class SqliteTransactionManagerTests : SqliteTestBase
     }
 
     [Test]
+    public async Task ConcurrentIndependentRootIsRejectedBeforeMutationAndActiveRootCanCommit()
+    {
+        await InitializeTableAsync();
+        await using var manager = CreateManager();
+        var firstReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var first = Task.Run(async () =>
+        {
+            await using var transaction = await manager.BeginTransactionAsync();
+            await using (var handle = await manager.GetConnectionAsync(CancellationToken.None))
+            {
+                await InsertValueAsync(handle.Connection, handle.Transaction, "first");
+            }
+
+            firstReady.SetResult();
+            await releaseFirst.Task;
+            await transaction.CommitAsync();
+        });
+
+        await firstReady.Task;
+        var secondMutated = false;
+        Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            await Task.Run(async () =>
+            {
+                await using var transaction = await manager.BeginTransactionAsync();
+                secondMutated = true;
+            });
+        });
+        Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await Task.Run(async () => await manager.GetConnectionAsync(CancellationToken.None)));
+
+        releaseFirst.SetResult();
+        await first;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondMutated, Is.False);
+            Assert.That(await CountRowsAsync(), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task CapturedCompletedRootCannotJoinLaterRoot()
+    {
+        await using var manager = CreateManager();
+        await using var first = await manager.BeginTransactionAsync();
+        var releaseCapturedFlow = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var capturedFlow = Task.Run(async () =>
+        {
+            await releaseCapturedFlow.Task;
+            await using var transaction = await manager.BeginTransactionAsync();
+        });
+
+        await first.CommitAsync();
+        await using var second = await manager.BeginTransactionAsync();
+        releaseCapturedFlow.SetResult();
+
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await capturedFlow);
+        Assert.DoesNotThrowAsync(async () => await second.CommitAsync());
+    }
+
+    [Test]
     public async Task NestedDisposalWithoutCommitPreventsOuterCommit()
     {
         await using var manager = CreateManager();
