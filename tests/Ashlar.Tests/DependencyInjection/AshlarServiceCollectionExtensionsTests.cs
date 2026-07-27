@@ -573,48 +573,19 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
-    public async Task AddAshlarIdentityResolvesDisabledAccountLockoutServiceWithoutRepository()
+    public void AddAshlarIdentityDisablesAccountLockoutWithoutRepository()
     {
         var services = new ServiceCollection();
         services.AddAshlarIdentity();
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var service = scope.ServiceProvider.GetRequiredService<IAccountLockoutService>();
-        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = Guid.NewGuid() };
 
-        var status = await service.GetStatusAsync(user, AuthenticationProviderKey.Local);
-        var failure = await service.RecordFailureAsync(user, AuthenticationProviderKey.Local);
-        var reset = await service.ResetAsync(user, AuthenticationProviderKey.Local);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(status.IsLockedOut, Is.False);
-            Assert.That(status.TenantId, Is.EqualTo(user.TenantId));
-            Assert.That(failure.ThresholdReached, Is.False);
-            Assert.That(failure.LockoutActivated, Is.False);
-            Assert.That(reset, Is.False);
-        }
+        Assert.That(scope.ServiceProvider.GetRequiredService<AuthenticationPipelineDependencies>().AccountLockoutService, Is.Null);
     }
 
     [Test]
-    public async Task AddAshlarIdentityDisabledAccountLockoutServiceSupportsNonTenantUsers()
-    {
-        var services = new ServiceCollection();
-        services.AddAshlarIdentity();
-
-        using var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
-        var service = scope.ServiceProvider.GetRequiredService<IAccountLockoutService>();
-        var user = new BasicUser(Guid.NewGuid(), "basic@example.com", UserAccountState.Active);
-
-        var status = await service.GetStatusAsync(user, AuthenticationProviderKey.Local);
-
-        Assert.That(status.TenantId, Is.Null);
-    }
-
-    [Test]
-    public void AddAshlarIdentityResolvesRepositoryBackedAccountLockoutServiceWhenRepositoryIsPresent()
+    public void AddAshlarIdentityKeepsRepositoryBackedAccountLockoutServiceInternal()
     {
         var services = new ServiceCollection();
         services.AddAshlarProviderScoped(_ => Mock.Of<IAccountLockoutRepository>());
@@ -623,7 +594,13 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
 
-        Assert.That(scope.ServiceProvider.GetRequiredService<IAccountLockoutService>(), Is.TypeOf<AccountLockoutService>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(typeof(IAccountLockoutService).IsPublic, Is.False);
+            Assert.That(scope.ServiceProvider.GetService<IAccountLockoutService>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetRequiredService<AuthenticationPipelineDependencies>().AccountLockoutService,
+                Is.TypeOf<AccountLockoutService>());
+        }
     }
 
     [Test]
@@ -682,7 +659,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
-    public void AddAshlarIdentityHonorsCustomAccountLockoutServiceWithoutRepository()
+    public void AddAshlarIdentityDoesNotUseAnApplicationRegisteredAccountLockoutService()
     {
         var services = new ServiceCollection();
         var customService = new CustomAccountLockoutService();
@@ -693,7 +670,11 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using var scope = provider.CreateScope();
         var dependencies = scope.ServiceProvider.GetRequiredService<AuthenticationPipelineDependencies>();
 
-        Assert.That(dependencies.AccountLockoutService, Is.SameAs(customService));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.ServiceProvider.GetService<IAccountLockoutService>(), Is.SameAs(customService));
+            Assert.That(dependencies.AccountLockoutService, Is.Null);
+        }
     }
 
     [Test]

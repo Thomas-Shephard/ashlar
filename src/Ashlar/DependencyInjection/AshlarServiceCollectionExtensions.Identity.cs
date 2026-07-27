@@ -124,7 +124,12 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<SecurityEventFanOutSink>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationPipeline>>(),
-            provider.GetService<IAccountLockoutService>(),
+            provider.GetAshlarProviderService<IAccountLockoutRepository>() is { } lockoutRepository
+                ? new AccountLockoutService(
+                    lockoutRepository,
+                    provider.GetRequiredService<IOptions<AccountLockoutOptions>>(),
+                    provider.GetService<AccountLockoutServiceDependencies>())
+                : null,
             provider.GetRequiredService<IOptions<PrimaryAuthenticationRateLimitOptions>>().Value,
             provider.GetRequiredService<IOptions<AuthenticationFactorRateLimitOptions>>().Value,
             provider.GetRequiredService<IOptions<AccountLockoutOptions>>().Value));
@@ -190,16 +195,6 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped(provider => new AccountLockoutServiceDependencies(
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>()));
-        services.TryAddScoped<IAccountLockoutService>(provider =>
-        {
-            var repository = provider.GetAshlarProviderService<IAccountLockoutRepository>();
-            return repository == null
-                ? DisabledAccountLockoutService.Instance
-                : new AccountLockoutService(
-                    repository,
-                    provider.GetRequiredService<IOptions<AccountLockoutOptions>>(),
-                    provider.GetService<AccountLockoutServiceDependencies>());
-        });
         services.TryAddScoped<IUserAdministrationService>(provider => new UserAdministrationService(
             provider.GetRequiredAshlarProviderService<IUserAdministrationRepository>(),
             provider.GetRequiredService<IAccountSecurityPostureReader>(),
