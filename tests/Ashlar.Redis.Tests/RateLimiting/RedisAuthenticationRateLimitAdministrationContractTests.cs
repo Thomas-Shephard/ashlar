@@ -6,7 +6,6 @@ using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.Models.Sessions;
 using Ashlar.Identity.RateLimiting.Abstractions;
-using Ashlar.ProviderContracts.DependencyInjection;
 using Ashlar.Testing;
 using Moq;
 

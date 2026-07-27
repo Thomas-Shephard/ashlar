@@ -567,7 +567,7 @@ internal sealed class SecurityAuditEventTests
         var services = new ServiceCollection();
         services.AddSingleton(custom);
         services.AddAshlarProviderScoped(_ => Mock.Of<IPersistentSecurityEventSink>());
-        services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>();
+        services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>("Test");
         services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
         services.AddAshlarIdentity();
 

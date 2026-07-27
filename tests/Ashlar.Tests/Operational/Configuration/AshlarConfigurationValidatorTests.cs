@@ -997,7 +997,7 @@ internal sealed class AshlarConfigurationValidatorTests
         services.AddAshlarProviderScoped<IPersistentSecurityEventSink>(_ => new CustomPersistentSecurityEventSink());
         services.AddSingleton<IAuthenticationRateLimiter, CustomAuthenticationRateLimiter>();
         services.AddSingleton<CustomTransactionProvider>();
-        services.AddAshlarDurableTransactionProvider<CustomTransactionProvider>();
+        services.AddAshlarDurableTransactionProvider<CustomTransactionProvider>("Test");
         services.AddAshlarDurableTransactionParticipant<IUserRepository>();
         services.AddAshlarDurableTransactionParticipant<ICredentialRepository>();
         services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionRepository>();

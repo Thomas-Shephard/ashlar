@@ -372,6 +372,27 @@ public static partial class AshlarServiceCollectionExtensions
         this IServiceCollection services,
         string providerName)
     {
+        services.ValidateAshlarAuthenticationRateLimitProviderMarker(providerName);
+
+        var existing = services
+            .FirstOrDefault(descriptor => descriptor.ServiceType == typeof(AuthenticationRateLimitProviderRegistration))
+            ?.ImplementationInstance as AuthenticationRateLimitProviderRegistration;
+        if (existing == null)
+        {
+            services.AddSingleton(new AuthenticationRateLimitProviderRegistration(providerName));
+        }
+
+        return services;
+    }
+
+    /// <summary>Rejects a conflicting authentication rate-limit provider without changing the service collection.</summary>
+    /// <param name="services">The service collection to validate.</param>
+    /// <param name="providerName">The provider name used in configuration diagnostics.</param>
+    /// <returns>The same service collection.</returns>
+    public static IServiceCollection ValidateAshlarAuthenticationRateLimitProviderMarker(
+        this IServiceCollection services,
+        string providerName)
+    {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(providerName);
 
@@ -382,11 +403,6 @@ public static partial class AshlarServiceCollectionExtensions
         {
             throw new InvalidOperationException(
                 $"Multiple authentication rate-limit providers are not supported. '{existing.ProviderName}' is already registered; cannot also register '{providerName}'.");
-        }
-
-        if (existing == null)
-        {
-            services.AddSingleton(new AuthenticationRateLimitProviderRegistration(providerName));
         }
 
         return services;
