@@ -262,13 +262,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>
-    /// Registers the Ashlar PostgreSQL cleanup service for explicit cleanup calls.
-    /// </summary>
-    /// <param name="services">The service collection to add registrations to.</param>
-    /// <param name="configure">Optional cleanup configuration.</param>
-    /// <returns>The same service collection so calls can be chained.</returns>
-    public static IServiceCollection AddAshlarPostgresCleanup(
+    internal static IServiceCollection AddAshlarPostgresCleanupInfrastructure(
         this IServiceCollection services,
         Action<AshlarCleanupOptions>? configure = null)
     {
@@ -286,7 +280,7 @@ public static class AshlarPostgresServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarCleanupDiagnostics, PostgresAshlarCleanupDiagnostics>();
-        services.TryAddScoped<IAshlarCleanupService, PostgresAshlarCleanupService>();
+        services.TryAddScoped<PostgresAshlarCleanupService>();
 
         return services;
     }
@@ -303,7 +297,7 @@ public static class AshlarPostgresServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddAshlarPostgresCleanup(configure);
+        services.AddAshlarPostgresCleanupInfrastructure(configure);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, PostgresAshlarCleanupHostedService>());
 
         return services;

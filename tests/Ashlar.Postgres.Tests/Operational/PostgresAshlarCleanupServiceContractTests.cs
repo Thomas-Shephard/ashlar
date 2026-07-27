@@ -8,6 +8,9 @@ namespace Ashlar.Postgres.Tests.Operational;
 
 internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupServiceContractTests
 {
+    protected override Task<AshlarCleanupResult> RunCleanupAsync(IServiceProvider serviceProvider) =>
+        serviceProvider.GetRequiredService<PostgresAshlarCleanupService>().CleanupAsync();
+
     private static readonly Guid TestUserId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly DateTimeOffset Now = new(2026, 5, 8, 12, 0, 0, TimeSpan.Zero);
     private PostgresContractDatabaseLease? _database;
@@ -20,7 +23,7 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
         _timeProvider = new FakeTimeProvider(Now);
         _database = await PostgresContractDatabase.CreateInitializedServiceProviderAsync(services =>
         {
-            services.AddAshlarPostgresCleanup(options =>
+            services.AddAshlarPostgresCleanupInfrastructure(options =>
             {
                 options.BatchSize = 2;
                 options.MaxBatchesPerRun = 1;
@@ -205,7 +208,7 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
         }
 
         await using var provider = CreateCleanupProvider(options => options.RemoveAuditEventsAfter = null);
-        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+        return await provider.GetRequiredService<PostgresAshlarCleanupService>().CleanupAsync();
     }
 
     protected override async Task<AshlarCleanupResult> RunCleanupWithNullRememberedMfaDeviceRetentionsAsync()
@@ -220,7 +223,7 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
             options.RemoveExpiredRememberedMfaDevicesAfter = null;
             options.RemoveRevokedRememberedMfaDevicesAfter = null;
         });
-        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+        return await provider.GetRequiredService<PostgresAshlarCleanupService>().CleanupAsync();
     }
 
     protected override async Task<AshlarCleanupResult> RunCleanupWithNullEmailDiscardRetentionAsync()
@@ -235,7 +238,7 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
             options.RemoveDiscardedEmailsAfter = null;
             options.RemoveDiscardedSensitiveEmailsAfter = null;
         });
-        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+        return await provider.GetRequiredService<PostgresAshlarCleanupService>().CleanupAsync();
     }
 
     private ServiceProvider CreateCleanupProvider(Action<AshlarCleanupOptions> configure)
@@ -247,7 +250,7 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
 
         var services = new ServiceCollection();
         services.AddAshlarPostgres(_database.ConnectionString);
-        services.AddAshlarPostgresCleanup(configure);
+        services.AddAshlarPostgresCleanupInfrastructure(configure);
         services.AddSingleton<TimeProvider>(_timeProvider);
         return services.BuildServiceProvider();
     }

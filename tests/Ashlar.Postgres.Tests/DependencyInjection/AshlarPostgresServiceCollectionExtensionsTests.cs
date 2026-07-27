@@ -199,29 +199,30 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
     }
 
     [Test]
-    public async Task AddAshlarPostgresCleanupRegistersCleanupService()
+    public async Task AddAshlarPostgresCleanupInfrastructureRegistersCleanupService()
     {
         var services = new ServiceCollection();
 
         services.AddAshlarPostgres(GetDataSource());
-        services.AddAshlarPostgresCleanup(options => options.BatchSize = 42);
+        services.AddAshlarPostgresCleanupInfrastructure(options => options.BatchSize = 42);
         await using var provider = services.BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarCleanupService>(), Is.TypeOf<PostgresAshlarCleanupService>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<PostgresAshlarCleanupService>(), Is.TypeOf<PostgresAshlarCleanupService>());
+            Assert.That(typeof(AshlarCleanupOptions).Assembly.GetType("Ashlar.Operational.IAshlarCleanupService"), Is.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarCleanupDiagnostics>(), Is.TypeOf<PostgresAshlarCleanupDiagnostics>());
             Assert.That(provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AshlarCleanupOptions>>().Value.BatchSize, Is.EqualTo(42));
         }
     }
 
     [Test]
-    public void AddAshlarPostgresCleanupValidatesOptionsOnStart()
+    public void AddAshlarPostgresCleanupInfrastructureValidatesOptionsOnStart()
     {
         var services = new ServiceCollection();
 
-        services.AddAshlarPostgresCleanup(options => options.BatchSize = 0);
+        services.AddAshlarPostgresCleanupInfrastructure(options => options.BatchSize = 0);
 
         using var provider = services.BuildServiceProvider();
 
@@ -230,12 +231,12 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
     }
 
     [Test]
-    public async Task AddAshlarPostgresCleanupRegistersCleanupDiagnostics()
+    public async Task AddAshlarPostgresCleanupInfrastructureRegistersCleanupDiagnostics()
     {
         var services = new ServiceCollection();
 
         services.AddAshlarPostgres(GetDataSource());
-        services.AddAshlarPostgresCleanup(options =>
+        services.AddAshlarPostgresCleanupInfrastructure(options =>
         {
             options.CleanupInterval = TimeSpan.FromMinutes(30);
             options.BatchSize = 42;
@@ -288,9 +289,9 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
 
     [Test]
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
-    public void AddAshlarPostgresCleanupNullArgumentsShouldThrow()
+    public void AddAshlarPostgresCleanupInfrastructureNullArgumentsShouldThrow()
     {
-        Assert.Throws<ArgumentNullException>(() => AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresCleanup(null!));
+        Assert.Throws<ArgumentNullException>(() => AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresCleanupInfrastructure(null!));
         Assert.Throws<ArgumentNullException>(() => AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresCleanupHostedService(null!));
     }
 }

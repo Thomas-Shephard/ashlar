@@ -25,6 +25,7 @@ public sealed class AshlarCleanupHostedServiceRunner
     private readonly TimeProvider _timeProvider;
     private readonly AshlarCleanupOptions _options;
     private readonly ILogger _logger;
+    private readonly Func<IServiceProvider, CancellationToken, Task<AshlarCleanupResult>> _cleanup;
 
     /// <summary>
     /// Creates a hosted-service cleanup runner.
@@ -33,21 +34,25 @@ public sealed class AshlarCleanupHostedServiceRunner
     /// <param name="timeProvider">Clock used by the periodic timer.</param>
     /// <param name="options">Configured cleanup cadence, retention windows, and batch sizes.</param>
     /// <param name="logger">Logger used for cleanup run outcomes.</param>
+    /// <param name="cleanup">Provider cleanup callback invoked inside a fresh scope.</param>
     public AshlarCleanupHostedServiceRunner(
         IServiceScopeFactory scopeFactory,
         TimeProvider timeProvider,
         IOptions<AshlarCleanupOptions> options,
-        ILogger logger)
+        ILogger logger,
+        Func<IServiceProvider, CancellationToken, Task<AshlarCleanupResult>> cleanup)
     {
         ArgumentNullException.ThrowIfNull(scopeFactory);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(cleanup);
 
         _scopeFactory = scopeFactory;
         _timeProvider = timeProvider;
         _options = options.Value;
         _logger = logger;
+        _cleanup = cleanup;
     }
 
     /// <summary>
@@ -75,8 +80,7 @@ public sealed class AshlarCleanupHostedServiceRunner
         try
         {
             using var scope = _scopeFactory.CreateScope();
-            var cleanupService = scope.ServiceProvider.GetRequiredService<IAshlarCleanupService>();
-            var result = await cleanupService.CleanupAsync(stoppingToken);
+            var result = await _cleanup(scope.ServiceProvider, stoppingToken);
             CleanupRunCompleted(
                 _logger,
                 result.ExpiredCredentials,

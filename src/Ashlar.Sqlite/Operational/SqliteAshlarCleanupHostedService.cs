@@ -7,29 +7,39 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Sqlite.Operational;
 
-/// <summary>
-/// Provides SQLite ashlar cleanup hosted service behavior.
-/// </summary>
-/// <param name="scopeFactory">The scope factory value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-/// <param name="options">The options value.</param>
-/// <param name="logger">The logger value.</param>
-public sealed class SqliteAshlarCleanupHostedService(
-    IServiceScopeFactory scopeFactory,
-    TimeProvider timeProvider,
-    IOptions<AshlarCleanupOptions> options,
-    ILogger<SqliteAshlarCleanupHostedService>? logger = null) : BackgroundService
+internal sealed class SqliteAshlarCleanupHostedService : BackgroundService
 {
-    private readonly AshlarCleanupHostedServiceRunner _runner = new(
-        scopeFactory,
-        timeProvider,
-        options,
-        logger ?? NullLogger<SqliteAshlarCleanupHostedService>.Instance);
+    private readonly AshlarCleanupHostedServiceRunner _runner;
 
-    /// <summary>
-    /// Performs the execute <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="stoppingToken">The stopping token value.</param>
-    /// <returns>The operation result.</returns>
+    public SqliteAshlarCleanupHostedService(
+        IServiceScopeFactory scopeFactory,
+        TimeProvider timeProvider,
+        IOptions<AshlarCleanupOptions> options,
+        ILogger<SqliteAshlarCleanupHostedService>? logger = null)
+        : this(
+            scopeFactory,
+            timeProvider,
+            options,
+            logger,
+            static (services, cancellationToken) =>
+                services.GetRequiredService<SqliteAshlarCleanupService>().CleanupAsync(cancellationToken))
+    {
+    }
+
+    internal SqliteAshlarCleanupHostedService(
+        IServiceScopeFactory scopeFactory,
+        TimeProvider timeProvider,
+        IOptions<AshlarCleanupOptions> options,
+        ILogger<SqliteAshlarCleanupHostedService>? logger,
+        Func<IServiceProvider, CancellationToken, Task<AshlarCleanupResult>> cleanup)
+    {
+        _runner = new(
+            scopeFactory,
+            timeProvider,
+            options,
+            logger ?? NullLogger<SqliteAshlarCleanupHostedService>.Instance,
+            cleanup);
+    }
+
     protected override Task ExecuteAsync(CancellationToken stoppingToken) => _runner.ExecuteAsync(stoppingToken);
 }

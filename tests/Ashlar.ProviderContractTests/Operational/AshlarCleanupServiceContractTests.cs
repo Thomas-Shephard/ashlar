@@ -24,6 +24,8 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
 
     protected abstract Task<AshlarCleanupResult> RunCleanupWithNullEmailDiscardRetentionAsync();
 
+    protected abstract Task<AshlarCleanupResult> RunCleanupAsync(IServiceProvider serviceProvider);
+
     protected virtual bool SupportsCleanupTransactionRollback => false;
 
     [Test]
@@ -40,7 +42,7 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
         await SeedMixedCleanupRowsAsync();
         await using var scope = CreateAsyncScope();
 
-        var result = await GetCleanupService(scope.ServiceProvider).CleanupAsync();
+        var result = await RunCleanupAsync(scope.ServiceProvider);
 
         using (Assert.EnterMultipleScope())
         {
@@ -83,11 +85,9 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
     {
         await SeedExpiredSessionsAsync(3);
         await using var scope = CreateAsyncScope();
-        var cleanup = GetCleanupService(scope.ServiceProvider);
-
-        var first = await cleanup.CleanupAsync();
-        var second = await cleanup.CleanupAsync();
-        var third = await cleanup.CleanupAsync();
+        var first = await RunCleanupAsync(scope.ServiceProvider);
+        var second = await RunCleanupAsync(scope.ServiceProvider);
+        var third = await RunCleanupAsync(scope.ServiceProvider);
 
         using (Assert.EnterMultipleScope())
         {
@@ -133,7 +133,7 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
         await SeedSensitiveEmailCleanupRowsAsync();
         await using var scope = CreateAsyncScope();
 
-        var result = await GetCleanupService(scope.ServiceProvider).CleanupAsync();
+        var result = await RunCleanupAsync(scope.ServiceProvider);
 
         using (Assert.EnterMultipleScope())
         {
@@ -188,7 +188,7 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
 
         await using (var transaction = await transactionProvider.BeginTransactionAsync())
         {
-            var result = await GetCleanupService(scope.ServiceProvider).CleanupAsync();
+            var result = await RunCleanupAsync(scope.ServiceProvider);
             Assert.That(result.ExpiredSessions, Is.EqualTo(1));
             await transaction.RollbackAsync();
         }

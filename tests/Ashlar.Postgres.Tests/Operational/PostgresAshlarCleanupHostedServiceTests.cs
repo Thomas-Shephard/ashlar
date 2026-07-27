@@ -19,7 +19,9 @@ internal sealed class PostgresAshlarCleanupHostedServiceTests
         var service = new PostgresAshlarCleanupHostedService(
             provider.GetRequiredService<IServiceScopeFactory>(),
             timeProvider,
-            Options.Create(new AshlarCleanupOptions { CleanupInterval = TimeSpan.FromMinutes(5) }));
+            Options.Create(new AshlarCleanupOptions { CleanupInterval = TimeSpan.FromMinutes(5) }),
+            null,
+            RunCleanupAsync);
 
         await service.StartAsync(CancellationToken.None);
         await WaitForCountAsync(cleanup, 1);
@@ -43,7 +45,8 @@ internal sealed class PostgresAshlarCleanupHostedServiceTests
             provider.GetRequiredService<IServiceScopeFactory>(),
             timeProvider,
             Options.Create(new AshlarCleanupOptions { CleanupInterval = TimeSpan.FromSeconds(1) }),
-            logger);
+            logger,
+            RunCleanupAsync);
 
         await service.StartAsync(CancellationToken.None);
         await WaitForCountAsync(cleanup, 1);
@@ -65,7 +68,9 @@ internal sealed class PostgresAshlarCleanupHostedServiceTests
         var service = new PostgresAshlarCleanupHostedService(
             provider.GetRequiredService<IServiceScopeFactory>(),
             timeProvider,
-            Options.Create(new AshlarCleanupOptions { CleanupInterval = TimeSpan.FromSeconds(1) }));
+            Options.Create(new AshlarCleanupOptions { CleanupInterval = TimeSpan.FromSeconds(1) }),
+            null,
+            RunCleanupAsync);
 
         await service.StartAsync(CancellationToken.None);
         await WaitForCountAsync(cleanup, 1);
@@ -83,7 +88,9 @@ internal sealed class PostgresAshlarCleanupHostedServiceTests
         var service = new PostgresAshlarCleanupHostedService(
             provider.GetRequiredService<IServiceScopeFactory>(),
             timeProvider,
-            Options.Create(new AshlarCleanupOptions { CleanupInterval = TimeSpan.Zero }));
+            Options.Create(new AshlarCleanupOptions { CleanupInterval = TimeSpan.Zero }),
+            null,
+            RunCleanupAsync);
 
         await service.StartAsync(CancellationToken.None);
         var executeTask = service.ExecuteTask;
@@ -107,7 +114,7 @@ internal sealed class PostgresAshlarCleanupHostedServiceTests
         Assert.Throws<ArgumentNullException>(() => _ = new PostgresAshlarCleanupHostedService(scopeFactory, timeProvider, null!));
     }
 
-    private static ServiceProvider BuildProvider(IAshlarCleanupService cleanup)
+    private static ServiceProvider BuildProvider(RecordingCleanupService cleanup)
     {
         var services = new ServiceCollection();
         services.AddScoped(_ => cleanup);
@@ -129,7 +136,12 @@ internal sealed class PostgresAshlarCleanupHostedServiceTests
         Assert.Fail($"Expected cleanup count to reach {expected}, but it was {cleanup.Count}.");
     }
 
-    private sealed class RecordingCleanupService : IAshlarCleanupService
+    private static Task<AshlarCleanupResult> RunCleanupAsync(
+        IServiceProvider services,
+        CancellationToken cancellationToken) =>
+        services.GetRequiredService<RecordingCleanupService>().CleanupAsync(cancellationToken);
+
+    private sealed class RecordingCleanupService
     {
         public int Count { get; private set; }
         public bool ThrowOnFirstCall { get; init; }

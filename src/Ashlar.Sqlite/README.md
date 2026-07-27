@@ -60,7 +60,7 @@ Schema diagnostics return:
 
 ## Cleanup Diagnostics
 
-`AddAshlarSqliteCleanup(...)` registers `IAshlarCleanupDiagnostics`. Resolve it from DI and call `CheckAsync()` to inspect safe cleanup configuration facts:
+`AddAshlarSqliteCleanupHostedService(...)` registers `IAshlarCleanupDiagnostics`. Resolve it from DI and call `CheckAsync()` to inspect safe cleanup configuration facts:
 
 ```csharp
 using Ashlar.Operational.Diagnostics;
@@ -123,7 +123,6 @@ Implemented:
 - `IAuthenticationRateLimiter`
 - `IEmailSender` via `AddAshlarSqliteEmailOutboxSender(...)`
 - `SqliteEmailOutboxHostedService` via `AddAshlarSqliteEmailOutboxHostedService<TTransport>(...)`
-- `IAshlarCleanupService`
 - `IAshlarSchemaDiagnostics`
 - `IAshlarCleanupDiagnostics`
 

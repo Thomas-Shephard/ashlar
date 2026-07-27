@@ -21,7 +21,7 @@ internal sealed class SqliteAshlarCleanupServiceTests : SqliteTestBase
         _timeProvider = new FakeTimeProvider(Now);
         var services = new ServiceCollection();
         services.AddAshlarSqlite(GetConnectionString());
-        services.AddAshlarSqliteCleanup(options =>
+        services.AddAshlarSqliteCleanupInfrastructure(options =>
         {
             options.BatchSize = 100;
             options.RemoveAuditEventsAfter = TimeSpan.FromDays(90);
@@ -40,7 +40,7 @@ internal sealed class SqliteAshlarCleanupServiceTests : SqliteTestBase
     [Test]
     public async Task CleanupAsyncOnEmptyDatabaseReturnsZeroCounts()
     {
-        var result = await _provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+        var result = await _provider.GetRequiredService<SqliteAshlarCleanupService>().CleanupAsync();
 
         Assert.That(result, Is.EqualTo(AshlarCleanupResult.Empty));
     }
@@ -50,7 +50,7 @@ internal sealed class SqliteAshlarCleanupServiceTests : SqliteTestBase
     {
         await SeedMixedRowsAsync();
 
-        var result = await _provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+        var result = await _provider.GetRequiredService<SqliteAshlarCleanupService>().CleanupAsync();
 
         using (Assert.EnterMultipleScope())
         {
@@ -140,7 +140,7 @@ internal sealed class SqliteAshlarCleanupServiceTests : SqliteTestBase
             command.AddDateTimeOffsetParameter("$recent", Now.AddMinutes(-30));
         });
 
-        var result = await _provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+        var result = await _provider.GetRequiredService<SqliteAshlarCleanupService>().CleanupAsync();
 
         using (Assert.EnterMultipleScope())
         {
@@ -169,7 +169,7 @@ internal sealed class SqliteAshlarCleanupServiceTests : SqliteTestBase
             command.AddDateTimeOffsetParameter("$recent", Now.AddMinutes(-30));
         });
 
-        var result = await _provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+        var result = await _provider.GetRequiredService<SqliteAshlarCleanupService>().CleanupAsync();
 
         using (Assert.EnterMultipleScope())
         {
@@ -198,7 +198,7 @@ internal sealed class SqliteAshlarCleanupServiceTests : SqliteTestBase
             command.AddDateTimeOffsetParameter("$lockedUntil", Now.AddMinutes(5));
         });
 
-        var result = await _provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+        var result = await _provider.GetRequiredService<SqliteAshlarCleanupService>().CleanupAsync();
 
         using (Assert.EnterMultipleScope())
         {
@@ -271,7 +271,7 @@ internal sealed class SqliteAshlarCleanupServiceTests : SqliteTestBase
             command => command.AddDateTimeOffsetParameter("$old", Now.AddDays(-10)));
 
         var transactionProvider = _provider.GetRequiredService<Ashlar.Identity.Abstractions.Transactions.AshlarDurableTransactionProvider>();
-        var cleanup = _provider.GetRequiredService<IAshlarCleanupService>();
+        var cleanup = _provider.GetRequiredService<SqliteAshlarCleanupService>();
 
         await using (var transaction = await transactionProvider.BeginTransactionAsync())
         {

@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Postgres.Operational;
 
-internal sealed class PostgresAshlarCleanupService : IAshlarCleanupService
+internal sealed class PostgresAshlarCleanupService
 {
     private static readonly Action<ILogger, string, string, Exception?> CleanupCategoryFailed =
         LoggerMessage.Define<string, string>(

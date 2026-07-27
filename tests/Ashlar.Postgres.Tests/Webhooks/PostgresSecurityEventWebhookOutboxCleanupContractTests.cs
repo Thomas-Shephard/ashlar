@@ -9,13 +9,16 @@ internal sealed class PostgresSecurityEventWebhookOutboxCleanupContractTests : S
 {
     private PostgresContractDatabaseLease? _database;
 
+    protected override Task<AshlarCleanupResult> RunCleanupAsync(IServiceProvider serviceProvider) =>
+        serviceProvider.GetRequiredService<PostgresAshlarCleanupService>().CleanupAsync();
+
     protected override async Task<IServiceProvider> CreateInitializedServiceProviderAsync()
     {
         _database = await PostgresContractDatabase.CreateInitializedServiceProviderAsync(services =>
         {
             services.AddSingleton<TimeProvider>(new FakeTimeProvider(CleanupNow));
             services.AddAshlarPostgresSecurityEventWebhookOutbox();
-            services.AddAshlarPostgresCleanup(options =>
+            services.AddAshlarPostgresCleanupInfrastructure(options =>
             {
                 options.BatchSize = 2;
                 options.MaxBatchesPerRun = 1;
@@ -83,13 +86,13 @@ internal sealed class PostgresSecurityEventWebhookOutboxCleanupContractTests : S
         var services = new ServiceCollection();
         services.AddAshlarPostgres(_database!.ConnectionString);
         services.AddSingleton<TimeProvider>(new FakeTimeProvider(CleanupNow));
-        services.AddAshlarPostgresCleanup(options =>
+        services.AddAshlarPostgresCleanupInfrastructure(options =>
         {
             options.RemoveSentSecurityEventWebhooksAfter = null;
             options.RemoveFailedSecurityEventWebhooksAfter = null;
             options.RemoveDiscardedSecurityEventWebhooksAfter = null;
         });
         await using var provider = services.BuildServiceProvider();
-        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+        return await provider.GetRequiredService<PostgresAshlarCleanupService>().CleanupAsync();
     }
 }
