@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using Ashlar.Operational.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
@@ -62,55 +63,62 @@ internal sealed class AshlarOperationsSummaryServiceTests
     public async Task SafeProjectionDoesNotExposeRawSensitiveDiagnosticFields()
     {
         var summary = await CreateService().GetSummaryAsync();
+        var issues = (ICollection<AshlarOperationsIssue>)summary.Issues;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(summary.Schema.AppliedMigrationCount, Is.EqualTo(4));
-            Assert.That(summary.Schema.MissingMigrationCount, Is.Zero);
-            Assert.That(summary.Cleanup.CleanupInterval, Is.EqualTo(TimeSpan.FromMinutes(30)));
-            Assert.That(summary.EmailOutbox.PendingCount, Is.EqualTo(7));
-            Assert.That(summary.EmailOutbox.FailedCount, Is.EqualTo(1));
-            Assert.That(summary.EmailOutbox.PollingInterval, Is.EqualTo(TimeSpan.FromSeconds(15)));
-            Assert.That(summary.SecurityEventWebhookOutbox.PendingCount, Is.EqualTo(7));
-            Assert.That(summary.SecurityEventWebhookOutbox.PollingInterval, Is.EqualTo(TimeSpan.FromSeconds(15)));
-            Assert.That(summary.AuthenticationRateLimiter.ActiveKeyCount, Is.EqualTo(11));
-            Assert.That(summary.AuthenticationRateLimiter.CleanupInterval, Is.EqualTo(TimeSpan.FromMinutes(5)));
-            Assert.That(summary.AuthenticationRateLimiter.MaxCleanupRows, Is.EqualTo(500));
+            Assert.That(summary.Schema, Is.EqualTo(new AshlarSchemaOperationsSummary(
+                AshlarDiagnosticStatus.Healthy, CheckedAt, AshlarSchemaStatus.Current, 4, 4, 0)));
+            Assert.That(summary.Cleanup, Is.EqualTo(new AshlarCleanupOperationsSummary(
+                AshlarDiagnosticStatus.Healthy, CheckedAt, true, true, TimeSpan.FromMinutes(30), 100, 3, 9, 1)));
+            Assert.That(summary.AuthenticationRateLimiter, Is.EqualTo(new AshlarAuthenticationRateLimiterOperationsSummary(
+                AshlarDiagnosticStatus.Healthy, CheckedAt, true, false, false, null, 11, 2, false, TimeSpan.FromMinutes(5), 500)));
+            Assert.That(summary.EmailOutbox, Is.EqualTo(new AshlarOutboxOperationsSummary(
+                AshlarDiagnosticStatus.Healthy, CheckedAt, 7, 2, 1, 0, 1,
+                CheckedAt.AddMinutes(-10), CheckedAt.AddHours(-1), 8, TimeSpan.FromSeconds(15), 25)));
+            Assert.That(summary.SecurityEventWebhookOutbox, Is.EqualTo(new AshlarOutboxOperationsSummary(
+                AshlarDiagnosticStatus.Healthy, CheckedAt, 17, 12, 11, 10, 9,
+                CheckedAt.AddMinutes(-20), CheckedAt.AddHours(-2), 18, TimeSpan.FromSeconds(25), 35)));
+            Assert.That(issues.IsReadOnly, Is.True);
+            Assert.Throws<NotSupportedException>(() =>
+                issues.Add(new AshlarOperationsIssue("schema", AshlarDiagnosticStatus.Unhealthy)));
         }
 
-        var publicPropertyNames = typeof(AshlarOperationsSummary).Assembly
-            .GetTypes()
-            .Where(type => type.Namespace == "Ashlar.Operational.Diagnostics" && type.Name.Contains("Operations", StringComparison.Ordinal))
-            .SelectMany(type => type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
-            .Select(property => property.Name)
-            .ToArray();
+        AssertPublicProperties<AshlarOperationsSummary>(
+            "Status", "CheckedAt", "Schema", "Cleanup", "AuthenticationRateLimiter",
+            "EmailOutbox", "SecurityEventWebhookOutbox", "Issues");
+        AssertPublicProperties<AshlarOperationsIssue>("Component", "Status");
+        AssertPublicProperties<AshlarOperationsComponentSummary>("Status", "CheckedAt");
+        AssertPublicProperties<AshlarSchemaOperationsSummary>(
+            "Status", "CheckedAt", "SchemaStatus", "AppliedMigrationCount",
+            "ExpectedMigrationCount", "MissingMigrationCount");
+        AssertPublicProperties<AshlarCleanupOperationsSummary>(
+            "Status", "CheckedAt", "Configured", "OptionsValid", "CleanupInterval",
+            "BatchSize", "MaxBatchesPerRun", "EnabledCategoryCount", "DisabledCategoryCount");
+        AssertPublicProperties<AshlarAuthenticationRateLimiterOperationsSummary>(
+            "Status", "CheckedAt", "Configured", "Distributed", "Persistent",
+            "ExpiredRowCount", "ActiveKeyCount", "BlockedKeyCount", "CleanupConfigured",
+            "CleanupInterval", "MaxCleanupRows");
+        AssertPublicProperties<AshlarOutboxOperationsSummary>(
+            "Status", "CheckedAt", "PendingCount", "ScheduledCount", "LockedCount",
+            "ExpiredLockCount", "FailedCount", "OldestPendingAt", "OldestFailedAt",
+            "MaxAttempts", "PollingInterval", "BatchSize");
 
-        Assert.That(publicPropertyNames, Has.None.Matches<string>(name =>
-            name.Contains("Secret", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("Token", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("Url", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("Uri", StringComparison.OrdinalIgnoreCase)
-            || name.EndsWith("Uri", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("Body", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("Header", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("LockOwner", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("RedisKey", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("ConnectionString", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("Sql", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("Metadata", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("Id", StringComparison.OrdinalIgnoreCase)));
+        Assert.That(
+            JsonSerializer.SerializeToElement(summary).EnumerateObject().Select(property => property.Name),
+            Is.EquivalentTo(typeof(AshlarOperationsSummary)
+                .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .Select(property => property.Name)));
     }
 
     [Test]
-    public async Task ComponentReasonsAreProjectedAsSafeStrings()
+    public async Task DiagnosticProviderNamesAndReasonsAreNotProjected()
     {
-        var summary = await CreateService(schemaStatus: AshlarDiagnosticStatus.Degraded, schemaReason: "Schema has pending migrations.").GetSummaryAsync();
+        var summary = await CreateService(
+            schemaStatus: AshlarDiagnosticStatus.Degraded,
+            schemaReason: "https://internal.example/?token=secret provider exception").GetSummaryAsync();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(summary.Schema.Reason, Is.EqualTo("Schema has pending migrations."));
-            Assert.That(summary.Issues.Single().Reason, Is.EqualTo("Schema has pending migrations."));
-        }
+        Assert.That(summary.Issues.Single(), Is.EqualTo(new AshlarOperationsIssue("schema", AshlarDiagnosticStatus.Degraded)));
     }
 
     [Test]
@@ -124,8 +132,6 @@ internal sealed class AshlarOperationsSummaryServiceTests
         {
             Assert.That(summary.Status, Is.EqualTo(AshlarDiagnosticStatus.Degraded));
             Assert.That(summary.Schema.Status, Is.EqualTo(AshlarDiagnosticStatus.Unknown));
-            Assert.That(summary.Schema.Reason, Is.EqualTo("Diagnostic check failed."));
-            Assert.That(summary.Schema.ProviderName, Is.Null);
             Assert.That(summary.Cleanup.Status, Is.EqualTo(AshlarDiagnosticStatus.Healthy));
             Assert.That(summary.EmailOutbox.Status, Is.EqualTo(AshlarDiagnosticStatus.Healthy));
             Assert.That(summary.Issues.Single().Component, Is.EqualTo("schema"));
@@ -142,8 +148,6 @@ internal sealed class AshlarOperationsSummaryServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(summary.Cleanup.Status, Is.EqualTo(AshlarDiagnosticStatus.Unknown));
-            Assert.That(summary.Cleanup.Reason, Is.EqualTo("Diagnostic check failed."));
-            Assert.That(summary.Cleanup.ProviderName, Is.Null);
         }
     }
 
@@ -157,8 +161,6 @@ internal sealed class AshlarOperationsSummaryServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(summary.AuthenticationRateLimiter.Status, Is.EqualTo(AshlarDiagnosticStatus.Unknown));
-            Assert.That(summary.AuthenticationRateLimiter.Reason, Is.EqualTo("Diagnostic check failed."));
-            Assert.That(summary.AuthenticationRateLimiter.ProviderName, Is.Null);
         }
     }
 
@@ -172,8 +174,6 @@ internal sealed class AshlarOperationsSummaryServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(summary.EmailOutbox.Status, Is.EqualTo(AshlarDiagnosticStatus.Unknown));
-            Assert.That(summary.EmailOutbox.Reason, Is.EqualTo("Diagnostic check failed."));
-            Assert.That(summary.EmailOutbox.ProviderName, Is.Null);
         }
     }
 
@@ -188,8 +188,6 @@ internal sealed class AshlarOperationsSummaryServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(summary.SecurityEventWebhookOutbox.Status, Is.EqualTo(AshlarDiagnosticStatus.Unknown));
-            Assert.That(summary.SecurityEventWebhookOutbox.Reason, Is.EqualTo("Diagnostic check failed."));
-            Assert.That(summary.SecurityEventWebhookOutbox.ProviderName, Is.Null);
             Assert.That(logger.WarningCount, Is.EqualTo(1));
         }
     }
@@ -198,8 +196,7 @@ internal sealed class AshlarOperationsSummaryServiceTests
     public async Task CancellationIsNotSwallowed()
     {
         using var cancellationTokenSource = new CancellationTokenSource();
-        cancellationTokenSource.Cancel();
-        var service = CreateService(schemaDiagnostics: new CanceledSchemaDiagnostics());
+        var service = CreateService(schemaDiagnostics: new CanceledSchemaDiagnostics(cancellationTokenSource));
 
         try
         {
@@ -213,6 +210,27 @@ internal sealed class AshlarOperationsSummaryServiceTests
     }
 
     [Test]
+    public void PreCanceledCallStopsWhenDiagnosticsIgnoreCancellation()
+    {
+        using var cancellationTokenSource = new CancellationTokenSource();
+        cancellationTokenSource.Cancel();
+
+        Assert.ThrowsAsync<OperationCanceledException>(
+            () => CreateService().GetSummaryAsync(cancellationTokenSource.Token));
+    }
+
+    [Test]
+    public void CancellationAfterFinalDiagnosticIsNotIgnored()
+    {
+        using var cancellationTokenSource = new CancellationTokenSource();
+        var service = CreateService(
+            webhookOutboxDiagnostics: new CancelingSecurityEventWebhookOutboxDiagnostics(cancellationTokenSource));
+
+        Assert.ThrowsAsync<OperationCanceledException>(
+            () => service.GetSummaryAsync(cancellationTokenSource.Token));
+    }
+
+    [Test]
     public async Task InnerDiagnosticCancellationBecomesSafeUnknownWhenCallerDidNotCancel()
     {
         var service = CreateService(schemaDiagnostics: new IndependentlyCanceledSchemaDiagnostics());
@@ -222,7 +240,6 @@ internal sealed class AshlarOperationsSummaryServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(summary.Schema.Status, Is.EqualTo(AshlarDiagnosticStatus.Unknown));
-            Assert.That(summary.Schema.Reason, Is.EqualTo("Diagnostic check failed."));
         }
     }
 
@@ -295,6 +312,14 @@ internal sealed class AshlarOperationsSummaryServiceTests
             [webhookOutboxDiagnostics ?? new SecurityEventWebhookOutboxDiagnostics(WebhookOutboxResult(webhookStatus))],
             timeProvider,
             logger);
+    }
+
+    private static void AssertPublicProperties<T>(params string[] expected)
+    {
+        Assert.That(
+            typeof(T).GetProperties(BindingFlags.Instance | BindingFlags.Public).Select(property => property.Name),
+            Is.EquivalentTo(expected),
+            $"Unexpected public field on low-sensitivity {typeof(T).Name} projection.");
     }
 
     private static AshlarSchemaDiagnosticResult SchemaResult(AshlarDiagnosticStatus status, string? reason = null)
@@ -378,16 +403,16 @@ internal sealed class AshlarOperationsSummaryServiceTests
             "SQLite",
             status == AshlarDiagnosticStatus.Healthy ? null : "Webhook outbox needs attention.",
             CheckedAt,
-            7,
-            2,
-            1,
-            0,
-            1,
-            CheckedAt.AddMinutes(-10),
-            CheckedAt.AddHours(-1),
-            8,
-            TimeSpan.FromSeconds(15),
-            25);
+            17,
+            12,
+            11,
+            10,
+            9,
+            CheckedAt.AddMinutes(-20),
+            CheckedAt.AddHours(-2),
+            18,
+            TimeSpan.FromSeconds(25),
+            35);
     }
 
     private sealed class SchemaDiagnostics(AshlarSchemaDiagnosticResult result) : IAshlarSchemaDiagnostics
@@ -470,11 +495,13 @@ internal sealed class AshlarOperationsSummaryServiceTests
         }
     }
 
-    private sealed class CanceledSchemaDiagnostics : IAshlarSchemaDiagnostics
+    private sealed class CancelingSecurityEventWebhookOutboxDiagnostics(CancellationTokenSource cancellationTokenSource)
+        : ISecurityEventWebhookOutboxDiagnostics
     {
-        public Task<AshlarSchemaDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default)
+        public Task<SecurityEventWebhookOutboxDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default)
         {
-            return Task.FromCanceled<AshlarSchemaDiagnosticResult>(cancellationToken);
+            cancellationTokenSource.Cancel();
+            return Task.FromResult(WebhookOutboxResult(AshlarDiagnosticStatus.Healthy));
         }
     }
 
@@ -485,6 +512,15 @@ internal sealed class AshlarOperationsSummaryServiceTests
             using var cancellationTokenSource = new CancellationTokenSource();
             cancellationTokenSource.Cancel();
             return Task.FromCanceled<AshlarSchemaDiagnosticResult>(cancellationTokenSource.Token);
+        }
+    }
+
+    private sealed class CanceledSchemaDiagnostics(CancellationTokenSource cancellationTokenSource) : IAshlarSchemaDiagnostics
+    {
+        public Task<AshlarSchemaDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationTokenSource.Cancel();
+            return Task.FromCanceled<AshlarSchemaDiagnosticResult>(cancellationToken);
         }
     }
 

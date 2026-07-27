@@ -1367,6 +1367,15 @@ Application-facing user creation should go through purpose-specific Ashlar flows
 
 Provider outbox senders that implement `ITransactionalEmailOutboxSender` can be called before commit by token-bearing Ashlar flows. Direct senders that only implement `IEmailSender` remain post-commit so external delivery is not attempted until credential changes are durable, but that callback is not durable against process termination. Use the provider email outbox whenever delivery must survive a crash or restart. Likewise, configure the transaction-bound security-event webhook outbox instead of a best-effort direct webhook when webhook delivery must survive a crash or restart.
 
+## Operations Summary
+
+`IAshlarOperationsSummaryService.GetSummaryAsync` is intentionally a public, unauthenticated-by-library
+low-sensitivity read for health dashboards. Its fixed projection contains only component statuses and names,
+timestamps, schema state, aggregate counts, booleans, intervals, and batch limits. It excludes diagnostic
+provider names and reasons, migration names and provider versions, identifiers, tenant/user data, payloads,
+secrets, endpoint URIs, provider exceptions, lock owners, and row data. Hosts still control whether and where
+they publish the result.
+
 ## Security Audit Events
 Ashlar emits structured security audit events for authentication, credential lifecycle, and session lifecycle operations. `AddAshlarIdentity()` registers `ISecurityEventSink` as a fan-out sink. Provider-backed persistent audit storage is registered through `IPersistentSecurityEventSink`; when configured, `RecordAsync` completes only after durable persistence or fails the caller.
 
