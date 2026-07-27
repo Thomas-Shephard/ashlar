@@ -542,7 +542,7 @@ internal sealed class PasskeyService : IPasskeyService
         }
         catch
         {
-            await RecordAsync(AshlarSecurityEventTypes.PasskeyInventoryRead, SecurityEventOutcomes.Failure, null, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit! with { ActorUserId = null }, null, CancellationToken.None);
+            await RecordAsync(AshlarSecurityEventTypes.PasskeyInventoryRead, SecurityEventOutcomes.Failure, null, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit with { ActorUserId = null }, null, CancellationToken.None);
             throw;
         }
         if (boundaryFailure != null)
@@ -558,11 +558,11 @@ internal sealed class PasskeyService : IPasskeyService
         }
         catch
         {
-            await RecordAsync(AshlarSecurityEventTypes.PasskeyInventoryRead, SecurityEventOutcomes.Failure, request.ActorUserId, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, request.Tenant.TenantId, CancellationToken.None, request.CurrentSessionId);
+            await RecordManagementAsync(AshlarSecurityEventTypes.PasskeyInventoryRead, SecurityEventOutcomes.Failure, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, request.Tenant.TenantId, request.CurrentSessionId, CancellationToken.None);
             throw;
         }
 
-        await RecordAsync(AshlarSecurityEventTypes.PasskeyInventoryRead, SecurityEventOutcomes.Success, request.ActorUserId, null, request.Audit, request.Tenant.TenantId, CancellationToken.None, request.CurrentSessionId);
+        await RecordManagementAsync(AshlarSecurityEventTypes.PasskeyInventoryRead, SecurityEventOutcomes.Success, null, request.Audit, request.Tenant.TenantId, request.CurrentSessionId, CancellationToken.None);
         return Result.Success<IReadOnlyList<PasskeyCredentialSummary>>(credentials.Select(ToSummary).ToList().AsReadOnly());
     }
 
@@ -584,7 +584,7 @@ internal sealed class PasskeyService : IPasskeyService
         passkey.Metadata = JsonSerializer.Serialize(metadata, PasskeyJson.Options);
         await using var transaction = await BeginTransactionAsync(cancellationToken);
         var updated = await _credentials.UpdatePasskeyAsync(passkey, passkey.Version, cancellationToken);
-        await RecordAsync(AshlarSecurityEventTypes.PasskeyRenamed, updated ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure, request.ActorUserId, updated ? null : AshlarFailureCodes.ConcurrencyConflict.Value, request.Audit, request.Tenant.TenantId, cancellationToken, request.CurrentSessionId);
+        await RecordManagementAsync(AshlarSecurityEventTypes.PasskeyRenamed, updated ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure, updated ? null : AshlarFailureCodes.ConcurrencyConflict.Value, request.Audit, request.Tenant.TenantId, request.CurrentSessionId, cancellationToken);
         await CommitAsync(transaction, cancellationToken);
         return updated ? Result.Success() : Result.Failure(AshlarFailureCodes.ConcurrencyConflict);
     }
@@ -602,7 +602,7 @@ internal sealed class PasskeyService : IPasskeyService
         passkey.RevokedAt = _timeProvider.GetUtcNow();
         await using var transaction = await BeginTransactionAsync(cancellationToken);
         var updated = await _credentials.UpdatePasskeyAsync(passkey, passkey.Version, cancellationToken);
-        await RecordAsync(AshlarSecurityEventTypes.PasskeyRevoked, updated ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure, request.ActorUserId, updated ? null : AshlarFailureCodes.ConcurrencyConflict.Value, request.Audit, request.Tenant.TenantId, cancellationToken, request.CurrentSessionId);
+        await RecordManagementAsync(AshlarSecurityEventTypes.PasskeyRevoked, updated ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure, updated ? null : AshlarFailureCodes.ConcurrencyConflict.Value, request.Audit, request.Tenant.TenantId, request.CurrentSessionId, cancellationToken);
         await CommitAsync(transaction, cancellationToken);
         return updated ? Result.Success() : Result.Failure(AshlarFailureCodes.ConcurrencyConflict);
     }
@@ -963,7 +963,7 @@ internal sealed class PasskeyService : IPasskeyService
         return RecordAsync(eventType, outcome, userId, failureReason, audit, tenantId: null, cancellationToken);
     }
 
-    private Task RecordAsync(string eventType, string outcome, Guid? userId, string? failureReason, AuditContext? audit, Guid? tenantId, CancellationToken cancellationToken, Guid? sessionId = null)
+    private Task RecordAsync(string eventType, string outcome, Guid? userId, string? failureReason, AuditContext? audit, Guid? tenantId, CancellationToken cancellationToken)
     {
         return _securityEventSink.RecordAsync(new AshlarSecurityEvent
         {
@@ -974,10 +974,30 @@ internal sealed class PasskeyService : IPasskeyService
             TenantId = tenantId,
             UserId = userId,
             ActorUserId = audit?.ActorUserId,
-            SessionId = sessionId,
             IpAddress = audit?.IpAddress,
             UserAgent = audit?.UserAgent,
             CorrelationId = audit?.CorrelationId,
+            Provider = _options.ProviderKey,
+            FailureReason = failureReason
+        }, cancellationToken);
+    }
+
+    private Task RecordManagementAsync(string eventType, string outcome, string? failureReason, AuditContext audit,
+        Guid? tenantId, Guid sessionId, CancellationToken cancellationToken)
+    {
+        return _securityEventSink.RecordAsync(new AshlarSecurityEvent
+        {
+            Id = Guid.NewGuid(),
+            EventType = eventType,
+            Outcome = outcome,
+            OccurredAt = _timeProvider.GetUtcNow(),
+            TenantId = tenantId,
+            UserId = audit.ActorUserId,
+            ActorUserId = audit.ActorUserId,
+            SessionId = sessionId,
+            IpAddress = audit.IpAddress,
+            UserAgent = audit.UserAgent,
+            CorrelationId = audit.CorrelationId,
             Provider = _options.ProviderKey,
             FailureReason = failureReason
         }, cancellationToken);
