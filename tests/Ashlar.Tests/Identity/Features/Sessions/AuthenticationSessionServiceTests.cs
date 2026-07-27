@@ -275,6 +275,16 @@ internal sealed class AuthenticationSessionServiceTests
     [Test]
     public async Task SessionExpiryOverflowShouldNotConsumeProof()
     {
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            _composition.Transactions,
+            new AuthenticationSessionServiceDependencies(
+                _userRepositoryMock.Object,
+                Options: new AuthenticationSessionOptions { MaximumLifetime = TimeSpan.MaxValue },
+                TimeProvider: _timeProvider,
+                SecurityEventSink: _composition.Events));
         var issuedAt = _timeProvider.GetUtcNow();
         var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
         var result = new MfaAuthenticationResult(
@@ -285,10 +295,10 @@ internal sealed class AuthenticationSessionServiceTests
                 user.Id, null, issuedAt)
         };
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            _service.CreateSessionAsync(
+            service.CreateSessionAsync(
                 result,
                 new CreateAuthenticationSessionRequest(Lifetime: TimeSpan.MaxValue)));
-        var created = await _service.CreateSessionAsync(
+        var created = await service.CreateSessionAsync(
             result,
             new CreateAuthenticationSessionRequest());
 
@@ -1494,6 +1504,15 @@ internal sealed class AuthenticationSessionServiceTests
         await _service.CreateSessionForAuthenticatedUserAsync(Guid.NewGuid(), new CreateAuthenticationSessionRequest(Lifetime: TimeSpan.FromHours(2)));
 
         Assert.That(storedSession?.ExpiresAt, Is.EqualTo(now.AddHours(2)));
+    }
+
+    [Test]
+    public void CreateSessionAsyncShouldRejectLifetimeAboveConfiguredMaximum()
+    {
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            _service.CreateSessionForAuthenticatedUserAsync(
+                Guid.NewGuid(),
+                new CreateAuthenticationSessionRequest(Lifetime: TimeSpan.FromDays(31))));
     }
 
     [Test]
@@ -3115,6 +3134,21 @@ internal sealed class AuthenticationSessionServiceTests
             new FixedSessionTokenGenerator("raw-token"),
             _composition.Transactions,
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { DefaultLifetime = TimeSpan.Zero })));
+    }
+
+    [Test]
+    public void ConstructorShouldRejectMaximumLifetimeBelowDefault()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            _composition.Transactions,
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions
+            {
+                DefaultLifetime = TimeSpan.FromDays(2),
+                MaximumLifetime = TimeSpan.FromDays(1)
+            })));
     }
 
     [Test]

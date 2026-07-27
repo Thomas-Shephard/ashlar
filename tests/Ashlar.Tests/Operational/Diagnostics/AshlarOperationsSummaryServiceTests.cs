@@ -122,6 +122,30 @@ internal sealed class AshlarOperationsSummaryServiceTests
     }
 
     [Test]
+    public void IndividualDiagnosticResultsExposeOnlyAggregateHealthAndConfigurationFields()
+    {
+        AssertPublicProperties<AshlarSchemaDiagnosticResult>(
+            "Status", "ProviderName", "Reason", "CheckedAt", "SchemaStatus", "AppliedMigrationCount",
+            "ExpectedMigrationCount", "MissingMigrationCount", "LatestAppliedMigrationName",
+            "LatestExpectedMigrationName", "MinimumProviderVersion", "ProviderVersion");
+        AssertPublicProperties<AshlarCleanupDiagnosticResult>(
+            "Status", "ProviderName", "Reason", "CheckedAt", "Configured", "OptionsValid",
+            "CleanupInterval", "BatchSize", "MaxBatchesPerRun", "DisabledCategoryCount", "EnabledCategoryCount");
+        AssertPublicProperties<AuthenticationRateLimiterDiagnosticResult>(
+            "Status", "ProviderName", "Reason", "CheckedAt", "Configured", "Distributed", "Persistent",
+            "ExpiredRowCount", "ActiveKeyCount", "BlockedKeyCount", "CleanupConfigured", "CleanupInterval", "MaxCleanupRows");
+        AssertPublicProperties<EmailOutboxDiagnosticResult>(
+            "Status", "ProviderName", "Reason", "CheckedAt", "PendingCount", "ScheduledCount", "LockedCount",
+            "ExpiredLockCount", "FailedCount", "SensitivePendingCount", "SensitiveScheduledCount",
+            "SensitiveLockedCount", "SensitiveFailedCount", "OldestPendingAt", "OldestFailedAt",
+            "MaxAttempts", "PollingInterval", "BatchSize");
+        AssertPublicProperties<SecurityEventWebhookOutboxDiagnosticResult>(
+            "Status", "ProviderName", "Reason", "CheckedAt", "PendingCount", "ScheduledCount", "LockedCount",
+            "ExpiredLockCount", "FailedCount", "OldestPendingAt", "OldestFailedAt",
+            "MaxAttempts", "PollingInterval", "BatchSize");
+    }
+
+    [Test]
     public async Task ComponentFailureBecomesSafeUnknownResultAndOtherComponentsAreReported()
     {
         var service = CreateService(schemaDiagnostics: new ThrowingSchemaDiagnostics());
