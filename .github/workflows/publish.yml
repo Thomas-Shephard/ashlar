@@ -35,7 +35,7 @@ jobs:
       - name: Test
         run: dotnet test Ashlar.slnx --configuration Release --no-build
       - name: Pack
-        run: dotnet pack Ashlar.slnx --configuration Release --no-build --output artifacts/package
+        run: dotnet pack Ashlar.slnx --configuration Release --output artifacts/package -p:AshlarOfficialBuild=true
       - name: Authenticate with NuGet
         uses: nuget/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
         id: nuget-auth

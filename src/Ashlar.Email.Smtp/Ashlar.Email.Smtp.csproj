@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Ashlar.Email.Smtp.Tests" />
+    <AshlarTestFriend Include="Ashlar.Email.Smtp.Tests" />
   </ItemGroup>
 
 </Project>

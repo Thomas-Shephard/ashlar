@@ -9,6 +9,7 @@ using Npgsql;
 
 namespace Ashlar.Postgres.Schema;
 
+[SuppressMessage("Performance", "CA1852:Seal internal types", Justification = "Overridden by schema tests.")]
 internal class SchemaManager(NpgsqlDataSource dataSource, ILogger<SchemaManager>? logger = null)
 {
     private static readonly Action<ILogger, Exception?> SchemaInitializationStarted =

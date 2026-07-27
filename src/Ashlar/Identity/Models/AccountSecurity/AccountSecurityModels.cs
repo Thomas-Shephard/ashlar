@@ -88,7 +88,7 @@ public sealed record AccountSecurityOperationResult(
     UserAccountState? CurrentState = null,
     int RememberedMfaDevicesRevoked = 0);
 
-internal record AccountSecurityPostureRequest(
+internal sealed record AccountSecurityPostureRequest(
     TenantContext? Tenant = null,
     TimeSpan? RecentSecurityEventWindow = null);
 

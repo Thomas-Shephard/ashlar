@@ -13,5 +13,8 @@
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- Tests may use friend access; official package builds must not emit it. -->
+    <AshlarOfficialBuild Condition="'$(AshlarOfficialBuild)' == ''">false</AshlarOfficialBuild>
   </PropertyGroup>
 </Project>

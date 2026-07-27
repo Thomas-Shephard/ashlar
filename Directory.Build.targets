@@ -1,0 +1,11 @@
+<Project>
+  <ItemGroup Condition="'$(AshlarOfficialBuild)' != 'true'">
+    <InternalsVisibleTo Include="@(AshlarTestFriend)" />
+  </ItemGroup>
+
+  <Target Name="RejectOfficialBuildFriends"
+          BeforeTargets="GenerateAssemblyInfo"
+          Condition="'$(AshlarOfficialBuild)' == 'true' and '@(InternalsVisibleTo)' != ''">
+    <Error Text="Official Ashlar builds must not contain InternalsVisibleTo declarations. Use AshlarTestFriend for test-only access." />
+  </Target>
+</Project>

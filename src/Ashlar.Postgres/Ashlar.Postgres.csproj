@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Ashlar.Postgres.Tests" />
+    <AshlarTestFriend Include="Ashlar.Postgres.Tests" />
   </ItemGroup>
 
 </Project>
