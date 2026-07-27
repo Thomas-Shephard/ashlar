@@ -42,7 +42,7 @@ internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IA
         if (!ReferenceEquals(transactionProvider, securityEventSink.TransactionProvider))
             throw new ArgumentException("Authorization grant audit requires the fan-out sink's durable transaction provider.", nameof(transactionProvider));
         if (!transactionProvider.IncludesParticipant(repository) || !transactionProvider.IncludesParticipant(userRepository))
-            throw new ArgumentException("Authorization grant repositories must be enlisted in the durable transaction composition.", nameof(transactionProvider));
+            throw new ArgumentException("Authorization grant repositories must be the exact instances enlisted in the durable transaction composition; DI decorators must be composed inside the persistence provider boundary.", nameof(transactionProvider));
         _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
         _transactionProvider = transactionProvider;
         _authorizer = mutationContext?.Authorizer;

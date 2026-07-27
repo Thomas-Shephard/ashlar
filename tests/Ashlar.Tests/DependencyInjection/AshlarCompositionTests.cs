@@ -353,7 +353,8 @@ internal sealed class AshlarCompositionTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(raw.BeginCount, Is.EqualTo(2));
-                Assert.ThrowsAsync<InvalidOperationException>(() => rollbackOuter.CommitAsync());
+                var exception = Assert.ThrowsAsync<InvalidOperationException>(() => rollbackOuter.CommitAsync());
+                Assert.That(exception!.InnerException?.Message, Is.EqualTo("A nested transaction explicitly called RollbackAsync."));
             }
             await rollbackOuter.RollbackAsync();
             Assert.That(raw.Transaction.RollbackCount, Is.EqualTo(1));
@@ -417,22 +418,90 @@ internal sealed class AshlarCompositionTests
         var root = await provider.BeginTransactionAsync();
         var nested = await provider.BeginTransactionAsync();
 
-        var commit = root.CommitAsync();
-        Assert.Throws<InvalidOperationException>(() => nested.OnCommitted(_ => Task.CompletedTask));
+        Assert.ThrowsAsync<InvalidOperationException>(() => root.CommitAsync());
         Assert.ThrowsAsync<InvalidOperationException>(async () => await root.DisposeAsync());
+        await nested.CommitAsync();
+        await nested.DisposeAsync();
+        var commit = root.CommitAsync();
+        Assert.ThrowsAsync<InvalidOperationException>(() => provider.BeginTransactionAsync());
+        Assert.Throws<ObjectDisposedException>(() => nested.OnCommitted(_ => Task.CompletedTask));
         commitGate.SetResult();
         await commit;
-        Assert.ThrowsAsync<InvalidOperationException>(() => nested.CommitAsync());
-        await nested.DisposeAsync();
+        Assert.ThrowsAsync<ObjectDisposedException>(() => nested.CommitAsync());
         await nested.DisposeAsync();
         await root.DisposeAsync();
         await root.DisposeAsync();
 
         var unfinishedRoot = await provider.BeginTransactionAsync();
         var unfinishedNested = await provider.BeginTransactionAsync();
-        await unfinishedRoot.DisposeAsync();
-        Assert.ThrowsAsync<InvalidOperationException>(() => unfinishedNested.CommitAsync());
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await unfinishedRoot.DisposeAsync());
         await unfinishedNested.DisposeAsync();
+        await unfinishedRoot.DisposeAsync();
+    }
+
+    [Test]
+    public async Task DurableProviderRejectsOutOfOrderNestedUsage()
+    {
+        var provider = AshlarDurableTransactionProvider.Create(new IndependentTransactionProvider());
+        await using var root = await provider.BeginTransactionAsync();
+        var outer = await provider.BeginTransactionAsync();
+        var inner = await provider.BeginTransactionAsync();
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => outer.CommitAsync());
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await outer.DisposeAsync());
+        Assert.Throws<InvalidOperationException>(() => outer.OnCommitted(_ => Task.CompletedTask));
+        Assert.Throws<InvalidOperationException>(() => root.OnCommitted(_ => Task.CompletedTask));
+
+        await inner.CommitAsync();
+        await inner.DisposeAsync();
+        await outer.CommitAsync();
+        Assert.Throws<InvalidOperationException>(() => outer.OnCommitted(_ => Task.CompletedTask));
+        await outer.DisposeAsync();
+    }
+
+    [Test]
+    public async Task DurableProviderDisposesRootOnlyOnceWhenDisposalOverlaps()
+    {
+        var disposalGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var raw = new IndependentTransactionProvider { DisposalGate = disposalGate };
+        var provider = AshlarDurableTransactionProvider.Create(raw);
+        var root = await provider.BeginTransactionAsync();
+
+        var first = root.DisposeAsync().AsTask();
+        Assert.That(raw.Transaction.DisposeCount, Is.EqualTo(1));
+        var second = root.DisposeAsync().AsTask();
+        disposalGate.SetResult();
+
+        await Task.WhenAll(first, second);
+        Assert.That(raw.Transaction.DisposeCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task DurableProviderReservesNestedScopeWhileRegisteringHook()
+    {
+        using var hookStarted = new ManualResetEventSlim();
+        using var hookRelease = new ManualResetEventSlim();
+        var raw = new IndependentTransactionProvider { HookStarted = hookStarted, HookRelease = hookRelease };
+        var provider = AshlarDurableTransactionProvider.Create(raw);
+        await using var root = await provider.BeginTransactionAsync();
+        var nested = await provider.BeginTransactionAsync();
+
+        var registration = Task.Run(() => nested.OnCommitted(_ => Task.CompletedTask));
+        Assert.That(hookStarted.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        try
+        {
+            Assert.ThrowsAsync<InvalidOperationException>(() => root.CommitAsync());
+            Assert.ThrowsAsync<InvalidOperationException>(async () => await nested.DisposeAsync());
+        }
+        finally
+        {
+            hookRelease.Set();
+        }
+        await registration;
+
+        await nested.CommitAsync();
+        await nested.DisposeAsync();
+        await root.CommitAsync();
     }
 
     [Test]
@@ -614,6 +683,9 @@ internal sealed class AshlarCompositionTests
         public bool ReturnNull { get; set; }
         public TaskCompletionSource? BeginGate { get; set; }
         public TaskCompletionSource? CompletionGate { get; set; }
+        public TaskCompletionSource? DisposalGate { get; set; }
+        public ManualResetEventSlim? HookStarted { get; set; }
+        public ManualResetEventSlim? HookRelease { get; set; }
         public bool RunHooksOnCommit { get; set; }
         public bool FailCompletion { get; set; }
         public bool FailDisposal { get; set; }
@@ -629,16 +701,24 @@ internal sealed class AshlarCompositionTests
             }
             if (BeginGate is not null) await BeginGate.Task.WaitAsync(cancellationToken);
             if (ReturnNull) return null!;
-            Transaction = new IndependentTransaction(CompletionGate, RunHooksOnCommit, FailCompletion, FailDisposal);
+            Transaction = new IndependentTransaction(CompletionGate, DisposalGate, HookStarted, HookRelease, RunHooksOnCommit, FailCompletion, FailDisposal);
             return Transaction;
         }
     }
 
-    private sealed class IndependentTransaction(TaskCompletionSource? completionGate = null, bool runHooksOnCommit = false, bool failCompletion = false, bool failDisposal = false) : IAshlarTransaction
+    private sealed class IndependentTransaction(
+        TaskCompletionSource? completionGate = null,
+        TaskCompletionSource? disposalGate = null,
+        ManualResetEventSlim? hookStarted = null,
+        ManualResetEventSlim? hookRelease = null,
+        bool runHooksOnCommit = false,
+        bool failCompletion = false,
+        bool failDisposal = false) : IAshlarTransaction
     {
         private readonly List<Func<CancellationToken, Task>> _hooks = [];
         public int CommitCount { get; private set; }
         public int RollbackCount { get; private set; }
+        public int DisposeCount { get; private set; }
         public int HookCount { get; private set; }
         public async Task CommitAsync(CancellationToken cancellationToken = default)
         {
@@ -653,9 +733,18 @@ internal sealed class AshlarCompositionTests
             RollbackCount++;
             return failCompletion ? Task.FromException(new InvalidOperationException("rollback failed")) : Task.CompletedTask;
         }
-        public void OnCommitted(Func<CancellationToken, Task> action) { HookCount++; _hooks.Add(action); }
-        public ValueTask DisposeAsync() => failDisposal
-            ? ValueTask.FromException(new InvalidOperationException("dispose failed"))
-            : ValueTask.CompletedTask;
+        public void OnCommitted(Func<CancellationToken, Task> action)
+        {
+            hookStarted?.Set();
+            hookRelease?.Wait();
+            HookCount++;
+            _hooks.Add(action);
+        }
+        public async ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            if (failDisposal) throw new InvalidOperationException("dispose failed");
+            if (disposalGate is not null) await disposalGate.Task;
+        }
     }
 }
