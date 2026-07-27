@@ -1,12 +1,15 @@
-using System.Reflection;
 using Ashlar.Auditing;
 using Ashlar.Messaging;
+using Ashlar.Testing;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Ashlar.Tests.Messaging;
 
 internal sealed class EmailOutboxAdministrationProviderTests
 {
     private static readonly DateTimeOffset Now = new(2026, 6, 14, 12, 0, 0, TimeSpan.Zero);
+    private static readonly AccountSecurityActorTestContext Security =
+        new(Now, IAccountSecurityAdministrationService.ProofPurpose);
 
     [Test]
     public void SearchRequestDefaultsUseBoundedPaging()
@@ -27,14 +30,16 @@ internal sealed class EmailOutboxAdministrationProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentNullException>(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(null!));
-            Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(new EmailOutboxSearchRequest { Limit = 0 }));
-            Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(new EmailOutboxSearchRequest { Limit = 101 }));
-            Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(new EmailOutboxSearchRequest { Offset = -1 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(ValidSearch() with { Limit = 0 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(ValidSearch() with { Limit = 101 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(ValidSearch() with { Offset = -1 }));
             Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(new EmailOutboxSearchRequest
             {
+                Actor = Security.Actor,
+                Scope = EmailOutboxAdministrationScope.Global,
                 Statuses = new HashSet<EmailOutboxStatus> { (EmailOutboxStatus)99 }
             }));
-            Assert.DoesNotThrow(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(new EmailOutboxSearchRequest()));
+            Assert.DoesNotThrow(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(ValidSearch()));
         }
     }
 
@@ -64,8 +69,8 @@ internal sealed class EmailOutboxAdministrationProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentNullException>(() => EmailOutboxAdministrationProvider.ValidateOperationRequest(null!));
-            Assert.Throws<ArgumentException>(() => EmailOutboxAdministrationProvider.ValidateOperationRequest(new EmailOutboxOperationRequest(Guid.Empty, new AuditContext())));
-            Assert.Throws<ArgumentNullException>(() => EmailOutboxAdministrationProvider.ValidateOperationRequest(new EmailOutboxOperationRequest(Guid.NewGuid(), null!)));
+            Assert.Throws<ArgumentException>(() => EmailOutboxAdministrationProvider.ValidateOperationRequest(new EmailOutboxOperationRequest(Guid.Empty, Security.Actor, EmailOutboxAdministrationScope.Global)));
+            Assert.Throws<ArgumentNullException>(() => EmailOutboxAdministrationProvider.ValidateOperationRequest(new EmailOutboxOperationRequest(Guid.NewGuid(), null!, EmailOutboxAdministrationScope.Global)));
         }
     }
 
@@ -101,6 +106,7 @@ internal sealed class EmailOutboxAdministrationProviderTests
     {
         var summaryProperties = typeof(EmailOutboxSummary).GetProperties().Select(property => property.Name).ToArray();
         var detailProperties = typeof(EmailOutboxDetail).GetProperties().Select(property => property.Name).ToArray();
+        var providerProperties = typeof(EmailOutboxAdministrationProjection).GetProperties().Select(property => property.Name);
 
         using (Assert.EnterMultipleScope())
         {
@@ -116,6 +122,8 @@ internal sealed class EmailOutboxAdministrationProviderTests
             Assert.That(detailProperties, Does.Not.Contain("Metadata"));
             Assert.That(detailProperties, Does.Not.Contain("BccAddress"));
             Assert.That(detailProperties, Does.Not.Contain("LockedBy"));
+            Assert.That(providerProperties.Intersect(
+                ["TextBody", "HtmlBody", "Headers", "Metadata", "BccAddress", "LockedBy", "LockedUntil", "LastError"]), Is.Empty);
         }
     }
 
@@ -124,6 +132,11 @@ internal sealed class EmailOutboxAdministrationProviderTests
     {
         var longError = "prefix\r\n" + new string('x', EmailOutboxAdministrationProvider.MaxLastErrorSummaryLength + 10);
         var summary = EmailOutboxAdministrationProvider.CreateLastErrorSummary(CreateRecord(lastError: longError));
+        var injectedSensitive = CreateRecord() with
+        {
+            Sensitivity = EmailMessageSensitivity.ContainsLiveSecret,
+            LastErrorSummary = "injected live-token"
+        };
 
         using (Assert.EnterMultipleScope())
         {
@@ -132,6 +145,8 @@ internal sealed class EmailOutboxAdministrationProviderTests
             Assert.That(summary, Has.Length.EqualTo(EmailOutboxAdministrationProvider.MaxLastErrorSummaryLength));
             Assert.That(summary, Does.Not.Contain("\r"));
             Assert.That(summary, Does.Not.Contain("\n"));
+            Assert.That(EmailOutboxAdministrationProvider.CreateLastErrorSummary(injectedSensitive),
+                Is.EqualTo(EmailOutboxAdministrationProvider.SensitiveFailureSummary));
         }
     }
 
@@ -150,15 +165,10 @@ internal sealed class EmailOutboxAdministrationProviderTests
     [Test]
     public void CreateOperationResultSanitizesPublicFields()
     {
-        var suppressionParameters = new[]
-        {
-            typeof(EmailOutboxAdministrationOperationState).GetConstructors().Single().GetParameters().Single(parameter => parameter.Name == "SuppressPublicFields"),
-            typeof(EmailOutboxAdministrationProvider).GetMethod(
-                nameof(EmailOutboxAdministrationProvider.CreateOperationResult),
-                [typeof(EmailOutboxOperationStatus), typeof(Guid), typeof(bool), typeof(string), typeof(string), typeof(EmailOutboxStatus?)])!
-                .GetParameters().Single(parameter => parameter.Name == "suppressPublicFields")
-        };
-        var state = new EmailOutboxAdministrationOperationState(Guid.NewGuid(), "state@example.com", "State subject", EmailOutboxStatus.Pending, SuppressPublicFields: false);
+        var state = new EmailOutboxAdministrationOperationState(
+            Guid.NewGuid(), "state@example.com", "State subject", EmailOutboxStatus.Pending,
+            EmailMessageSensitivity.Normal, EmailOutboxBodyProtection.None);
+        var sensitiveState = state with { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret };
         var safe = EmailOutboxAdministrationProvider.CreateOperationResult(
             EmailOutboxOperationStatus.Retried,
             Guid.NewGuid(),
@@ -181,10 +191,11 @@ internal sealed class EmailOutboxAdministrationProviderTests
             "Token",
             EmailOutboxStatus.Pending);
         var fromState = EmailOutboxAdministrationProvider.CreateOperationResult(EmailOutboxOperationStatus.Retried, state);
+        var fromSensitiveState = EmailOutboxAdministrationProvider.CreateOperationResult(
+            EmailOutboxOperationStatus.Retried, sensitiveState);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(suppressionParameters, Has.All.Matches<ParameterInfo>(parameter => !parameter.IsOptional && !parameter.HasDefaultValue));
             Assert.That(safe.ToAddress, Is.EqualTo("user@example.com"));
             Assert.That(safe.Subject, Is.EqualTo("Subject"));
             Assert.That(safe.OutboxStatus, Is.EqualTo(EmailOutboxStatus.Pending));
@@ -193,6 +204,7 @@ internal sealed class EmailOutboxAdministrationProviderTests
             Assert.That(suppressed.ToAddress, Is.Null);
             Assert.That(suppressed.Subject, Is.Null);
             Assert.That(fromState.ToAddress, Is.EqualTo("state@example.com"));
+            Assert.That(fromSensitiveState.ToAddress, Is.Null);
             Assert.That(Assert.Throws<ArgumentNullException>(() => EmailOutboxAdministrationProvider.CreateOperationResult(EmailOutboxOperationStatus.Retried, null!))?.ParamName, Is.EqualTo("state"));
         }
     }
@@ -201,12 +213,16 @@ internal sealed class EmailOutboxAdministrationProviderTests
     public void CreateNoOpResultReturnsStableStatuses()
     {
         var id = Guid.NewGuid();
-        var pending = new EmailOutboxAdministrationOperationState(id, "user@example.com", "Subject", EmailOutboxStatus.Pending, SuppressPublicFields: false);
-        var discarded = new EmailOutboxAdministrationOperationState(id, "user@example.com", "Subject", EmailOutboxStatus.Discarded, SuppressPublicFields: false);
+        var pending = new EmailOutboxAdministrationOperationState(
+            id, "user@example.com", "Subject", EmailOutboxStatus.Pending,
+            EmailMessageSensitivity.Normal, EmailOutboxBodyProtection.None);
+        var discarded = pending with { Status = EmailOutboxStatus.Discarded };
+        var sensitive = pending with { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret };
 
         var missingResult = EmailOutboxAdministrationProvider.CreateNoOpResult(id, null);
         var pendingResult = EmailOutboxAdministrationProvider.CreateNoOpResult(id, pending);
         var discardedResult = EmailOutboxAdministrationProvider.CreateNoOpResult(id, discarded);
+        var sensitiveResult = EmailOutboxAdministrationProvider.CreateNoOpResult(id, sensitive);
 
         using (Assert.EnterMultipleScope())
         {
@@ -215,6 +231,7 @@ internal sealed class EmailOutboxAdministrationProviderTests
             Assert.That(pendingResult.OutboxStatus, Is.EqualTo(EmailOutboxStatus.Pending));
             Assert.That(discardedResult.Status, Is.EqualTo(EmailOutboxOperationStatus.AlreadyDiscarded));
             Assert.That(discardedResult.OutboxStatus, Is.EqualTo(EmailOutboxStatus.Discarded));
+            Assert.That(sensitiveResult.ToAddress, Is.Null);
         }
     }
 
@@ -224,13 +241,8 @@ internal sealed class EmailOutboxAdministrationProviderTests
         var sink = new CapturingSecurityEventSink();
         var id = Guid.NewGuid();
         var actorUserId = Guid.NewGuid();
-        var request = new EmailOutboxOperationRequest(id, new AuditContext
-        {
-            ActorUserId = actorUserId,
-            IpAddress = "127.0.0.1",
-            UserAgent = "tests",
-            CorrelationId = "correlation"
-        });
+        var actor = CreateActor(actorUserId, new AuditContext(actorUserId, "127.0.0.1", "tests", "correlation"));
+        var request = new EmailOutboxOperationRequest(id, actor, EmailOutboxAdministrationScope.Global);
         var result = EmailOutboxAdministrationProvider.CreateOperationResult(EmailOutboxOperationStatus.Retried, id, suppressPublicFields: true);
 
         await EmailOutboxAdministrationProvider.RecordSuccessfulOperationAsync(
@@ -271,7 +283,7 @@ internal sealed class EmailOutboxAdministrationProviderTests
         var transactionProvider = new Support.RecordingTransactionProvider();
         var service = new TestEmailOutboxAdministrationService(sink, transactionProvider);
 
-        var result = await service.RetryAsync(new EmailOutboxOperationRequest(Guid.NewGuid(), new AuditContext(Guid.NewGuid())));
+        var result = await service.RetryAsync(new EmailOutboxOperationRequest(Guid.NewGuid(), Security.Actor, EmailOutboxAdministrationScope.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -292,12 +304,9 @@ internal sealed class EmailOutboxAdministrationProviderTests
             "from@example.com",
             "reply@example.com",
             "cc@example.com",
-            "bcc@example.com",
             "Subject",
-            "Text live-token",
-            "<p>Html live-token</p>",
-            """{"Authorization":"Bearer secret"}""",
-            """{"Trace":"secret"}""",
+            true,
+            true,
             sensitivity,
             bodyProtection,
             EmailOutboxStatus.Failed,
@@ -308,10 +317,343 @@ internal sealed class EmailOutboxAdministrationProviderTests
             Now,
             null,
             null,
-            "worker",
-            Now.AddMinutes(1),
-            lastError);
+            EmailOutboxAdministrationProvider.CreateLastErrorSummary(lastError, sensitivity, bodyProtection));
     }
+
+    [Test]
+    public async Task PublicBoundaryRejectsInvalidOrUnauthorizedActorsBeforeProviderWork()
+    {
+        var unauthorized = new AccountSecurityActorTestContext(Now, AccountSecurityActorContext.AdministrationReadProofPurpose, authorized: false);
+        var transactions = new Support.RecordingTransactionProvider();
+        var service = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), transactions, unauthorized);
+
+        var search = await service.SearchAsync(new() { Actor = unauthorized.Actor, Scope = EmailOutboxAdministrationScope.Global });
+        var retry = await service.RetryAsync(new(Guid.NewGuid(), unauthorized.Actor, EmailOutboxAdministrationScope.Global));
+
+        Assert.ThrowsAsync<ArgumentNullException>(() =>
+            service.SearchAsync(new() { Scope = EmailOutboxAdministrationScope.Global }));
+        Assert.ThrowsAsync<ArgumentException>(() =>
+            service.SearchAsync(new() { Actor = unauthorized.Actor, Scope = EmailOutboxAdministrationScope.Unspecified }));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(search.Items, Is.Empty);
+            Assert.That(retry.Status, Is.EqualTo(EmailOutboxOperationStatus.Failed));
+            Assert.That(service.ProviderCalls, Is.Zero);
+            Assert.That(transactions.Transaction.BeginCount, Is.Zero);
+        }
+    }
+
+    [TestCase("id")]
+    [TestCase("status")]
+    [TestCase("sensitivity")]
+    [TestCase("protection")]
+    [TestCase("attempts")]
+    public void SafeProjectionRejectsMalformedProviderValues(string field)
+    {
+        var record = field switch
+        {
+            "id" => CreateRecord() with { Id = Guid.Empty },
+            "status" => CreateRecord() with { Status = (EmailOutboxStatus)99 },
+            "sensitivity" => CreateRecord() with { Sensitivity = (EmailMessageSensitivity)99 },
+            "protection" => CreateRecord() with { BodyProtection = (EmailOutboxBodyProtection)99 },
+            _ => CreateRecord() with { AttemptCount = -1 }
+        };
+
+        Assert.Throws<InvalidOperationException>(() => EmailOutboxAdministrationProvider.CreateSummary(record));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ServiceBaseRejectsMismatchedMutationState(bool afterNoOp)
+    {
+        var sink = new CapturingSecurityEventSink();
+        var transactionProvider = new Support.RecordingTransactionProvider();
+        var service = new TestEmailOutboxAdministrationService(sink, transactionProvider)
+        {
+            ReturnNoMutationState = afterNoOp,
+            ReturnMismatchedMutationState = !afterNoOp,
+            ReturnMismatchedLoadState = afterNoOp
+        };
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.RetryAsync(new(
+            Guid.NewGuid(), Security.Actor, EmailOutboxAdministrationScope.Global)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sink.Events, Is.Empty);
+            Assert.That(transactionProvider.Transaction.CommitCount, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task ServiceBaseAcceptsMatchingNoOpState()
+    {
+        var service = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), new Support.RecordingTransactionProvider())
+        {
+            ReturnNoMutationState = true
+        };
+
+        var result = await service.RetryAsync(new(
+            Guid.NewGuid(), Security.Actor, EmailOutboxAdministrationScope.Global));
+
+        Assert.That(result.Status, Is.EqualTo(EmailOutboxOperationStatus.NotFailed));
+    }
+
+    [Test]
+    public void ServiceBaseRejectsInvalidMutationPostState()
+    {
+        var sink = new CapturingSecurityEventSink();
+        var transactionProvider = new Support.RecordingTransactionProvider();
+        var service = new TestEmailOutboxAdministrationService(sink, transactionProvider)
+        {
+            ReturnInvalidMutationPostState = true
+        };
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.RetryAsync(new(
+            Guid.NewGuid(), Security.Actor, EmailOutboxAdministrationScope.Global)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sink.Events, Is.Empty);
+            Assert.That(transactionProvider.Transaction.CommitCount, Is.Zero);
+        }
+    }
+
+    [TestCase("status")]
+    [TestCase("sensitivity")]
+    [TestCase("protection")]
+    public void ServiceBaseRejectsInvalidMutationProviderState(string field)
+    {
+        var service = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), new Support.RecordingTransactionProvider())
+        {
+            InvalidMutationStateField = field
+        };
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.RetryAsync(new(
+            Guid.NewGuid(), Security.Actor, EmailOutboxAdministrationScope.Global)));
+    }
+
+    [TestCase(EmailOutboxStatus.Failed)]
+    [TestCase((EmailOutboxStatus)99)]
+    public void ServiceBaseRejectsInvalidNoOpState(EmailOutboxStatus status)
+    {
+        var service = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), new Support.RecordingTransactionProvider())
+        {
+            ReturnNoMutationState = true,
+            LoadStateStatus = status
+        };
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.RetryAsync(new(
+            Guid.NewGuid(), Security.Actor, EmailOutboxAdministrationScope.Global)));
+    }
+
+    [Test]
+    public async Task MutationRejectsAdministrationReadProof()
+    {
+        var readSecurity = new AccountSecurityActorTestContext(
+            Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
+        var service = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), new Support.RecordingTransactionProvider(), readSecurity);
+
+        var result = await service.RetryAsync(new(
+            Guid.NewGuid(), readSecurity.Actor, EmailOutboxAdministrationScope.Global));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(EmailOutboxOperationStatus.Failed));
+            Assert.That(service.ProviderCalls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task SearchAndDetailRecordDurableReadAudit()
+    {
+        var security = new AccountSecurityActorTestContext(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
+        var service = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), new Support.RecordingTransactionProvider(), security);
+
+        await service.SearchAsync(new() { Actor = security.Actor, Scope = EmailOutboxAdministrationScope.Global });
+        await service.GetAsync(new(Guid.NewGuid(), security.Actor, EmailOutboxAdministrationScope.Global));
+
+        Assert.That(security.AuditSink.Events.Select(static e => e.Outcome),
+            Is.EqualTo(new[] { SecurityEventOutcomes.Success, SecurityEventOutcomes.Success }));
+    }
+
+    [Test]
+    public async Task ReadBoundaryAuditsProviderFailuresAndMissingDetail()
+    {
+        var security = new AccountSecurityActorTestContext(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
+        var service = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), new Support.RecordingTransactionProvider(), security)
+        {
+            ThrowSearch = true
+        };
+
+        Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SearchAsync(new() { Actor = security.Actor, Scope = EmailOutboxAdministrationScope.Global }));
+        service.ThrowSearch = false;
+        service.ReturnNullDetail = true;
+        Assert.That(await service.GetAsync(new(Guid.NewGuid(), security.Actor, EmailOutboxAdministrationScope.Global)), Is.Null);
+        service.ReturnNullDetail = false;
+        service.ReturnMismatchedDetail = true;
+        Assert.That(await service.GetAsync(new(Guid.NewGuid(), security.Actor, EmailOutboxAdministrationScope.Global)), Is.Null);
+        service.ReturnMismatchedDetail = false;
+        service.ReturnInvalidDetailProjection = true;
+        Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.GetAsync(new(Guid.NewGuid(), security.Actor, EmailOutboxAdministrationScope.Global)));
+        service.ReturnInvalidDetailProjection = false;
+        service.ThrowDetail = true;
+        Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.GetAsync(new(Guid.NewGuid(), security.Actor, EmailOutboxAdministrationScope.Global)));
+
+        Assert.That(security.AuditSink.Events.Select(static e => e.Outcome),
+            Is.All.EqualTo(SecurityEventOutcomes.Failure));
+    }
+
+    [Test]
+    public void ReadBoundaryAuditsValidatedRequestFailures()
+    {
+        var security = new AccountSecurityActorTestContext(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
+        var service = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), new Support.RecordingTransactionProvider(), security);
+
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.SearchAsync(null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.GetAsync(null!));
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.SearchAsync(new()
+        {
+            Actor = security.Actor,
+            Scope = EmailOutboxAdministrationScope.Global,
+            Limit = 0
+        }));
+        Assert.ThrowsAsync<ArgumentException>(() => service.GetAsync(new(
+            Guid.Empty, security.Actor, EmailOutboxAdministrationScope.Global)));
+
+        Assert.That(security.AuditSink.Events.Select(static e => e.Outcome),
+            Is.All.EqualTo(SecurityEventOutcomes.Failure));
+    }
+
+    [Test]
+    public void ReadAuditFailureIsNotRetriedAsAProviderFailure()
+    {
+        var security = new AccountSecurityActorTestContext(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
+        var audit = new ThrowingPersistentSecurityEventSink();
+        var service = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), new Support.RecordingTransactionProvider(), security, audit);
+
+        Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SearchAsync(new() { Actor = security.Actor, Scope = EmailOutboxAdministrationScope.Global }));
+
+        Assert.That(audit.CallCount, Is.EqualTo(1));
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    public void SearchRejectsMalformedProviderPageBeforeSuccessAudit(int malformedPage)
+    {
+        var security = new AccountSecurityActorTestContext(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
+        var service = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), new Support.RecordingTransactionProvider(), security)
+        {
+            ReturnInvalidSearch = true,
+            ReturnNullSearchItem = malformedPage == 1,
+            ReturnDuplicateSearchEntries = malformedPage == 2,
+            ReturnOutOfFilterSearchEntry = malformedPage == 3
+        };
+
+        Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SearchAsync(new()
+            {
+                Actor = security.Actor,
+                Scope = EmailOutboxAdministrationScope.Global,
+                Statuses = malformedPage == 3 ? new HashSet<EmailOutboxStatus> { EmailOutboxStatus.Pending } : null
+            }));
+
+        Assert.That(security.AuditSink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+    }
+
+    [Test]
+    public async Task DetailRejectsUnauthorizedActorBeforeProviderWork()
+    {
+        var security = new AccountSecurityActorTestContext(Now, AccountSecurityActorContext.AdministrationReadProofPurpose, authorized: false);
+        var service = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), new Support.RecordingTransactionProvider(), security);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await service.GetAsync(new(Guid.NewGuid(), security.Actor, EmailOutboxAdministrationScope.Global)), Is.Null);
+            Assert.That(service.ProviderCalls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task PublicBoundaryRejectsInactiveOrRevokedSessionsAndAuditActorMismatch()
+    {
+        var revoked = new AccountSecurityActorTestContext(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
+        revoked.Sessions.Session!.RevokedAt = Now;
+        var revokedService = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), new Support.RecordingTransactionProvider(), revoked);
+        var inactive = new AccountSecurityActorTestContext(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
+        inactive.Sessions.Session = null;
+        var inactiveService = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), new Support.RecordingTransactionProvider(), inactive);
+        var mismatch = new AccountSecurityActorTestContext(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
+        mismatch.Actor = new(mismatch.Actor.ActorUserId, mismatch.Actor.ActorTenant,
+            mismatch.Actor.CurrentSessionId, mismatch.Actor.FreshMfaProof, new AuditContext(Guid.NewGuid()));
+        var mismatchService = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), new Support.RecordingTransactionProvider(), mismatch);
+        var revokedMutation = new AccountSecurityActorTestContext(
+            Now, IAccountSecurityAdministrationService.ProofPurpose);
+        revokedMutation.Sessions.Session!.RevokedAt = Now;
+        var revokedMutationTransactions = new Support.RecordingTransactionProvider();
+        var revokedMutationService = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), revokedMutationTransactions, revokedMutation);
+        var mismatchMutation = new AccountSecurityActorTestContext(
+            Now, IAccountSecurityAdministrationService.ProofPurpose);
+        mismatchMutation.Actor = new(mismatchMutation.Actor.ActorUserId, mismatchMutation.Actor.ActorTenant,
+            mismatchMutation.Actor.CurrentSessionId, mismatchMutation.Actor.FreshMfaProof, new AuditContext(Guid.NewGuid()));
+        var mismatchMutationTransactions = new Support.RecordingTransactionProvider();
+        var mismatchMutationService = new TestEmailOutboxAdministrationService(
+            new CapturingSecurityEventSink(), mismatchMutationTransactions, mismatchMutation);
+
+        var revokedResult = await revokedService.SearchAsync(new() { Actor = revoked.Actor, Scope = EmailOutboxAdministrationScope.Global });
+        var inactiveResult = await inactiveService.GetAsync(new(Guid.NewGuid(), inactive.Actor, EmailOutboxAdministrationScope.Global));
+        var mismatchResult = await mismatchService.SearchAsync(new() { Actor = mismatch.Actor, Scope = EmailOutboxAdministrationScope.Global });
+        var revokedMutationResult = await revokedMutationService.DiscardAsync(new(
+            Guid.NewGuid(), revokedMutation.Actor, EmailOutboxAdministrationScope.Global));
+        var mismatchMutationResult = await mismatchMutationService.RetryAsync(new(
+            Guid.NewGuid(), mismatchMutation.Actor, EmailOutboxAdministrationScope.Global));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revokedResult.Items, Is.Empty);
+            Assert.That(inactiveResult, Is.Null);
+            Assert.That(mismatchResult.Items, Is.Empty);
+            Assert.That(revokedMutationResult.Status, Is.EqualTo(EmailOutboxOperationStatus.Failed));
+            Assert.That(mismatchMutationResult.Status, Is.EqualTo(EmailOutboxOperationStatus.Failed));
+            Assert.That(revokedService.ProviderCalls, Is.Zero);
+            Assert.That(inactiveService.ProviderCalls, Is.Zero);
+            Assert.That(mismatchService.ProviderCalls, Is.Zero);
+            Assert.That(revokedMutationService.ProviderCalls, Is.Zero);
+            Assert.That(mismatchMutationService.ProviderCalls, Is.Zero);
+            Assert.That(revokedMutationTransactions.Transaction.BeginCount, Is.Zero);
+            Assert.That(mismatchMutationTransactions.Transaction.BeginCount, Is.Zero);
+        }
+    }
+
+    private static EmailOutboxSearchRequest ValidSearch() =>
+        new() { Actor = Security.Actor, Scope = EmailOutboxAdministrationScope.Global };
+
+    private static AccountSecurityActorContext CreateActor(Guid userId, AuditContext audit) =>
+        new(userId, TenantContext.Global, Security.Actor.CurrentSessionId,
+            FreshMfaVerificationProofFactory.Create(userId, null, Security.Actor.CurrentSessionId, Now,
+                Now.AddMinutes(5), AccountSecurityActorContext.AdministrationReadProofPurpose), audit);
 
     private sealed class CapturingSecurityEventSink : ISecurityEventSink
     {
@@ -324,24 +666,96 @@ internal sealed class EmailOutboxAdministrationProviderTests
         }
     }
 
+    private sealed class ThrowingPersistentSecurityEventSink : IPersistentSecurityEventSink
+    {
+        public int CallCount { get; private set; }
+
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            throw new InvalidOperationException("audit failed");
+        }
+    }
+
     private sealed class TestEmailOutboxAdministrationService(
         ISecurityEventSink sink,
-        global::Ashlar.Identity.Abstractions.Transactions.IAshlarTransactionProvider transactionProvider)
-        : EmailOutboxAdministrationServiceBase(TimeProvider.System, sink, global::Ashlar.Testing.DurableTransactionComposition.Create(transactionProvider))
+        global::Ashlar.Identity.Abstractions.Transactions.IAshlarTransactionProvider transactionProvider,
+        AccountSecurityActorTestContext? security = null,
+        IPersistentSecurityEventSink? auditSink = null)
+        : EmailOutboxAdministrationServiceBase(
+            new FakeTimeProvider(Now),
+            sink,
+            global::Ashlar.Testing.DurableTransactionComposition.Create(transactionProvider),
+            (security ?? Security).Sessions,
+            (security ?? Security).Authorizer,
+            auditSink ?? (security ?? Security).AuditSink)
     {
-        public override Task<EmailOutboxSearchResult> SearchAsync(EmailOutboxSearchRequest request, CancellationToken cancellationToken = default)
+        public int ProviderCalls { get; private set; }
+        public bool ThrowSearch { get; set; }
+        public bool ThrowDetail { get; set; }
+        public bool ReturnNullDetail { get; set; }
+        public bool ReturnMismatchedDetail { get; set; }
+        public bool ReturnInvalidDetailProjection { get; set; }
+        public bool ReturnInvalidSearch { get; set; }
+        public bool ReturnNullSearchItem { get; set; }
+        public bool ReturnDuplicateSearchEntries { get; set; }
+        public bool ReturnOutOfFilterSearchEntry { get; set; }
+        public bool ReturnMismatchedMutationState { get; set; }
+        public bool ReturnInvalidMutationPostState { get; set; }
+        public string? InvalidMutationStateField { get; set; }
+        public bool ReturnNoMutationState { get; set; }
+        public bool ReturnMismatchedLoadState { get; set; }
+        public EmailOutboxStatus LoadStateStatus { get; set; } = EmailOutboxStatus.Pending;
+
+        protected override Task<EmailOutboxAdministrationProviderSearchResult> SearchAuthorizedAsync(
+            EmailOutboxSearchRequest request, CancellationToken cancellationToken)
         {
-            throw new NotSupportedException();
+            ProviderCalls++;
+            if (ThrowSearch) throw new InvalidOperationException("search failed");
+            List<EmailOutboxAdministrationProjection> items = ReturnInvalidSearch
+                ? ReturnNullSearchItem
+                    ? [null!]
+                    : ReturnDuplicateSearchEntries
+                        ? [CreateRecord()]
+                        : ReturnOutOfFilterSearchEntry
+                            ? [CreateRecord()]
+                        : Enumerable.Repeat(CreateRecord(), request.Limit + 1).ToList()
+                : [];
+            if (ReturnDuplicateSearchEntries)
+                items = [items[0], items[0]];
+            return Task.FromResult(new EmailOutboxAdministrationProviderSearchResult(items, false));
         }
 
-        public override Task<EmailOutboxDetail?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+        protected override Task<EmailOutboxAdministrationProjection?> GetAuthorizedAsync(
+            Guid id, CancellationToken cancellationToken)
         {
-            throw new NotSupportedException();
+            ProviderCalls++;
+            if (ThrowDetail) throw new InvalidOperationException("detail failed");
+            if (ReturnNullDetail) return Task.FromResult<EmailOutboxAdministrationProjection?>(null);
+            if (ReturnMismatchedDetail) id = Guid.NewGuid();
+            return Task.FromResult<EmailOutboxAdministrationProjection?>(CreateRecord() with
+            {
+                Id = id,
+                AttemptCount = ReturnInvalidDetailProjection ? -1 : 3
+            });
         }
 
         protected override Task<EmailOutboxAdministrationOperationState?> RetryFailedAsync(Guid id, CancellationToken cancellationToken)
         {
-            return Task.FromResult<EmailOutboxAdministrationOperationState?>(new(id, "retry@example.com", "Retry", EmailOutboxStatus.Pending, SuppressPublicFields: false));
+            if (ReturnNoMutationState) return Task.FromResult<EmailOutboxAdministrationOperationState?>(null);
+            if (ReturnMismatchedMutationState) id = Guid.NewGuid();
+            var status = InvalidMutationStateField == "status"
+                ? (EmailOutboxStatus)99
+                : ReturnInvalidMutationPostState ? EmailOutboxStatus.Sent : EmailOutboxStatus.Pending;
+            var sensitivity = InvalidMutationStateField == "sensitivity"
+                ? (EmailMessageSensitivity)99
+                : EmailMessageSensitivity.Normal;
+            var bodyProtection = InvalidMutationStateField == "protection"
+                ? (EmailOutboxBodyProtection)99
+                : EmailOutboxBodyProtection.None;
+            return Task.FromResult<EmailOutboxAdministrationOperationState?>(new(
+                id, "retry@example.com", "Retry", status,
+                sensitivity, bodyProtection));
         }
 
         protected override Task<EmailOutboxAdministrationOperationState?> DiscardFailedAsync(Guid id, CancellationToken cancellationToken)
@@ -351,7 +765,11 @@ internal sealed class EmailOutboxAdministrationProviderTests
 
         protected override Task<EmailOutboxAdministrationOperationState?> LoadOperationStateAsync(Guid id, CancellationToken cancellationToken)
         {
-            throw new NotSupportedException();
+            if (!ReturnNoMutationState) throw new NotSupportedException();
+            if (ReturnMismatchedLoadState) id = Guid.NewGuid();
+            return Task.FromResult<EmailOutboxAdministrationOperationState?>(new(
+                id, "retry@example.com", "Retry", LoadStateStatus,
+                EmailMessageSensitivity.Normal, EmailOutboxBodyProtection.None));
         }
     }
 }

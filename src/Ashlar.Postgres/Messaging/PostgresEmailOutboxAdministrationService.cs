@@ -7,13 +7,16 @@ internal sealed class PostgresEmailOutboxAdministrationService(
     IPostgresConnectionProvider connectionProvider,
     TimeProvider timeProvider,
     ISecurityEventSink securityEventSink,
-    AshlarDurableTransactionProvider transactionProvider) : EmailOutboxAdministrationServiceBase(timeProvider, securityEventSink, transactionProvider)
+    AshlarDurableTransactionProvider transactionProvider,
+    IAuthenticationSessionRepository sessions,
+    IAccountSecurityOperationAuthorizer authorizer,
+    IPersistentSecurityEventSink auditSink) : EmailOutboxAdministrationServiceBase(timeProvider, securityEventSink, transactionProvider, sessions, authorizer, auditSink)
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
-    public override async Task<EmailOutboxSearchResult> SearchAsync(EmailOutboxSearchRequest request, CancellationToken cancellationToken = default)
+    protected override async Task<EmailOutboxAdministrationProviderSearchResult> SearchAuthorizedAsync(
+        EmailOutboxSearchRequest request, CancellationToken cancellationToken)
     {
-        EmailOutboxAdministrationProvider.ValidateSearchRequest(request);
         var parameters = CreateSearchParameters(request);
         parameters.Add("Now", TimeProvider.GetUtcNow());
         parameters.Add("Limit", request.Limit + 1);
@@ -29,26 +32,19 @@ internal sealed class PostgresEmailOutboxAdministrationService(
 
         var rows = await PostgresAdminQuery.QueryAsync<SearchRow>(_connectionProvider, sql, parameters, cancellationToken).ConfigureAwait(false);
         var hasMore = rows.Count > request.Limit;
-        return new EmailOutboxSearchResult(
-            rows.Take(request.Limit).Select(static row => EmailOutboxAdministrationProvider.CreateSummary(row.ToRecord())).ToList().AsReadOnly(),
-            request.Limit,
-            request.Offset,
+        return new(
+            rows.Take(request.Limit).Select(static row => row.ToRecord()).ToList().AsReadOnly(),
             hasMore);
     }
 
-    public override async Task<EmailOutboxDetail?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+    protected override async Task<EmailOutboxAdministrationProjection?> GetAuthorizedAsync(
+        Guid id, CancellationToken cancellationToken)
     {
-        if (id == Guid.Empty)
-        {
-            throw new ArgumentException("Email outbox row ID cannot be empty.", nameof(id));
-        }
-
         const string sql = """
             WITH browseable AS (
                 SELECT id, to_address, from_address, reply_to_address, cc_address, subject, sensitivity, body_protection, attempt_count,
                        created_at, available_at, sent_at, last_attempt_at, failed_at, discarded_at, last_error,
                        text_body IS NOT NULL AS has_text_body, html_body IS NOT NULL AS has_html_body,
-                       headers IS NOT NULL AS has_headers, metadata IS NOT NULL AS has_metadata,
                        CASE
                            WHEN discarded_at IS NOT NULL THEN 'Discarded'
                            WHEN sent_at IS NOT NULL THEN 'Sent'
@@ -66,8 +62,7 @@ internal sealed class PostgresEmailOutboxAdministrationService(
                    body_protection AS BodyProtection, status AS Status, attempt_count AS AttemptCount,
                    created_at AS CreatedAt, available_at AS AvailableAt, sent_at AS SentAt,
                    last_attempt_at AS LastAttemptAt, failed_at AS FailedAt, discarded_at AS DiscardedAt,
-                   last_error AS LastError, has_text_body AS HasTextBody, has_html_body AS HasHtmlBody,
-                   has_headers AS HasHeaders, has_metadata AS HasMetadata
+                   last_error AS LastError, has_text_body AS HasTextBody, has_html_body AS HasHtmlBody
             FROM browseable
             """;
 
@@ -76,7 +71,7 @@ internal sealed class PostgresEmailOutboxAdministrationService(
             sql,
             new { Id = id, Now = TimeProvider.GetUtcNow() },
             cancellationToken).ConfigureAwait(false);
-        return row is null ? null : EmailOutboxAdministrationProvider.CreateDetail(row.ToRecord());
+        return row?.ToRecord();
     }
 
     private const string RetrySql = """
@@ -91,7 +86,13 @@ internal sealed class PostgresEmailOutboxAdministrationService(
           AND failed_at IS NOT NULL
           AND discarded_at IS NULL
         RETURNING id AS Id, to_address AS ToAddress, subject AS Subject, sensitivity AS Sensitivity,
-                  body_protection AS BodyProtection, sent_at AS SentAt, discarded_at AS DiscardedAt
+                  body_protection AS BodyProtection,
+                  CASE
+                      WHEN discarded_at IS NOT NULL THEN 'Discarded'
+                      WHEN sent_at IS NOT NULL THEN 'Sent'
+                      WHEN failed_at IS NOT NULL THEN 'Failed'
+                      ELSE 'Pending'
+                  END AS Status
         """;
 
     private const string DiscardSql = """
@@ -104,12 +105,27 @@ internal sealed class PostgresEmailOutboxAdministrationService(
           AND failed_at IS NOT NULL
           AND discarded_at IS NULL
         RETURNING id AS Id, to_address AS ToAddress, subject AS Subject, sensitivity AS Sensitivity,
-                  body_protection AS BodyProtection, sent_at AS SentAt, discarded_at AS DiscardedAt
+                  body_protection AS BodyProtection,
+                  CASE
+                      WHEN discarded_at IS NOT NULL THEN 'Discarded'
+                      WHEN sent_at IS NOT NULL THEN 'Sent'
+                      WHEN failed_at IS NOT NULL THEN 'Failed'
+                      ELSE 'Pending'
+                  END AS Status
         """;
 
     private const string LoadSql = """
-        SELECT id AS Id, to_address AS ToAddress, subject AS Subject, sensitivity AS Sensitivity, body_protection AS BodyProtection,
-               sent_at AS SentAt, discarded_at AS DiscardedAt
+        SELECT id AS Id, to_address AS ToAddress, subject AS Subject, sensitivity AS Sensitivity,
+               body_protection AS BodyProtection,
+               CASE
+                   WHEN discarded_at IS NOT NULL THEN 'Discarded'
+                   WHEN sent_at IS NOT NULL THEN 'Sent'
+                   WHEN failed_at IS NOT NULL THEN 'Failed'
+                   WHEN locked_until > @Now THEN 'Locked'
+                   WHEN locked_until IS NOT NULL AND locked_until <= @Now THEN 'ExpiredLock'
+                   WHEN available_at > @Now THEN 'Scheduled'
+                   ELSE 'Pending'
+               END AS Status
         FROM ashlar_email_outbox
         WHERE id = @Id
         """;
@@ -126,7 +142,8 @@ internal sealed class PostgresEmailOutboxAdministrationService(
 
     protected override async Task<EmailOutboxAdministrationOperationState?> LoadOperationStateAsync(Guid id, CancellationToken cancellationToken)
     {
-        return await QueryOperationStateAsync(LoadSql, new { Id = id }, cancellationToken).ConfigureAwait(false);
+        return await QueryOperationStateAsync(
+            LoadSql, new { Id = id, Now = TimeProvider.GetUtcNow() }, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<EmailOutboxAdministrationOperationState?> QueryOperationStateAsync(string sql, object parameters, CancellationToken cancellationToken)
@@ -173,20 +190,19 @@ internal sealed class PostgresEmailOutboxAdministrationService(
     {
         public EmailOutboxAdministrationProjection ToRecord()
         {
+            var sensitivity = EmailOutboxDispatch.ParseSensitivity(Sensitivity);
+            var bodyProtection = EmailOutboxDispatch.ParseBodyProtection(BodyProtection);
             return new EmailOutboxAdministrationProjection(
                 Id,
                 ToAddress,
                 null,
                 null,
                 null,
-                null,
                 Subject,
-                null,
-                null,
-                null,
-                null,
-                EmailOutboxDispatch.ParseSensitivity(Sensitivity),
-                EmailOutboxDispatch.ParseBodyProtection(BodyProtection),
+                false,
+                false,
+                sensitivity,
+                bodyProtection,
                 EmailOutboxAdministrationProvider.ParseStatus(Status),
                 AttemptCount,
                 PostgresAdminQuery.ToDateTimeOffset(CreatedAt),
@@ -195,17 +211,16 @@ internal sealed class PostgresEmailOutboxAdministrationService(
                 PostgresAdminQuery.ToNullableDateTimeOffset(FailedAt),
                 PostgresAdminQuery.ToNullableDateTimeOffset(SentAt),
                 PostgresAdminQuery.ToNullableDateTimeOffset(DiscardedAt),
-                null,
-                null,
-                LastError);
+                EmailOutboxAdministrationProvider.CreateLastErrorSummary(
+                    LastError, sensitivity, bodyProtection));
         }
     }
 
     private sealed record DetailRow(
         Guid Id, string? ToAddress, string? FromAddress, string? ReplyToAddress, string? CcAddress, string? Subject, string? Sensitivity, string? BodyProtection, string? Status,
         int AttemptCount, DateTime CreatedAt, DateTime AvailableAt, DateTime? SentAt, DateTime? LastAttemptAt,
-        DateTime? FailedAt, DateTime? DiscardedAt, string? LastError, bool HasTextBody, bool HasHtmlBody,
-        bool HasHeaders, bool HasMetadata) : SearchRow(Id, ToAddress, Subject, Sensitivity, BodyProtection, Status, AttemptCount, CreatedAt, AvailableAt, SentAt, LastAttemptAt, FailedAt, DiscardedAt, LastError)
+        DateTime? FailedAt, DateTime? DiscardedAt, string? LastError, bool HasTextBody, bool HasHtmlBody)
+        : SearchRow(Id, ToAddress, Subject, Sensitivity, BodyProtection, Status, AttemptCount, CreatedAt, AvailableAt, SentAt, LastAttemptAt, FailedAt, DiscardedAt, LastError)
     {
         public new EmailOutboxAdministrationProjection ToRecord()
         {
@@ -214,32 +229,24 @@ internal sealed class PostgresEmailOutboxAdministrationService(
                 FromAddress = FromAddress,
                 ReplyToAddress = ReplyToAddress,
                 CcAddress = CcAddress,
-                TextBody = HasTextBody ? string.Empty : null,
-                HtmlBody = HasHtmlBody ? string.Empty : null,
-                Headers = HasHeaders ? string.Empty : null,
-                Metadata = HasMetadata ? string.Empty : null
+                HasTextBody = HasTextBody,
+                HasHtmlBody = HasHtmlBody
             };
         }
     }
 
-    private sealed record OperationRow(Guid Id, string? ToAddress, string? Subject, string? Sensitivity, string? BodyProtection, DateTime? SentAt, DateTime? DiscardedAt)
+    private sealed record OperationRow(
+        Guid Id, string? ToAddress, string? Subject, string? Sensitivity, string? BodyProtection, string? Status)
     {
         public EmailOutboxAdministrationOperationState ToState()
         {
-            var status = EmailOutboxStatus.Pending;
-            if (SentAt.HasValue)
-            {
-                status = EmailOutboxStatus.Sent;
-            }
-
-            if (DiscardedAt.HasValue)
-            {
-                status = EmailOutboxStatus.Discarded;
-            }
-
-            var suppressPublicFields = EmailOutboxDispatch.ParseSensitivity(Sensitivity) != EmailMessageSensitivity.Normal ||
-                EmailOutboxDispatch.ParseBodyProtection(BodyProtection) != EmailOutboxBodyProtection.None;
-            return new EmailOutboxAdministrationOperationState(Id, ToAddress, Subject, status, suppressPublicFields);
+            return new EmailOutboxAdministrationOperationState(
+                Id,
+                ToAddress,
+                Subject,
+                EmailOutboxAdministrationProvider.ParseStatus(Status),
+                EmailOutboxDispatch.ParseSensitivity(Sensitivity),
+                EmailOutboxDispatch.ParseBodyProtection(BodyProtection));
         }
     }
 }

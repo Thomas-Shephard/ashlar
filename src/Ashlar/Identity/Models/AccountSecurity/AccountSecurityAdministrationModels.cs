@@ -80,7 +80,15 @@ public enum AccountSecurityOperation
     /// <summary>Retries a failed security-event webhook delivery.</summary>
     RetrySecurityEventWebhookDelivery,
     /// <summary>Discards a failed security-event webhook delivery.</summary>
-    DiscardSecurityEventWebhookDelivery
+    DiscardSecurityEventWebhookDelivery,
+    /// <summary>Searches safe global email outbox metadata.</summary>
+    SearchEmailOutbox,
+    /// <summary>Reads one safe global email outbox projection.</summary>
+    ReadEmailOutbox,
+    /// <summary>Retries a failed email outbox delivery.</summary>
+    RetryEmailOutboxDelivery,
+    /// <summary>Discards a failed email outbox delivery.</summary>
+    DiscardEmailOutboxDelivery
 }
 
 /// <summary>Context supplied to the required host authorizer.</summary>
