@@ -20,12 +20,12 @@ public static class AshlarSqliteServiceCollectionExtensions
 {
     private const string ProviderFamily = "SQLite";
 
-    private static IServiceCollection TryAddSqliteProviderScoped<TService, TImplementation>(this IServiceCollection services)
+    private static void TryAddSqliteProviderScoped<TService, TImplementation>(this IServiceCollection services)
         where TService : class
         where TImplementation : class, TService =>
         services.TryAddAshlarProviderScoped<SqliteTransactionManager, TService, TImplementation>(ProviderFamily);
 
-    private static IServiceCollection ReplaceSqliteProviderScoped<TService>(
+    private static void ReplaceSqliteProviderScoped<TService>(
         this IServiceCollection services,
         Func<IServiceProvider, TService> factory)
         where TService : class =>

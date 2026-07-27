@@ -246,8 +246,8 @@ internal static class CompositionSmoke
 {
     public static void Compose(IServiceCollection services)
     {
-        services.AddAshlarProviderScoped<object>(_ => new object());
-        services.AddAshlarDurableTransactionProvider<CustomTransactionProvider>();
+        services.AddAshlarProviderScoped<CustomTransactionProvider, object>("Custom", _ => new object());
+        services.AddAshlarDurableTransactionProvider<CustomTransactionProvider>("Custom");
         services.AddAshlarDurableTransactionParticipant<object>();
     }
 }

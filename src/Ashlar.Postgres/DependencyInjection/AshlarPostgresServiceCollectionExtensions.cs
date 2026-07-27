@@ -21,12 +21,12 @@ public static class AshlarPostgresServiceCollectionExtensions
 {
     private const string ProviderFamily = "PostgreSQL";
 
-    private static IServiceCollection TryAddPostgresProviderScoped<TService, TImplementation>(this IServiceCollection services)
+    private static void TryAddPostgresProviderScoped<TService, TImplementation>(this IServiceCollection services)
         where TService : class
         where TImplementation : class, TService =>
         services.TryAddAshlarProviderScoped<PostgresTransactionManager, TService, TImplementation>(ProviderFamily);
 
-    private static IServiceCollection ReplacePostgresProviderScoped<TService>(
+    private static void ReplacePostgresProviderScoped<TService>(
         this IServiceCollection services,
         Func<IServiceProvider, TService> factory)
         where TService : class =>
