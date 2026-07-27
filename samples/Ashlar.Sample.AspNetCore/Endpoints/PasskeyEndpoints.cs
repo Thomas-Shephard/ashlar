@@ -21,7 +21,7 @@ internal static class PasskeyEndpoints
         app.MapPost("/api/passkeys/authentication/complete", CompleteAuthenticationAsync);
         app.MapPost("/api/passkeys/factor/options", StartFactorAsync);
         app.MapPost("/api/passkeys/factor/complete", CompleteFactorAsync);
-        app.MapGet("/api/passkeys", ListAsync).RequireAuthorization();
+        app.MapGet("/api/passkeys", ListAsync).RequireAuthorization().RequireFreshMfa();
         app.MapPost("/api/passkeys/{credentialId:guid}/rename", RenameAsync).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
         app.MapDelete("/api/passkeys/{credentialId:guid}", RevokeAsync).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
     }
@@ -193,7 +193,12 @@ internal static class PasskeyEndpoints
 
     private static async Task<IResult> ListAsync(IPasskeyService passkeys, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
     {
-        return Results.Ok(await passkeys.ListAsync(new ListPasskeysRequest(user.GetAshlarUserId(), httpContext.ToTenantContext()), cancellationToken));
+        if (!httpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return Results.Forbid();
+        var proof = httpContext.CreateFreshMfaProof(httpContext.RequestServices.GetRequiredService<StepUpAuthenticationService>(), SelfServicePasskeyManagementRequirement, IPasskeyService.ManagementProofPurpose);
+        if (!proof.Succeeded || proof.Value == null) return Results.Forbid();
+
+        var result = await passkeys.ListAsync(new ListPasskeysRequest(user.GetAshlarUserId(), httpContext.ToTenantContext(), sessionId, proof.Value, httpContext.ToAuditContext()), cancellationToken);
+        return result.Succeeded ? Results.Ok(result.Value) : Results.Forbid();
     }
 
     private static async Task<IResult> RenameAsync(Guid credentialId, PasskeyDisplayNameRequest request, IPasskeyService passkeys, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)

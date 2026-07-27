@@ -72,10 +72,10 @@ public interface IPasskeyService
     /// <summary>
     /// Lists passkeys registered for the current authenticated account owner.
     /// </summary>
-    /// <param name="request">The self-service list request. The actor and tenant are validated at the service boundary.</param>
+    /// <param name="request">The self-service list request. It requires actor/tenant/session binding, a fresh MFA proof for <c>passkey-management</c>, and audit metadata.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The registered passkeys.</returns>
-    Task<IReadOnlyList<PasskeyCredentialSummary>> ListAsync(ListPasskeysRequest request, CancellationToken cancellationToken = default);
+    /// <returns>The operation result containing the registered passkeys when the management boundary succeeds.</returns>
+    Task<Result<IReadOnlyList<PasskeyCredentialSummary>>> ListAsync(ListPasskeysRequest request, CancellationToken cancellationToken = default);
     /// <summary>
     /// Renames a passkey display name for the current authenticated account owner.
     /// </summary>

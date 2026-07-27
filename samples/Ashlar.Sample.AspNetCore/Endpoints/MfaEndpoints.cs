@@ -6,7 +6,6 @@ using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.Providers.RecoveryCode;
-using Ashlar.Passkeys;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
 using Microsoft.AspNetCore.Mvc;
@@ -283,7 +282,6 @@ internal static class MfaEndpoints
 
     private static async Task<IResult> GetStepUpOptionsAsync(
         IAccountSecurityService accountSecurity,
-        IPasskeyService passkeys,
         ClaimsPrincipal user,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -295,7 +293,7 @@ internal static class MfaEndpoints
         if (postureResult.Value is not { } posture) return Results.Forbid();
         var hasTotp = HasFactor(posture, AuthenticationFactorTypes.Totp);
         var hasRecoveryCodes = HasFactor(posture, AuthenticationFactorTypes.RecoveryCode);
-        var hasPasskeys = (await passkeys.ListAsync(new ListPasskeysRequest(userId, httpContext.ToTenantContext()), cancellationToken)).Count > 0;
+        var hasPasskeys = HasFactor(posture, AuthenticationFactorTypes.Passkey);
         var canUseCode = hasTotp || hasRecoveryCodes;
 
         return Results.Ok(new

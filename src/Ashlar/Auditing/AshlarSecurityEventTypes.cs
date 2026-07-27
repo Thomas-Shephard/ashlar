@@ -234,6 +234,10 @@ public static class AshlarSecurityEventTypes
     /// </summary>
     public const string PasskeyAuthenticationCompleted = "ashlar.passkey.authentication_completed";
     /// <summary>
+    /// Emitted when a passkey inventory read is attempted.
+    /// </summary>
+    public const string PasskeyInventoryRead = "ashlar.passkey.inventory_read";
+    /// <summary>
     /// Emitted when a passkey display name is changed.
     /// </summary>
     public const string PasskeyRenamed = "ashlar.passkey.renamed";
