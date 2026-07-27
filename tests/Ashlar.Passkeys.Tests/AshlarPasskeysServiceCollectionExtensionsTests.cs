@@ -227,12 +227,12 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
         Assert.That(PasskeyOptions.Validate(options), Is.False);
     }
 
-    [TestCase("user", "Passkey user persistence must be enlisted in the durable transaction composition.")]
-    [TestCase("credential", "Passkey credential persistence must be enlisted in the durable transaction composition.")]
-    [TestCase("challenge", "Passkey challenge persistence must be enlisted in the durable transaction composition.")]
-    [TestCase("session", "Passkey session persistence must be enlisted in the durable transaction composition.")]
-    [TestCase("audit", "Persistent security event storage and durable fan-out handlers must be enlisted in the durable transaction composition.")]
-    [TestCase("fanout", "Persistent security event storage and durable fan-out handlers must be enlisted in the durable transaction composition.")]
+    [TestCase("user", "Passkey user persistence must be the exact instance enlisted in the durable transaction composition; DI decorators must be composed inside the persistence provider boundary.")]
+    [TestCase("credential", "Passkey credential persistence must be the exact instance enlisted in the durable transaction composition; DI decorators must be composed inside the persistence provider boundary.")]
+    [TestCase("challenge", "Passkey challenge persistence must be the exact instance enlisted in the durable transaction composition; DI decorators must be composed inside the persistence provider boundary.")]
+    [TestCase("session", "Passkey session persistence must be the exact instance enlisted in the durable transaction composition; DI decorators must be composed inside the persistence provider boundary.")]
+    [TestCase("audit", "Persistent security event storage and durable fan-out handlers must be the exact instances enlisted in the durable transaction composition. DI decorators must be composed by the persistence provider rather than applied outside its transaction boundary.")]
+    [TestCase("fanout", "Persistent security event storage and durable fan-out handlers must be the exact instances enlisted in the durable transaction composition. DI decorators must be composed by the persistence provider rather than applied outside its transaction boundary.")]
     public void CorePasskeyCompositionRejectsMissingDurableParticipant(string omitted, string expectedMessage)
     {
         var services = new ServiceCollection();

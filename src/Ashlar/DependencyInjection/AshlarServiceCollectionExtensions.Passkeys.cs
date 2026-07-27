@@ -39,13 +39,13 @@ public static partial class AshlarServiceCollectionExtensions
             if (!sink.RequiresDurableTransaction || !ReferenceEquals(transactions, sink.TransactionProvider))
                 throw new InvalidOperationException("Passkey mutations require durable audit using the same transaction provider.");
             if (!transactions.IncludesParticipant(provider.GetRequiredAshlarProviderService<IUserRepository>()))
-                throw new InvalidOperationException("Passkey user persistence must be enlisted in the durable transaction composition.");
+                throw new InvalidOperationException("Passkey user persistence must be the exact instance enlisted in the durable transaction composition; DI decorators must be composed inside the persistence provider boundary.");
             if (!transactions.IncludesParticipant(provider.GetRequiredAshlarProviderService<ICredentialRepository>()))
-                throw new InvalidOperationException("Passkey credential persistence must be enlisted in the durable transaction composition.");
+                throw new InvalidOperationException("Passkey credential persistence must be the exact instance enlisted in the durable transaction composition; DI decorators must be composed inside the persistence provider boundary.");
             if (!transactions.IncludesParticipant(provider.GetRequiredAshlarProviderService<IPasskeyChallengeRepository>()))
-                throw new InvalidOperationException("Passkey challenge persistence must be enlisted in the durable transaction composition.");
+                throw new InvalidOperationException("Passkey challenge persistence must be the exact instance enlisted in the durable transaction composition; DI decorators must be composed inside the persistence provider boundary.");
             if (!transactions.IncludesParticipant(provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>()))
-                throw new InvalidOperationException("Passkey session persistence must be enlisted in the durable transaction composition.");
+                throw new InvalidOperationException("Passkey session persistence must be the exact instance enlisted in the durable transaction composition; DI decorators must be composed inside the persistence provider boundary.");
             return new PasskeyServiceDependencies(
                 provider.GetRequiredService<IOptions<PasskeyOptions>>(),
                 provider.GetRequiredService<IAuthenticationOrchestrator>(),

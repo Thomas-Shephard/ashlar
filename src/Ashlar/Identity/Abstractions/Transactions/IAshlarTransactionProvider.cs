@@ -1,3 +1,5 @@
+using System.Runtime.ExceptionServices;
+
 namespace Ashlar.Identity.Abstractions.Transactions;
 
 /// <summary>
@@ -31,9 +33,11 @@ public interface IAshlarTransactionProvider
 /// </remarks>
 public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvider
 {
+    private const string TransactionCompletedMessage = "The transaction has already completed.";
     private readonly IAshlarTransactionProvider _provider;
     private readonly HashSet<object> _participants;
     private readonly AsyncLocal<TransactionBoundary?> _active = new();
+    private readonly AsyncLocal<object?> _scope = new();
 
     private AshlarDurableTransactionProvider(IAshlarTransactionProvider provider, IEnumerable<object> participants)
     {
@@ -70,8 +74,12 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
         var active = _active.Value;
         if (active is { Completed: false })
         {
-            if (active.Busy || active.Terminal) throw new InvalidOperationException("The active transaction boundary is not ready to accept more work.");
-            return Task.FromResult<IAshlarTransaction>(new NestedTransaction(active));
+            var parent = _scope.Value;
+            var lease = new object();
+            if (active.Busy || active.Terminal || !active.TryAcquire(parent!, lease))
+                throw new InvalidOperationException("The durable transaction is already starting, completing, or owned by another inherited async flow. Await transaction scopes sequentially; do not use Task.WhenAll for work sharing one provider connection.");
+            _scope.Value = lease;
+            return Task.FromResult<IAshlarTransaction>(new NestedTransaction(active, _scope, parent!, lease));
         }
 
         return BeginNewBoundaryAsync(cancellationToken);
@@ -79,8 +87,10 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
 
     private Task<IAshlarTransaction> BeginNewBoundaryAsync(CancellationToken cancellationToken)
     {
-        var boundary = new TransactionBoundary { Active = _active, Busy = true };
+        var lease = new object();
+        var boundary = new TransactionBoundary(_active, _scope, lease) { Busy = true };
         _active.Value = boundary;
+        _scope.Value = lease;
         try
         {
             return BeginRootTransactionAsync(boundary, _provider.BeginTransactionAsync(cancellationToken));
@@ -101,7 +111,7 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
             boundary.Transaction = await transaction.ConfigureAwait(false)
                 ?? throw new InvalidOperationException("The transaction provider returned no transaction.");
             boundary.Busy = false;
-            return new RootTransaction(boundary);
+            return new RootTransaction(boundary, boundary.RootLease);
         }
         catch
         {
@@ -110,14 +120,40 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
         }
     }
 
-    private sealed class TransactionBoundary
+    private sealed class TransactionBoundary(
+        AsyncLocal<TransactionBoundary?> active,
+        AsyncLocal<object?> scope,
+        object owner)
     {
-        public required AsyncLocal<TransactionBoundary?> Active { get; init; }
+        private object _owner = owner;
+        public object RootLease { get; } = owner;
+        public AsyncLocal<TransactionBoundary?> Active { get; } = active;
+        public AsyncLocal<object?> Scope { get; } = scope;
         public IAshlarTransaction Transaction { get; set; } = null!;
         public bool Completed { get; set; }
-        public bool Busy { get; set; }
+        private int _busy;
+        public bool Busy
+        {
+            get => Volatile.Read(ref _busy) != 0;
+            set => Volatile.Write(ref _busy, value ? 1 : 0);
+        }
         public bool Terminal { get; set; }
         public bool RollbackOnly { get; set; }
+        private Exception? _rollbackCause;
+        public Exception? RollbackCause => Volatile.Read(ref _rollbackCause);
+
+        public void Exit() => Volatile.Write(ref _busy, 0);
+        public bool TryAcquire(object parent, object lease) => ReferenceEquals(Interlocked.CompareExchange(ref _owner, lease, parent), parent);
+        public bool IsOwner(object? lease) => ReferenceEquals(Volatile.Read(ref _owner), lease);
+        public void Release(object parent) => Interlocked.Exchange(ref _owner, parent);
+        public void MarkRollbackOnly(string message)
+        {
+            RollbackOnly = true;
+            Interlocked.CompareExchange(
+                ref _rollbackCause,
+                ExceptionDispatchInfo.SetCurrentStackTrace(new InvalidOperationException(message)),
+                null);
+        }
 
         public void OnCommitted(Func<CancellationToken, Task> action)
         {
@@ -126,20 +162,33 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
             {
                 Terminal = true;
                 Active.Value = null;
+                Scope.Value = null;
                 await action(cancellationToken).ConfigureAwait(false);
             });
         }
     }
 
-    private sealed class RootTransaction(TransactionBoundary boundary) : IAshlarTransaction
+    private sealed class RootTransaction(TransactionBoundary boundary, object lease) : IAshlarTransaction
     {
+        private readonly object _terminalLease = new();
+        private readonly object _completedLease = new();
+        private readonly object _disposeLease = new();
+        private readonly object _hookLease = new();
         private bool _disposed;
 
         public async Task CommitAsync(CancellationToken cancellationToken = default)
         {
-            EnsureActive();
+            ObjectDisposedException.ThrowIf(_disposed, this);
             cancellationToken.ThrowIfCancellationRequested();
-            if (boundary.RollbackOnly) throw new InvalidOperationException("The transaction cannot be committed because it has been marked for rollback by a nested participant.");
+            if (!boundary.TryAcquire(lease, _terminalLease)) throw new InvalidOperationException(TransactionCompletedMessage);
+            if (boundary.RollbackOnly)
+            {
+                boundary.Release(lease);
+                throw new InvalidOperationException(
+                    "The transaction cannot be committed because a nested transaction rolled back or was disposed without CommitAsync. See the inner exception for the first rollback-only origin.",
+                    boundary.RollbackCause);
+            }
+            boundary.Terminal = true;
             boundary.Busy = true;
             try
             {
@@ -147,16 +196,18 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
             }
             finally
             {
-                boundary.Terminal = true;
-                boundary.Busy = false;
+                boundary.Release(_completedLease);
+                boundary.Exit();
             }
         }
 
         public async Task RollbackAsync(CancellationToken cancellationToken = default)
         {
-            EnsureActive();
+            ObjectDisposedException.ThrowIf(_disposed, this);
             cancellationToken.ThrowIfCancellationRequested();
-            boundary.RollbackOnly = true;
+            if (!boundary.TryAcquire(lease, _terminalLease)) throw new InvalidOperationException(TransactionCompletedMessage);
+            boundary.MarkRollbackOnly("The root transaction was explicitly rolled back.");
+            boundary.Terminal = true;
             boundary.Busy = true;
             try
             {
@@ -164,23 +215,35 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
             }
             finally
             {
-                boundary.Terminal = true;
-                boundary.Busy = false;
+                boundary.Release(_completedLease);
+                boundary.Exit();
             }
         }
         public void OnCommitted(Func<CancellationToken, Task> action)
         {
-            EnsureActive();
-            boundary.OnCommitted(action);
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!boundary.TryAcquire(lease, _hookLease)) throw new InvalidOperationException(TransactionCompletedMessage);
+            try
+            {
+                boundary.OnCommitted(action);
+            }
+            finally
+            {
+                boundary.Release(lease);
+            }
         }
 
         public async ValueTask DisposeAsync()
         {
             if (_disposed) return;
-            if (boundary.Busy) throw new InvalidOperationException("The transaction cannot be disposed while an operation is in progress.");
+            var expectedLease = boundary.Terminal ? _completedLease : lease;
+            if (boundary.Busy || !boundary.TryAcquire(expectedLease, _disposeLease))
+            {
+                throw new InvalidOperationException("The transaction cannot be disposed while an operation is in progress.");
+            }
+            boundary.Busy = true;
             _disposed = true;
             boundary.Terminal = true;
-            boundary.Busy = true;
             try
             {
                 await boundary.Transaction.DisposeAsync().ConfigureAwait(false);
@@ -188,19 +251,19 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
             }
             finally
             {
-                boundary.Busy = false;
+                boundary.Exit();
             }
         }
 
-        private void EnsureActive()
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            if (boundary.Terminal || boundary.Busy) throw new InvalidOperationException("The transaction has already completed.");
-        }
     }
 
-    private sealed class NestedTransaction(TransactionBoundary boundary) : IAshlarTransaction
+    private sealed class NestedTransaction(
+        TransactionBoundary boundary,
+        AsyncLocal<object?> scope,
+        object parent,
+        object lease) : IAshlarTransaction
     {
+        private readonly object _hookLease = new();
         private bool _completed;
         private bool _disposed;
         public Task CommitAsync(CancellationToken cancellationToken = default)
@@ -215,28 +278,39 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
         {
             EnsureActive();
             cancellationToken.ThrowIfCancellationRequested();
-            boundary.RollbackOnly = true;
+            boundary.MarkRollbackOnly("A nested transaction explicitly called RollbackAsync.");
             _completed = true;
             return Task.CompletedTask;
         }
         public void OnCommitted(Func<CancellationToken, Task> action)
         {
-            EnsureActive();
-            boundary.OnCommitted(action);
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_completed || !boundary.TryAcquire(lease, _hookLease)) throw new InvalidOperationException(TransactionCompletedMessage);
+            try
+            {
+                boundary.OnCommitted(action);
+            }
+            finally
+            {
+                boundary.Release(lease);
+            }
         }
 
         public ValueTask DisposeAsync()
         {
             if (_disposed) return ValueTask.CompletedTask;
+            if (!boundary.IsOwner(lease)) throw new InvalidOperationException("The transaction scope is no longer active.");
+            if (!_completed) boundary.MarkRollbackOnly("A nested transaction was disposed without CommitAsync or RollbackAsync.");
+            boundary.Release(parent);
             _disposed = true;
-            if (!_completed) boundary.RollbackOnly = true;
+            scope.Value = parent;
             return ValueTask.CompletedTask;
         }
 
         private void EnsureActive()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_completed || boundary.Busy || boundary.Terminal || boundary.Completed) throw new InvalidOperationException("The transaction has already completed.");
+            if (_completed || !boundary.IsOwner(lease)) throw new InvalidOperationException(TransactionCompletedMessage);
         }
     }
 }

@@ -57,7 +57,7 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
         if (transactionProvider is { } composition
             && ((_persistentSink != null && !composition.IncludesParticipant(_persistentSink)) || _durableHandlers.Any(handler => !composition.IncludesParticipant(handler))))
         {
-            throw new InvalidOperationException("Persistent security event storage and durable fan-out handlers must be enlisted in the durable transaction composition.");
+            throw new InvalidOperationException("Persistent security event storage and durable fan-out handlers must be the exact instances enlisted in the durable transaction composition. DI decorators must be composed by the persistence provider rather than applied outside its transaction boundary.");
         }
     }
 
