@@ -26,7 +26,6 @@ public sealed class AshlarOperationsSummaryService(
     private const string RateLimiterComponent = "authenticationRateLimiter";
     private const string EmailOutboxComponent = "emailOutbox";
     private const string WebhookOutboxComponent = "securityEventWebhookOutbox";
-    private const string ComponentFailureReason = "Diagnostic check failed.";
     private static readonly Action<ILogger, string, Exception?> LogDiagnosticFailure =
         LoggerMessage.Define<string>(
             LogLevel.Warning,
@@ -43,31 +42,37 @@ public sealed class AshlarOperationsSummaryService(
     /// <inheritdoc />
     public async Task<AshlarOperationsSummary> GetSummaryAsync(CancellationToken cancellationToken = default)
     {
+        EnsureNotCanceled(cancellationToken);
         var schema = await CheckComponentAsync(
             SchemaComponent,
             async token => _schemaDiagnostics == null ? CreateNotSupportedSchema() : Project(await _schemaDiagnostics.CheckAsync(token)),
             token => CreateUnknownSchema(token),
             cancellationToken);
+        EnsureNotCanceled(cancellationToken);
         var cleanup = await CheckComponentAsync(
             CleanupComponent,
             async token => _cleanupDiagnostics == null ? CreateNotSupportedCleanup() : Project(await _cleanupDiagnostics.CheckAsync(token)),
             token => CreateUnknownCleanup(token),
             cancellationToken);
+        EnsureNotCanceled(cancellationToken);
         var rateLimiter = await CheckComponentAsync(
             RateLimiterComponent,
             async token => _rateLimiterDiagnostics == null ? CreateNotSupportedRateLimiter() : Project(await _rateLimiterDiagnostics.CheckAsync(token)),
             token => CreateUnknownRateLimiter(token),
             cancellationToken);
+        EnsureNotCanceled(cancellationToken);
         var emailOutbox = await CheckComponentAsync(
             EmailOutboxComponent,
             async token => _emailOutboxDiagnostics == null ? CreateNotSupportedOutbox() : Project(await _emailOutboxDiagnostics.CheckAsync(token)),
             token => CreateUnknownOutbox(token),
             cancellationToken);
+        EnsureNotCanceled(cancellationToken);
         var webhookOutbox = await CheckComponentAsync(
             WebhookOutboxComponent,
             async token => _webhookOutboxDiagnostics == null ? CreateNotSupportedOutbox() : Project(await _webhookOutboxDiagnostics.CheckAsync(token)),
             token => CreateUnknownOutbox(token),
             cancellationToken);
+        EnsureNotCanceled(cancellationToken);
 
         var components = new AshlarOperationsComponentSummary[]
         {
@@ -125,9 +130,7 @@ public sealed class AshlarOperationsSummaryService(
     {
         return new AshlarSchemaOperationsSummary(
             result.Status,
-            result.ProviderName,
             result.CheckedAt,
-            result.Reason,
             result.SchemaStatus,
             result.AppliedMigrationCount,
             result.ExpectedMigrationCount,
@@ -138,9 +141,7 @@ public sealed class AshlarOperationsSummaryService(
     {
         return new AshlarCleanupOperationsSummary(
             result.Status,
-            result.ProviderName,
             result.CheckedAt,
-            result.Reason,
             result.Configured,
             result.OptionsValid,
             result.CleanupInterval,
@@ -154,9 +155,7 @@ public sealed class AshlarOperationsSummaryService(
     {
         return new AshlarAuthenticationRateLimiterOperationsSummary(
             result.Status,
-            result.ProviderName,
             result.CheckedAt,
-            result.Reason,
             result.Configured,
             result.Distributed,
             result.Persistent,
@@ -172,9 +171,7 @@ public sealed class AshlarOperationsSummaryService(
     {
         return new AshlarOutboxOperationsSummary(
             result.Status,
-            result.ProviderName,
             result.CheckedAt,
-            result.Reason,
             result.PendingCount,
             result.ScheduledCount,
             result.LockedCount,
@@ -191,9 +188,7 @@ public sealed class AshlarOperationsSummaryService(
     {
         return new AshlarOutboxOperationsSummary(
             result.Status,
-            result.ProviderName,
             result.CheckedAt,
-            result.Reason,
             result.PendingCount,
             result.ScheduledCount,
             result.LockedCount,
@@ -211,9 +206,7 @@ public sealed class AshlarOperationsSummaryService(
         cancellationToken.ThrowIfCancellationRequested();
         return new AshlarSchemaOperationsSummary(
             AshlarDiagnosticStatus.Unknown,
-            null,
             _timeProvider.GetUtcNow(),
-            ComponentFailureReason,
             AshlarSchemaStatus.Unknown,
             null,
             null,
@@ -225,9 +218,7 @@ public sealed class AshlarOperationsSummaryService(
         cancellationToken.ThrowIfCancellationRequested();
         return new AshlarCleanupOperationsSummary(
             AshlarDiagnosticStatus.Unknown,
-            null,
             _timeProvider.GetUtcNow(),
-            ComponentFailureReason,
             false,
             false,
             null,
@@ -242,9 +233,7 @@ public sealed class AshlarOperationsSummaryService(
         cancellationToken.ThrowIfCancellationRequested();
         return new AshlarAuthenticationRateLimiterOperationsSummary(
             AshlarDiagnosticStatus.Unknown,
-            null,
             _timeProvider.GetUtcNow(),
-            ComponentFailureReason,
             false,
             false,
             false,
@@ -261,9 +250,7 @@ public sealed class AshlarOperationsSummaryService(
         cancellationToken.ThrowIfCancellationRequested();
         return new AshlarOutboxOperationsSummary(
             AshlarDiagnosticStatus.Unknown,
-            null,
             _timeProvider.GetUtcNow(),
-            ComponentFailureReason,
             null,
             null,
             null,
@@ -280,9 +267,7 @@ public sealed class AshlarOperationsSummaryService(
     {
         return new AshlarSchemaOperationsSummary(
             AshlarDiagnosticStatus.NotSupported,
-            "None",
             _timeProvider.GetUtcNow(),
-            null,
             AshlarSchemaStatus.Unknown,
             null,
             null,
@@ -293,9 +278,7 @@ public sealed class AshlarOperationsSummaryService(
     {
         return new AshlarCleanupOperationsSummary(
             AshlarDiagnosticStatus.NotSupported,
-            "None",
             _timeProvider.GetUtcNow(),
-            null,
             false,
             false,
             null,
@@ -309,9 +292,7 @@ public sealed class AshlarOperationsSummaryService(
     {
         return new AshlarAuthenticationRateLimiterOperationsSummary(
             AshlarDiagnosticStatus.NotSupported,
-            "None",
             _timeProvider.GetUtcNow(),
-            null,
             false,
             false,
             false,
@@ -327,9 +308,7 @@ public sealed class AshlarOperationsSummaryService(
     {
         return new AshlarOutboxOperationsSummary(
             AshlarDiagnosticStatus.NotSupported,
-            "None",
             _timeProvider.GetUtcNow(),
-            null,
             null,
             null,
             null,
@@ -359,15 +338,19 @@ public sealed class AshlarOperationsSummaryService(
         return AshlarDiagnosticStatus.Healthy;
     }
 
-    private static AshlarOperationsIssue[] CreateIssues(
+    private static System.Collections.ObjectModel.ReadOnlyCollection<AshlarOperationsIssue> CreateIssues(
         params (string Component, AshlarOperationsComponentSummary Summary)[] components)
     {
-        return components
+        return Array.AsReadOnly(components
             .Where(component => component.Summary.Status is not AshlarDiagnosticStatus.Healthy and not AshlarDiagnosticStatus.NotSupported)
             .Select(component => new AshlarOperationsIssue(
                 component.Component,
-                component.Summary.Status,
-                component.Summary.Reason))
-            .ToArray();
+                component.Summary.Status))
+            .ToArray());
+    }
+
+    private static void EnsureNotCanceled(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
     }
 }

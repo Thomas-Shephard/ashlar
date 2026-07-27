@@ -4,8 +4,10 @@ namespace Ashlar.Operational.Diagnostics;
 /// Composes Ashlar operational diagnostics into one provider-neutral read-only summary.
 /// </summary>
 /// <remarks>
-/// This service is intended for administrative and operations tooling and does not authorize the caller.
-/// Host applications must protect usage of this service with appropriate admin authorization and step-up policy.
+/// This public read does not authorize callers because it exposes only low-sensitivity aggregate health and
+/// configuration data: statuses, timestamps, counts, booleans, intervals, batch limits, and schema state.
+/// It never projects diagnostic provider names or reasons, migration names or provider versions, raw identifiers,
+/// tenant or user data, payloads, secrets, endpoint URIs, provider exceptions, lock owners, or row data.
 /// </remarks>
 public interface IAshlarOperationsSummaryService
 {
