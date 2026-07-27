@@ -7,35 +7,33 @@ internal sealed class SqliteEmailOutboxAdministrationService(
     ISqliteConnectionProvider connectionProvider,
     TimeProvider timeProvider,
     ISecurityEventSink securityEventSink,
-    AshlarDurableTransactionProvider transactionProvider) : EmailOutboxAdministrationServiceBase(timeProvider, securityEventSink, transactionProvider)
+    AshlarDurableTransactionProvider transactionProvider,
+    IAuthenticationSessionRepository sessions,
+    IAccountSecurityOperationAuthorizer authorizer,
+    IPersistentSecurityEventSink auditSink) : EmailOutboxAdministrationServiceBase(timeProvider, securityEventSink, transactionProvider, sessions, authorizer, auditSink)
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
-    public override async Task<EmailOutboxSearchResult> SearchAsync(EmailOutboxSearchRequest request, CancellationToken cancellationToken = default)
+    protected override async Task<EmailOutboxAdministrationProviderSearchResult> SearchAuthorizedAsync(
+        EmailOutboxSearchRequest request, CancellationToken cancellationToken)
     {
-        EmailOutboxAdministrationProvider.ValidateSearchRequest(request);
         var rows = await SqliteQuery.QueryAsync(
             _connectionProvider,
             command => BuildSearchSql(command, request),
             ReadSearchRow,
             cancellationToken).ConfigureAwait(false);
         var hasMore = rows.Count > request.Limit;
-        return new EmailOutboxSearchResult(rows.Take(request.Limit).Select(static row => EmailOutboxAdministrationProvider.CreateSummary(row.ToRecord())).ToList().AsReadOnly(), request.Limit, request.Offset, hasMore);
+        return new(rows.Take(request.Limit).Select(static row => row.ToRecord()).ToList().AsReadOnly(), hasMore);
     }
 
-    public override async Task<EmailOutboxDetail?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+    protected override async Task<EmailOutboxAdministrationProjection?> GetAuthorizedAsync(
+        Guid id, CancellationToken cancellationToken)
     {
-        if (id == Guid.Empty)
-        {
-            throw new ArgumentException("Email outbox row ID cannot be empty.", nameof(id));
-        }
-
         const string sql = """
             WITH browseable AS (
                 SELECT id, to_address, from_address, reply_to_address, cc_address, subject, sensitivity, body_protection, attempt_count,
                        created_at, available_at, sent_at, last_attempt_at, failed_at, discarded_at, last_error,
                        text_body IS NOT NULL AS has_text_body, html_body IS NOT NULL AS has_html_body,
-                       headers IS NOT NULL AS has_headers, metadata IS NOT NULL AS has_metadata,
                        CASE
                            WHEN discarded_at IS NOT NULL THEN 'Discarded'
                            WHEN sent_at IS NOT NULL THEN 'Sent'
@@ -50,7 +48,7 @@ internal sealed class SqliteEmailOutboxAdministrationService(
             )
             SELECT id, to_address, from_address, reply_to_address, cc_address, subject, sensitivity, body_protection, status, attempt_count,
                    created_at, available_at, sent_at, last_attempt_at, failed_at, discarded_at, last_error,
-                   has_text_body, has_html_body, has_headers, has_metadata
+                   has_text_body, has_html_body
             FROM browseable;
             """;
 
@@ -65,7 +63,7 @@ internal sealed class SqliteEmailOutboxAdministrationService(
             ReadDetailRow,
             cancellationToken).ConfigureAwait(false);
         var row = rows.SingleOrDefault();
-        return row is null ? null : EmailOutboxAdministrationProvider.CreateDetail(row.ToRecord());
+        return row?.ToRecord();
     }
 
     private const string RetrySql = """
@@ -79,7 +77,13 @@ internal sealed class SqliteEmailOutboxAdministrationService(
           AND sent_at IS NULL
           AND failed_at IS NOT NULL
           AND discarded_at IS NULL
-        RETURNING id, to_address, subject, sensitivity, body_protection, sent_at, discarded_at;
+        RETURNING id, to_address, subject, sensitivity, body_protection,
+                  CASE
+                      WHEN discarded_at IS NOT NULL THEN 'Discarded'
+                      WHEN sent_at IS NOT NULL THEN 'Sent'
+                      WHEN failed_at IS NOT NULL THEN 'Failed'
+                      ELSE 'Pending'
+                  END AS status;
         """;
 
     private const string DiscardSql = """
@@ -91,11 +95,26 @@ internal sealed class SqliteEmailOutboxAdministrationService(
           AND sent_at IS NULL
           AND failed_at IS NOT NULL
           AND discarded_at IS NULL
-        RETURNING id, to_address, subject, sensitivity, body_protection, sent_at, discarded_at;
+        RETURNING id, to_address, subject, sensitivity, body_protection,
+                  CASE
+                      WHEN discarded_at IS NOT NULL THEN 'Discarded'
+                      WHEN sent_at IS NOT NULL THEN 'Sent'
+                      WHEN failed_at IS NOT NULL THEN 'Failed'
+                      ELSE 'Pending'
+                  END AS status;
         """;
 
     private const string LoadSql = """
-        SELECT id, to_address, subject, sensitivity, body_protection, sent_at, discarded_at
+        SELECT id, to_address, subject, sensitivity, body_protection,
+               CASE
+                   WHEN discarded_at IS NOT NULL THEN 'Discarded'
+                   WHEN sent_at IS NOT NULL THEN 'Sent'
+                   WHEN failed_at IS NOT NULL THEN 'Failed'
+                   WHEN locked_until > $now THEN 'Locked'
+                   WHEN locked_until IS NOT NULL AND locked_until <= $now THEN 'ExpiredLock'
+                   WHEN available_at > $now THEN 'Scheduled'
+                   ELSE 'Pending'
+               END AS status
         FROM ashlar_email_outbox
         WHERE id = $id;
         """;
@@ -125,6 +144,7 @@ internal sealed class SqliteEmailOutboxAdministrationService(
         return await QueryOperationStateAsync(command =>
         {
             command.AddGuidParameter("$id", id);
+            command.AddDateTimeOffsetParameter("$now", TimeProvider.GetUtcNow());
             return LoadSql;
         }, cancellationToken).ConfigureAwait(false);
     }
@@ -223,9 +243,7 @@ internal sealed class SqliteEmailOutboxAdministrationService(
             reader.GetNullableString("reply_to_address"),
             reader.GetNullableString("cc_address"),
             reader.GetBoolean(reader.GetOrdinal("has_text_body")),
-            reader.GetBoolean(reader.GetOrdinal("has_html_body")),
-            reader.GetBoolean(reader.GetOrdinal("has_headers")),
-            reader.GetBoolean(reader.GetOrdinal("has_metadata")));
+            reader.GetBoolean(reader.GetOrdinal("has_html_body")));
     }
 
     private static OperationRow ReadOperationRow(SqliteDataReader reader)
@@ -236,28 +254,26 @@ internal sealed class SqliteEmailOutboxAdministrationService(
             reader.GetNullableString("subject"),
             reader.GetNullableString("sensitivity"),
             reader.GetNullableString("body_protection"),
-            reader.GetNullableDateTimeOffsetFromText("sent_at"),
-            reader.GetNullableDateTimeOffsetFromText("discarded_at"));
+            reader.GetNullableString("status"));
     }
 
     private sealed record SearchRow(SearchRowIdentity Identity, SearchRowDelivery Delivery, SearchRowFailure Failure)
     {
         public EmailOutboxAdministrationProjection ToRecord()
         {
+            var sensitivity = EmailOutboxDispatch.ParseSensitivity(Identity.Sensitivity);
+            var bodyProtection = EmailOutboxDispatch.ParseBodyProtection(Identity.BodyProtection);
             return new EmailOutboxAdministrationProjection(
                 Identity.Id,
                 Identity.ToAddress,
                 null,
                 null,
                 null,
-                null,
                 Identity.Subject,
-                null,
-                null,
-                null,
-                null,
-                EmailOutboxDispatch.ParseSensitivity(Identity.Sensitivity),
-                EmailOutboxDispatch.ParseBodyProtection(Identity.BodyProtection),
+                false,
+                false,
+                sensitivity,
+                bodyProtection,
                 EmailOutboxAdministrationProvider.ParseStatus(Identity.Status),
                 Delivery.AttemptCount,
                 Delivery.CreatedAt,
@@ -266,9 +282,8 @@ internal sealed class SqliteEmailOutboxAdministrationService(
                 Failure.FailedAt,
                 Delivery.SentAt,
                 Delivery.DiscardedAt,
-                null,
-                null,
-                Failure.LastError);
+                EmailOutboxAdministrationProvider.CreateLastErrorSummary(
+                    Failure.LastError, sensitivity, bodyProtection));
         }
     }
 
@@ -278,7 +293,7 @@ internal sealed class SqliteEmailOutboxAdministrationService(
 
     private sealed record SearchRowFailure(DateTimeOffset? FailedAt, string? LastError);
 
-    private sealed record DetailRow(SearchRow Row, string? FromAddress, string? ReplyToAddress, string? CcAddress, bool HasTextBody, bool HasHtmlBody, bool HasHeaders, bool HasMetadata)
+    private sealed record DetailRow(SearchRow Row, string? FromAddress, string? ReplyToAddress, string? CcAddress, bool HasTextBody, bool HasHtmlBody)
     {
         public EmailOutboxAdministrationProjection ToRecord()
         {
@@ -287,32 +302,24 @@ internal sealed class SqliteEmailOutboxAdministrationService(
                 FromAddress = FromAddress,
                 ReplyToAddress = ReplyToAddress,
                 CcAddress = CcAddress,
-                TextBody = HasTextBody ? string.Empty : null,
-                HtmlBody = HasHtmlBody ? string.Empty : null,
-                Headers = HasHeaders ? string.Empty : null,
-                Metadata = HasMetadata ? string.Empty : null
+                HasTextBody = HasTextBody,
+                HasHtmlBody = HasHtmlBody
             };
         }
     }
 
-    private sealed record OperationRow(Guid Id, string? ToAddress, string? Subject, string? Sensitivity, string? BodyProtection, DateTimeOffset? SentAt, DateTimeOffset? DiscardedAt)
+    private sealed record OperationRow(
+        Guid Id, string? ToAddress, string? Subject, string? Sensitivity, string? BodyProtection, string? Status)
     {
         public EmailOutboxAdministrationOperationState ToState()
         {
-            var status = EmailOutboxStatus.Pending;
-            if (SentAt.HasValue)
-            {
-                status = EmailOutboxStatus.Sent;
-            }
-
-            if (DiscardedAt.HasValue)
-            {
-                status = EmailOutboxStatus.Discarded;
-            }
-
-            var suppressPublicFields = EmailOutboxDispatch.ParseSensitivity(Sensitivity) != EmailMessageSensitivity.Normal ||
-                EmailOutboxDispatch.ParseBodyProtection(BodyProtection) != EmailOutboxBodyProtection.None;
-            return new EmailOutboxAdministrationOperationState(Id, ToAddress, Subject, status, suppressPublicFields);
+            return new EmailOutboxAdministrationOperationState(
+                Id,
+                ToAddress,
+                Subject,
+                EmailOutboxAdministrationProvider.ParseStatus(Status),
+                EmailOutboxDispatch.ParseSensitivity(Sensitivity),
+                EmailOutboxDispatch.ParseBodyProtection(BodyProtection));
         }
     }
 }

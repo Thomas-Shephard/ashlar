@@ -205,7 +205,10 @@ public static class AshlarSqliteServiceCollectionExtensions
             provider.GetRequiredService<ISqliteConnectionProvider>(),
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ISecurityEventSink>(),
-            provider.GetRequiredService<AshlarDurableTransactionProvider>())));
+            provider.GetRequiredService<AshlarDurableTransactionProvider>(),
+            provider.GetRequiredService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+            provider.GetRequiredService<IPersistentSecurityEventSink>())));
         services.Replace(ServiceDescriptor.Scoped<IEmailOutboxDiagnostics, SqliteEmailOutboxDiagnostics>());
         services.Replace(ServiceDescriptor.Scoped<IEmailSender, SqliteEmailOutboxSender>());
 
