@@ -6,6 +6,27 @@ using Ashlar.Identity.RateLimiting.Models;
 
 namespace Ashlar.Tests.Identity.Features.Authentication;
 
+#pragma warning disable CS1591
+public interface ITestAccountLockoutService
+{
+    Task<AccountLockoutStatus> GetStatusAsync(IUser user, AuthenticationProviderKey provider, AccountLockoutContext? context = null, CancellationToken cancellationToken = default);
+    Task<AccountLockoutFailureResult> RecordFailureAsync(IUser user, AuthenticationProviderKey provider, AccountLockoutContext? context = null, CancellationToken cancellationToken = default);
+    Task<bool> ResetAsync(IUser user, AuthenticationProviderKey provider, AccountLockoutContext? context = null, CancellationToken cancellationToken = default);
+}
+#pragma warning restore CS1591
+
+internal sealed class TestAccountLockoutService(ITestAccountLockoutService inner) : IAccountLockoutService
+{
+    public Task<AccountLockoutStatus> GetStatusAsync(IUser user, AuthenticationProviderKey provider, AccountLockoutContext? context = null, CancellationToken cancellationToken = default)
+        => inner.GetStatusAsync(user, provider, context, cancellationToken);
+
+    public Task<AccountLockoutFailureResult> RecordFailureAsync(IUser user, AuthenticationProviderKey provider, AccountLockoutContext? context = null, CancellationToken cancellationToken = default)
+        => inner.RecordFailureAsync(user, provider, context, cancellationToken);
+
+    public Task<bool> ResetAsync(IUser user, AuthenticationProviderKey provider, AccountLockoutContext? context = null, CancellationToken cancellationToken = default)
+        => inner.ResetAsync(user, provider, context, cancellationToken);
+}
+
 internal sealed class AuthenticationPipelineTests
 {
     private Mock<IAuthenticationProviderRegistry> _providerRegistryMock;
@@ -13,7 +34,7 @@ internal sealed class AuthenticationPipelineTests
     private Mock<IPrimaryAuthenticationProvider> _providerMock;
     private Mock<IPrimaryAuthenticationRateLimiter> _primaryRateLimiterMock;
     private Mock<IAuthenticationFactorRateLimiter> _factorRateLimiterMock;
-    private Mock<IAccountLockoutService> _accountLockoutServiceMock;
+    private Mock<ITestAccountLockoutService> _accountLockoutServiceMock;
     private AuthenticationPipeline _pipeline;
 
     [SetUp]
@@ -24,7 +45,7 @@ internal sealed class AuthenticationPipelineTests
         _providerMock = new Mock<IPrimaryAuthenticationProvider>();
         _primaryRateLimiterMock = CreateAllowingPrimaryRateLimiter();
         _factorRateLimiterMock = CreateAllowingFactorRateLimiter();
-        _accountLockoutServiceMock = new Mock<IAccountLockoutService>();
+        _accountLockoutServiceMock = new Mock<ITestAccountLockoutService>();
         _pipeline = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialService, AshlarDurableTransactionProvider.Create(new NullTransactionProvider()), _primaryRateLimiterMock.Object, _factorRateLimiterMock.Object);
     }
 
@@ -941,7 +962,7 @@ internal sealed class AuthenticationPipelineTests
             AshlarDurableTransactionProvider.Create(new NullTransactionProvider()),
             primaryRateLimiter.Object,
             _factorRateLimiterMock.Object,
-            new AuthenticationPipelineDependencies(AccountLockoutService: _accountLockoutServiceMock.Object));
+            new AuthenticationPipelineDependencies(AccountLockoutService: new TestAccountLockoutService(_accountLockoutServiceMock.Object)));
 
         var response = await _pipeline.LoginAsync(context, assertion);
 
@@ -1399,7 +1420,7 @@ internal sealed class AuthenticationPipelineTests
             new AuthenticationPipelineDependencies(
                 SecurityEventSink: securityEventSink,
                 Logger: logger,
-                AccountLockoutService: _accountLockoutServiceMock.Object,
+                AccountLockoutService: new TestAccountLockoutService(_accountLockoutServiceMock.Object),
                 AccountLockoutOptions: accountLockoutOptions));
     }
 

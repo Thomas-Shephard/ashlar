@@ -3,6 +3,11 @@ namespace Ashlar.Identity.Abstractions.Repositories;
 /// <summary>
 /// Stores automatic account lockout state for resolved users.
 /// </summary>
+/// <remarks>
+/// Providers implement this contract to customize lockout persistence. The authentication pipeline owns automatic
+/// lockout mutations; applications should use <see cref="IAccountLockoutAdministrationReader" /> and
+/// <see cref="IAccountLockoutAdministrationService" /> for operator reads and resets.
+/// </remarks>
 public interface IAccountLockoutRepository
 {
     /// <summary>
