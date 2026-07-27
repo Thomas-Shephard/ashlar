@@ -11,6 +11,11 @@ public sealed class AuthenticationSessionOptions
     public TimeSpan DefaultLifetime { get; set; } = TimeSpan.FromDays(14);
 
     /// <summary>
+    /// Maximum session lifetime accepted from callers. Defaults to 30 days.
+    /// </summary>
+    public TimeSpan MaximumLifetime { get; set; } = TimeSpan.FromDays(30);
+
+    /// <summary>
     /// Minimum elapsed time before updating <see cref="AuthenticationSession.LastSeenAt"/>.
     /// Defaults to 5 minutes.
     /// </summary>

@@ -144,6 +144,10 @@ internal sealed class AuthenticationSessionService(
         {
             throw new ArgumentOutOfRangeException($"{nameof(request)}.{nameof(request.Lifetime)}", request.Lifetime, "Session lifetime must be positive.");
         }
+        if (lifetime > _options.MaximumLifetime)
+        {
+            throw new ArgumentOutOfRangeException($"{nameof(request)}.{nameof(request.Lifetime)}", request.Lifetime, "Session lifetime exceeds the configured maximum.");
+        }
 
         ValidateOptionalProvider(request.PrimaryProvider, $"{nameof(request)}.{nameof(request.PrimaryProvider)}");
 
@@ -967,6 +971,10 @@ internal sealed class AuthenticationSessionService(
         if (options.DefaultLifetime <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(options), options.DefaultLifetime, "AuthenticationSessionOptions.DefaultLifetime must be positive.");
+        }
+        if (options.MaximumLifetime < options.DefaultLifetime)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaximumLifetime, "AuthenticationSessionOptions.MaximumLifetime must be at least DefaultLifetime.");
         }
 
         if (options.LastSeenUpdateThreshold < TimeSpan.Zero)

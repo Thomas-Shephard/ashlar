@@ -349,6 +349,93 @@ internal sealed class EmailOutboxDispatchTests
     }
 
     [Test]
+    public void CreateFailureUpdatePermanentlyFailsDeliveryTimeout()
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        var failure = EmailOutboxDispatch.CreateFailureUpdate(
+            0, 3, TimeSpan.FromMinutes(1), now,
+            new EmailDeliveryTimeoutException(TimeSpan.FromSeconds(1)), false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.AttemptCount, Is.EqualTo(1));
+            Assert.That(failure.FailedAt, Is.EqualTo(now));
+            Assert.That(failure.AvailableAt, Is.EqualTo(now));
+        }
+    }
+
+    [Test]
+    public async Task DispatchAsyncDoesNotWaitForCancellationResistantTransportAfterLosingLock()
+    {
+        var delivery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var renewals = 0;
+        var context = CreateDispatchContext(
+            new RecordingEmailTransport { DeliveryTask = delivery.Task },
+            renewLockAsync: (_, _) => Task.FromResult(++renewals == 1)) with
+        {
+            LockRenewalInterval = TimeSpan.FromMilliseconds(1)
+        };
+
+        await EmailOutboxDispatch.DispatchAsync(CreateEntry(), context, CancellationToken.None);
+
+        Assert.That(renewals, Is.EqualTo(2));
+        delivery.SetResult();
+    }
+
+    [Test]
+    public async Task DispatchAsyncPermanentlyFailsWhenTransportIgnoresCancellation()
+    {
+        var delivery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new RecordingEmailTransport { DeliveryTask = delivery.Task };
+        Exception? failure = null;
+        bool? finalFailure = null;
+        var context = CreateDispatchContext(
+            transport,
+            markAsFailedAsync: (_, exception, _) =>
+            {
+                failure = exception;
+                return Task.CompletedTask;
+            },
+            logDeliveryFailed: (_, _, final, _) => finalFailure = final) with
+        {
+            DeliveryTimeout = TimeSpan.FromMilliseconds(20),
+            LockRenewalInterval = TimeSpan.FromMilliseconds(1)
+        };
+
+        await EmailOutboxDispatch.DispatchAsync(CreateEntry(), context, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure, Is.TypeOf<EmailDeliveryTimeoutException>());
+            Assert.That(finalFailure, Is.True);
+        }
+        delivery.SetResult();
+    }
+
+    [Test]
+    public async Task DispatchAsyncPermanentlyFailsWhenTransportHonorsTimeoutCancellation()
+    {
+        var transport = new CancellationAwareEmailTransport();
+        Exception? failure = null;
+        var context = CreateDispatchContext(
+            transport,
+            markAsFailedAsync: (_, exception, _) =>
+            {
+                failure = exception;
+                return Task.CompletedTask;
+            }) with
+        {
+            DeliveryTimeout = TimeSpan.FromMilliseconds(20),
+            LockRenewalInterval = TimeSpan.FromMilliseconds(1)
+        };
+
+        await EmailOutboxDispatch.DispatchAsync(CreateEntry(), context, CancellationToken.None);
+
+        Assert.That(failure, Is.TypeOf<EmailDeliveryTimeoutException>());
+    }
+
+    [Test]
     public async Task DispatchAsyncRenewsWhileTransportBlocksBeforeReturningTask()
     {
         using var releaseDelivery = new ManualResetEventSlim();
@@ -688,6 +775,14 @@ internal sealed class EmailOutboxDispatchTests
         {
             releaseDelivery.Wait(cancellationToken);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CancellationAwareEmailTransport : IEmailTransport
+    {
+        public Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default)
+        {
+            return Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         }
     }
 

@@ -92,6 +92,9 @@ public sealed record EmailOutboxFailureUpdate(
     DateTimeOffset AvailableAt,
     string LastError);
 
+internal sealed class EmailDeliveryTimeoutException(TimeSpan timeout)
+    : TimeoutException($"Email delivery did not settle within {timeout}.");
+
 /// <summary>
 /// Body column values prepared for email outbox persistence.
 /// </summary>
@@ -172,21 +175,7 @@ public static class EmailOutboxDispatch
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(context.Transport);
-        ArgumentNullException.ThrowIfNull(context.MarkAsSentAsync);
-        ArgumentNullException.ThrowIfNull(context.MarkAsFailedAsync);
-        ArgumentNullException.ThrowIfNull(context.LogDeliveryFailed);
-        ArgumentNullException.ThrowIfNull(context.RenewLockAsync);
-        if (context.DeliveryTimeout <= TimeSpan.Zero || context.DeliveryTimeout > MaxTimerDuration)
-        {
-            throw new ArgumentOutOfRangeException(nameof(context), "Delivery timeout is outside the supported timer range.");
-        }
-
-        if (context.LockRenewalInterval <= TimeSpan.Zero || context.LockRenewalInterval > MaxTimerDuration)
-        {
-            throw new ArgumentOutOfRangeException(nameof(context), "Lock renewal interval is outside the supported timer range.");
-        }
+        ValidateContext(context);
 
         try
         {
@@ -197,16 +186,23 @@ public static class EmailOutboxDispatch
             }
 
             using var deliveryCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            deliveryCancellation.CancelAfter(context.DeliveryTimeout);
             var delivery = Task.Run(
                 () => context.Transport.DeliverAsync(message, deliveryCancellation.Token),
                 CancellationToken.None);
+            var timeout = Task.Delay(context.DeliveryTimeout, CancellationToken.None);
             while (!delivery.IsCompleted)
             {
                 var delay = Task.Delay(context.LockRenewalInterval, CancellationToken.None);
-                if (await Task.WhenAny(delivery, delay).ConfigureAwait(false) == delivery)
+                var completed = await Task.WhenAny(delivery, delay, timeout).ConfigureAwait(false);
+                if (completed == delivery)
                 {
                     break;
+                }
+                if (completed == timeout)
+                {
+                    await deliveryCancellation.CancelAsync().ConfigureAwait(false);
+                    ObserveLaterFault(delivery);
+                    throw new EmailDeliveryTimeoutException(context.DeliveryTimeout);
                 }
 
                 bool ownsLock;
@@ -222,7 +218,7 @@ public static class EmailOutboxDispatch
                 if (!ownsLock)
                 {
                     await deliveryCancellation.CancelAsync().ConfigureAwait(false);
-                    await delivery.ConfigureAwait(false);
+                    ObserveLaterFault(delivery);
                     return;
                 }
             }
@@ -242,6 +238,25 @@ public static class EmailOutboxDispatch
         if (!await context.MarkAsSentAsync(entry.Id, CancellationToken.None).ConfigureAwait(false))
         {
             context.LogSentStateConflict?.Invoke(entry.Id);
+        }
+    }
+
+    private static void ValidateContext(EmailOutboxDispatchContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(context.Transport);
+        ArgumentNullException.ThrowIfNull(context.MarkAsSentAsync);
+        ArgumentNullException.ThrowIfNull(context.MarkAsFailedAsync);
+        ArgumentNullException.ThrowIfNull(context.LogDeliveryFailed);
+        ArgumentNullException.ThrowIfNull(context.RenewLockAsync);
+        if (context.DeliveryTimeout <= TimeSpan.Zero || context.DeliveryTimeout > MaxTimerDuration)
+        {
+            throw new ArgumentOutOfRangeException(nameof(context), "Delivery timeout is outside the supported timer range.");
+        }
+
+        if (context.LockRenewalInterval <= TimeSpan.Zero || context.LockRenewalInterval > MaxTimerDuration)
+        {
+            throw new ArgumentOutOfRangeException(nameof(context), "Lock renewal interval is outside the supported timer range.");
         }
     }
 
@@ -266,7 +281,7 @@ public static class EmailOutboxDispatch
         ArgumentNullException.ThrowIfNull(exception);
 
         var nextAttemptCount = attemptCount + 1;
-        var isFinalFailure = nextAttemptCount >= maxAttempts;
+        var isFinalFailure = exception is EmailDeliveryTimeoutException || nextAttemptCount >= maxAttempts;
         var backoffMultiplier = Math.Pow(2, nextAttemptCount - 1);
         var maxDelayTicks = TimeSpan.FromDays(7).Ticks;
         var delayTicks = Math.Min(initialRetryDelay.Ticks * backoffMultiplier, maxDelayTicks);
@@ -396,6 +411,15 @@ public static class EmailOutboxDispatch
         return body == null ? null : secretProtector.Protect(body);
     }
 
+    private static void ObserveLaterFault(Task task)
+    {
+        _ = task.ContinueWith(
+            static completed => _ = completed.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
+    }
+
     private static async Task MarkAsFailedAsync(
         EmailOutboxEntry entry,
         EmailOutboxDispatchContext context,
@@ -403,7 +427,11 @@ public static class EmailOutboxDispatch
     {
         var attemptCount = entry.AttemptCount + 1;
         var suppressFailureDetails = ShouldSuppressFailureDetails(entry);
-        context.LogDeliveryFailed(entry.Id, attemptCount, attemptCount >= context.MaxAttempts, suppressFailureDetails ? null : exception);
+        context.LogDeliveryFailed(
+            entry.Id,
+            attemptCount,
+            exception is EmailDeliveryTimeoutException || attemptCount >= context.MaxAttempts,
+            suppressFailureDetails ? null : exception);
         await context.MarkAsFailedAsync(entry, exception, CancellationToken.None).ConfigureAwait(false);
     }
 
