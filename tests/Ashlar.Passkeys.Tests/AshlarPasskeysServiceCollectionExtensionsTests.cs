@@ -77,7 +77,7 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
         services.AddAshlarProviderScoped(_ => Mock.Of<IPasskeyChallengeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddAshlarProviderScoped(_ => Mock.Of<IPersistentSecurityEventSink>());
-        services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>();
+        services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>("Test");
         services.AddAshlarDurableTransactionParticipant<IUserRepository>();
         services.AddAshlarDurableTransactionParticipant<ICredentialRepository>();
         services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionRepository>();
@@ -244,7 +244,7 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
         services.AddAshlarProviderScoped(_ => Mock.Of<IPasskeyChallengeRepository>());
         services.AddAshlarProviderScoped(_ => Mock.Of<IPersistentSecurityEventSink>());
         if (omitted == "fanout") services.AddScoped(_ => Mock.Of<IDurableSecurityEventFanOutHandler>());
-        services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>();
+        services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>("Test");
         if (omitted != "user") services.AddAshlarDurableTransactionParticipant<IUserRepository>();
         if (omitted != "credential") services.AddAshlarDurableTransactionParticipant<ICredentialRepository>();
         if (omitted != "challenge") services.AddAshlarDurableTransactionParticipant<IPasskeyChallengeRepository>();

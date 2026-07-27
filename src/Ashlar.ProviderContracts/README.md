@@ -7,8 +7,8 @@ Applications should install an Ashlar persistence provider such as `Ashlar.Postg
 ```csharp
 using Ashlar.ProviderContracts.DependencyInjection;
 
-services.TryAddAshlarProviderScoped<IUserRepository, CustomUserRepository>();
-services.AddAshlarDurableTransactionProvider<CustomTransactionProvider>();
+services.AddAshlarDurableTransactionProvider<CustomTransactionProvider>("Custom");
+services.TryAddAshlarProviderScoped<CustomTransactionProvider, IUserRepository, CustomUserRepository>("Custom");
 services.AddAshlarIdentityDurableTransactionParticipants();
 ```
 

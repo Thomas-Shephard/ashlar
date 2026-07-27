@@ -7,6 +7,22 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 internal static class AshlarProviderServiceCollection
 {
+    internal static IServiceCollection AddDurableProviderBundle(IServiceCollection services, Type providerType, string family)
+    {
+        var existing = services
+            .Where(descriptor => descriptor.ServiceType == typeof(AshlarDurableProviderBundle))
+            .Select(descriptor => descriptor.ImplementationInstance)
+            .OfType<AshlarDurableProviderBundle>()
+            .FirstOrDefault();
+        if (existing != null &&
+            (existing.ProviderType != providerType ||
+             !string.Equals(existing.Family, family, StringComparison.Ordinal)))
+            throw new InvalidOperationException($"Ashlar durable provider '{family}' cannot be combined with '{existing.Family}'.");
+
+        services.TryAddSingleton(new AshlarDurableProviderBundle(providerType, family));
+        return services;
+    }
+
     internal static IServiceCollection TryAddProviderScoped<TService, TImplementation>(IServiceCollection services)
         where TService : class
         where TImplementation : class, TService
@@ -25,6 +41,8 @@ internal static class AshlarProviderServiceCollection
     internal static T? GetAshlarProviderService<T>(this IServiceProvider provider) where T : class =>
         provider.GetService<AshlarProviderService<T>>()?.Value;
 }
+
+internal sealed record AshlarDurableProviderBundle(Type ProviderType, string Family);
 
 internal interface IAshlarProviderService
 {

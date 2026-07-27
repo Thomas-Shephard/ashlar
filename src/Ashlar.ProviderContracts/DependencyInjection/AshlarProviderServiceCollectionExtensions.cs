@@ -8,6 +8,19 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 /// <summary>Provider-authoring registration APIs. Applications should reference a persistence provider package instead.</summary>
 public static class AshlarProviderServiceCollectionExtensions
 {
+    /// <summary>Claims Ashlar's durable persistence bundle for one provider family.</summary>
+    /// <typeparam name="TProvider">The transaction provider type that uniquely owns the bundle.</typeparam>
+    /// <param name="services">The provider package's service collection.</param>
+    /// <param name="family">A stable provider-family name.</param>
+    /// <returns>The same service collection.</returns>
+    public static IServiceCollection AddAshlarDurableProviderBundle<TProvider>(this IServiceCollection services, string family)
+        where TProvider : class, IAshlarTransactionProvider
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(family);
+        return AshlarProviderServiceCollection.AddDurableProviderBundle(services, typeof(TProvider), family);
+    }
+
     /// <summary>Determines whether a contract is registered in Ashlar's provider-owned infrastructure lane.</summary>
     /// <typeparam name="TService">The provider contract to inspect.</typeparam>
     /// <param name="provider">The service provider to inspect.</param>
@@ -19,69 +32,95 @@ public static class AshlarProviderServiceCollectionExtensions
     }
 
     /// <summary>Registers a provider-owned service factory in Ashlar's private infrastructure lane.</summary>
+    /// <typeparam name="TProvider">The transaction provider type that owns the service.</typeparam>
     /// <typeparam name="TService">The provider contract consumed by Ashlar.</typeparam>
     /// <param name="services">The provider package's service collection.</param>
+    /// <param name="family">The durable provider family name used in conflict diagnostics.</param>
     /// <param name="factory">The scoped provider service factory. Ashlar owns and disposes the returned value; do not return a disposable instance owned by another DI registration.</param>
     /// <returns>The same service collection.</returns>
-    public static IServiceCollection AddAshlarProviderScoped<TService>(this IServiceCollection services, Func<IServiceProvider, TService> factory)
+    public static IServiceCollection AddAshlarProviderScoped<TProvider, TService>(
+        this IServiceCollection services,
+        string family,
+        Func<IServiceProvider, TService> factory)
+        where TProvider : class, IAshlarTransactionProvider
         where TService : class
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(factory);
+        services.AddAshlarDurableProviderBundle<TProvider>(family);
         services.AddScoped(provider => new AshlarProviderService<TService>(factory(provider)));
         return services;
     }
 
     /// <summary>Replaces a provider-owned service factory in Ashlar's private infrastructure lane.</summary>
+    /// <typeparam name="TProvider">The transaction provider type that owns the service.</typeparam>
     /// <typeparam name="TService">The provider contract consumed by Ashlar.</typeparam>
     /// <param name="services">The provider package's service collection.</param>
+    /// <param name="family">The durable provider family name used in conflict diagnostics.</param>
     /// <param name="factory">The replacement scoped provider service factory. Ashlar owns and disposes the returned value; do not return a disposable instance owned by another DI registration.</param>
     /// <returns>The same service collection.</returns>
-    public static IServiceCollection ReplaceAshlarProviderScoped<TService>(this IServiceCollection services, Func<IServiceProvider, TService> factory)
+    public static IServiceCollection ReplaceAshlarProviderScoped<TProvider, TService>(
+        this IServiceCollection services,
+        string family,
+        Func<IServiceProvider, TService> factory)
+        where TProvider : class, IAshlarTransactionProvider
         where TService : class
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(factory);
+        services.AddAshlarDurableProviderBundle<TProvider>(family);
         services.RemoveAll<AshlarProviderService<TService>>();
-        return services.AddAshlarProviderScoped(factory);
+        services.AddScoped(provider => new AshlarProviderService<TService>(factory(provider)));
+        return services;
     }
 
     /// <summary>Registers a provider-owned service in Ashlar's private infrastructure lane.</summary>
+    /// <typeparam name="TProvider">The transaction provider type that owns the service.</typeparam>
     /// <typeparam name="TService">The provider contract consumed by Ashlar.</typeparam>
     /// <typeparam name="TImplementation">The provider implementation.</typeparam>
     /// <param name="services">The provider package's service collection.</param>
+    /// <param name="family">The durable provider family name used in conflict diagnostics.</param>
     /// <returns>The same service collection.</returns>
-    public static IServiceCollection TryAddAshlarProviderScoped<TService, TImplementation>(this IServiceCollection services)
+    public static IServiceCollection TryAddAshlarProviderScoped<TProvider, TService, TImplementation>(
+        this IServiceCollection services,
+        string family)
+        where TProvider : class, IAshlarTransactionProvider
         where TService : class
         where TImplementation : class, TService
     {
         ArgumentNullException.ThrowIfNull(services);
+        services.AddAshlarDurableProviderBundle<TProvider>(family);
         return AshlarProviderServiceCollection.TryAddProviderScoped<TService, TImplementation>(services);
     }
 
     /// <summary>Creates Ashlar's durable transaction composition from a provider-owned transaction manager.</summary>
     /// <typeparam name="TProvider">The provider-owned transaction manager.</typeparam>
     /// <param name="services">The provider package's service collection.</param>
+    /// <param name="family">The durable provider family name used in conflict diagnostics.</param>
     /// <returns>The same service collection.</returns>
-    public static IServiceCollection AddAshlarDurableTransactionProvider<TProvider>(this IServiceCollection services)
+    public static IServiceCollection AddAshlarDurableTransactionProvider<TProvider>(this IServiceCollection services, string family)
         where TProvider : class, IAshlarTransactionProvider
     {
         ArgumentNullException.ThrowIfNull(services);
+        services.AddAshlarDurableProviderBundle<TProvider>(family);
         return AshlarServiceCollectionExtensions.AddProviderDurableTransactionProvider<TProvider>(services);
     }
 
     /// <summary>Creates Ashlar's durable transaction composition from an ordinary-DI-owned transaction manager without transferring disposal ownership.</summary>
     /// <typeparam name="TProvider">The provider-owned transaction manager.</typeparam>
     /// <param name="services">The provider package's service collection.</param>
+    /// <param name="family">The durable provider family name used in conflict diagnostics.</param>
     /// <param name="factory">The scoped transaction manager factory.</param>
     /// <returns>The same service collection.</returns>
     public static IServiceCollection AddAshlarDurableTransactionProvider<TProvider>(
         this IServiceCollection services,
+        string family,
         Func<IServiceProvider, TProvider> factory)
         where TProvider : class, IAshlarTransactionProvider
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(factory);
+        services.AddAshlarDurableProviderBundle<TProvider>(family);
         services.TryAddScoped(provider => new AshlarProviderService<TProvider>(factory(provider), ownsValue: false));
         return AshlarServiceCollectionExtensions.AddProviderDurableTransactionProvider<TProvider>(services);
     }

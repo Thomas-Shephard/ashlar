@@ -291,7 +291,7 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
         services.AddSingleton<ISecretProtector>(secretProtector);
         services.AddAshlarIdentity();
         services.AddAshlarProviderScoped(_ => Mock.Of<IPersistentSecurityEventSink>());
-        services.AddAshlarDurableTransactionProvider<StubTransactionProvider>();
+        services.AddAshlarDurableTransactionProvider<StubTransactionProvider>("Test");
         services.AddAshlarDurableTransactionParticipant<IUserRepository>();
         services.AddAshlarDurableTransactionParticipant<ICredentialRepository>();
         services.AddAshlarDurableTransactionParticipant<IAuthenticationSessionRepository>();

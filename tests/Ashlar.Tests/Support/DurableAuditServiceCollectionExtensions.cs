@@ -9,7 +9,7 @@ internal static class DurableAuditServiceCollectionExtensions
     public static IServiceCollection AddDurableAuditForTests(this IServiceCollection services)
     {
         services.ReplaceAshlarProviderScoped<IPersistentSecurityEventSink>(_ => new TestPersistentSecurityEventSink());
-        services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>();
+        services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>("Test");
         services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
         if (HasProviderService<IUserRepository>(services))
             services.AddAshlarDurableTransactionParticipant<IUserRepository>();
