@@ -175,21 +175,7 @@ public static class EmailOutboxDispatch
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(context.Transport);
-        ArgumentNullException.ThrowIfNull(context.MarkAsSentAsync);
-        ArgumentNullException.ThrowIfNull(context.MarkAsFailedAsync);
-        ArgumentNullException.ThrowIfNull(context.LogDeliveryFailed);
-        ArgumentNullException.ThrowIfNull(context.RenewLockAsync);
-        if (context.DeliveryTimeout <= TimeSpan.Zero || context.DeliveryTimeout > MaxTimerDuration)
-        {
-            throw new ArgumentOutOfRangeException(nameof(context), "Delivery timeout is outside the supported timer range.");
-        }
-
-        if (context.LockRenewalInterval <= TimeSpan.Zero || context.LockRenewalInterval > MaxTimerDuration)
-        {
-            throw new ArgumentOutOfRangeException(nameof(context), "Lock renewal interval is outside the supported timer range.");
-        }
+        ValidateContext(context);
 
         try
         {
@@ -252,6 +238,25 @@ public static class EmailOutboxDispatch
         if (!await context.MarkAsSentAsync(entry.Id, CancellationToken.None).ConfigureAwait(false))
         {
             context.LogSentStateConflict?.Invoke(entry.Id);
+        }
+    }
+
+    private static void ValidateContext(EmailOutboxDispatchContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(context.Transport);
+        ArgumentNullException.ThrowIfNull(context.MarkAsSentAsync);
+        ArgumentNullException.ThrowIfNull(context.MarkAsFailedAsync);
+        ArgumentNullException.ThrowIfNull(context.LogDeliveryFailed);
+        ArgumentNullException.ThrowIfNull(context.RenewLockAsync);
+        if (context.DeliveryTimeout <= TimeSpan.Zero || context.DeliveryTimeout > MaxTimerDuration)
+        {
+            throw new ArgumentOutOfRangeException(nameof(context), "Delivery timeout is outside the supported timer range.");
+        }
+
+        if (context.LockRenewalInterval <= TimeSpan.Zero || context.LockRenewalInterval > MaxTimerDuration)
+        {
+            throw new ArgumentOutOfRangeException(nameof(context), "Lock renewal interval is outside the supported timer range.");
         }
     }
 
