@@ -2,22 +2,18 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Ashlar.Identity.Features.Administration;
 
-/// <summary>
-/// Implements read-only administrator account recovery option summaries.
-/// </summary>
-/// <param name="userAdministrationService">Service used to retrieve safe user and security posture details.</param>
-/// <param name="rememberedMfaDeviceReader">Optional remembered MFA device reader used to preview MFA reset impact.</param>
-public sealed class AccountRecoveryAdministrationService(
+internal sealed class AccountRecoveryAdministrationService(
     IUserAdministrationService userAdministrationService,
-    IRememberedMfaDeviceReader? rememberedMfaDeviceReader = null)
+    IRememberedMfaDeviceRepository rememberedMfaDeviceRepository,
+    TimeProvider? timeProvider = null)
     : IAccountRecoveryAdministrationService
 {
     internal const string LastPrimarySignInMethodWarningCode = "last_primary_sign_in_method";
 
     private readonly IUserAdministrationService _userAdministrationService = userAdministrationService ?? throw new ArgumentNullException(nameof(userAdministrationService));
-    private readonly IRememberedMfaDeviceReader? _rememberedMfaDeviceReader = rememberedMfaDeviceReader;
+    private readonly IRememberedMfaDeviceRepository _rememberedMfaDeviceRepository = rememberedMfaDeviceRepository ?? throw new ArgumentNullException(nameof(rememberedMfaDeviceRepository));
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
-    /// <inheritdoc />
     public async Task<Result<AccountRecoveryOptions>> GetAccountRecoveryOptionsAsync(
         AccountRecoveryOptionsRequest request,
         CancellationToken cancellationToken = default)
@@ -42,7 +38,12 @@ public sealed class AccountRecoveryAdministrationService(
             return Result.Failure<AccountRecoveryOptions>(detailResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.UserNotFound));
         }
 
-        var rememberedMfaDeviceCount = await CountRememberedMfaDevicesAsync(request, cancellationToken);
+        var rememberedMfaDeviceCount = await _rememberedMfaDeviceRepository.CountForUserAsync(
+            request.UserId,
+            request.IncludeAllTenants ? null : request.Tenant,
+            activeOnly: true,
+            _timeProvider.GetUtcNow(),
+            cancellationToken);
         var detail = detailResult.Value;
         var posture = detail.SecurityPosture;
         var activeCredentials = posture.CredentialInventory
@@ -73,25 +74,6 @@ public sealed class AccountRecoveryAdministrationService(
                 WouldRevokeSessions: posture.ActiveSessionCount > 0,
                 revocableProviderOptions,
                 warnings)));
-    }
-
-    private async Task<int> CountRememberedMfaDevicesAsync(AccountRecoveryOptionsRequest request, CancellationToken cancellationToken)
-    {
-        if (_rememberedMfaDeviceReader == null)
-        {
-            return 0;
-        }
-
-        var devices = await _rememberedMfaDeviceReader.ListAsync(
-            request.UserId,
-            new ListRememberedMfaDevicesRequest
-            {
-                Tenant = request.Tenant,
-                IncludeAllTenants = request.IncludeAllTenants,
-                ActiveOnly = true
-            },
-            cancellationToken);
-        return devices.Count;
     }
 
     private static AccountRecoveryProviderOption CreateProviderOption(

@@ -1,4 +1,5 @@
 using Ashlar.Auditing;
+using Moq;
 
 namespace Ashlar.Tests.Identity.Features.Administration;
 
@@ -7,7 +8,16 @@ internal sealed class AccountRecoveryAdministrationServiceTests
     [Test]
     public void ConstructorRejectsNullDependency()
     {
-        Assert.Throws<ArgumentNullException>(() => new AccountRecoveryAdministrationService(null!));
+        var users = new RecordingUserAdministrationService(Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.UserNotFound));
+        var devices = Mock.Of<IRememberedMfaDeviceRepository>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentNullException>(() => new AccountRecoveryAdministrationService(null!, devices));
+            Assert.Throws<ArgumentNullException>(() => new AccountRecoveryAdministrationService(users, null!));
+            Assert.DoesNotThrow(() => new AccountRecoveryAdministrationService(users, devices, null));
+            Assert.DoesNotThrow(() => new AccountRecoveryAdministrationService(users, devices, TimeProvider.System));
+        }
     }
 
     [Test]
@@ -38,11 +48,17 @@ internal sealed class AccountRecoveryAdministrationServiceTests
     [Test]
     public async Task GetAccountRecoveryOptionsAsyncReturnsMissingUserFailure()
     {
-        var service = CreateService(Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.UserNotFound));
+        var rememberedMfaDevices = new Mock<IRememberedMfaDeviceRepository>();
+        var service = CreateService(
+            Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.UserNotFound),
+            rememberedMfaDeviceRepository: rememberedMfaDevices.Object);
 
         var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(Guid.NewGuid(), TenantContext.Global));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+        rememberedMfaDevices.Verify(repository => repository.CountForUserAsync(
+            It.IsAny<Guid>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(),
+            It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -209,45 +225,38 @@ internal sealed class AccountRecoveryAdministrationServiceTests
     {
         var userId = Guid.NewGuid();
         var tenant = new TenantContext(Guid.NewGuid());
-        var rememberedMfaDevices = new RecordingRememberedMfaDeviceService
-        {
-            Devices =
-            [
-                new RememberedMfaDeviceSummary(Guid.NewGuid(), userId, tenant.TenantId, "Laptop", DateTimeOffset.UtcNow, null, DateTimeOffset.UtcNow.AddDays(30), null, null, true)
-            ]
-        };
+        var rememberedMfaDevices = new Mock<IRememberedMfaDeviceRepository>();
+        rememberedMfaDevices
+            .Setup(repository => repository.CountForUserAsync(userId, tenant, true, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
         var service = CreateService(
             Result.Success(CreateDetail(userId, tenant.TenantId, CreatePosture(userId))),
-            rememberedMfaDeviceService: rememberedMfaDevices);
+            rememberedMfaDeviceRepository: rememberedMfaDevices.Object);
 
         var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, tenant));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Value?.Actions.WouldResetMfa, Is.True);
-            Assert.That(rememberedMfaDevices.LastUserId, Is.EqualTo(userId));
-            Assert.That(rememberedMfaDevices.LastRequest?.Tenant, Is.EqualTo(tenant));
-            Assert.That(rememberedMfaDevices.LastRequest?.ActiveOnly, Is.True);
         }
+        rememberedMfaDevices.Verify(repository =>
+            repository.CountForUserAsync(userId, tenant, true, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()));
     }
 
     [Test]
     public async Task GetAccountRecoveryOptionsAsyncUsesUnrestrictedRememberedMfaDeviceScopeWhenIncludingAllTenants()
     {
         var userId = Guid.NewGuid();
-        var rememberedMfaDevices = new RecordingRememberedMfaDeviceService();
+        var rememberedMfaDevices = new Mock<IRememberedMfaDeviceRepository>();
         var service = CreateService(
             Result.Success(CreateDetail(userId, Guid.NewGuid(), CreatePosture(userId))),
-            rememberedMfaDeviceService: rememberedMfaDevices);
+            rememberedMfaDeviceRepository: rememberedMfaDevices.Object);
 
         await service.GetAccountRecoveryOptionsAsync(
             new AccountRecoveryOptionsRequest(userId, IncludeAllTenants: true));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(rememberedMfaDevices.LastRequest?.Tenant, Is.Null);
-            Assert.That(rememberedMfaDevices.LastRequest?.IncludeAllTenants, Is.True);
-        }
+        rememberedMfaDevices.Verify(repository =>
+            repository.CountForUserAsync(userId, null, true, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()));
     }
 
     [Test]
@@ -413,11 +422,11 @@ internal sealed class AccountRecoveryAdministrationServiceTests
     private static AccountRecoveryAdministrationService CreateService(
         Result<UserAdministrationDetail>? detailResult = null,
         RecordingUserAdministrationService? userAdministration = null,
-        RecordingRememberedMfaDeviceService? rememberedMfaDeviceService = null)
+        IRememberedMfaDeviceRepository? rememberedMfaDeviceRepository = null)
     {
         return new AccountRecoveryAdministrationService(
             userAdministration ?? new RecordingUserAdministrationService(detailResult ?? Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.UserNotFound)),
-            rememberedMfaDeviceService);
+            rememberedMfaDeviceRepository ?? Mock.Of<IRememberedMfaDeviceRepository>());
     }
 
     private static UserAdministrationDetail CreateDetail(Guid userId, Guid? tenantId = null, AccountSecurityPosture? posture = null)
@@ -492,35 +501,6 @@ internal sealed class AccountRecoveryAdministrationServiceTests
         {
             LastRequest = request;
             return Task.FromResult(detailResult);
-        }
-    }
-
-    private sealed class RecordingRememberedMfaDeviceService : IRememberedMfaDeviceReader
-    {
-        public IReadOnlyList<RememberedMfaDeviceSummary> Devices { get; init; } = [];
-        public Guid LastUserId { get; private set; }
-        public ListRememberedMfaDevicesRequest? LastRequest { get; private set; }
-
-        public Task<Result<RememberedMfaDeviceCreated>> CreateAfterSuccessfulMfaAsync(MfaAuthenticationResult mfaResult, CreateRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
-        }
-
-        public Task<ValidateRememberedMfaDeviceResult> ValidateAsync(Guid userId, ValidateRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
-        }
-
-        public Task<IReadOnlyList<RememberedMfaDeviceSummary>> ListAsync(Guid userId, ListRememberedMfaDevicesRequest request, CancellationToken cancellationToken = default)
-        {
-            LastUserId = userId;
-            LastRequest = request;
-            return Task.FromResult(Devices);
-        }
-
-        public Task<bool> RevokeCurrentAsync(RevokeCurrentRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
         }
     }
 }

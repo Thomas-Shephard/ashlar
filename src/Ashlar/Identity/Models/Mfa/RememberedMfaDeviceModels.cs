@@ -63,19 +63,6 @@ public sealed record ValidateRememberedMfaDeviceRequest(string? Token)
     public AuditContext? Audit { get; init; }
 }
 
-/// <summary>
-/// Request to list remembered MFA devices.
-/// </summary>
-public sealed record ListRememberedMfaDevicesRequest
-{
-    /// <summary>Tenant scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <see cref="IncludeAllTenants" /> is enabled.</summary>
-    public TenantContext? Tenant { get; init; }
-    /// <summary>Whether the list should include all tenant scopes. Cannot be combined with <see cref="Tenant" />.</summary>
-    public bool IncludeAllTenants { get; init; }
-    /// <summary>Whether only active devices should be returned.</summary>
-    public bool ActiveOnly { get; init; } = true;
-}
-
 /// <summary>Capability-bound request to revoke the authenticated owner's current remembered MFA device.</summary>
 /// <param name="ActorUserId">Authenticated owner of the remembered device.</param>
 /// <param name="Token">Raw remembered-device token presented by the client. Do not log or persist it.</param>
