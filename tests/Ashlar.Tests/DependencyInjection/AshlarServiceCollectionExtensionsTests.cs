@@ -26,6 +26,66 @@ namespace Ashlar.Tests.DependencyInjection;
 internal sealed class AshlarServiceCollectionExtensionsTests
 {
     [Test]
+    public void DurableProviderBundleAllowsOneFamilyAndRejectsAnother()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarDurableProviderBundle<CustomTransactionProvider>("first");
+        Assert.DoesNotThrow(() => services.AddAshlarDurableProviderBundle<CustomTransactionProvider>("first"));
+        Assert.Throws<InvalidOperationException>(() => services.AddAshlarDurableProviderBundle<CustomTransactionProvider>("second"));
+        Assert.Throws<InvalidOperationException>(() => services.AddAshlarDurableProviderBundle<RecordingTransactionProvider>("second"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                AshlarProviderServiceCollectionExtensions.AddAshlarDurableProviderBundle<CustomTransactionProvider>(null!, "first"));
+            Assert.Throws<ArgumentException>(() => services.AddAshlarDurableProviderBundle<CustomTransactionProvider>(""));
+        }
+    }
+
+    [Test]
+    public void DurableTransactionProviderClaimsItsBundle()
+    {
+        var customFirst = new ServiceCollection();
+        customFirst.AddAshlarDurableTransactionProvider<CustomTransactionProvider>("Custom");
+
+        var otherFirst = new ServiceCollection();
+        otherFirst.AddAshlarDurableProviderBundle<RecordingTransactionProvider>("Other");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+                customFirst.AddAshlarDurableProviderBundle<RecordingTransactionProvider>("Other"));
+            Assert.Throws<InvalidOperationException>(() =>
+                otherFirst.AddAshlarDurableTransactionProvider<CustomTransactionProvider>("Custom"));
+        }
+    }
+
+    [Test]
+    public void ProviderOwnedRepositoriesClaimTheirTransactionOwner()
+    {
+        var customFirst = new ServiceCollection();
+        customFirst.AddAshlarProviderScoped<CustomTransactionProvider, IUserRepository>(
+            "Custom",
+            _ => Mock.Of<IUserRepository>());
+
+        var otherFirst = new ServiceCollection();
+        otherFirst.AddAshlarDurableProviderBundle<RecordingTransactionProvider>("Other");
+        var count = otherFirst.Count;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+                customFirst.AddAshlarDurableProviderBundle<RecordingTransactionProvider>("Other"));
+            Assert.Throws<InvalidOperationException>(() =>
+                otherFirst.AddAshlarProviderScoped<CustomTransactionProvider, IUserRepository>(
+                    "Custom",
+                    _ => Mock.Of<IUserRepository>()));
+            Assert.That(otherFirst, Has.Count.EqualTo(count));
+        }
+    }
+
+    [Test]
     public void RateLimitProviderRegistrationAllowsOneProviderAndRejectsAnother()
     {
         var services = new ServiceCollection();

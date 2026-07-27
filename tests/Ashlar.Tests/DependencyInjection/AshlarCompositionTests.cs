@@ -18,7 +18,7 @@ internal sealed class AshlarCompositionTests
     public void DurableCompositionIsNotExposedThroughOrdinaryTransactionContract()
     {
         var services = new ServiceCollection();
-        services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>();
+        services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>("Test");
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
 
@@ -35,7 +35,7 @@ internal sealed class AshlarCompositionTests
     {
         var services = new ServiceCollection();
         services.AddAshlarIdentity();
-        services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>();
+        services.AddAshlarDurableTransactionProvider<RecordingTransactionProvider>("Test");
         services.AddScoped<IAshlarTransactionProvider>(_ => new IndependentTransactionProvider());
         if (authorization) services.AddAshlarAuthorization();
 
@@ -144,7 +144,7 @@ internal sealed class AshlarCompositionTests
         var dependency = new DisposableDependency();
         var services = new ServiceCollection();
         services.AddScoped(_ => dependency);
-        services.AddAshlarDurableTransactionProvider<DisposableDependency>(provider =>
+        services.AddAshlarDurableTransactionProvider<DisposableDependency>("Test", provider =>
             provider.GetRequiredService<DisposableDependency>());
 
         using (var provider = services.BuildServiceProvider())
@@ -160,7 +160,7 @@ internal sealed class AshlarCompositionTests
         var dependency = new AsyncDisposableDependency();
         var services = new ServiceCollection();
         services.AddScoped(_ => dependency);
-        services.AddAshlarDurableTransactionProvider<AsyncDisposableDependency>(provider =>
+        services.AddAshlarDurableTransactionProvider<AsyncDisposableDependency>("Test", provider =>
             provider.GetRequiredService<AsyncDisposableDependency>());
 
         await using (var provider = services.BuildServiceProvider())

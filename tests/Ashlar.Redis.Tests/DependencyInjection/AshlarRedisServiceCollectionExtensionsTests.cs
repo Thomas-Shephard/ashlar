@@ -1,6 +1,7 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.Abstractions.Services;
+using Ashlar.Identity.Abstractions.Transactions;
 using Ashlar.ProviderContracts.DependencyInjection;
 using Ashlar.Testing;
 using Ashlar.Identity.RateLimiting.Abstractions;
@@ -19,6 +20,18 @@ namespace Ashlar.Redis.Tests.DependencyInjection;
 
 internal sealed class AshlarRedisServiceCollectionExtensionsTests
 {
+    [TestCase("PostgreSQL")]
+    [TestCase("SQLite")]
+    public void RedisComposesWithDurableSqlProviderFamily(string family)
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarDurableProviderBundle<IAshlarTransactionProvider>(family);
+
+        Assert.DoesNotThrow(() => services.AddAshlarRedisRateLimiting(
+            Mock.Of<IConnectionMultiplexer>(),
+            options => options.KeyPrefix = "test"));
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void ConflictingRateLimitProviderMarkerIsRejectedInEitherOrder(bool redisFirst)

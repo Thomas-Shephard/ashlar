@@ -23,6 +23,58 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
 {
     private const string ValidSecret = "0123456789abcdef0123456789abcdef";
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void AddAshlarSqliteRejectsConflictingDurableProviderFamily(bool sqliteFirst)
+    {
+        var services = new ServiceCollection();
+        if (sqliteFirst) services.AddAshlarSqlite(GetConnectionString());
+        else services.AddAshlarDurableProviderBundle<IAshlarTransactionProvider>("PostgreSQL");
+
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            if (sqliteFirst) services.AddAshlarDurableProviderBundle<IAshlarTransactionProvider>("PostgreSQL");
+            else services.AddAshlarSqlite(GetConnectionString());
+        });
+    }
+
+    [Test]
+    public void AddAshlarSqliteAllowsRepeatedRegistration()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarSqlite(GetConnectionString());
+
+        Assert.DoesNotThrow(() => services.AddAshlarSqlite(GetConnectionString()));
+    }
+
+    [Test]
+    public void SqliteOutboxesRejectConflictingDurableProviderFamily()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarDurableProviderBundle<IAshlarTransactionProvider>("PostgreSQL");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<InvalidOperationException>(() => services.AddAshlarSqliteEmailOutboxSender());
+            Assert.Throws<InvalidOperationException>(() => services.AddAshlarSqliteSecurityEventWebhookOutbox());
+        }
+    }
+
+    [Test]
+    public void RejectedSqliteCompositeRegistrationsLeaveNoResidue()
+    {
+        var rateLimiting = new ServiceCollection();
+        rateLimiting.AddAshlarAuthenticationRateLimitProviderMarker("Redis");
+        Assert.Throws<InvalidOperationException>(() => rateLimiting.AddAshlarSqliteRateLimiting());
+        Assert.DoesNotThrow(() => rateLimiting.AddAshlarDurableProviderBundle<IAshlarTransactionProvider>("PostgreSQL"));
+
+        var webhooks = new ServiceCollection();
+        webhooks.AddAshlarDurableProviderBundle<IAshlarTransactionProvider>("PostgreSQL");
+        var count = webhooks.Count;
+        Assert.Throws<InvalidOperationException>(() => webhooks.AddAshlarSqliteSecurityEventWebhookDispatcher());
+        Assert.That(webhooks, Has.Count.EqualTo(count));
+    }
+
     [Test]
     public void AddAshlarSqliteRegistersMinimalPersistenceServices()
     {

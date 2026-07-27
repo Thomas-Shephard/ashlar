@@ -12,6 +12,71 @@ namespace Ashlar.Postgres.Tests.DependencyInjection;
 
 internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresTestBase
 {
+    [TestCase(false)]
+    [TestCase(true)]
+    public void AddAshlarPostgresRejectsConflictingDurableProviderFamily(bool postgresFirst)
+    {
+        var services = new ServiceCollection();
+        if (postgresFirst) services.AddAshlarPostgres("Host=localhost;Database=test");
+        else services.AddAshlarDurableProviderBundle<IAshlarTransactionProvider>("SQLite");
+
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            if (postgresFirst) services.AddAshlarDurableProviderBundle<IAshlarTransactionProvider>("SQLite");
+            else services.AddAshlarPostgres("Host=localhost;Database=test");
+        });
+    }
+
+    [Test]
+    public void AddAshlarPostgresAllowsRepeatedRegistration()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarPostgres("Host=localhost;Database=test");
+
+        Assert.DoesNotThrow(() => services.AddAshlarPostgres("Host=localhost;Database=test"));
+    }
+
+    [Test]
+    public void RejectedPostgresRegistrationDoesNotReplaceDataSource()
+    {
+        var services = new ServiceCollection();
+        var ambient = GetDataSource();
+        services.AddSingleton(ambient);
+        services.AddAshlarDurableProviderBundle<IAshlarTransactionProvider>("SQLite");
+
+        Assert.Throws<InvalidOperationException>(() => services.AddAshlarPostgres("Host=localhost;Database=test"));
+
+        Assert.That(services.Single(descriptor => descriptor.ServiceType == typeof(NpgsqlDataSource)).ImplementationInstance, Is.SameAs(ambient));
+    }
+
+    [Test]
+    public void PostgresOutboxesRejectConflictingDurableProviderFamily()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarDurableProviderBundle<IAshlarTransactionProvider>("SQLite");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<InvalidOperationException>(() => services.AddAshlarPostgresEmailOutboxSender());
+            Assert.Throws<InvalidOperationException>(() => services.AddAshlarPostgresSecurityEventWebhookOutbox());
+        }
+    }
+
+    [Test]
+    public void RejectedPostgresCompositeRegistrationsLeaveNoResidue()
+    {
+        var rateLimiting = new ServiceCollection();
+        rateLimiting.AddAshlarAuthenticationRateLimitProviderMarker("Redis");
+        Assert.Throws<InvalidOperationException>(() => rateLimiting.AddAshlarPostgresRateLimiting());
+        Assert.DoesNotThrow(() => rateLimiting.AddAshlarDurableProviderBundle<IAshlarTransactionProvider>("SQLite"));
+
+        var webhooks = new ServiceCollection();
+        webhooks.AddAshlarDurableProviderBundle<IAshlarTransactionProvider>("SQLite");
+        var count = webhooks.Count;
+        Assert.Throws<InvalidOperationException>(() => webhooks.AddAshlarPostgresSecurityEventWebhookDispatcher());
+        Assert.That(webhooks, Has.Count.EqualTo(count));
+    }
+
     [Test]
     public async Task AddAshlarPostgresWithDataSourceShouldRegisterServices()
     {
