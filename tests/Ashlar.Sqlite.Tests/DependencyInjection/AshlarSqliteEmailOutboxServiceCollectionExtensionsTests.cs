@@ -52,6 +52,8 @@ internal sealed class AshlarSqliteEmailOutboxServiceCollectionExtensionsTests
         {
             Assert.That(scope.ServiceProvider.GetService<IEmailOutboxDispatcher>(), Is.InstanceOf<SqliteEmailOutboxDispatcher<TestTransport>>());
             Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(TestTransport)), Is.True);
+            Assert.That(services.Any(descriptor => descriptor.ServiceType.IsPublic && descriptor.ServiceType.GetMethod("ProcessBatchAsync") != null), Is.False);
+            Assert.That(typeof(AshlarSqliteServiceCollectionExtensions).GetMethod("AddAshlarSqliteEmailOutboxDispatcher"), Is.Null);
         }
     }
 

@@ -16,6 +16,8 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
 
     protected abstract Task SeedUnknownBodyProtectionEmailOutboxRowAsync(SeedEmailOutboxRow row);
 
+    protected abstract Task<int> ProcessEmailOutboxBatchAsync(IServiceProvider serviceProvider);
+
     [Test]
     public async Task SendAsyncEnqueuesMessageThatDispatcherDeliversWithEnvelopeBodyHeadersAndMetadata()
     {
@@ -24,7 +26,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         var message = CreateRichMessage("contract-rich@example.com");
 
         await GetEmailSender(scope.ServiceProvider).SendAsync(message);
-        var count = await GetEmailOutboxDispatcher(scope.ServiceProvider).ProcessBatchAsync();
+        var count = await ProcessEmailOutboxBatchAsync(scope.ServiceProvider);
 
         using (Assert.EnterMultipleScope())
         {
@@ -66,7 +68,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
 
         await GetEmailSender(scope.ServiceProvider).SendAsync(message);
         var row = await ReadSingleEmailOutboxRowAsync();
-        var count = await GetEmailOutboxDispatcher(scope.ServiceProvider).ProcessBatchAsync();
+        var count = await ProcessEmailOutboxBatchAsync(scope.ServiceProvider);
 
         using (Assert.EnterMultipleScope())
         {
@@ -96,7 +98,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
     {
         await using var scope = CreateAsyncScope();
 
-        var count = await GetEmailOutboxDispatcher(scope.ServiceProvider).ProcessBatchAsync();
+        var count = await ProcessEmailOutboxBatchAsync(scope.ServiceProvider);
 
         using (Assert.EnterMultipleScope())
         {
@@ -110,13 +112,13 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
     {
         await using var scope = CreateAsyncScope();
         var sender = GetEmailSender(scope.ServiceProvider);
-        var dispatcher = GetEmailOutboxDispatcher(scope.ServiceProvider);
+        var dispatch = () => ProcessEmailOutboxBatchAsync(scope.ServiceProvider);
         var transport = GetRecordingEmailTransport(scope.ServiceProvider);
 
         await sender.SendAsync(new EmailMessage("once@example.com", "Subject", EmailMessageSensitivity.Normal, "Text"));
 
-        var first = await dispatcher.ProcessBatchAsync();
-        var second = await dispatcher.ProcessBatchAsync();
+        var first = await dispatch();
+        var second = await dispatch();
 
         using (Assert.EnterMultipleScope())
         {
@@ -131,14 +133,14 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
     {
         await using var scope = CreateAsyncScope();
         var sender = GetEmailSender(scope.ServiceProvider);
-        var dispatcher = GetEmailOutboxDispatcher(scope.ServiceProvider);
+        var dispatch = () => ProcessEmailOutboxBatchAsync(scope.ServiceProvider);
         var transport = GetRecordingEmailTransport(scope.ServiceProvider);
 
         await sender.SendAsync(new EmailMessage("batch-one@example.com", "Subject", EmailMessageSensitivity.Normal, "Text"));
         await sender.SendAsync(new EmailMessage("batch-two@example.com", "Subject", EmailMessageSensitivity.Normal, "Text"));
         await sender.SendAsync(new EmailMessage("batch-three@example.com", "Subject", EmailMessageSensitivity.Normal, "Text"));
 
-        var count = await dispatcher.ProcessBatchAsync();
+        var count = await dispatch();
 
         using (Assert.EnterMultipleScope())
         {
@@ -152,7 +154,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
     {
         await using var scope = CreateAsyncScope();
         var sender = GetEmailSender(scope.ServiceProvider);
-        var dispatcher = GetEmailOutboxDispatcher(scope.ServiceProvider);
+        var dispatch = () => ProcessEmailOutboxBatchAsync(scope.ServiceProvider);
         var transport = GetRecordingEmailTransport(scope.ServiceProvider);
         var failed = false;
         transport.OnDeliver = (_, _) =>
@@ -168,10 +170,10 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
 
         await sender.SendAsync(new EmailMessage("retryable@example.com", "Subject", EmailMessageSensitivity.Normal, "Text"));
 
-        var first = await dispatcher.ProcessBatchAsync();
+        var first = await dispatch();
         await AdvanceEmailOutboxTimeAsync(RetryDelay);
-        var second = await dispatcher.ProcessBatchAsync();
-        var third = await dispatcher.ProcessBatchAsync();
+        var second = await dispatch();
+        var third = await dispatch();
 
         using (Assert.EnterMultipleScope())
         {
@@ -193,7 +195,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
             sensitivity: nameof(EmailMessageSensitivity.ContainsLiveSecret),
             bodyProtection: nameof(EmailOutboxBodyProtection.SecretProtector)));
 
-        var count = await GetEmailOutboxDispatcher(scope.ServiceProvider).ProcessBatchAsync();
+        var count = await ProcessEmailOutboxBatchAsync(scope.ServiceProvider);
         var row = await ReadSingleEmailOutboxRowAsync();
 
         using (Assert.EnterMultipleScope())
@@ -214,7 +216,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
             htmlBody: SensitiveHtmlBody,
             bodyProtection: "Unknown"));
 
-        var count = await GetEmailOutboxDispatcher(scope.ServiceProvider).ProcessBatchAsync();
+        var count = await ProcessEmailOutboxBatchAsync(scope.ServiceProvider);
         var row = await ReadSingleEmailOutboxRowAsync();
 
         using (Assert.EnterMultipleScope())
@@ -239,7 +241,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
             SensitiveHtmlBody);
 
         await GetEmailSender(scope.ServiceProvider).SendAsync(message);
-        var count = await GetEmailOutboxDispatcher(scope.ServiceProvider).ProcessBatchAsync();
+        var count = await ProcessEmailOutboxBatchAsync(scope.ServiceProvider);
         var row = await ReadSingleEmailOutboxRowAsync();
 
         using (Assert.EnterMultipleScope())
@@ -304,7 +306,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         var transactionProvider = GetTransactionProvider(scope.ServiceProvider)
             ?? throw new InvalidOperationException("Transaction provider is not registered.");
         var sender = GetEmailSender(scope.ServiceProvider);
-        var dispatcher = GetEmailOutboxDispatcher(scope.ServiceProvider);
+        var dispatch = () => ProcessEmailOutboxBatchAsync(scope.ServiceProvider);
 
         await using (var transaction = await transactionProvider.BeginTransactionAsync())
         {
@@ -312,7 +314,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
             await transaction.RollbackAsync();
         }
 
-        Assert.That(await dispatcher.ProcessBatchAsync(), Is.Zero);
+        Assert.That(await dispatch(), Is.Zero);
 
         await using (var transaction = await transactionProvider.BeginTransactionAsync())
         {
@@ -322,7 +324,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(await dispatcher.ProcessBatchAsync(), Is.EqualTo(1));
+            Assert.That(await dispatch(), Is.EqualTo(1));
             Assert.That(GetRecordingEmailTransport(scope.ServiceProvider).Messages.Single().To, Is.EqualTo("commit@example.com"));
         }
     }

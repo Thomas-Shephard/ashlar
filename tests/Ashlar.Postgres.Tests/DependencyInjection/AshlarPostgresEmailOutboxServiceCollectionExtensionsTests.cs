@@ -67,7 +67,12 @@ internal sealed class AshlarPostgresEmailOutboxServiceCollectionExtensionsTests
         await using var provider = services.BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();
 
-        Assert.That(scope.ServiceProvider.GetService<IEmailOutboxDispatcher>(), Is.InstanceOf<PostgresEmailOutboxDispatcher<TestTransport>>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.ServiceProvider.GetService<IEmailOutboxDispatcher>(), Is.InstanceOf<PostgresEmailOutboxDispatcher<TestTransport>>());
+            Assert.That(services.Any(descriptor => descriptor.ServiceType.IsPublic && descriptor.ServiceType.GetMethod("ProcessBatchAsync") != null), Is.False);
+            Assert.That(typeof(AshlarPostgresServiceCollectionExtensions).GetMethod("AddAshlarPostgresEmailOutboxDispatcher"), Is.Null);
+        }
     }
 
     [Test]

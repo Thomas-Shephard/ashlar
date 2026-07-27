@@ -43,6 +43,11 @@ internal sealed class PostgresEmailOutboxContractTests : EmailOutboxContractTest
         return Task.CompletedTask;
     }
 
+    protected override Task<int> ProcessEmailOutboxBatchAsync(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IEmailOutboxDispatcher>().ProcessBatchAsync();
+    }
+
     protected override async Task<EmailOutboxRowState> ReadSingleEmailOutboxRowAsync()
     {
         await using var connection = new NpgsqlConnection(_database!.ConnectionString);
