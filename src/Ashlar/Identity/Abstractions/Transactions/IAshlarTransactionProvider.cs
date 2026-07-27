@@ -33,6 +33,7 @@ public interface IAshlarTransactionProvider
 /// </remarks>
 public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvider
 {
+    private const string TransactionCompletedMessage = "The transaction has already completed.";
     private readonly IAshlarTransactionProvider _provider;
     private readonly HashSet<object> _participants;
     private readonly AsyncLocal<TransactionBoundary?> _active = new();
@@ -179,7 +180,7 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             cancellationToken.ThrowIfCancellationRequested();
-            if (!boundary.TryAcquire(lease, _terminalLease)) throw new InvalidOperationException("The transaction has already completed.");
+            if (!boundary.TryAcquire(lease, _terminalLease)) throw new InvalidOperationException(TransactionCompletedMessage);
             if (boundary.RollbackOnly)
             {
                 boundary.Release(lease);
@@ -204,7 +205,7 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             cancellationToken.ThrowIfCancellationRequested();
-            if (!boundary.TryAcquire(lease, _terminalLease)) throw new InvalidOperationException("The transaction has already completed.");
+            if (!boundary.TryAcquire(lease, _terminalLease)) throw new InvalidOperationException(TransactionCompletedMessage);
             boundary.MarkRollbackOnly("The root transaction was explicitly rolled back.");
             boundary.Terminal = true;
             boundary.Busy = true;
@@ -221,7 +222,7 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
         public void OnCommitted(Func<CancellationToken, Task> action)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!boundary.TryAcquire(lease, _hookLease)) throw new InvalidOperationException("The transaction has already completed.");
+            if (!boundary.TryAcquire(lease, _hookLease)) throw new InvalidOperationException(TransactionCompletedMessage);
             try
             {
                 boundary.OnCommitted(action);
@@ -284,7 +285,7 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
         public void OnCommitted(Func<CancellationToken, Task> action)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_completed || !boundary.TryAcquire(lease, _hookLease)) throw new InvalidOperationException("The transaction has already completed.");
+            if (_completed || !boundary.TryAcquire(lease, _hookLease)) throw new InvalidOperationException(TransactionCompletedMessage);
             try
             {
                 boundary.OnCommitted(action);
@@ -309,7 +310,7 @@ public sealed class AshlarDurableTransactionProvider : IAshlarTransactionProvide
         private void EnsureActive()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_completed || !boundary.IsOwner(lease)) throw new InvalidOperationException("The transaction has already completed.");
+            if (_completed || !boundary.IsOwner(lease)) throw new InvalidOperationException(TransactionCompletedMessage);
         }
     }
 }
