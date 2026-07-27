@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Ashlar.Sqlite.Tests" />
+    <AshlarTestFriend Include="Ashlar.Sqlite.Tests" />
   </ItemGroup>
 
 </Project>

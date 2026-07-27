@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Ashlar.Observability.Tests" />
+    <AshlarTestFriend Include="Ashlar.Observability.Tests" />
   </ItemGroup>
 
 </Project>

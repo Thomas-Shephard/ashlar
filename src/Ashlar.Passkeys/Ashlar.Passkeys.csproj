@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Ashlar.Passkeys.Tests" />
+    <AshlarTestFriend Include="Ashlar.Passkeys.Tests" />
   </ItemGroup>
 
 </Project>

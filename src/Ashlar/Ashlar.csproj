@@ -16,9 +16,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Ashlar.Tests" />
-    <InternalsVisibleTo Include="Ashlar.Testing" />
-    <InternalsVisibleTo Include="Ashlar.ProviderContracts" />
+    <AshlarTestFriend Include="Ashlar.Tests" />
+    <AshlarTestFriend Include="Ashlar.Testing" />
   </ItemGroup>
 
 </Project>

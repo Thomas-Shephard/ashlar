@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Ashlar.AspNetCore.Tests" />
+    <AshlarTestFriend Include="Ashlar.AspNetCore.Tests" />
   </ItemGroup>
 
 </Project>

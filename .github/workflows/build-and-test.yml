@@ -92,19 +92,15 @@ jobs:
         run: dotnet sonarscanner end
       - name: Check Coverage
         run: dotnet coveragechecker --format Cobertura --glob-patterns "${COVERAGE_DIR}/**/coverage.cobertura.*.xml" --line-threshold 100 --branch-threshold 100
-      - name: Pack
-        run: |
-          args=("$SOLUTION_PATH" --configuration "$CONFIGURATION" --no-restore --output "$PACKAGE_OUTPUT_PATH")
-
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            args+=(--no-build)
-          fi
-
-          dotnet pack "${args[@]}"
+      - name: Pack production packages
+        if: github.event_name == 'push'
+        run: dotnet pack "$SOLUTION_PATH" --configuration "$CONFIGURATION" --no-restore --output "$PACKAGE_OUTPUT_PATH" -p:AshlarOfficialBuild=true
       - name: Package Consumption Smoke Test
+        if: github.event_name == 'push'
         shell: pwsh
         run: ./eng/package-consumption-smoke.ps1 -Configuration $env:CONFIGURATION -PackageOutputPath $env:PACKAGE_OUTPUT_PATH -SkipPack
       - name: Upload NuGet Packages
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v7
         with:
           name: nuget-packages

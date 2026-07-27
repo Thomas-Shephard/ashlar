@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Ashlar.Redis.Tests" />
+    <AshlarTestFriend Include="Ashlar.Redis.Tests" />
   </ItemGroup>
 
 </Project>
