@@ -8,7 +8,6 @@ namespace Ashlar.Tests.Identity.Features.Mfa;
 internal sealed class RememberedMfaDeviceServiceTests
 {
     private static readonly DateTimeOffset Now = new(2026, 6, 2, 12, 0, 0, TimeSpan.Zero);
-    private static readonly string[] ExpectedDisplayNames = ["laptop", "phone"];
 
     [Test]
     public async Task CreateAsyncStoresOnlyHashedVerifierAndReturnsRawTokenOnce()
@@ -249,7 +248,7 @@ internal sealed class RememberedMfaDeviceServiceTests
     }
 
     [Test]
-    public async Task ListAndRevocationExposeOnlySafeMetadata()
+    public async Task RevocationNormalizesReasonsAndEmitsEvents()
     {
         var fixture = CreateFixture(generator: new SequenceTokenGenerator("selector", "verifier", "second", "second-verifier"));
         var user = fixture.Users.AddUser();
@@ -257,7 +256,6 @@ internal sealed class RememberedMfaDeviceServiceTests
         var second = await fixture.Service.CreateAfterSuccessfulMfaAsync(SuccessfulMfa(user), new CreateRememberedMfaDeviceRequest { DisplayName = "phone" });
 
         var revoked = await fixture.Service.RevokeAsync(user.Id, new RevokeRememberedMfaDeviceRequest(first.Value!.Device.Id) { Reason = " user " });
-        var summaries = await fixture.Reader.ListAsync(user.Id, new ListRememberedMfaDevicesRequest { ActiveOnly = false });
         var count = await fixture.Service.RevokeAllAsync(user.Id, new RevokeAllRememberedMfaDevicesRequest { Reason = " " });
         var revokedEvent = fixture.Events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.RememberedMfaDeviceRevoked);
         var revokeAllEvent = fixture.Events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.RememberedMfaDevicesRevoked);
@@ -266,10 +264,6 @@ internal sealed class RememberedMfaDeviceServiceTests
         {
             Assert.That(revoked, Is.True);
             Assert.That(count, Is.EqualTo(1));
-            Assert.That(summaries, Has.Count.EqualTo(2));
-            Assert.That(summaries.Select(s => s.DisplayName), Is.EquivalentTo(ExpectedDisplayNames));
-            Assert.That(summaries.Select(s => s.ToString()), Has.None.Contains("verifier"));
-            Assert.That(summaries.Select(s => s.ToString()), Has.None.Contains("selector"));
             Assert.That(fixture.Repository.Devices.Single(d => d.Id == first.Value!.Device.Id).RevocationReason, Is.EqualTo("user"));
             Assert.That(fixture.Repository.Devices.Single(d => d.Id == second.Value!.Device.Id).RevocationReason, Is.Null);
             Assert.That(revokedEvent.Properties?["reason"], Is.EqualTo("user"));
@@ -402,35 +396,6 @@ internal sealed class RememberedMfaDeviceServiceTests
             Assert.That(count, Is.EqualTo(2));
             Assert.That(fixture.Repository.Devices.All(device => device.RevokedAt.HasValue), Is.True);
             Assert.That(fixture.Events.Events.Single().TenantId, Is.Null);
-        }
-    }
-
-    [Test]
-    public async Task ListAsyncShouldSupportExplicitAllTenantScope()
-    {
-        var fixture = CreateFixture(generator: new SequenceTokenGenerator("global", "global-verifier", "tenant", "tenant-verifier"));
-        var tenantId = Guid.NewGuid();
-        var user = fixture.Users.AddUser(tenantId);
-        await fixture.Service.CreateAfterSuccessfulMfaAsync(SuccessfulMfa(user), new CreateRememberedMfaDeviceRequest { Tenant = new TenantContext(tenantId) });
-        fixture.Repository.Devices.Add(new RememberedMfaDevice
-        {
-            Id = Guid.NewGuid(),
-            UserId = user.Id,
-            TenantId = null,
-            TokenSelector = "global-device",
-            TokenHash = "hash",
-            CreatedAt = fixture.Time.GetUtcNow(),
-            ExpiresAt = fixture.Time.GetUtcNow().AddDays(30)
-        });
-
-        var scoped = await fixture.Reader.ListAsync(user.Id, new ListRememberedMfaDevicesRequest { Tenant = new TenantContext(tenantId) });
-        var all = await fixture.Reader.ListAsync(user.Id, new ListRememberedMfaDevicesRequest { IncludeAllTenants = true });
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(scoped, Has.Count.EqualTo(1));
-            Assert.That(all, Has.Count.EqualTo(2));
-            Assert.ThrowsAsync<ArgumentException>(() => fixture.Reader.ListAsync(user.Id, new ListRememberedMfaDevicesRequest { Tenant = TenantContext.Global, IncludeAllTenants = true }));
         }
     }
 
@@ -658,8 +623,6 @@ internal sealed class RememberedMfaDeviceServiceTests
         {
             Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.ValidateAsync(Guid.Empty, new ValidateRememberedMfaDeviceRequest("token")));
             Assert.ThrowsAsync<ArgumentNullException>(() => fixture.Service.ValidateAsync(user.Id, null!));
-            Assert.ThrowsAsync<ArgumentException>(() => fixture.Reader.ListAsync(Guid.Empty, new ListRememberedMfaDevicesRequest()));
-            Assert.ThrowsAsync<ArgumentNullException>(() => fixture.Reader.ListAsync(user.Id, null!));
             Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RevokeAsync(Guid.Empty, new RevokeRememberedMfaDeviceRequest(Guid.NewGuid())));
             Assert.ThrowsAsync<ArgumentNullException>(() => fixture.Service.RevokeAsync(user.Id, null!));
             Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RevokeAllAsync(Guid.Empty, new RevokeAllRememberedMfaDevicesRequest()));
@@ -703,14 +666,7 @@ internal sealed class RememberedMfaDeviceServiceTests
                 Options.Create(options ?? new RememberedMfaDeviceOptions()),
                 time,
                 composition.Events));
-        return new Fixture(service, new RememberedMfaDeviceReader(repository, time), repository, users, events, time, hasher);
-    }
-
-    [Test]
-    public void ReaderConstructorValidatesRepositoryAndDefaultsClock()
-    {
-        Assert.Throws<ArgumentNullException>(() => _ = new RememberedMfaDeviceReader(null!));
-        Assert.DoesNotThrow(() => _ = new RememberedMfaDeviceReader(new InMemoryRememberedMfaDeviceRepository(), null));
+        return new Fixture(service, repository, users, events, time, hasher);
     }
 
     private static MfaAuthenticationResult SuccessfulMfa(IUser user)
@@ -741,7 +697,6 @@ internal sealed class RememberedMfaDeviceServiceTests
 
     private sealed record Fixture(
         RememberedMfaDeviceService Service,
-        RememberedMfaDeviceReader Reader,
         InMemoryRememberedMfaDeviceRepository Repository,
         InMemoryUserRepository Users,
         RecordingSecurityEventSink Events,

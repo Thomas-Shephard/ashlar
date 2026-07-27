@@ -163,6 +163,23 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void RememberedMfaDeviceRawReaderIsNotPublic()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarIdentity();
+        var exportedTypes = typeof(IIdentityService).Assembly.GetExportedTypes();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exportedTypes.Select(type => type.Name), Does.Not.Contain("IRememberedMfaDeviceReader"));
+            Assert.That(exportedTypes.Select(type => type.Name), Does.Not.Contain("ListRememberedMfaDevicesRequest"));
+            Assert.That(exportedTypes, Does.Not.Contain(typeof(AccountRecoveryAdministrationService)));
+            Assert.That(services, Has.None.Matches<ServiceDescriptor>(descriptor =>
+                descriptor.ServiceType.Name == "IRememberedMfaDeviceReader"));
+        }
+    }
+
+    [Test]
     public void AddPermissiveAccountSecurityGuardRegistersPermissiveGuardExplicitly()
     {
         var services = new ServiceCollection();

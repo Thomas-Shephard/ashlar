@@ -210,7 +210,8 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<TimeProvider>()));
         services.TryAddScoped<IAccountRecoveryAdministrationService>(provider => new AccountRecoveryAdministrationService(
             provider.GetRequiredService<IUserAdministrationService>(),
-            provider.GetService<IRememberedMfaDeviceReader>()));
+            provider.GetRequiredAshlarProviderService<IRememberedMfaDeviceRepository>(),
+            provider.GetService<TimeProvider>()));
         services.TryAddScoped(provider => new AccountLockoutAdministrationServiceDependencies(
             provider.GetService<TimeProvider>(),
             provider.GetRequiredService<SecurityEventFanOutSink>(),
@@ -226,8 +227,6 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
             provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
             provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(), provider.GetService<TimeProvider>()));
-        services.TryAddScoped<IRememberedMfaDeviceReader>(provider => new RememberedMfaDeviceReader(
-            provider.GetRequiredAshlarProviderService<IRememberedMfaDeviceRepository>(), provider.GetService<TimeProvider>()));
         services.TryAddScoped<ISecurityEventAdministrationService>(provider => new SecurityEventAdministrationService(
             provider.GetRequiredAshlarProviderService<ISecurityEventAdministrationRepository>(),
             provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
