@@ -198,6 +198,51 @@ internal sealed class PostgresTransactionManagerTests : PostgresTestBase
     }
 
     [Test]
+    public async Task ConcurrentInheritedNestedTransactionIsRejected()
+    {
+        await using var manager = new PostgresTransactionManager(GetDataSource());
+        var provider = DurableTransactionComposition.Create(manager);
+        await using var root = await provider.BeginTransactionAsync();
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var nestedActive = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseNested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var first = Task.Run(async () =>
+        {
+            await start.Task;
+            await using var nested = await provider.BeginTransactionAsync();
+            await using var handle = await manager.GetConnectionAsync(CancellationToken.None);
+            Assert.That(await ExecuteScalarAsync(handle.Connection), Is.EqualTo(1));
+            nestedActive.SetResult();
+            await releaseNested.Task;
+            await nested.CommitAsync();
+        });
+        var second = Task.Run(async () =>
+        {
+            await start.Task;
+            await nestedActive.Task;
+            var exception = Assert.ThrowsAsync<InvalidOperationException>(() => provider.BeginTransactionAsync());
+            Assert.That(exception!.Message, Does.Contain("Task.WhenAll"));
+        });
+
+        start.SetResult();
+        try
+        {
+            await second;
+        }
+        finally
+        {
+            releaseNested.SetResult();
+        }
+        await first;
+        await using (var sequential = await provider.BeginTransactionAsync())
+        {
+            await sequential.CommitAsync();
+        }
+        await root.CommitAsync();
+    }
+
+    [Test]
     public async Task CapturedCompletedRootCannotJoinLaterRoot()
     {
         await using var manager = new PostgresTransactionManager(GetDataSource());
