@@ -7,6 +7,11 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Sqlite.Messaging;
 
+internal interface IEmailOutboxDispatcher
+{
+    Task<int> ProcessBatchAsync(CancellationToken cancellationToken = default);
+}
+
 internal sealed class SqliteEmailOutboxDispatcher<TTransport>(
     IServiceProvider serviceProvider,
     TimeProvider timeProvider,

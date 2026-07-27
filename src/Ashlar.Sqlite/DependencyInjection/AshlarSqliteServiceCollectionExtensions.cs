@@ -215,14 +215,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>
-    /// Registers the Ashlar SQLite-backed email outbox sender and dispatcher.
-    /// </summary>
-    /// <typeparam name="TTransport">The email transport used to deliver queued messages.</typeparam>
-    /// <param name="services">The service collection to add registrations to.</param>
-    /// <param name="configure">Optional email outbox configuration.</param>
-    /// <returns>The same service collection so calls can be chained.</returns>
-    public static IServiceCollection AddAshlarSqliteEmailOutboxDispatcher<TTransport>(
+    internal static IServiceCollection AddAshlarSqliteEmailOutboxDispatcher<TTransport>(
         this IServiceCollection services,
         Action<SqliteEmailOutboxOptions>? configure = null)
         where TTransport : class, IEmailTransport

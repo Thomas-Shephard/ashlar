@@ -141,8 +141,6 @@ services.AddAshlarPostgresEmailOutboxHostedService<MySmtpTransport>(options =>
 });
 ```
 
-Use `AddAshlarPostgresEmailOutboxDispatcher<TTransport>()` when you want to register the provider-neutral `IEmailOutboxDispatcher` without the hosted polling loop.
-
 ### Implementing a Transport
 
 The dispatcher requires an implementation of `IEmailTransport` to physically deliver the messages:

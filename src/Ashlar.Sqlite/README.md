@@ -88,20 +88,14 @@ Register SQLite email outbox enqueue support when application code should persis
 services.AddAshlarSqliteEmailOutboxSender();
 ```
 
-Register a dispatcher for a transport implementation:
+Register the hosted dispatcher loop for a transport implementation:
 
 ```csharp
-services.AddAshlarSqliteEmailOutboxDispatcher<SmtpEmailTransport>(options =>
+services.AddAshlarSqliteEmailOutboxHostedService<SmtpEmailTransport>(options =>
 {
     options.BatchSize = 25;
     options.PollingInterval = TimeSpan.FromSeconds(5);
 });
-```
-
-Register the hosted dispatcher loop:
-
-```csharp
-services.AddAshlarSqliteEmailOutboxHostedService<SmtpEmailTransport>();
 ```
 
 The sender participates in Ashlar SQLite transactions, so queued emails commit or roll back with the surrounding Ashlar transaction.
@@ -128,7 +122,6 @@ Implemented:
 - `IUserSecurityEventSummaryRepository`
 - `IAuthenticationRateLimiter`
 - `IEmailSender` via `AddAshlarSqliteEmailOutboxSender(...)`
-- `IEmailOutboxDispatcher` via `AddAshlarSqliteEmailOutboxDispatcher<TTransport>(...)`
 - `SqliteEmailOutboxHostedService` via `AddAshlarSqliteEmailOutboxHostedService<TTransport>(...)`
 - `IAshlarCleanupService`
 - `IAshlarSchemaDiagnostics`

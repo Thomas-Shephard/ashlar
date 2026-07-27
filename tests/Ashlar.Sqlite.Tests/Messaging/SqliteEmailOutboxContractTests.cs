@@ -41,6 +41,11 @@ internal sealed class SqliteEmailOutboxContractTests : EmailOutboxContractTests
         return Task.CompletedTask;
     }
 
+    protected override Task<int> ProcessEmailOutboxBatchAsync(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IEmailOutboxDispatcher>().ProcessBatchAsync();
+    }
+
     protected override async Task<EmailOutboxRowState> ReadSingleEmailOutboxRowAsync()
     {
         await using var connection = new SqliteConnection(_database!.ConnectionString);

@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Postgres.Messaging;
 
 /// <summary>
-/// A background service that periodically triggers the <see cref="IEmailOutboxDispatcher"/>.
+/// A background service that periodically dispatches the PostgreSQL email outbox.
 /// </summary>
 /// <param name="serviceProvider">The service provider value.</param>
 /// <param name="options">The options value.</param>

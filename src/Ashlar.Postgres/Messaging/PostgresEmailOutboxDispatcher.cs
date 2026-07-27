@@ -8,6 +8,11 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Postgres.Messaging;
 
+internal interface IEmailOutboxDispatcher
+{
+    Task<int> ProcessBatchAsync(CancellationToken cancellationToken = default);
+}
+
 internal sealed class PostgresEmailOutboxDispatcher<TTransport>(
     IServiceProvider serviceProvider,
     TimeProvider timeProvider,
