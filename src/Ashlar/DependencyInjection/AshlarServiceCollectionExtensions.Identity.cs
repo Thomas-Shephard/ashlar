@@ -328,12 +328,12 @@ public static partial class AshlarServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers authentication rate-limit administration operations for the configured provider repository.
+    /// Registers global operational authentication rate-limit administration for the configured unpartitioned provider repository.
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
     /// <remarks>
-    /// Host applications must protect this service with appropriate administrator authorization and step-up policy.
+    /// Host applications must require all-tenant administrator authorization and appropriate step-up policy.
     /// </remarks>
     public static IServiceCollection AddAshlarAuthenticationRateLimitAdministration(this IServiceCollection services)
     {
@@ -402,7 +402,7 @@ public static partial class AshlarServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>Registers read-only rate-limit administration without exposing the provider repository through application DI.</summary>
+    /// <summary>Registers read-only global operational rate-limit administration without exposing the unpartitioned provider repository through application DI.</summary>
     /// <param name="services">The service collection to configure.</param>
     /// <param name="repositoryFactory">Creates the scoped provider-internal repository used only inside the reader.</param>
     /// <returns>The same service collection.</returns>

@@ -19,8 +19,8 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         var repository = new RecordingRepository();
         var service = CreateReader(repository);
 
-        var result = await service.SearchBucketsAsync(ReadBoundary.Actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest { Purpose = "", Limit = 500 });
-        var valid = await service.SearchBucketsAsync(ReadBoundary.Actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest { Limit = 500 });
+        var result = await service.SearchBucketsAsync(ReadBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Purpose = "", Limit = 500 });
+        var valid = await service.SearchBucketsAsync(ReadBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Limit = 500 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -37,8 +37,8 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     {
         var service = CreateReader(new RecordingRepository());
 
-        var negativeOffset = await service.SearchBucketsAsync(ReadBoundary.Actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest { Offset = -1 });
-        var zeroLimit = await service.SearchBucketsAsync(ReadBoundary.Actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest { Limit = 0 });
+        var negativeOffset = await service.SearchBucketsAsync(ReadBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Offset = -1 });
+        var zeroLimit = await service.SearchBucketsAsync(ReadBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Limit = 0 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -53,8 +53,8 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         var reader = CreateReader(new RecordingRepository());
         var service = CreateMutation(new RecordingRepository());
 
-        var invalidLookup = await reader.GetBucketAsync(ReadBoundary.Actor, TenantContext.Global, false, new AuthenticationRateLimitBucketLookupRequest("", "login"));
-        var invalidReset = await service.ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, false, new ResetAuthenticationRateLimitBucketRequest("bucket", "", MutationBoundary.Actor.Audit));
+        var invalidLookup = await reader.GetBucketAsync(ReadBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new AuthenticationRateLimitBucketLookupRequest("", "login"));
+        var invalidReset = await service.ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest("bucket", "", MutationBoundary.Actor.Audit));
 
         using (Assert.EnterMultipleScope())
         {
@@ -68,7 +68,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     {
         var service = CreateReader(new RecordingRepository { BucketExists = false });
 
-        var result = await service.GetBucketAsync(ReadBoundary.Actor, TenantContext.Global, false, new AuthenticationRateLimitBucketLookupRequest("bucket", "login"));
+        var result = await service.GetBucketAsync(ReadBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new AuthenticationRateLimitBucketLookupRequest("bucket", "login"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -82,7 +82,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     {
         var repository = new RecordingRepository { BucketExists = false };
 
-        var result = await CreateMutation(repository).ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, false,
+        var result = await CreateMutation(repository).ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global,
             new("missing", "login", MutationBoundary.Actor.Audit));
 
         using (Assert.EnterMultipleScope())
@@ -106,16 +106,122 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         var denied = new AdminReadTestBoundary(Now, authorized: false);
         var deniedReader = new AuthenticationRateLimitAdministrationReader(mismatchedSearch, denied.Sessions, denied.Authorizer, denied.Sink, denied.TimeProvider);
 
-        var missingScope = await CreateReader(mismatchedSearch).SearchBucketsAsync(ReadBoundary.Actor, null, false, new());
-        var conflictingScope = await CreateReader(mismatchedSearch).GetBucketAsync(ReadBoundary.Actor, TenantContext.Global, true, new("bucket", "login"));
-        var deniedResult = await deniedReader.SearchBucketsAsync(denied.Actor, TenantContext.Global, false, new());
-        var deniedLookup = await deniedReader.GetBucketAsync(denied.Actor, TenantContext.Global, false, new("bucket", "login"));
-        var searchMismatch = await CreateReader(mismatchedSearch).SearchBucketsAsync(ReadBoundary.Actor, TenantContext.Global, false, new() { Purpose = "login" });
-        var idMismatch = await CreateReader(mismatchedLookup).GetBucketAsync(ReadBoundary.Actor, TenantContext.Global, false, new("bucket", "other"));
+        var missingScope = await CreateReader(mismatchedSearch).SearchBucketsAsync(ReadBoundary.Actor, AuthenticationRateLimitAdministrationScope.Unspecified, new());
+        var invalidScope = await CreateReader(mismatchedSearch).GetBucketAsync(ReadBoundary.Actor, (AuthenticationRateLimitAdministrationScope)99, new("bucket", "login"));
+        var deniedResult = await deniedReader.SearchBucketsAsync(denied.Actor, AuthenticationRateLimitAdministrationScope.Global, new());
+        var deniedLookup = await deniedReader.GetBucketAsync(denied.Actor, AuthenticationRateLimitAdministrationScope.Global, new("bucket", "login"));
+        var searchMismatch = await CreateReader(mismatchedSearch).SearchBucketsAsync(ReadBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new() { Purpose = "login" });
+        var idMismatch = await CreateReader(mismatchedLookup).GetBucketAsync(ReadBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new("bucket", "other"));
         mismatchedLookup.BucketResult = mismatchedLookup.BucketResult with { BucketId = "bucket", Purpose = "other" };
-        var purposeMismatch = await CreateReader(mismatchedLookup).GetBucketAsync(ReadBoundary.Actor, TenantContext.Global, false, new("bucket", "login"));
+        var purposeMismatch = await CreateReader(mismatchedLookup).GetBucketAsync(ReadBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new("bucket", "login"));
 
-        Assert.That(new[] { missingScope.Succeeded, conflictingScope.Succeeded, deniedResult.Succeeded, deniedLookup.Succeeded, searchMismatch.Succeeded, idMismatch.Succeeded, purposeMismatch.Succeeded }, Is.All.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new[] { missingScope.Succeeded, invalidScope.Succeeded, deniedResult.Succeeded, deniedLookup.Succeeded, searchMismatch.Succeeded, idMismatch.Succeeded, purposeMismatch.Succeeded }, Is.All.False);
+            Assert.That(mismatchedSearch.SearchCalls, Is.EqualTo(1));
+            Assert.That(mismatchedSearch.GetCalls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task InvalidOperationalScopesAreRejectedBeforeRepositoryAccess()
+    {
+        var repository = new RecordingRepository();
+        var sessions = new Mock<IAuthenticationSessionRepository>(MockBehavior.Strict);
+        var authorizer = new Mock<IAccountSecurityOperationAuthorizer>(MockBehavior.Strict);
+        var readAudit = new AdminReadTestBoundary.RecordingSink();
+        var mutationAudit = new AdminReadTestBoundary.RecordingSink();
+        var resetEvents = new CapturingSecurityEventSink();
+        var transactions = new RecordingTransactionProvider();
+        var composition = DurableSecurityMutationTestComposition.Create(transactions, resetEvents, repository);
+        var reader = new AuthenticationRateLimitAdministrationReader(repository,
+            sessions.Object, authorizer.Object, readAudit, new FakeTimeProvider(Now));
+        var service = new AuthenticationRateLimitAdministrationService(repository,
+            new(new FakeTimeProvider(Now), composition.Events, composition.Transactions),
+            sessions.Object, authorizer.Object, mutationAudit);
+
+        var search = await reader.SearchBucketsAsync(ReadBoundary.Actor, AuthenticationRateLimitAdministrationScope.Unspecified, new());
+        var lookup = await reader.GetBucketAsync(ReadBoundary.Actor, (AuthenticationRateLimitAdministrationScope)99, new("bucket", "login"));
+        var reset = await service.ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Unspecified,
+            new("bucket", "login", MutationBoundary.Actor.Audit));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new[] { search.Succeeded, lookup.Succeeded, reset.Succeeded }, Is.All.False);
+            Assert.That(repository.SearchCalls, Is.Zero);
+            Assert.That(repository.GetCalls, Is.Zero);
+            Assert.That(repository.ResetCalls, Is.Zero);
+            Assert.That(readAudit.Events, Is.Empty);
+            Assert.That(mutationAudit.Events, Is.Empty);
+            Assert.That(resetEvents.Events, Is.Empty);
+            Assert.That(transactions.Transaction.BeginCount, Is.Zero);
+        }
+        authorizer.VerifyNoOtherCalls();
+        sessions.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public async Task GlobalOperationalRequestsStillWork()
+    {
+        var repository = new RecordingRepository { ResetResult = true };
+
+        var search = await CreateReader(repository).SearchBucketsAsync(ReadBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new());
+        var lookup = await CreateReader(repository).GetBucketAsync(ReadBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new("bucket", "login"));
+        var reset = await CreateMutation(repository).ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global,
+            new("bucket", "login", MutationBoundary.Actor.Audit));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new[] { search.Succeeded, lookup.Succeeded, reset.Succeeded }, Is.All.True);
+            Assert.That(repository.SearchCalls, Is.EqualTo(1));
+            Assert.That(repository.GetCalls, Is.EqualTo(2));
+            Assert.That(repository.ResetCalls, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task GlobalOperationalScopeRequiresAllTenantAuthorization()
+    {
+        var repository = new RecordingRepository { ResetResult = true };
+        var authorizer = new Mock<IAccountSecurityOperationAuthorizer>();
+        var readAudit = new AdminReadTestBoundary.RecordingSink();
+        var mutationAudit = new AdminReadTestBoundary.RecordingSink();
+        var resetEvents = new CapturingSecurityEventSink();
+        var transactions = new RecordingTransactionProvider();
+        authorizer.Setup(x => x.AuthorizeAsync(
+                It.Is<AccountSecurityAuthorizationContext>(context =>
+                    context.TargetTenant == null && context.IncludeAllTenants),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var reader = new AuthenticationRateLimitAdministrationReader(repository,
+            ReadBoundary.Sessions, authorizer.Object, readAudit, new FakeTimeProvider(Now));
+        var composition = DurableSecurityMutationTestComposition.Create(transactions, resetEvents, repository);
+        var service = new AuthenticationRateLimitAdministrationService(repository,
+            new(new FakeTimeProvider(Now), composition.Events, composition.Transactions),
+            MutationBoundary.Sessions, authorizer.Object, mutationAudit);
+
+        var search = await reader.SearchBucketsAsync(ReadBoundary.Actor,
+            AuthenticationRateLimitAdministrationScope.Global, new());
+        var lookup = await reader.GetBucketAsync(ReadBoundary.Actor,
+            AuthenticationRateLimitAdministrationScope.Global, new("bucket", "login"));
+        var reset = await service.ResetBucketAsync(MutationBoundary.Actor,
+            AuthenticationRateLimitAdministrationScope.Global,
+            new("bucket", "login", MutationBoundary.Actor.Audit));
+
+        authorizer.Verify(x => x.AuthorizeAsync(
+            It.Is<AccountSecurityAuthorizationContext>(context =>
+                context.TargetTenant == null && context.IncludeAllTenants),
+            It.IsAny<CancellationToken>()), Times.Exactly(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new[] { search.Succeeded, lookup.Succeeded, reset.Succeeded }, Is.All.True);
+            Assert.That(readAudit.Events, Has.Count.EqualTo(2));
+            Assert.That(readAudit.Events.Select(securityEvent => securityEvent.TenantId), Is.All.Null);
+            Assert.That(readAudit.Events.Select(securityEvent => securityEvent.Properties!["scope"]), Is.All.EqualTo("all-tenants"));
+            Assert.That(mutationAudit.Events, Is.Empty);
+            Assert.That(resetEvents.Events, Has.Count.EqualTo(1));
+            Assert.That(resetEvents.Events[0].TenantId, Is.Null);
+        }
     }
 
     [Test]
@@ -127,17 +233,17 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         };
         var service = CreateMutation(repository);
         var request = new ResetAuthenticationRateLimitBucketRequest("bucket", "login", MutationBoundary.Actor.Audit);
-        var invalidScope = await service.ResetBucketAsync(MutationBoundary.Actor, null, false, request);
-        var conflictingScope = await service.ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, true, request);
-        var auditMismatch = await service.ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, false,
+        var invalidScope = await service.ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Unspecified, request);
+        var unknownScope = await service.ResetBucketAsync(MutationBoundary.Actor, (AuthenticationRateLimitAdministrationScope)99, request);
+        var auditMismatch = await service.ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global,
             request with { Audit = new AuditContext(Guid.NewGuid()) });
-        var missingAuditActor = await service.ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, false,
+        var missingAuditActor = await service.ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global,
             request with { Audit = new AuditContext() });
-        var providerMismatch = await service.ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, false, request);
+        var providerMismatch = await service.ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, request);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new[] { invalidScope, conflictingScope, auditMismatch, missingAuditActor, providerMismatch }.All(result => !result.Succeeded), Is.True);
+            Assert.That(new[] { invalidScope, unknownScope, auditMismatch, missingAuditActor, providerMismatch }.All(result => !result.Succeeded), Is.True);
             Assert.That(repository.ResetCalls, Is.Zero);
         }
     }
@@ -154,12 +260,17 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         var composition = new DurableSecurityMutationTestComposition(null, repository);
         var deniedService = new AuthenticationRateLimitAdministrationService(repository,
             new(new FakeTimeProvider(Now), composition.Events, composition.Transactions), denied.Sessions, denied.Authorizer, denied.Sink);
-        var deniedResult = await deniedService.ResetBucketAsync(denied.Actor, TenantContext.Global, false,
+        var deniedResult = await deniedService.ResetBucketAsync(denied.Actor, AuthenticationRateLimitAdministrationScope.Global,
             new("bucket", "login", denied.Actor.Audit));
-        var mismatch = await CreateMutation(repository).ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, false,
+        var mismatch = await CreateMutation(repository).ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global,
             new("bucket", "login", MutationBoundary.Actor.Audit));
 
-        Assert.That(new[] { deniedResult.Succeeded, mismatch.Succeeded }, Is.All.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new[] { deniedResult.Succeeded, mismatch.Succeeded }, Is.All.False);
+            Assert.That(repository.GetCalls, Is.EqualTo(1));
+            Assert.That(repository.ResetCalls, Is.Zero);
+        }
     }
 
     [Test]
@@ -171,7 +282,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         var actorUserId = MutationBoundary.Actor.ActorUserId;
         var audit = MutationBoundary.Actor.Audit with { IpAddress = "127.0.0.1", UserAgent = "tests", CorrelationId = "correlation" };
 
-        var reset = await service.ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, false, new ResetAuthenticationRateLimitBucketRequest("opaque-id", "login", audit));
+        var reset = await service.ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest("opaque-id", "login", audit));
 
         using (Assert.EnterMultipleScope())
         {
@@ -197,7 +308,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         var transactionProvider = new RecordingTransactionProvider();
         var service = CreateMutation(repository, new CapturingSecurityEventSink(), transactionProvider);
 
-        var result = await service.ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, false, new ResetAuthenticationRateLimitBucketRequest("bucket", "login", MutationBoundary.Actor.Audit));
+        var result = await service.ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest("bucket", "login", MutationBoundary.Actor.Audit));
 
         using (Assert.EnterMultipleScope())
         {
@@ -213,7 +324,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         var repository = new RecordingRepository { ResetResult = true };
         var service = CreateMutation(repository, new CapturingSecurityEventSink());
 
-        var result = await service.ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, false, new ResetAuthenticationRateLimitBucketRequest("bucket", "login", MutationBoundary.Actor.Audit));
+        var result = await service.ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest("bucket", "login", MutationBoundary.Actor.Audit));
 
         using (Assert.EnterMultipleScope())
         {
@@ -230,7 +341,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         var service = CreateMutation(repository, sink);
         var audit = MutationBoundary.Actor.Audit with { IpAddress = "127.0.0.1", UserAgent = "tests", CorrelationId = "correlation" };
 
-        var result = await service.ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, false, new ResetAuthenticationRateLimitBucketRequest("missing", "login", audit));
+        var result = await service.ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest("missing", "login", audit));
 
         using (Assert.EnterMultipleScope())
         {
@@ -250,7 +361,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         var sink = new CapturingSecurityEventSink();
         var service = CreateMutation(repository, sink);
 
-        var result = await service.ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, false, new ResetAuthenticationRateLimitBucketRequest("bucket", "login", MutationBoundary.Actor.Audit));
+        var result = await service.ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest("bucket", "login", MutationBoundary.Actor.Audit));
 
         using (Assert.EnterMultipleScope())
         {
@@ -269,7 +380,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         var sink = new CapturingSecurityEventSink();
         var service = CreateMutation(new RecordingRepository(), sink);
 
-        var result = await service.ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, false, new ResetAuthenticationRateLimitBucketRequest("bucket", "", MutationBoundary.Actor.Audit));
+        var result = await service.ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest("bucket", "", MutationBoundary.Actor.Audit));
 
         using (Assert.EnterMultipleScope())
         {
@@ -287,7 +398,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         var audit = MutationBoundary.Actor.Audit with { IpAddress = "127.0.0.1", UserAgent = "tests", CorrelationId = "correlation" };
 
         var exception = Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await service.ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, false, new ResetAuthenticationRateLimitBucketRequest("opaque-id", "login", audit)));
+            async () => await service.ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest("opaque-id", "login", audit)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -304,7 +415,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         var service = CreateMutation(repository, sink);
 
         var exception = Assert.ThrowsAsync<OperationCanceledException>(
-            async () => await service.ResetBucketAsync(MutationBoundary.Actor, TenantContext.Global, false, new ResetAuthenticationRateLimitBucketRequest("missing", "login", MutationBoundary.Actor.Audit)));
+            async () => await service.ResetBucketAsync(MutationBoundary.Actor, AuthenticationRateLimitAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest("missing", "login", MutationBoundary.Actor.Audit)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -409,6 +520,10 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     {
         public SearchAuthenticationRateLimitBucketsRequest? LastSearchRequest { get; private set; }
 
+        public int SearchCalls { get; private set; }
+
+        public int GetCalls { get; private set; }
+
         public bool ResetResult { get; set; }
 
         public bool ThrowOnReset { get; set; }
@@ -423,12 +538,14 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
 
         public Task<IReadOnlyList<AuthenticationRateLimitBucketSummary>> SearchBucketsAsync(SearchAuthenticationRateLimitBucketsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
+            SearchCalls++;
             LastSearchRequest = request;
             return Task.FromResult(SearchResults);
         }
 
         public Task<AuthenticationRateLimitBucketSummary?> GetBucketAsync(AuthenticationRateLimitBucketLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
+            GetCalls++;
             return Task.FromResult(BucketExists
                 ? BucketResult ?? new AuthenticationRateLimitBucketSummary(request.BucketId, request.Purpose, 1, now, now.AddMinutes(1), null, AuthenticationRateLimitBucketStatus.Active)
                 : null);

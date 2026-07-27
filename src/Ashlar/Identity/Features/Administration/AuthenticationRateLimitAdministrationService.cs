@@ -35,8 +35,8 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
             IAccountSecurityAdministrationService.ProofPurpose, AshlarSecurityEventTypes.AuthenticationRateLimitBucketReset);
     }
 
-    public async Task<Result<AuthenticationRateLimitBucketResetResult>> ResetBucketAsync(AccountSecurityActorContext actor, TenantContext? tenant,
-        bool includeAllTenants, ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<AuthenticationRateLimitBucketResetResult>> ResetBucketAsync(AccountSecurityActorContext actor,
+        AuthenticationRateLimitAdministrationScope scope, ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
@@ -45,14 +45,14 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
         {
             return validationFailure;
         }
-        try { AdministrationScopeValidation.ThrowIfInvalidScope(tenant, includeAllTenants); }
-        catch (ArgumentException exception) { return Result.Failure<AuthenticationRateLimitBucketResetResult>(AshlarFailureCodes.ValidationError, exception.Message); }
+        if (scope != AuthenticationRateLimitAdministrationScope.Global)
+            return Result.Failure<AuthenticationRateLimitBucketResetResult>(AshlarFailureCodes.ValidationError, "Rate-limit administration requires global operational scope.");
         if (request.Audit.ActorUserId != actor.ActorUserId)
         {
-            await _boundary.RecordFailureAsync(actor, tenant, includeAllTenants, AccountSecurityOperation.ResetAuthenticationRateLimitBucket);
+            await _boundary.RecordFailureAsync(actor, null, true, AccountSecurityOperation.ResetAuthenticationRateLimitBucket);
             return Result.Failure<AuthenticationRateLimitBucketResetResult>(AshlarFailureCodes.ValidationError);
         }
-        if (!await _boundary.AuthorizeAsync(actor, tenant, includeAllTenants, Guid.Empty,
+        if (!await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
                 AccountSecurityOperation.ResetAuthenticationRateLimitBucket, cancellationToken))
             return Result.Failure<AuthenticationRateLimitBucketResetResult>(AshlarFailureCodes.ValidationError);
 
@@ -61,7 +61,7 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
         if (bucket is not null && (!string.Equals(bucket.BucketId, request.BucketId, StringComparison.Ordinal)
             || !string.Equals(bucket.Purpose, request.Purpose, StringComparison.Ordinal)))
         {
-            await _boundary.RecordFailureAsync(actor, tenant, includeAllTenants, AccountSecurityOperation.ResetAuthenticationRateLimitBucket);
+            await _boundary.RecordFailureAsync(actor, null, true, AccountSecurityOperation.ResetAuthenticationRateLimitBucket);
             return Result.Failure<AuthenticationRateLimitBucketResetResult>(AshlarFailureCodes.RateLimitBucketNotFound);
         }
 
