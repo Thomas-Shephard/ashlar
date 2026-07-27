@@ -84,7 +84,7 @@ Schema diagnostics return:
 
 ## Cleanup Diagnostics
 
-`AddAshlarPostgresCleanup(...)` and `AddAshlarPostgresCleanupHostedService(...)` register `IAshlarCleanupDiagnostics`. Resolve it from DI and call `CheckAsync()` to inspect safe cleanup configuration facts:
+`AddAshlarPostgresCleanupHostedService(...)` registers `IAshlarCleanupDiagnostics`. Resolve it from DI and call `CheckAsync()` to inspect safe cleanup configuration facts:
 
 ```csharp
 using Ashlar.Operational.Diagnostics;

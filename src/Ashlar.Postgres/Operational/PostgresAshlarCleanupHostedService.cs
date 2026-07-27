@@ -7,29 +7,39 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Postgres.Operational;
 
-/// <summary>
-/// Provides postgres ashlar cleanup hosted service behavior.
-/// </summary>
-/// <param name="scopeFactory">The scope factory value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-/// <param name="options">The options value.</param>
-/// <param name="logger">The logger value.</param>
-public sealed class PostgresAshlarCleanupHostedService(
-    IServiceScopeFactory scopeFactory,
-    TimeProvider timeProvider,
-    IOptions<AshlarCleanupOptions> options,
-    ILogger<PostgresAshlarCleanupHostedService>? logger = null) : BackgroundService
+internal sealed class PostgresAshlarCleanupHostedService : BackgroundService
 {
-    private readonly AshlarCleanupHostedServiceRunner _runner = new(
-        scopeFactory,
-        timeProvider,
-        options,
-        logger ?? NullLogger<PostgresAshlarCleanupHostedService>.Instance);
+    private readonly AshlarCleanupHostedServiceRunner _runner;
 
-    /// <summary>
-    /// Performs the execute <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="stoppingToken">The stopping token value.</param>
-    /// <returns>The operation result.</returns>
+    public PostgresAshlarCleanupHostedService(
+        IServiceScopeFactory scopeFactory,
+        TimeProvider timeProvider,
+        IOptions<AshlarCleanupOptions> options,
+        ILogger<PostgresAshlarCleanupHostedService>? logger = null)
+        : this(
+            scopeFactory,
+            timeProvider,
+            options,
+            logger,
+            static (services, cancellationToken) =>
+                services.GetRequiredService<PostgresAshlarCleanupService>().CleanupAsync(cancellationToken))
+    {
+    }
+
+    internal PostgresAshlarCleanupHostedService(
+        IServiceScopeFactory scopeFactory,
+        TimeProvider timeProvider,
+        IOptions<AshlarCleanupOptions> options,
+        ILogger<PostgresAshlarCleanupHostedService>? logger,
+        Func<IServiceProvider, CancellationToken, Task<AshlarCleanupResult>> cleanup)
+    {
+        _runner = new(
+            scopeFactory,
+            timeProvider,
+            options,
+            logger ?? NullLogger<PostgresAshlarCleanupHostedService>.Instance,
+            cleanup);
+    }
+
     protected override Task ExecuteAsync(CancellationToken stoppingToken) => _runner.ExecuteAsync(stoppingToken);
 }

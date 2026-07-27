@@ -7,6 +7,9 @@ namespace Ashlar.Sqlite.Tests.Webhooks;
 
 internal sealed class SqliteSecurityEventWebhookOutboxCleanupContractTests : SecurityEventWebhookOutboxCleanupContractTests
 {
+    protected override Task<AshlarCleanupResult> RunCleanupAsync(IServiceProvider serviceProvider) =>
+        serviceProvider.GetRequiredService<SqliteAshlarCleanupService>().CleanupAsync();
+
     private SqliteContractDatabase? _database;
 
     protected override async Task<IServiceProvider> CreateInitializedServiceProviderAsync()
@@ -15,7 +18,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxCleanupContractTests : Sec
         {
             services.AddSingleton<TimeProvider>(new FakeTimeProvider(CleanupNow));
             services.AddAshlarSqliteSecurityEventWebhookOutbox();
-            services.AddAshlarSqliteCleanup(options =>
+            services.AddAshlarSqliteCleanupInfrastructure(options =>
             {
                 options.BatchSize = 2;
                 options.MaxBatchesPerRun = 1;
@@ -83,7 +86,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxCleanupContractTests : Sec
     {
         var services = new ServiceCollection();
         services.AddAshlarSqlite(_database!.ConnectionString);
-        services.AddAshlarSqliteCleanup(options =>
+        services.AddAshlarSqliteCleanupInfrastructure(options =>
         {
             options.RemoveSentSecurityEventWebhooksAfter = null;
             options.RemoveFailedSecurityEventWebhooksAfter = null;
@@ -91,6 +94,6 @@ internal sealed class SqliteSecurityEventWebhookOutboxCleanupContractTests : Sec
         });
         services.AddSingleton<TimeProvider>(new FakeTimeProvider(CleanupNow));
         await using var provider = services.BuildServiceProvider();
-        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+        return await provider.GetRequiredService<SqliteAshlarCleanupService>().CleanupAsync();
     }
 }

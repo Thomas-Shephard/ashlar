@@ -37,7 +37,7 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
         services.AddLogging();
         services.AddAshlarPostgres(GetConnectionString());
         services.AddAshlarPostgresEmailOutboxSender();
-        services.AddAshlarPostgresCleanup();
+        services.AddAshlarPostgresCleanupInfrastructure();
         services.AddSingleton<TimeProvider>(_timeProvider);
         services.AddSingleton<ISecretProtector, FakeSecretProtector>();
         _serviceProvider = services.BuildServiceProvider();

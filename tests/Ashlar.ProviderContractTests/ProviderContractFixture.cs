@@ -2,7 +2,6 @@ using Ashlar.Authorization.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
-using Ashlar.Operational;
 using Ashlar.ProviderContractTests.Messaging;
 
 namespace Ashlar.ProviderContractTests;
@@ -140,11 +139,6 @@ internal abstract class ProviderContractFixture
     protected static IAuthenticationRateLimiter GetAuthenticationRateLimiter(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IAuthenticationRateLimiter>();
-    }
-
-    protected static IAshlarCleanupService GetCleanupService(IServiceProvider serviceProvider)
-    {
-        return serviceProvider.GetRequiredService<IAshlarCleanupService>();
     }
 
     protected static IAshlarTransactionProvider? GetTransactionProvider(IServiceProvider serviceProvider)

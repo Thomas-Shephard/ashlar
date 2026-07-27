@@ -23,7 +23,7 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
         _timeProvider = new FakeTimeProvider(_now);
         var services = new ServiceCollection();
         services.AddAshlarPostgres(GetConnectionString());
-        services.AddAshlarPostgresCleanup(options =>
+        services.AddAshlarPostgresCleanupInfrastructure(options =>
         {
             options.BatchSize = 100;
             options.RemoveAuditEventsAfter = TimeSpan.FromDays(90);
@@ -356,7 +356,7 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
     private CleanupServiceScope CreateCleanupService()
     {
         var scope = _serviceProvider.CreateAsyncScope();
-        return new CleanupServiceScope(scope, scope.ServiceProvider.GetRequiredService<IAshlarCleanupService>());
+        return new CleanupServiceScope(scope, scope.ServiceProvider.GetRequiredService<PostgresAshlarCleanupService>());
     }
 
     private CleanupServiceScope CreateCleanupService(Action<AshlarCleanupOptions> configure)
@@ -368,7 +368,7 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
         return new CleanupServiceScope(connectionProvider, service);
     }
 
-    private sealed record CleanupServiceScope(IAsyncDisposable Scope, IAshlarCleanupService Service) : IAsyncDisposable
+    private sealed record CleanupServiceScope(IAsyncDisposable Scope, PostgresAshlarCleanupService Service) : IAsyncDisposable
     {
         public ValueTask DisposeAsync() => Scope.DisposeAsync();
     }

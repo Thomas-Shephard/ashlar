@@ -15,6 +15,8 @@ internal abstract class SecurityEventWebhookOutboxCleanupContractTests : Provide
 
     protected abstract Task<AshlarCleanupResult> RunCleanupWithNullWebhookRetentionsAsync();
 
+    protected abstract Task<AshlarCleanupResult> RunCleanupAsync(IServiceProvider serviceProvider);
+
     [Test]
     public async Task CleanupAsyncRemovesOnlyTerminalWebhookRowsOlderThanRetentionAndReturnsCounts()
     {
@@ -30,7 +32,7 @@ internal abstract class SecurityEventWebhookOutboxCleanupContractTests : Provide
         await SeedWebhookOutboxCleanupRowAsync(SeedWebhookCleanupRow.Retryable("old-retryable", CleanupNow.AddDays(-90)));
         await using var scope = CreateAsyncScope();
 
-        var result = await GetCleanupService(scope.ServiceProvider).CleanupAsync();
+        var result = await RunCleanupAsync(scope.ServiceProvider);
 
         using (Assert.EnterMultipleScope())
         {
@@ -58,11 +60,9 @@ internal abstract class SecurityEventWebhookOutboxCleanupContractTests : Provide
         await SeedWebhookOutboxCleanupRowAsync(SeedWebhookCleanupRow.Sent("old-sent-two", CleanupNow.AddDays(-8).AddMinutes(1)));
         await SeedWebhookOutboxCleanupRowAsync(SeedWebhookCleanupRow.Sent("old-sent-three", CleanupNow.AddDays(-8).AddMinutes(2)));
         await using var scope = CreateAsyncScope();
-        var cleanup = GetCleanupService(scope.ServiceProvider);
-
-        var first = await cleanup.CleanupAsync();
-        var second = await cleanup.CleanupAsync();
-        var third = await cleanup.CleanupAsync();
+        var first = await RunCleanupAsync(scope.ServiceProvider);
+        var second = await RunCleanupAsync(scope.ServiceProvider);
+        var third = await RunCleanupAsync(scope.ServiceProvider);
 
         using (Assert.EnterMultipleScope())
         {

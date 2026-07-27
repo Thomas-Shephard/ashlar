@@ -146,7 +146,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
         });
         services.AddAshlarSqliteAuditSink();
         services.AddAshlarSqliteRateLimiting();
-        services.AddAshlarSqliteCleanup();
+        services.AddAshlarSqliteCleanupInfrastructure();
         services.AddAshlarSqliteEmailOutboxDispatcher<TestEmailTransport>();
         services.AddAshlarSqliteSecurityEventWebhookDispatcher(configureWebhooks: options =>
         {
@@ -164,7 +164,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             typeof(IIdentityService),
             typeof(IPasskeyService),
             typeof(IAuthorizationGrantService),
-            typeof(IAshlarCleanupService),
+            typeof(SqliteAshlarCleanupService),
             typeof(IEmailOutboxDispatcher),
             typeof(SqliteSecurityEventWebhookOutboxDispatcher),
             typeof(IAuthenticationRateLimiter),
@@ -217,7 +217,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiter>(), Is.Not.TypeOf<SqliteAuthenticationRateLimiter>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiterDiagnostics>(), Is.Not.TypeOf<SqliteAuthenticationRateLimiterDiagnostics>());
-            Assert.That(scope.ServiceProvider.GetService<IAshlarCleanupService>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetService<SqliteAshlarCleanupService>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetService<IAshlarCleanupDiagnostics>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarOperationsSummaryService>(), Is.TypeOf<AshlarOperationsSummaryService>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.Not.TypeOf<SqliteSecurityEventSink>());
@@ -306,12 +306,12 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
     }
 
     [Test]
-    public async Task AddAshlarSqliteCleanupRegistersCleanupDiagnostics()
+    public async Task AddAshlarSqliteCleanupInfrastructureRegistersCleanupDiagnostics()
     {
         var services = new ServiceCollection();
 
         services.AddAshlarSqlite(GetConnectionString());
-        services.AddAshlarSqliteCleanup(options =>
+        services.AddAshlarSqliteCleanupInfrastructure(options =>
         {
             options.CleanupInterval = TimeSpan.FromMinutes(30);
             options.BatchSize = 42;
@@ -326,7 +326,8 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarCleanupService>(), Is.TypeOf<SqliteAshlarCleanupService>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<SqliteAshlarCleanupService>(), Is.TypeOf<SqliteAshlarCleanupService>());
+            Assert.That(typeof(AshlarCleanupOptions).Assembly.GetType("Ashlar.Operational.IAshlarCleanupService"), Is.Null);
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Healthy));
             Assert.That(result.ProviderName, Is.EqualTo("SQLite"));
             Assert.That(result.Configured, Is.True);
@@ -340,11 +341,11 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
     }
 
     [Test]
-    public void AddAshlarSqliteCleanupValidatesOptionsOnStart()
+    public void AddAshlarSqliteCleanupInfrastructureValidatesOptionsOnStart()
     {
         var services = new ServiceCollection();
 
-        services.AddAshlarSqliteCleanup(options => options.BatchSize = 0);
+        services.AddAshlarSqliteCleanupInfrastructure(options => options.BatchSize = 0);
 
         using var provider = services.BuildServiceProvider();
 
@@ -412,7 +413,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
         Assert.Throws<ArgumentException>(() => services.AddAshlarSqlite(string.Empty));
         Assert.Throws<ArgumentNullException>(() => AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteAuditSink(null!));
         Assert.Throws<ArgumentNullException>(() => AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteRateLimiting(null!));
-        Assert.Throws<ArgumentNullException>(() => AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteCleanup(null!));
+        Assert.Throws<ArgumentNullException>(() => AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteCleanupInfrastructure(null!));
         Assert.Throws<ArgumentNullException>(() => AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteCleanupHostedService(null!));
         Assert.Throws<ArgumentException>(() => _ = new SqliteConnectionFactory(string.Empty));
         Assert.Throws<ArgumentNullException>(() => _ = new SqliteAuthorizationGrantAdministrationRepository(null!));

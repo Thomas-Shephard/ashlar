@@ -9,7 +9,6 @@ using Ashlar.Messaging;
 using Ashlar.OAuth;
 using Ashlar.OAuth.Providers.GitHub;
 using Ashlar.Passkeys;
-using Ashlar.Operational;
 using Ashlar.Operational.Diagnostics;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
@@ -182,7 +181,7 @@ internal sealed class AshlarPostgresCompositionTests
             typeof(IAuthorizationGrantService),
             typeof(IPasskeyService),
             typeof(AshlarExternalCredentialAuthenticationService),
-            typeof(IAshlarCleanupService),
+            typeof(PostgresAshlarCleanupService),
             typeof(IEmailOutboxDispatcher),
             typeof(IAshlarSecurityEventWebhookOutboxOperations),
             typeof(IAuthenticationRateLimiter),
@@ -215,14 +214,14 @@ internal sealed class AshlarPostgresCompositionTests
         services.AddScoped<IAccountSecurityGuard, TestAccountSecurityGuard>();
         services.AddSingleton<ISecretProtector, TestSecretProtector>();
         services.AddAshlarPostgres(dataSource);
-        services.AddAshlarPostgresCleanup();
+        services.AddAshlarPostgresCleanupInfrastructure();
         services.AddAshlarPostgresEmailOutboxDispatcher<TestEmailTransport>();
         services.AddAshlarPostgresSecurityEventWebhookDispatcher();
         AddWebhookOperationalSecurity(services);
 
         using var provider = ServiceProviderValidation.BuildValidatedServiceProvider(
             services,
-            typeof(IAshlarCleanupService),
+            typeof(PostgresAshlarCleanupService),
             typeof(IEmailOutboxDispatcher),
             typeof(PostgresSecurityEventWebhookOutboxDispatcher),
             typeof(IAshlarOperationsSummaryService));

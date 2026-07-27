@@ -116,13 +116,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>
-    /// Registers the Ashlar SQLite cleanup service for explicit cleanup calls.
-    /// </summary>
-    /// <param name="services">The service collection to add registrations to.</param>
-    /// <param name="configure">Optional cleanup configuration.</param>
-    /// <returns>The same service collection so calls can be chained.</returns>
-    public static IServiceCollection AddAshlarSqliteCleanup(
+    internal static IServiceCollection AddAshlarSqliteCleanupInfrastructure(
         this IServiceCollection services,
         Action<AshlarCleanupOptions>? configure = null)
     {
@@ -140,7 +134,7 @@ public static class AshlarSqliteServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarCleanupDiagnostics, SqliteAshlarCleanupDiagnostics>();
-        services.TryAddScoped<IAshlarCleanupService, SqliteAshlarCleanupService>();
+        services.TryAddScoped<SqliteAshlarCleanupService>();
 
         return services;
     }
@@ -157,7 +151,7 @@ public static class AshlarSqliteServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddAshlarSqliteCleanup(configure);
+        services.AddAshlarSqliteCleanupInfrastructure(configure);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, SqliteAshlarCleanupHostedService>());
 
         return services;

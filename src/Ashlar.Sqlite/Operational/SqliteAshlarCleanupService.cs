@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Sqlite.Operational;
 
-internal sealed partial class SqliteAshlarCleanupService : IAshlarCleanupService
+internal sealed partial class SqliteAshlarCleanupService
 {
     private const string CutoffParameter = "$cutoff";
     private const string LimitParameter = "$limit";

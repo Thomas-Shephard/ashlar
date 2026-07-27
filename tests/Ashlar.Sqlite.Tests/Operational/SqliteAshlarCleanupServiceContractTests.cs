@@ -7,6 +7,9 @@ namespace Ashlar.Sqlite.Tests.Operational;
 
 internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupServiceContractTests
 {
+    protected override Task<AshlarCleanupResult> RunCleanupAsync(IServiceProvider serviceProvider) =>
+        serviceProvider.GetRequiredService<SqliteAshlarCleanupService>().CleanupAsync();
+
     private static readonly Guid TestUserId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly DateTimeOffset Now = new(2026, 5, 8, 12, 0, 0, TimeSpan.Zero);
     private static readonly string[] SeedPrefixes = ["s", "c", "g", "i", "h", "r", "p", "e"];
@@ -20,7 +23,7 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
         _timeProvider = new FakeTimeProvider(Now);
         _database = await SqliteContractDatabase.CreateAsync(services =>
         {
-            services.AddAshlarSqliteCleanup(options =>
+            services.AddAshlarSqliteCleanupInfrastructure(options =>
             {
                 options.BatchSize = 2;
                 options.MaxBatchesPerRun = 1;
@@ -213,10 +216,10 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
 
         var services = new ServiceCollection();
         services.AddAshlarSqlite(_database.ConnectionString);
-        services.AddAshlarSqliteCleanup(options => options.RemoveAuditEventsAfter = null);
+        services.AddAshlarSqliteCleanupInfrastructure(options => options.RemoveAuditEventsAfter = null);
         services.AddSingleton<TimeProvider>(_timeProvider);
         await using var provider = services.BuildServiceProvider();
-        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+        return await provider.GetRequiredService<SqliteAshlarCleanupService>().CleanupAsync();
     }
 
     protected override async Task<AshlarCleanupResult> RunCleanupWithNullRememberedMfaDeviceRetentionsAsync()
@@ -228,14 +231,14 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
 
         var services = new ServiceCollection();
         services.AddAshlarSqlite(_database.ConnectionString);
-        services.AddAshlarSqliteCleanup(options =>
+        services.AddAshlarSqliteCleanupInfrastructure(options =>
         {
             options.RemoveExpiredRememberedMfaDevicesAfter = null;
             options.RemoveRevokedRememberedMfaDevicesAfter = null;
         });
         services.AddSingleton<TimeProvider>(_timeProvider);
         await using var provider = services.BuildServiceProvider();
-        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+        return await provider.GetRequiredService<SqliteAshlarCleanupService>().CleanupAsync();
     }
 
     protected override async Task<AshlarCleanupResult> RunCleanupWithNullEmailDiscardRetentionAsync()
@@ -247,14 +250,14 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
 
         var services = new ServiceCollection();
         services.AddAshlarSqlite(_database.ConnectionString);
-        services.AddAshlarSqliteCleanup(options =>
+        services.AddAshlarSqliteCleanupInfrastructure(options =>
         {
             options.RemoveDiscardedEmailsAfter = null;
             options.RemoveDiscardedSensitiveEmailsAfter = null;
         });
         services.AddSingleton<TimeProvider>(_timeProvider);
         await using var provider = services.BuildServiceProvider();
-        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+        return await provider.GetRequiredService<SqliteAshlarCleanupService>().CleanupAsync();
     }
 
     private async Task<Microsoft.Data.Sqlite.SqliteConnection> OpenConnectionAsync()

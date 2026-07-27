@@ -1273,34 +1273,7 @@ The result reports `Status`, provider name, `CheckedAt`, whether the limiter is 
 ## Cleanup and Retention
 Ashlar can explicitly remove expired or retained operational data from PostgreSQL: expired/revoked sessions and credentials, expired/accepted/revoked invitations, expired/completed/revoked MFA handshakes, expired/consumed passkey challenges, expired rate-limit rows, and old audit events. Audit-event retention is disabled by default and must be configured intentionally.
 
-Register the cleanup service and call it from an administrative job or maintenance endpoint:
-
-```csharp
-services.AddAshlarPostgres(connectionString);
-services.AddAshlarPostgresCleanup(options =>
-{
-    options.BatchSize = 500;
-    options.MaxBatchesPerRun = 10;
-    options.RemoveExpiredPasskeyChallengesAfter = TimeSpan.FromDays(1);
-    options.RemoveConsumedPasskeyChallengesAfter = TimeSpan.FromDays(1);
-    options.RemoveAuditEventsAfter = TimeSpan.FromDays(365);
-});
-```
-
-```csharp
-public sealed class MaintenanceJob(IServiceScopeFactory scopeFactory)
-{
-    public async Task RunAsync(CancellationToken cancellationToken)
-    {
-        using var scope = scopeFactory.CreateScope();
-        var cleanup = scope.ServiceProvider.GetRequiredService<IAshlarCleanupService>();
-
-        AshlarCleanupResult result = await cleanup.CleanupAsync(cancellationToken);
-    }
-}
-```
-
-Applications that want automatic background cleanup can opt in explicitly:
+Applications can opt in to automatic background cleanup:
 
 ```csharp
 services.AddAshlarPostgres(connectionString);
@@ -1312,6 +1285,8 @@ services.AddAshlarPostgresCleanupHostedService(options =>
 ```
 
 Cleanup uses bounded batches and the application's `TimeProvider`, so repeated or concurrent runs are safe and deterministic in tests. `MaxBatchesPerRun` lets one cleanup run catch up on backlog without making the run unbounded. PostgreSQL and SQLite cleanup use the provider connection abstraction: inside an active Ashlar transaction they participate in that transaction, and normal maintenance/background cleanup runs on a fresh provider connection when no transaction is active.
+
+Raw cleanup execution is internal infrastructure and is not available through application DI. Applications can inspect cleanup configuration through the read-only diagnostics API below.
 
 Cleanup diagnostics are available through `IAshlarCleanupDiagnostics` when provider cleanup is registered:
 
