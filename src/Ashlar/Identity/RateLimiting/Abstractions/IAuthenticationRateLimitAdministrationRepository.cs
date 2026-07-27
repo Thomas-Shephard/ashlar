@@ -1,8 +1,9 @@
 namespace Ashlar.Identity.RateLimiting.Abstractions;
 
 /// <summary>
-/// Provider storage abstraction for safe authentication rate-limit administration operations.
+/// Provider storage abstraction for safe global operational authentication rate-limit administration operations.
 /// </summary>
+/// <remarks>The store is unpartitioned and does not provide tenant ownership.</remarks>
 public interface IAuthenticationRateLimitAdministrationRepository : IAuthenticationRateLimitAdministrationReaderRepository
 {
     /// <summary>

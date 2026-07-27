@@ -1270,6 +1270,8 @@ var result = await diagnostics.CheckAsync(cancellationToken);
 
 The result reports `Status`, provider name, `CheckedAt`, whether the limiter is configured, distributed, and persistent, safe aggregate counts for expired rows, active keys, and blocked keys when the provider can query them, and cleanup scheduling settings when the provider exposes them. It returns `Healthy` when provider state can be queried, `NotSupported` when a provider table is missing or diagnostics are not available for a custom limiter, and `Unknown` when an unexpected provider query failure occurs. Diagnostics never expose rate-limit keys, purposes, IP addresses, subject identifiers, counters, or raw provider internals.
 
+Rate-limit bucket search, detail, and reset are global operational administration. Their PostgreSQL, SQLite, and Redis stores do not record tenant ownership, so administration requires explicit `AuthenticationRateLimitAdministrationScope.Global` scope and host authorization across all tenant origins.
+
 ## Cleanup and Retention
 Ashlar can explicitly remove expired or retained operational data from PostgreSQL: expired/revoked sessions and credentials, expired/accepted/revoked invitations, expired/completed/revoked MFA handshakes, expired/consumed passkey challenges, expired rate-limit rows, and old audit events. Audit-event retention is disabled by default and must be configured intentionally.
 

@@ -87,19 +87,19 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "login", Key = activeKey }, rule);
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "reset", Key = UniqueKey() }, rule);
 
-        var blocked = await administration.SearchBucketsAsync(_actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest
+        var blocked = await administration.SearchBucketsAsync(_actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
         {
             Purpose = "login",
             Status = AuthenticationRateLimitBucketStatus.Blocked,
             BlockedUntilFrom = Start + TimeSpan.FromMinutes(29),
             BlockedUntilTo = Start + TimeSpan.FromMinutes(31)
         });
-        var active = await administration.SearchBucketsAsync(_actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest
+        var active = await administration.SearchBucketsAsync(_actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
         {
             Purpose = "login",
             Status = AuthenticationRateLimitBucketStatus.Active,
             WindowStartFrom = Start,
-            ExpiresFrom = Start + rule.Window
+            ExpiresFrom = Start + TimeSpan.FromMinutes(9)
         });
 
         using (Assert.EnterMultipleScope())
@@ -123,10 +123,10 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
         await limiter.CheckAsync(
             new RateLimitAttempt { Purpose = "detail", Key = rawKey },
             new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
-        var bucket = (await administration.SearchBucketsAsync(_actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" })).Value!.Items.Single();
+        var bucket = (await administration.SearchBucketsAsync(_actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" })).Value!.Items.Single();
 
-        var wrongPurposeLookup = await administration.GetBucketAsync(_actor, TenantContext.Global, false, new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "other"));
-        var lookup = await administration.GetBucketAsync(_actor, TenantContext.Global, false, new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "detail"));
+        var wrongPurposeLookup = await administration.GetBucketAsync(_actor, AuthenticationRateLimitAdministrationScope.Global, new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "other"));
+        var lookup = await administration.GetBucketAsync(_actor, AuthenticationRateLimitAdministrationScope.Global, new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "detail"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -151,7 +151,7 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     {
         var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
 
-        var lookup = await administration.GetBucketAsync(_actor, TenantContext.Global, false, new AuthenticationRateLimitBucketLookupRequest(bucketId, "detail"));
+        var lookup = await administration.GetBucketAsync(_actor, AuthenticationRateLimitAdministrationScope.Global, new AuthenticationRateLimitBucketLookupRequest(bucketId, "detail"));
 
         Assert.That(lookup.Succeeded, Is.False);
     }
@@ -205,12 +205,12 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
             new RateLimitAttempt { Purpose = "range", Key = UniqueKey() },
             new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
 
-        var futureWindow = await administration.SearchBucketsAsync(_actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest
+        var futureWindow = await administration.SearchBucketsAsync(_actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
         {
             Purpose = "range",
             WindowStartFrom = Start + TimeSpan.FromMinutes(1)
         });
-        var blockedRange = await administration.SearchBucketsAsync(_actor, TenantContext.Global, false, new SearchAuthenticationRateLimitBucketsRequest
+        var blockedRange = await administration.SearchBucketsAsync(_actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
         {
             Purpose = "range",
             BlockedUntilFrom = Start
