@@ -1188,7 +1188,7 @@ internal static class AppViews
                 }
 
                 async function loadPasskeys() {
-                    const response = await fetch('/api/passkeys');
+                    const response = await ashlarFetchWithStepUp('/api/passkeys');
                     if (!response.ok || !response.headers.get('Content-Type')?.includes('application/json')) {
                         passkeyList.innerHTML = '<div class="status-box">Unable to load passkeys.</div>';
                         return;
