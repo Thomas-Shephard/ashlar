@@ -1,17 +1,63 @@
 using System.Net;
+using Ashlar.Identity.Models.AccountSecurity;
+using Ashlar.Testing;
 using Ashlar.Webhooks.SecurityEvents;
 
 namespace Ashlar.Webhooks.Tests;
 
 internal sealed class AshlarSecurityEventWebhookOutboxBrowserTests
 {
-    [Test]
-    public void BrowseRequestDefaultsUseBoundedPaging()
+    private static readonly DateTimeOffset Now = new(2026, 5, 31, 12, 0, 0, TimeSpan.Zero);
+
+    [TestCase(OperationalAdministrationScope.Unspecified)]
+    [TestCase((OperationalAdministrationScope)99)]
+    public void BrowseRequiresGlobalScopeBeforeAuthorizationProviderAndAudit(
+        OperationalAdministrationScope scope)
     {
-        var request = new AshlarSecurityEventWebhookOutboxBrowseRequest();
+        var security = new AccountSecurityActorTestContext(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
+        var browser = new TestBrowser(security);
+
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => browser.ListAsync(
+            security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Scope = scope }));
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(browser.LoadCount, Is.Zero);
+            Assert.That(security.Authorizer.LastContext, Is.Null);
+            Assert.That(security.AuditSink.Events, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task BrowseAcceptsGlobalScope()
+    {
+        var security = new AccountSecurityActorTestContext(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
+        var browser = new TestBrowser(security);
+
+        await browser.ListAsync(security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
+        {
+            Scope = OperationalAdministrationScope.Global
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(browser.LoadCount, Is.EqualTo(1));
+            Assert.That(security.Authorizer.LastContext, Is.Not.Null);
+            Assert.That(security.AuditSink.Events, Has.Count.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void BrowseRequestDefaultsUseBoundedPaging()
+    {
+        var request = new AshlarSecurityEventWebhookOutboxBrowseRequest
+        {
+            Scope = OperationalAdministrationScope.Unspecified
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.Scope, Is.EqualTo(OperationalAdministrationScope.Unspecified));
             Assert.That(request.Limit, Is.EqualTo(AshlarSecurityEventWebhookOutboxBrowseRequest.DefaultLimit));
             Assert.That(AshlarSecurityEventWebhookOutboxBrowseRequest.MaximumLimit, Is.EqualTo(100));
             Assert.That(AshlarSecurityEventWebhookOutboxBrowser.GetStatuses(request), Is.EquivalentTo(Enum.GetValues<AshlarSecurityEventWebhookOutboxStatus>()));
@@ -24,11 +70,17 @@ internal sealed class AshlarSecurityEventWebhookOutboxBrowserTests
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(null!));
-            Assert.Throws<ArgumentOutOfRangeException>(() => AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 0 }));
-            Assert.Throws<ArgumentOutOfRangeException>(() => AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 101 }));
-            Assert.Throws<ArgumentOutOfRangeException>(() => AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(new AshlarSecurityEventWebhookOutboxBrowseRequest { Offset = -1 }));
             Assert.Throws<ArgumentOutOfRangeException>(() => AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
+                Scope = OperationalAdministrationScope.Unspecified
+            }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(new AshlarSecurityEventWebhookOutboxBrowseRequest { Scope = (OperationalAdministrationScope)99 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(new AshlarSecurityEventWebhookOutboxBrowseRequest { Scope = OperationalAdministrationScope.Global, Limit = 0 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(new AshlarSecurityEventWebhookOutboxBrowseRequest { Scope = OperationalAdministrationScope.Global, Limit = 101 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(new AshlarSecurityEventWebhookOutboxBrowseRequest { Scope = OperationalAdministrationScope.Global, Offset = -1 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(new AshlarSecurityEventWebhookOutboxBrowseRequest
+            {
+                Scope = OperationalAdministrationScope.Global,
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { (AshlarSecurityEventWebhookOutboxStatus)99 }
             }));
         }
@@ -39,6 +91,7 @@ internal sealed class AshlarSecurityEventWebhookOutboxBrowserTests
     {
         Assert.DoesNotThrow(() => AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(new AshlarSecurityEventWebhookOutboxBrowseRequest
         {
+            Scope = OperationalAdministrationScope.Global,
             Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Pending }
         }));
     }
@@ -47,7 +100,11 @@ internal sealed class AshlarSecurityEventWebhookOutboxBrowserTests
     public void GetStatusesUsesExplicitFilterWhenPresent()
     {
         var statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed };
-        var result = AshlarSecurityEventWebhookOutboxBrowser.GetStatuses(new AshlarSecurityEventWebhookOutboxBrowseRequest { Statuses = statuses });
+        var result = AshlarSecurityEventWebhookOutboxBrowser.GetStatuses(new AshlarSecurityEventWebhookOutboxBrowseRequest
+        {
+            Scope = OperationalAdministrationScope.Global,
+            Statuses = statuses
+        });
 
         Assert.That(result, Is.SameAs(statuses));
     }
@@ -57,6 +114,7 @@ internal sealed class AshlarSecurityEventWebhookOutboxBrowserTests
     {
         var result = AshlarSecurityEventWebhookOutboxBrowser.GetStatuses(new AshlarSecurityEventWebhookOutboxBrowseRequest
         {
+            Scope = OperationalAdministrationScope.Global,
             Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus>()
         });
 
@@ -168,5 +226,24 @@ internal sealed class AshlarSecurityEventWebhookOutboxBrowserTests
             Assert.That(propertyNames, Does.Not.Contain("SharedSecret"));
             Assert.That(propertyNames, Does.Not.Contain("LockedBy"));
         }
+    }
+
+    private sealed class TestBrowser(AccountSecurityActorTestContext security)
+        : AshlarSecurityEventWebhookOutboxBrowserBase(
+            security.Sessions, security.Authorizer, security.AuditSink, new FixedTimeProvider(Now))
+    {
+        public int LoadCount { get; private set; }
+
+        protected override Task<IReadOnlyList<AshlarSecurityEventWebhookOutboxDeliverySummary>> LoadAsync(
+            AshlarSecurityEventWebhookOutboxBrowseRequest request, CancellationToken cancellationToken)
+        {
+            LoadCount++;
+            return Task.FromResult<IReadOnlyList<AshlarSecurityEventWebhookOutboxDeliverySummary>>([]);
+        }
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 }

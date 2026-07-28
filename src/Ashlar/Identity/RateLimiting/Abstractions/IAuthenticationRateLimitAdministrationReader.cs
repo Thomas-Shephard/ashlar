@@ -12,7 +12,7 @@ public interface IAuthenticationRateLimitAdministrationReader
     /// <param name="request">Search filters and paging options.</param>
     /// <param name="cancellationToken">Token for aborting storage work.</param>
     /// <returns>A page of safe bucket summaries.</returns>
-    Task<Result<AuthenticationRateLimitBucketSearchResult>> SearchBucketsAsync(AccountSecurityActorContext actor, AuthenticationRateLimitAdministrationScope scope, SearchAuthenticationRateLimitBucketsRequest request, CancellationToken cancellationToken = default);
+    Task<Result<AuthenticationRateLimitBucketSearchResult>> SearchBucketsAsync(AccountSecurityActorContext actor, OperationalAdministrationScope scope, SearchAuthenticationRateLimitBucketsRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>Loads a single rate-limit bucket by opaque identifier and purpose.</summary>
     /// <param name="actor">Authenticated administrator context.</param>
@@ -20,5 +20,5 @@ public interface IAuthenticationRateLimitAdministrationReader
     /// <param name="request">Lookup request containing the bucket identifier and purpose.</param>
     /// <param name="cancellationToken">Token for aborting storage work.</param>
     /// <returns>A safe bucket summary, or a not-found failure.</returns>
-    Task<Result<AuthenticationRateLimitBucketSummary>> GetBucketAsync(AccountSecurityActorContext actor, AuthenticationRateLimitAdministrationScope scope, AuthenticationRateLimitBucketLookupRequest request, CancellationToken cancellationToken = default);
+    Task<Result<AuthenticationRateLimitBucketSummary>> GetBucketAsync(AccountSecurityActorContext actor, OperationalAdministrationScope scope, AuthenticationRateLimitBucketLookupRequest request, CancellationToken cancellationToken = default);
 }

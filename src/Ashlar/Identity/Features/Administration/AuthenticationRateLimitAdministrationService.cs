@@ -36,7 +36,7 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
     }
 
     public async Task<Result<AuthenticationRateLimitBucketResetResult>> ResetBucketAsync(AccountSecurityActorContext actor,
-        AuthenticationRateLimitAdministrationScope scope, ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)
+        OperationalAdministrationScope scope, ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
@@ -45,7 +45,7 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
         {
             return validationFailure;
         }
-        if (scope != AuthenticationRateLimitAdministrationScope.Global)
+        if (scope != OperationalAdministrationScope.Global)
             return Result.Failure<AuthenticationRateLimitBucketResetResult>(AshlarFailureCodes.ValidationError, "Rate-limit administration requires global operational scope.");
         if (request.Audit.ActorUserId != actor.ActorUserId)
         {

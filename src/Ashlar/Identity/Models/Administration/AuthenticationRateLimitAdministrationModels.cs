@@ -2,16 +2,6 @@ using Ashlar.Auditing;
 
 namespace Ashlar.Identity.Models.Administration;
 
-/// <summary>Explicit scope for global operational rate-limit administration.</summary>
-public enum AuthenticationRateLimitAdministrationScope
-{
-    /// <summary>No operational scope was supplied.</summary>
-    Unspecified = 0,
-
-    /// <summary>The unpartitioned operational store across all tenant origins.</summary>
-    Global = 1
-}
-
 /// <summary>
 /// Operational status for an authentication rate-limit bucket.
 /// </summary>

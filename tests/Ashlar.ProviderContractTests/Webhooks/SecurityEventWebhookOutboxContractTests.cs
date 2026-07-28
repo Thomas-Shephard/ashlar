@@ -46,9 +46,10 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         await using var scope = CreateAsyncScope();
         var browser = GetSecurityEventWebhookOutboxBrowser(scope.ServiceProvider);
 
-        var page = await browser.ListAsync(ReadSecurity.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 2, Offset = 1 });
+        var page = await browser.ListAsync(ReadSecurity.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Scope = OperationalAdministrationScope.Global, Limit = 2, Offset = 1 });
         var failed = await browser.ListAsync(ReadSecurity.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
         {
+            Scope = OperationalAdministrationScope.Global,
             Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
             Limit = 10
         });
@@ -332,7 +333,7 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
 
     private static AshlarSecurityEventWebhookOutboxOperationRequest CreateOperationRequest(Guid id)
     {
-        return new AshlarSecurityEventWebhookOutboxOperationRequest(id, Security.Actor);
+        return new AshlarSecurityEventWebhookOutboxOperationRequest(id, Security.Actor, OperationalAdministrationScope.Global);
     }
 
     private static AshlarSecurityEventWebhookDelivery CreateDelivery(string endpointName)

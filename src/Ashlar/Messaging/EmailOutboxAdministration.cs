@@ -6,7 +6,7 @@ namespace Ashlar.Messaging;
 /// Provides operator-authorized read and mutating operations for durable email outbox administration.
 /// </summary>
 /// <remarks>
-/// Every operation requires an authenticated operator with authoritative active-session fresh proof, host authorization, and matching audit identity.
+/// Every operation requires explicit global operational scope, an authenticated operator with authoritative active-session fresh proof, host authorization, and matching audit identity.
 /// Implementations never unprotect stored bodies and never return text bodies, HTML bodies, protected body payloads, raw headers, raw metadata, or dispatcher lock owners.
 /// </remarks>
 public interface IEmailOutboxAdministrationService
@@ -14,7 +14,7 @@ public interface IEmailOutboxAdministrationService
     /// <summary>
     /// Searches durable email outbox rows using safe administrator projections.
     /// </summary>
-    /// <param name="request">Paging and status filters for the read-only search.</param>
+    /// <param name="request">Actor, explicit global operational scope, paging, and status filters for the read-only search.</param>
     /// <param name="cancellationToken">A token that can cancel the search before results are returned.</param>
     /// <returns>Matching outbox summaries with body, protected payload, header, metadata, and lock-owner values omitted.</returns>
     Task<EmailOutboxSearchResult> SearchAsync(
@@ -24,7 +24,7 @@ public interface IEmailOutboxAdministrationService
     /// <summary>
     /// Gets one durable email outbox row using a safe administrator projection.
     /// </summary>
-    /// <param name="request">Actor-bound request for the outbox entry.</param>
+    /// <param name="request">Actor-bound request with explicit global operational scope for the outbox entry.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup before a result is returned.</param>
     /// <returns>The matching outbox detail, or <see langword="null" /> when no entry exists.</returns>
     Task<EmailOutboxDetail?> GetAsync(
@@ -34,7 +34,7 @@ public interface IEmailOutboxAdministrationService
     /// <summary>
     /// Clears terminal failure state so a failed email can be claimed by the normal dispatcher.
     /// </summary>
-    /// <param name="request">Outbox entry id and audit context required for the mutation.</param>
+    /// <param name="request">Outbox entry id, actor context, and explicit global operational scope required for the mutation.</param>
     /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
     /// <returns>The stable retry outcome with sensitive recipient and subject metadata suppressed when needed.</returns>
     Task<EmailOutboxOperationResult> RetryAsync(
@@ -44,7 +44,7 @@ public interface IEmailOutboxAdministrationService
     /// <summary>
     /// Marks a terminal failed email as discarded so the normal dispatcher will ignore it.
     /// </summary>
-    /// <param name="request">Outbox entry id and audit context required for the mutation.</param>
+    /// <param name="request">Outbox entry id, actor context, and explicit global operational scope required for the mutation.</param>
     /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
     /// <returns>The stable discard outcome with sensitive recipient and subject metadata suppressed when needed.</returns>
     Task<EmailOutboxOperationResult> DiscardAsync(
@@ -312,7 +312,7 @@ public sealed record EmailOutboxSearchRequest
     /// <summary>Gets the authenticated operator context.</summary>
     public AccountSecurityActorContext Actor { get; init; } = null!;
     /// <summary>Gets the required global operational scope.</summary>
-    public EmailOutboxAdministrationScope Scope { get; init; }
+    public required OperationalAdministrationScope Scope { get; init; }
     /// <summary>
     /// Maximum number of entries that can be requested.
     /// </summary>
@@ -343,16 +343,7 @@ public sealed record EmailOutboxSearchRequest
 /// <param name="Id">The durable email outbox entry id.</param>
 /// <param name="Actor">The authenticated operator context.</param>
 /// <param name="Scope">The required global operational scope.</param>
-public sealed record EmailOutboxDetailRequest(Guid Id, AccountSecurityActorContext Actor, EmailOutboxAdministrationScope Scope);
-
-/// <summary>Explicit scope for global operational email outbox administration.</summary>
-public enum EmailOutboxAdministrationScope
-{
-    /// <summary>No operational scope was supplied.</summary>
-    Unspecified,
-    /// <summary>The unpartitioned operational outbox across all tenant origins.</summary>
-    Global
-}
+public sealed record EmailOutboxDetailRequest(Guid Id, AccountSecurityActorContext Actor, OperationalAdministrationScope Scope);
 
 /// <summary>
 /// Safe email outbox status values exposed to administrators.
@@ -487,7 +478,7 @@ public sealed record EmailOutboxSearchResult(
 public sealed record EmailOutboxOperationRequest(
     Guid Id,
     AccountSecurityActorContext Actor,
-    EmailOutboxAdministrationScope Scope);
+    OperationalAdministrationScope Scope);
 
 /// <summary>
 /// Safe result statuses for manual durable email outbox operations.
@@ -860,10 +851,10 @@ public static class EmailOutboxAdministrationProvider
             cancellationToken).ConfigureAwait(false);
     }
 
-    private static void ValidateActorAndScope(AccountSecurityActorContext actor, EmailOutboxAdministrationScope scope)
+    private static void ValidateActorAndScope(AccountSecurityActorContext actor, OperationalAdministrationScope scope)
     {
         ArgumentNullException.ThrowIfNull(actor);
-        if (scope != EmailOutboxAdministrationScope.Global)
+        if (scope != OperationalAdministrationScope.Global)
             throw new ArgumentException("Email outbox administration requires global operational scope.", nameof(scope));
     }
 
