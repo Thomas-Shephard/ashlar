@@ -102,6 +102,8 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
         else if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
                 securityEvent.UserId ?? Guid.Empty, AccountSecurityOperation.ReadSecurityEvent, cancellationToken))
             securityEvent = null;
+        if (securityEvent is not null)
+            await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadSecurityEvent);
         return securityEvent == null
             ? Result.Failure<SecurityEventSummary>(AshlarFailureCodes.SecurityEventNotFound, "Security event was not found.")
             : Result.Success(securityEvent);

@@ -144,12 +144,14 @@ internal sealed class SecurityEventAdministrationServiceTests
     [Test]
     public async Task GetSecurityEventAsyncMapsMissingEventSafely()
     {
-        var result = await CreateService().GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(Guid.NewGuid(), TenantContext.Global));
+        var service = CreateService();
+        var result = await service.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(Guid.NewGuid(), TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.SecurityEventNotFound));
+            Assert.That(service.Sink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
         }
     }
 
@@ -171,15 +173,50 @@ internal sealed class SecurityEventAdministrationServiceTests
     }
 
     [Test]
+    public async Task GetSecurityEventAsyncDurablyAuditsSuccessfulReadExactlyOnce()
+    {
+        var expected = CreateSummary() with { UserId = null };
+        var service = CreateService(new RecordingSecurityEventAdministrationRepository { GetResult = expected });
+
+        var result = await service.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(expected.EventId, TenantContext.Global));
+
+        var audit = service.Sink.Events.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(audit.Outcome, Is.EqualTo(SecurityEventOutcomes.Success));
+            Assert.That(audit.Properties?["operation"], Is.EqualTo(AccountSecurityOperation.ReadSecurityEvent.ToString()));
+        }
+    }
+
+    [Test]
+    public void GetSecurityEventAsyncFailsClosedWhenSuccessAuditFails()
+    {
+        var boundary = new AdminReadTestBoundary(DateTimeOffset.UtcNow);
+        var expected = CreateSummary() with { UserId = null };
+        var service = new SecurityEventAdministrationService(
+            new RecordingSecurityEventAdministrationRepository { GetResult = expected }, boundary.Sessions,
+            boundary.Authorizer, new ThrowingPersistentSink(), boundary.TimeProvider);
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.GetSecurityEventAsync(
+            new SecurityEventAdministrationDetailRequest(expected.EventId, TenantContext.Global, Actor: boundary.Actor)));
+    }
+
+    [Test]
     public async Task GetSecurityEventAsyncMapsOutOfScopeEventSafely()
     {
         var tenantId = Guid.NewGuid();
         var expected = CreateSummary() with { TenantId = tenantId };
         var repository = new RecordingSecurityEventAdministrationRepository { GetResult = expected };
 
-        var result = await CreateService(repository).GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(expected.EventId, TenantContext.Global));
+        var service = CreateService(repository);
+        var result = await service.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(expected.EventId, TenantContext.Global));
 
-        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.SecurityEventNotFound));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.SecurityEventNotFound));
+            Assert.That(service.Sink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+        }
     }
 
     [Test]
@@ -235,11 +272,13 @@ internal sealed class SecurityEventAdministrationServiceTests
         var boundary = new AdminReadTestBoundary(DateTimeOffset.UtcNow);
         return new AuthorizedSecurityEventAdministrationService(new SecurityEventAdministrationService(
             repository ?? new RecordingSecurityEventAdministrationRepository(), boundary.Sessions,
-            boundary.Authorizer, boundary.Sink, boundary.TimeProvider), boundary.Actor);
+            boundary.Authorizer, boundary.Sink, boundary.TimeProvider), boundary.Actor, boundary.Sink);
     }
 
-    private sealed class AuthorizedSecurityEventAdministrationService(SecurityEventAdministrationService service, AccountSecurityActorContext actor)
+    private sealed class AuthorizedSecurityEventAdministrationService(SecurityEventAdministrationService service, AccountSecurityActorContext actor,
+        AdminReadTestBoundary.RecordingSink sink)
     {
+        public AdminReadTestBoundary.RecordingSink Sink { get; } = sink;
         public Task<Result<SecurityEventSearchResult>> SearchSecurityEventsAsync(SearchSecurityEventsRequest request) =>
             service.SearchSecurityEventsAsync(request is null ? null! : request with { Actor = actor });
         public Task<Result<SecurityEventSummary>> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request) =>
@@ -286,5 +325,11 @@ internal sealed class SecurityEventAdministrationServiceTests
             LastGetRequest = request;
             return Task.FromResult(GetResult);
         }
+    }
+
+    private sealed class ThrowingPersistentSink : IPersistentSecurityEventSink
+    {
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Audit failed.");
     }
 }
