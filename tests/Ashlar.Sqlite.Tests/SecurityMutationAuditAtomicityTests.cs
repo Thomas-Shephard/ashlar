@@ -232,7 +232,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>().ResetBucketAsync(
-                actor, AuthenticationRateLimitAdministrationScope.Global,
+                actor, OperationalAdministrationScope.Global,
                 new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, bucket.Purpose, actor.Audit)));
 
         var stored = await provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>().GetBucketAsync(

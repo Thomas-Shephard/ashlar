@@ -25,12 +25,12 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
         var failed = await admin.SearchAsync(new EmailOutboxSearchRequest
         {
             Actor = actor,
-            Scope = EmailOutboxAdministrationScope.Global,
+            Scope = OperationalAdministrationScope.Global,
             Statuses = new HashSet<EmailOutboxStatus> { EmailOutboxStatus.Failed },
             Limit = 10
         });
         var failedSummary = failed.Items.Single();
-        var failedDetail = await admin.GetAsync(new(failedSummary.Id, actor, EmailOutboxAdministrationScope.Global));
+        var failedDetail = await admin.GetAsync(new(failedSummary.Id, actor, OperationalAdministrationScope.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -61,11 +61,11 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
         var admin = GetEmailOutboxAdministration(scope.ServiceProvider);
         var actor = await CreateActorAsync(scope.ServiceProvider);
 
-        var detail = await admin.GetAsync(new(sensitive, actor, EmailOutboxAdministrationScope.Global));
+        var detail = await admin.GetAsync(new(sensitive, actor, OperationalAdministrationScope.Global));
         var failed = await admin.SearchAsync(new EmailOutboxSearchRequest
         {
             Actor = actor,
-            Scope = EmailOutboxAdministrationScope.Global,
+            Scope = OperationalAdministrationScope.Global,
             Statuses = new HashSet<EmailOutboxStatus> { EmailOutboxStatus.Failed },
             Limit = 10
         });
@@ -180,11 +180,11 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
     }
 
     private static EmailOutboxSearchRequest CreateSearchRequest(AccountSecurityActorContext actor) =>
-        new() { Actor = actor, Scope = EmailOutboxAdministrationScope.Global };
+        new() { Actor = actor, Scope = OperationalAdministrationScope.Global };
 
     private static EmailOutboxOperationRequest CreateOperationRequest(Guid id, AccountSecurityActorContext actor)
     {
-        return new EmailOutboxOperationRequest(id, actor, EmailOutboxAdministrationScope.Global);
+        return new EmailOutboxOperationRequest(id, actor, OperationalAdministrationScope.Global);
     }
 
     private static async Task<AccountSecurityActorContext> CreateActorAsync(

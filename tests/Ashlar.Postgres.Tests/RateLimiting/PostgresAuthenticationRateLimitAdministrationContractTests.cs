@@ -3,7 +3,6 @@ using Microsoft.Extensions.Time.Testing;
 using Ashlar.Testing;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
-using Ashlar.Identity.Models.Administration;
 
 namespace Ashlar.Postgres.Tests.RateLimiting;
 
@@ -68,7 +67,7 @@ internal sealed class PostgresAuthenticationRateLimitAdministrationContractTests
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await services.GetRequiredService<IAuthenticationRateLimitAdministrationService>().ResetBucketAsync(
                 actor,
-                AuthenticationRateLimitAdministrationScope.Global,
+                OperationalAdministrationScope.Global,
                 new ResetAuthenticationRateLimitBucketRequest(
                     bucket.BucketId,
                     bucket.Purpose,

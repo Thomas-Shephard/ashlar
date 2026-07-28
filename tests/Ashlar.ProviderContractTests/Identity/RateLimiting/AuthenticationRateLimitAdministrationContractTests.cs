@@ -35,13 +35,13 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "login", Key = activeKey }, rule);
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "reset", Key = otherPurposeKey }, rule);
 
-        var login = await administration.SearchBucketsAsync(actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Purpose = "login" });
-        var blocked = await administration.SearchBucketsAsync(actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
+        var login = await administration.SearchBucketsAsync(actor, OperationalAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Purpose = "login" });
+        var blocked = await administration.SearchBucketsAsync(actor, OperationalAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
         {
             Purpose = "login",
             Status = AuthenticationRateLimitBucketStatus.Blocked
         });
-        var active = await administration.SearchBucketsAsync(actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
+        var active = await administration.SearchBucketsAsync(actor, OperationalAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
         {
             Purpose = "login",
             Status = AuthenticationRateLimitBucketStatus.Active
@@ -70,7 +70,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "browse-one", Key = UniqueKey() }, rule);
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "browse-two", Key = UniqueKey() }, rule);
 
-        var result = await administration.SearchBucketsAsync(actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Limit = 10 });
+        var result = await administration.SearchBucketsAsync(actor, OperationalAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Limit = 10 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -94,7 +94,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "paging", Key = UniqueKey() }, rule);
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "paging", Key = UniqueKey() }, rule);
 
-        var filtered = await administration.SearchBucketsAsync(actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
+        var filtered = await administration.SearchBucketsAsync(actor, OperationalAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
         {
             Purpose = "paging",
             WindowStartFrom = secondStart,
@@ -103,7 +103,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
             ExpiresTo = secondStart + rule.Window + TimeTravelTolerance,
             Limit = 1
         });
-        var secondPage = await administration.SearchBucketsAsync(actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
+        var secondPage = await administration.SearchBucketsAsync(actor, OperationalAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
         {
             Purpose = "paging",
             WindowStartFrom = secondStart,
@@ -132,7 +132,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         await limiter.CheckAsync(new RateLimitAttempt { Purpose = "expired", Key = UniqueKey() }, rule);
         AdvanceTime(TimeTravelDuration(TimeSpan.FromMinutes(2)));
 
-        var expired = await administration.SearchBucketsAsync(actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
+        var expired = await administration.SearchBucketsAsync(actor, OperationalAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
         {
             Purpose = "expired",
             Status = AuthenticationRateLimitBucketStatus.Expired,
@@ -159,10 +159,10 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
             new RateLimitAttempt { Purpose = "detail", Key = rawKey },
             new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
 
-        var search = await administration.SearchBucketsAsync(actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" });
+        var search = await administration.SearchBucketsAsync(actor, OperationalAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" });
         var summary = search.Value!.Items.Single();
-        var lookup = await administration.GetBucketAsync(actor, AuthenticationRateLimitAdministrationScope.Global, new AuthenticationRateLimitBucketLookupRequest(summary.BucketId, "detail"));
-        var mismatch = await administration.GetBucketAsync(actor, AuthenticationRateLimitAdministrationScope.Global, new AuthenticationRateLimitBucketLookupRequest("not-the-bucket", "detail"));
+        var lookup = await administration.GetBucketAsync(actor, OperationalAdministrationScope.Global, new AuthenticationRateLimitBucketLookupRequest(summary.BucketId, "detail"));
+        var mismatch = await administration.GetBucketAsync(actor, OperationalAdministrationScope.Global, new AuthenticationRateLimitBucketLookupRequest("not-the-bucket", "detail"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -190,13 +190,13 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         await limiter.CheckAsync(
             new RateLimitAttempt { Purpose = "reset", Key = rawKey },
             new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(10) });
-        var bucket = (await administration.SearchBucketsAsync(actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Purpose = "reset" })).Value!.Items.Single();
+        var bucket = (await administration.SearchBucketsAsync(actor, OperationalAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Purpose = "reset" })).Value!.Items.Single();
 
-        var reset = await mutations.ResetBucketAsync(mutationActor, AuthenticationRateLimitAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset", mutationActor.Audit));
-        var missing = await mutations.ResetBucketAsync(mutationActor, AuthenticationRateLimitAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset", mutationActor.Audit));
+        var reset = await mutations.ResetBucketAsync(mutationActor, OperationalAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset", mutationActor.Audit));
+        var missing = await mutations.ResetBucketAsync(mutationActor, OperationalAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset", mutationActor.Audit));
         var providerMissing = await scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>()
             .ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset", mutationActor.Audit));
-        var afterReset = await administration.GetBucketAsync(actor, AuthenticationRateLimitAdministrationScope.Global, new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "reset"));
+        var afterReset = await administration.GetBucketAsync(actor, OperationalAdministrationScope.Global, new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "reset"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -228,7 +228,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
             new RateLimitAttempt { Purpose = "safe", Key = sensitive },
             new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
 
-        var search = await administration.SearchBucketsAsync(actor, AuthenticationRateLimitAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Purpose = "safe" });
+        var search = await administration.SearchBucketsAsync(actor, OperationalAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Purpose = "safe" });
         var bucket = search.Value!.Items.Single();
 
         using (Assert.EnterMultipleScope())

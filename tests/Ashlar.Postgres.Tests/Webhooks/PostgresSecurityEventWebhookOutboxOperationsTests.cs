@@ -251,7 +251,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
 
     private static AshlarSecurityEventWebhookOutboxOperationRequest Request(Guid id)
     {
-        return new AshlarSecurityEventWebhookOutboxOperationRequest(id, Security.Actor);
+        return new AshlarSecurityEventWebhookOutboxOperationRequest(id, Security.Actor, OperationalAdministrationScope.Global);
     }
 
     private async Task<Guid> InsertRowAsync(

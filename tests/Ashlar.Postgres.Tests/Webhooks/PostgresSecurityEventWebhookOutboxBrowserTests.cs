@@ -62,7 +62,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
         await InsertDiscardedRowAsync();
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 10 });
+            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Scope = OperationalAdministrationScope.Global, Limit = 10 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -98,7 +98,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
 
         var result = await browser.ListAsync(
             security.Actor,
-            new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 10 });
+            new AshlarSecurityEventWebhookOutboxBrowseRequest { Scope = OperationalAdministrationScope.Global, Limit = 10 });
 
         Assert.That(result.Deliveries, Is.Empty);
     }
@@ -112,6 +112,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
             .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
+                Scope = OperationalAdministrationScope.Global,
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
             });
@@ -127,11 +128,12 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
         var failed = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
             .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
+                Scope = OperationalAdministrationScope.Global,
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
             });
         var page = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 2, Offset = 1 });
+            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Scope = OperationalAdministrationScope.Global, Limit = 2, Offset = 1 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -154,6 +156,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
             .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
+                Scope = OperationalAdministrationScope.Global,
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
             });
@@ -175,6 +178,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
             .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
+                Scope = OperationalAdministrationScope.Global,
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
             });
@@ -190,6 +194,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
             .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
+                Scope = OperationalAdministrationScope.Global,
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
             });

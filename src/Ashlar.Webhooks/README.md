@@ -48,6 +48,8 @@ services.AddAshlarPostgresSecurityEventWebhookOutbox();
 
 Outbox enqueue runs inside the protected Ashlar transaction when one is active. Enqueue failures fail the protected operation, and rollback abandons the protected mutation, audit record, and webhook outbox row together.
 
+Webhook-outbox browsing, retry, and discard are global operational administration and require an explicit `OperationalAdministrationScope.Global` request scope.
+
 ## Testing A Configured Endpoint
 
 Applications can test one configured security event webhook endpoint without recording a real security event and without writing to a durable outbox:

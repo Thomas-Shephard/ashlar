@@ -4,18 +4,19 @@ using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.Abstractions.Transactions;
 using Ashlar.Identity.Features.Administration;
 using Ashlar.Identity.Models.AccountSecurity;
+using Ashlar.Identity.Models.Administration;
 
 namespace Ashlar.Webhooks.SecurityEvents;
 
 /// <summary>
-/// Provides safe state-changing operations for failed durable security event webhook outbox deliveries.
+/// Provides global operational administration operations for failed durable security event webhook outbox deliveries.
 /// </summary>
 public interface IAshlarSecurityEventWebhookOutboxOperations
 {
     /// <summary>
     /// Makes a terminal failed delivery dispatchable immediately.
     /// </summary>
-    /// <param name="request">Delivery id and authenticated actor context required for the retry mutation.</param>
+    /// <param name="request">Delivery id, authenticated actor context, and explicit global operational scope required for the retry mutation.</param>
     /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
     /// <returns>The stable retry outcome with only header-safe event metadata.</returns>
     Task<AshlarSecurityEventWebhookOutboxOperationResult> RetryAsync(
@@ -25,7 +26,7 @@ public interface IAshlarSecurityEventWebhookOutboxOperations
     /// <summary>
     /// Marks a terminal failed delivery as discarded.
     /// </summary>
-    /// <param name="request">Delivery id and authenticated actor context required for the discard mutation.</param>
+    /// <param name="request">Delivery id, authenticated actor context, and explicit global operational scope required for the discard mutation.</param>
     /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
     /// <returns>The stable discard outcome with only header-safe event metadata.</returns>
     Task<AshlarSecurityEventWebhookOutboxOperationResult> DiscardAsync(
@@ -34,13 +35,15 @@ public interface IAshlarSecurityEventWebhookOutboxOperations
 }
 
 /// <summary>
-/// Request for a manual durable security event webhook outbox operation.
+/// Request for a global operational administration operation on the durable security event webhook outbox.
 /// </summary>
 /// <param name="DeliveryId">The durable outbox delivery id.</param>
 /// <param name="Actor">The authenticated actor context.</param>
+/// <param name="Scope">The explicit global operational administration scope.</param>
 public sealed record AshlarSecurityEventWebhookOutboxOperationRequest(
     Guid DeliveryId,
-    AccountSecurityActorContext Actor);
+    AccountSecurityActorContext Actor,
+    OperationalAdministrationScope Scope);
 
 /// <summary>
 /// Safe result statuses for manual durable security event webhook outbox operations.
@@ -256,6 +259,7 @@ internal static class AshlarSecurityEventWebhookOutboxOperations
     public static void ValidateRequest(AshlarSecurityEventWebhookOutboxOperationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
+        AshlarSecurityEventWebhookOutboxBrowser.ValidateScope(request.Scope);
         if (request.DeliveryId == Guid.Empty)
         {
             throw new ArgumentException("Delivery ID cannot be empty.", nameof(request));

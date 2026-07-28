@@ -254,8 +254,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
                 _provider.GetRequiredService<ISecurityEventSink>(), _provider.GetRequiredService<AshlarDurableTransactionProvider>(),
                 security.Sessions, security.Authorizer, security.AuditSink);
 
-            await operations.RetryAsync(new AshlarSecurityEventWebhookOutboxOperationRequest(retryId, security.Actor));
-            await operations.DiscardAsync(new AshlarSecurityEventWebhookOutboxOperationRequest(discardId, security.Actor));
+            await operations.RetryAsync(new AshlarSecurityEventWebhookOutboxOperationRequest(retryId, security.Actor, OperationalAdministrationScope.Global));
+            await operations.DiscardAsync(new AshlarSecurityEventWebhookOutboxOperationRequest(discardId, security.Actor, OperationalAdministrationScope.Global));
 
             using (Assert.EnterMultipleScope())
             {
@@ -284,7 +284,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
 
     private static AshlarSecurityEventWebhookOutboxOperationRequest Request(Guid id)
     {
-        return new AshlarSecurityEventWebhookOutboxOperationRequest(id, Security.Actor);
+        return new AshlarSecurityEventWebhookOutboxOperationRequest(id, Security.Actor, OperationalAdministrationScope.Global);
     }
 
     private async Task<Guid> InsertRowAsync(

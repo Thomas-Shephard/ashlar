@@ -12,13 +12,13 @@ internal sealed class AuthenticationRateLimitAdministrationReader(IAuthenticatio
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly AccountSecurityOperationBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
 
-    public async Task<Result<AuthenticationRateLimitBucketSearchResult>> SearchBucketsAsync(AccountSecurityActorContext actor, AuthenticationRateLimitAdministrationScope scope, SearchAuthenticationRateLimitBucketsRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<AuthenticationRateLimitBucketSearchResult>> SearchBucketsAsync(AccountSecurityActorContext actor, OperationalAdministrationScope scope, SearchAuthenticationRateLimitBucketsRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (!AuthenticationRateLimitAdministrationService.TryValidateSearchRequest(request, out var failure)) return failure;
         if (request.Offset < 0) return Result.Failure<AuthenticationRateLimitBucketSearchResult>(AshlarFailureCodes.ValidationError, "Offset cannot be negative.");
         if (request.Limit < 1) return Result.Failure<AuthenticationRateLimitBucketSearchResult>(AshlarFailureCodes.ValidationError, "Limit must be greater than zero.");
-        if (scope != AuthenticationRateLimitAdministrationScope.Global)
+        if (scope != OperationalAdministrationScope.Global)
             return Result.Failure<AuthenticationRateLimitBucketSearchResult>(AshlarFailureCodes.ValidationError, "Rate-limit administration requires global operational scope.");
         if (!await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
                 AccountSecurityOperation.SearchAuthenticationRateLimitBuckets, cancellationToken)) return Result.Failure<AuthenticationRateLimitBucketSearchResult>(AshlarFailureCodes.ValidationError);
@@ -34,11 +34,11 @@ internal sealed class AuthenticationRateLimitAdministrationReader(IAuthenticatio
         return Result.Success(new AuthenticationRateLimitBucketSearchResult(buckets.Take(limit).ToList().AsReadOnly(), limit, request.Offset, buckets.Count > limit));
     }
 
-    public async Task<Result<AuthenticationRateLimitBucketSummary>> GetBucketAsync(AccountSecurityActorContext actor, AuthenticationRateLimitAdministrationScope scope, AuthenticationRateLimitBucketLookupRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<AuthenticationRateLimitBucketSummary>> GetBucketAsync(AccountSecurityActorContext actor, OperationalAdministrationScope scope, AuthenticationRateLimitBucketLookupRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (!AuthenticationRateLimitAdministrationService.TryValidateLookupRequest(request, out var failure)) return failure;
-        if (scope != AuthenticationRateLimitAdministrationScope.Global)
+        if (scope != OperationalAdministrationScope.Global)
             return Result.Failure<AuthenticationRateLimitBucketSummary>(AshlarFailureCodes.ValidationError, "Rate-limit administration requires global operational scope.");
         if (!await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
                 AccountSecurityOperation.ReadAuthenticationRateLimitBucket, cancellationToken)) return Result.Failure<AuthenticationRateLimitBucketSummary>(AshlarFailureCodes.ValidationError);

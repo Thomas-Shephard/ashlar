@@ -3,19 +3,20 @@ using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.Features.Administration;
 using Ashlar.Identity.Models.AccountSecurity;
+using Ashlar.Identity.Models.Administration;
 
 namespace Ashlar.Webhooks.SecurityEvents;
 
 /// <summary>
-/// Provides safe read-only browsing for durable security event webhook outbox deliveries.
+/// Provides global operational administration browsing for durable security event webhook outbox deliveries.
 /// </summary>
 public interface IAshlarSecurityEventWebhookOutboxBrowser
 {
     /// <summary>
-    /// Lists safe security event webhook outbox delivery summaries.
+    /// Lists safe global security event webhook outbox delivery summaries.
     /// </summary>
     /// <param name="actor">The authenticated and proof-bound actor.</param>
-    /// <param name="request">Paging and status filters for the read-only browse operation.</param>
+    /// <param name="request">Explicit global operational scope, paging, and status filters for the read-only browse operation.</param>
     /// <param name="cancellationToken">A token that can cancel the browse operation before results are returned.</param>
     /// <returns>Matching outbox delivery summaries with destination URI, body, headers, and lock-owner values omitted.</returns>
     Task<AshlarSecurityEventWebhookOutboxBrowseResult> ListAsync(
@@ -71,10 +72,13 @@ public abstract class AshlarSecurityEventWebhookOutboxBrowserBase(
 }
 
 /// <summary>
-/// Request for safe security event webhook outbox browsing.
+/// Request for global operational administration browsing of the security event webhook outbox.
 /// </summary>
 public sealed record AshlarSecurityEventWebhookOutboxBrowseRequest
 {
+    /// <summary>Gets the explicit global operational administration scope.</summary>
+    public required OperationalAdministrationScope Scope { get; init; }
+
     /// <summary>
     /// Maximum number of deliveries that can be requested.
     /// </summary>
@@ -208,6 +212,7 @@ public static class AshlarSecurityEventWebhookOutboxBrowser
     public static void ValidateRequest(AshlarSecurityEventWebhookOutboxBrowseRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ValidateScope(request.Scope);
         if (request.Limit < 1)
         {
             throw new ArgumentOutOfRangeException(nameof(request), request.Limit, "Limit must be greater than zero.");
@@ -227,6 +232,14 @@ public static class AshlarSecurityEventWebhookOutboxBrowser
         if (unsupportedStatus.HasValue)
         {
             throw new ArgumentOutOfRangeException(nameof(request), unsupportedStatus.Value, "Status is not supported.");
+        }
+    }
+
+    internal static void ValidateScope(OperationalAdministrationScope scope)
+    {
+        if (scope != OperationalAdministrationScope.Global)
+        {
+            throw new ArgumentOutOfRangeException(nameof(scope), scope, "Global webhook outbox administration scope is required.");
         }
     }
 
