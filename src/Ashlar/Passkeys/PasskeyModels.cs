@@ -8,7 +8,8 @@ namespace Ashlar.Passkeys;
 /// </summary>
 /// <param name="ActorUserId">Authenticated user performing the self-service operation. This user owns the pending passkey registration.</param>
 /// <param name="DisplayName">The passkey display name.</param>
-public sealed record StartPasskeyRegistrationRequest(Guid ActorUserId, string DisplayName)
+/// <param name="Audit">Required audit metadata whose actor must match <paramref name="ActorUserId" />. Do not include proof material or browser ceremony payloads.</param>
+public sealed record StartPasskeyRegistrationRequest(Guid ActorUserId, string DisplayName, AuditContext Audit)
 {
     /// <summary>Fresh MFA proof for the current authenticated session. Obtain it from <c>StepUpAuthenticationService.CreateFreshMfaProof</c>; do not bind it from request JSON.</summary>
     public FreshMfaVerificationProof? FreshMfaProof { get; init; }
@@ -18,8 +19,6 @@ public sealed record StartPasskeyRegistrationRequest(Guid ActorUserId, string Di
     public Guid? CurrentSessionId { get; init; }
     /// <summary>Tenant scope for the registration. Omit or use <see cref="TenantContext.Global" /> for global users; this is not an all-tenant scope.</summary>
     public TenantContext? Tenant { get; init; }
-    /// <summary>Audit metadata recorded with the registration attempt. Do not include proof material or browser ceremony payloads.</summary>
-    public AuditContext? Audit { get; init; }
 }
 
 /// <summary>
@@ -29,7 +28,8 @@ public sealed record StartPasskeyRegistrationRequest(Guid ActorUserId, string Di
 /// <param name="CredentialResponse">The browser credential response.</param>
 /// <param name="DisplayName">The optional passkey display name.</param>
 /// <param name="ActorUserId">Authenticated user completing the self-service operation. This user must match the challenge and proof.</param>
-public sealed record CompletePasskeyRegistrationRequest(Guid ChallengeId, JsonElement CredentialResponse, string? DisplayName, Guid ActorUserId)
+/// <param name="Audit">Required audit metadata whose actor must match <paramref name="ActorUserId" />. Do not include proof material or browser ceremony payloads.</param>
+public sealed record CompletePasskeyRegistrationRequest(Guid ChallengeId, JsonElement CredentialResponse, string? DisplayName, Guid ActorUserId, AuditContext Audit)
 {
     /// <summary>Fresh MFA proof for the current authenticated session. Obtain it from <c>StepUpAuthenticationService.CreateFreshMfaProof</c>; do not bind it from request JSON.</summary>
     public FreshMfaVerificationProof? FreshMfaProof { get; init; }
@@ -39,8 +39,6 @@ public sealed record CompletePasskeyRegistrationRequest(Guid ChallengeId, JsonEl
     public Guid? CurrentSessionId { get; init; }
     /// <summary>Tenant scope that must match the challenge, proof, and user. Omit or use <see cref="TenantContext.Global" /> for global users only.</summary>
     public TenantContext? Tenant { get; init; }
-    /// <summary>Audit metadata recorded with the completion attempt. Do not include proof material or browser ceremony payloads.</summary>
-    public AuditContext? Audit { get; init; }
 }
 /// <summary>
 /// Represents a request to start passkey authentication.
