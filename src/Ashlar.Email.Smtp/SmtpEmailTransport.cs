@@ -11,6 +11,20 @@ namespace Ashlar.Email.Smtp;
 /// </summary>
 public class SmtpEmailTransport : IEmailTransport
 {
+    private static readonly HashSet<string> ReservedHeaders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "From",
+        "Sender",
+        "To",
+        "Subject",
+        "Reply-To",
+        "Cc",
+        "Bcc",
+        "Date",
+        "Return-Path",
+        "Alternate-Recipient"
+    };
+
     private readonly SmtpEmailOptions _options;
 
     /// <summary>
@@ -38,6 +52,16 @@ public class SmtpEmailTransport : IEmailTransport
     {
         var host = _options.Host;
         using var mimeMessage = CreateMimeMessage(message);
+        var sender = mimeMessage.From.Mailboxes.Single();
+        var recipients = mimeMessage.To.Mailboxes
+            .Concat(mimeMessage.Cc.Mailboxes)
+            .Concat(mimeMessage.Bcc.Mailboxes)
+            .DistinctBy(mailbox => mailbox.Address, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (recipients.Length == 0)
+        {
+            throw new InvalidOperationException("At least one recipient address must be provided.");
+        }
 
         using var client = CreateSmtpClient();
         client.Timeout = (int)_options.Timeout.TotalMilliseconds;
@@ -52,7 +76,7 @@ public class SmtpEmailTransport : IEmailTransport
                 await client.AuthenticateAsync(username, _options.Password, cancellationToken);
             }
 
-            await client.SendAsync(mimeMessage, cancellationToken);
+            await client.SendAsync(mimeMessage, sender, recipients, cancellationToken);
             await client.DisconnectAsync(true, cancellationToken);
         }
         catch (OperationCanceledException)
@@ -85,7 +109,7 @@ public class SmtpEmailTransport : IEmailTransport
             throw new InvalidOperationException("A 'From' address must be provided either in the EmailMessage or in SmtpEmailOptions.");
         }
 
-        mimeMessage.From.AddRange(InternetAddressList.Parse(from));
+        mimeMessage.From.Add(MailboxAddress.Parse(from));
         mimeMessage.To.AddRange(InternetAddressList.Parse(message.To));
 
         if (!string.IsNullOrWhiteSpace(message.ReplyTo))
@@ -122,7 +146,7 @@ public class SmtpEmailTransport : IEmailTransport
         {
             foreach (var header in message.Headers)
             {
-                if (IsReservedHeader(header.Key))
+                if (IsReservedHeader(header.Key) || !_options.AllowedCustomHeaders.Contains(header.Key))
                 {
                     continue;
                 }
@@ -135,11 +159,5 @@ public class SmtpEmailTransport : IEmailTransport
     }
 
     private static bool IsReservedHeader(string name) =>
-        name.Equals("From", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("To", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("Subject", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("Reply-To", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("Cc", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("Bcc", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("Date", StringComparison.OrdinalIgnoreCase);
+        ReservedHeaders.Contains(name) || name.StartsWith("Resent-", StringComparison.OrdinalIgnoreCase);
 }
