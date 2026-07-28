@@ -43,6 +43,12 @@ public sealed class SmtpEmailOptions
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
+    /// Gets the custom message headers permitted for delivery. Empty by default.
+    /// SMTP routing and reserved <c>Resent-</c> headers are always ignored.
+    /// </summary>
+    public ISet<string> AllowedCustomHeaders { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Validates SMTP email options.
     /// </summary>
     /// <param name="options">The options to validate.</param>
