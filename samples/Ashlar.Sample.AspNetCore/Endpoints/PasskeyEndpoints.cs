@@ -49,11 +49,10 @@ internal static class PasskeyEndpoints
         var userId = user.GetAshlarUserId();
         if (!httpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return null;
 
-        var request = new StartPasskeyRegistrationRequest(userId, displayName ?? "Passkey")
+        var request = new StartPasskeyRegistrationRequest(userId, displayName ?? "Passkey", httpContext.ToAuditContext())
         {
             CurrentSessionId = sessionId,
-            Tenant = httpContext.ToTenantContext(),
-            Audit = httpContext.ToAuditContext()
+            Tenant = httpContext.ToTenantContext()
         };
 
         var proof = await CreateRegistrationProofAsync(accountSecurity, stepUp, userId, httpContext, cancellationToken);
@@ -69,11 +68,10 @@ internal static class PasskeyEndpoints
         var userId = user.GetAshlarUserId();
         if (!httpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return null;
 
-        var request = new CompletePasskeyRegistrationRequest(input.ChallengeId, input.CredentialResponse, input.DisplayName, userId)
+        var request = new CompletePasskeyRegistrationRequest(input.ChallengeId, input.CredentialResponse, input.DisplayName, userId, httpContext.ToAuditContext())
         {
             CurrentSessionId = sessionId,
-            Tenant = httpContext.ToTenantContext(),
-            Audit = httpContext.ToAuditContext()
+            Tenant = httpContext.ToTenantContext()
         };
 
         var proof = await CreateRegistrationProofAsync(accountSecurity, stepUp, userId, httpContext, cancellationToken);

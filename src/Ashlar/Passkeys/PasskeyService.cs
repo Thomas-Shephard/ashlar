@@ -87,6 +87,11 @@ internal sealed class PasskeyService : IPasskeyService
     public async Task<PasskeyCeremonyOptions> StartRegistrationAsync(StartPasskeyRegistrationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (!AuditActorMatches(request.Audit, request.ActorUserId))
+        {
+            throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Audit actor must match the authenticated actor.");
+        }
+
         var tenant = request.Tenant ?? TenantContext.Global;
         var user = await GetAvailableRegistrationUserAsync(request.ActorUserId, tenant, cancellationToken);
         var credentials = await _credentials.ListCredentialsAsync(request.ActorUserId, cancellationToken);
@@ -128,6 +133,11 @@ internal sealed class PasskeyService : IPasskeyService
     public async Task<Result> CompleteRegistrationAsync(CompletePasskeyRegistrationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (!AuditActorMatches(request.Audit, request.ActorUserId))
+        {
+            return Result.Failure(AshlarFailureCodes.ValidationError, "Audit actor must match the authenticated actor.");
+        }
+
         var challenge = await GetChallengeAsync(request.ChallengeId, RegistrationPurpose, cancellationToken);
         if (challenge == null || challenge.UserId == null)
         {
@@ -610,11 +620,7 @@ internal sealed class PasskeyService : IPasskeyService
     private async Task<AshlarFailureCode?> ValidateManagementBoundaryAsync(Guid actorUserId, TenantContext tenant, Guid? currentSessionId, FreshMfaVerificationProof? proof, AuditContext? audit, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(tenant);
-        if (audit == null)
-        {
-            return AshlarFailureCodes.ValidationError;
-        }
-        if (audit.ActorUserId is null || audit.ActorUserId.Value != actorUserId)
+        if (!AuditActorMatches(audit, actorUserId))
         {
             return AshlarFailureCodes.ValidationError;
         }
@@ -626,6 +632,9 @@ internal sealed class PasskeyService : IPasskeyService
             ? null
             : AshlarFailureCodes.UserNotFoundOrUnavailable;
     }
+
+    private static bool AuditActorMatches(AuditContext? audit, Guid actorUserId) =>
+        audit?.ActorUserId == actorUserId;
 
     private async Task<Result<UserCredential>> FindManagedPasskeyAsync(
         Guid actorUserId,

@@ -106,12 +106,33 @@ internal sealed class PasskeyServiceTests
         }
     }
 
+    [TestCase(null)]
+    [TestCase(false)]
+    [TestCase(true)]
+    public void StartRegistrationAsyncShouldRejectInvalidAuditActorBeforeChallengeOrAudit(bool? mismatched)
+    {
+        var actorUserId = Guid.NewGuid();
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var events = new RecordingSecurityEventSink();
+        var service = CreateVerifiedPasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object,
+            challenges.Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(securityEventSink: events));
+        var audit = mismatched.HasValue ? new AuditContext(mismatched.Value ? Guid.NewGuid() : null) : null!;
+        var request = new StartPasskeyRegistrationRequest(actorUserId, "Laptop", audit);
+
+        var exception = Assert.ThrowsAsync<AshlarOperationException>(() => service.StartRegistrationAsync(request));
+
+        Assert.That(exception!.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+        challenges.Verify(r => r.CreateAsync(It.IsAny<PasskeyChallenge>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.That(events.Events, Is.Empty);
+    }
+
     [Test]
     public void StartRegistrationAsyncShouldThrowWhenUserIsMissing()
     {
         var service = CreateVerifiedPasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+        var userId = Guid.NewGuid();
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => service.StartRegistrationAsync(new StartPasskeyRegistrationRequest(Guid.NewGuid(), "Laptop")));
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.StartRegistrationAsync(new StartPasskeyRegistrationRequest(userId, "Laptop", new AuditContext(userId))));
     }
 
     [Test]
@@ -120,6 +141,28 @@ internal sealed class PasskeyServiceTests
         var service = CreateVerifiedPasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies());
 
         Assert.ThrowsAsync<ArgumentNullException>(() => service.CompleteRegistrationAsync(null!));
+    }
+
+    [TestCase(null)]
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task CompleteRegistrationAsyncShouldRejectInvalidAuditActorBeforeMutationOrAudit(bool? mismatched)
+    {
+        var actorUserId = Guid.NewGuid();
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        var events = new RecordingSecurityEventSink();
+        var service = CreateVerifiedPasskeyService(new Mock<IUserRepository>().Object, credentials.Object,
+            challenges.Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(securityEventSink: events));
+        var audit = mismatched.HasValue ? new AuditContext(mismatched.Value ? Guid.NewGuid() : null) : null!;
+        var request = new CompletePasskeyRegistrationRequest(Guid.NewGuid(), JsonDocument.Parse("{}").RootElement, null, actorUserId, audit);
+
+        var result = await service.CompleteRegistrationAsync(request);
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+        challenges.Verify(r => r.ConsumeAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        credentials.Verify(r => r.CreateOrReplaceCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.That(events.Events, Is.Empty);
     }
 
     [Test]
@@ -147,7 +190,7 @@ internal sealed class PasskeyServiceTests
         repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies());
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => service.StartRegistrationAsync(new StartPasskeyRegistrationRequest(user.Id, "Laptop")));
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.StartRegistrationAsync(new StartPasskeyRegistrationRequest(user.Id, "Laptop", new AuditContext(user.Id))));
         challenges.Verify(r => r.CreateAsync(It.IsAny<PasskeyChallenge>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -163,7 +206,7 @@ internal sealed class PasskeyServiceTests
         credentials.Setup(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync([]);
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies());
 
-        var ex = Assert.ThrowsAsync<AshlarOperationException>(() => service.StartRegistrationAsync(new StartPasskeyRegistrationRequest(user.Id, "Laptop") { CurrentSessionId = RegistrationSessionId }));
+        var ex = Assert.ThrowsAsync<AshlarOperationException>(() => service.StartRegistrationAsync(new StartPasskeyRegistrationRequest(user.Id, "Laptop", new AuditContext(user.Id)) { CurrentSessionId = RegistrationSessionId }));
 
         Assert.That(ex!.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
         challenges.Verify(r => r.CreateAsync(It.IsAny<PasskeyChallenge>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -180,7 +223,7 @@ internal sealed class PasskeyServiceTests
         repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
         credentials.Setup(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync([]);
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies());
-        var request = new StartPasskeyRegistrationRequest(user.Id, "Laptop")
+        var request = new StartPasskeyRegistrationRequest(user.Id, "Laptop", new AuditContext(user.Id))
         {
             CurrentSessionId = RegistrationSessionId,
             FreshPrimaryAuthenticationProof = CreatePrimaryProof(Guid.NewGuid(), null, DateTimeOffset.UtcNow, RegistrationSessionId)
@@ -205,7 +248,7 @@ internal sealed class PasskeyServiceTests
         repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
         credentials.Setup(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync([]);
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now)));
-        var request = new StartPasskeyRegistrationRequest(user.Id, "Laptop")
+        var request = new StartPasskeyRegistrationRequest(user.Id, "Laptop", new AuditContext(user.Id))
         {
             Tenant = new TenantContext(tenantId),
             CurrentSessionId = RegistrationSessionId,
@@ -230,7 +273,7 @@ internal sealed class PasskeyServiceTests
         repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
         credentials.Setup(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync([]);
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now)));
-        var request = new StartPasskeyRegistrationRequest(user.Id, "Laptop")
+        var request = new StartPasskeyRegistrationRequest(user.Id, "Laptop", new AuditContext(user.Id))
         {
             CurrentSessionId = RegistrationSessionId,
             FreshPrimaryAuthenticationProof = CreatePrimaryProof(user.Id, null, now, RegistrationSessionId, "totp-enrollment")
@@ -333,7 +376,7 @@ internal sealed class PasskeyServiceTests
             .Returns(Task.CompletedTask);
         var provider = new PasskeyAuthenticationProvider(Options.Create(new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" }));
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, [provider], CreateDependencies(new FakeTimeProvider(now)));
-        var request = new StartPasskeyRegistrationRequest(user.Id, "Laptop")
+        var request = new StartPasskeyRegistrationRequest(user.Id, "Laptop", new AuditContext(user.Id))
         {
             CurrentSessionId = RegistrationSessionId,
             FreshMfaProof = CreateMfaProof(user.Id, null, now, RegistrationSessionId)
@@ -751,7 +794,7 @@ internal sealed class PasskeyServiceTests
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now)));
 
-        var result = await service.CompleteRegistrationAsync(new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, null, challenge.UserId!.Value)
+        var result = await service.CompleteRegistrationAsync(new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, null, challenge.UserId!.Value, new AuditContext(challenge.UserId.Value))
         {
             CurrentSessionId = RegistrationSessionId
         });
@@ -775,7 +818,7 @@ internal sealed class PasskeyServiceTests
         var validator = new Mock<IPasskeyCeremonyValidator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now)));
-        var request = new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, null, challenge.UserId!.Value)
+        var request = new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, null, challenge.UserId!.Value, new AuditContext(challenge.UserId.Value))
         {
             CurrentSessionId = RegistrationSessionId,
             FreshPrimaryAuthenticationProof = CreatePrimaryProof(challenge.UserId.Value, challenge.TenantId, now, RegistrationSessionId, "totp-enrollment")
@@ -803,7 +846,7 @@ internal sealed class PasskeyServiceTests
         var validator = new Mock<IPasskeyCeremonyValidator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now)));
-        var request = new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, null, challenge.UserId!.Value)
+        var request = new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, null, challenge.UserId!.Value, new AuditContext(challenge.UserId.Value))
         {
             Tenant = new TenantContext(tenantId),
             CurrentSessionId = RegistrationSessionId,
@@ -878,7 +921,7 @@ internal sealed class PasskeyServiceTests
         validator.Setup(v => v.VerifyRegistrationAsync(It.IsAny<PasskeyOptions>(), challenge, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PasskeyRegistrationVerificationResult("cred", "pk", 1, []));
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now)));
-        var request = new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, null, challenge.UserId!.Value)
+        var request = new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, null, challenge.UserId!.Value, new AuditContext(challenge.UserId.Value))
         {
             CurrentSessionId = RegistrationSessionId,
             FreshMfaProof = CreateMfaProof(challenge.UserId.Value, challenge.TenantId, now, RegistrationSessionId)
@@ -911,7 +954,7 @@ internal sealed class PasskeyServiceTests
 
         var request = proofType == "fresh-other"
             ? CreateCompleteRegistrationRequest(challenge, JsonDocument.Parse("{}").RootElement)
-            : new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, null, challenge.UserId!.Value)
+            : new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, null, challenge.UserId!.Value, new AuditContext(challenge.UserId.Value))
             {
                 CurrentSessionId = RegistrationSessionId,
                 FreshPrimaryAuthenticationProof = CreatePrimaryProof(challenge.UserId.Value, challenge.TenantId, now, RegistrationSessionId)
@@ -938,7 +981,7 @@ internal sealed class PasskeyServiceTests
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         var service = CreateVerifiedPasskeyService(new Mock<IUserRepository>().Object, credentials.Object, challenges.Object,
             new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now)));
-        var request = new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, null, challenge.UserId!.Value)
+        var request = new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, null, challenge.UserId!.Value, new AuditContext(challenge.UserId.Value))
         {
             CurrentSessionId = RegistrationSessionId,
             FreshMfaProof = storedProofType == "fresh-primary" ? CreateMfaProof(challenge.UserId.Value, challenge.TenantId, now, RegistrationSessionId) : null,
@@ -3184,7 +3227,7 @@ internal sealed class PasskeyServiceTests
         repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies());
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => service.StartRegistrationAsync(new StartPasskeyRegistrationRequest(user.Id, "Laptop") { Tenant = tenant }));
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.StartRegistrationAsync(new StartPasskeyRegistrationRequest(user.Id, "Laptop", new AuditContext(user.Id)) { Tenant = tenant }));
         challenges.Verify(r => r.CreateAsync(It.IsAny<PasskeyChallenge>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -3275,10 +3318,9 @@ internal sealed class PasskeyServiceTests
     private StartPasskeyRegistrationRequest CreateStartRegistrationRequest(Guid userId, string displayName, TenantContext? tenant = null, AuditContext? audit = null, DateTimeOffset? now = null, Guid? sessionId = null)
     {
         var resolvedNow = now ?? DateTimeOffset.UtcNow;
-        return new StartPasskeyRegistrationRequest(userId, displayName)
+        return new StartPasskeyRegistrationRequest(userId, displayName, audit ?? new AuditContext(userId))
         {
             Tenant = tenant,
-            Audit = audit,
             CurrentSessionId = sessionId ?? RegistrationSessionId,
             FreshPrimaryAuthenticationProof = CreatePrimaryProof(userId, tenant?.TenantId, resolvedNow, sessionId ?? RegistrationSessionId)
         };
@@ -3290,7 +3332,7 @@ internal sealed class PasskeyServiceTests
         var resolvedTenant = tenant ?? TenantContext.Global;
         var resolvedNow = now ?? challenge.CreatedAt;
         var resolvedSessionId = sessionId ?? challenge.RegistrationProofSessionId ?? RegistrationSessionId;
-        return new CompletePasskeyRegistrationRequest(challenge.Id, credentialResponse, displayName, resolvedUserId)
+        return new CompletePasskeyRegistrationRequest(challenge.Id, credentialResponse, displayName, resolvedUserId, new AuditContext(resolvedUserId))
         {
             Tenant = resolvedTenant,
             CurrentSessionId = resolvedSessionId,
