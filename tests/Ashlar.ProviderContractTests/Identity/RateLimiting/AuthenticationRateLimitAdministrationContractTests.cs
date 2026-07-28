@@ -239,7 +239,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         }
     }
 
-    private async Task<AccountSecurityActorContext> CreateActorAsync(IServiceProvider services, string purpose)
+    protected async Task<AccountSecurityActorContext> CreateActorAsync(IServiceProvider services, string purpose)
     {
         var users = services.GetService<IUserRepository>();
         var user = users is null

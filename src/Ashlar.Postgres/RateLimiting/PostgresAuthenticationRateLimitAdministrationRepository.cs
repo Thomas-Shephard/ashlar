@@ -2,13 +2,12 @@ using System.Security.Cryptography;
 using System.Text;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Dapper;
-using Npgsql;
 
 namespace Ashlar.Postgres.RateLimiting;
 
-internal sealed class PostgresAuthenticationRateLimitAdministrationRepository(NpgsqlDataSource dataSource) : IAuthenticationRateLimitAdministrationRepository
+internal sealed class PostgresAuthenticationRateLimitAdministrationRepository(IPostgresConnectionProvider connectionProvider) : IAuthenticationRateLimitAdministrationRepository
 {
-    private readonly NpgsqlDataSource _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
+    private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
     public async Task<IReadOnlyList<AuthenticationRateLimitBucketSummary>> SearchBucketsAsync(SearchAuthenticationRateLimitBucketsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
@@ -31,8 +30,7 @@ internal sealed class PostgresAuthenticationRateLimitAdministrationRepository(Np
         parameters.Add("limit", request.Limit);
         parameters.Add("offset", request.Offset);
 
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(sql, parameters, cancellationToken: cancellationToken));
+        var rows = await PostgresAdminQuery.QueryAsync<Row>(_connectionProvider, sql, parameters, cancellationToken);
         return rows
             .Select(row => row.ToSummary(now))
             .ToList()
@@ -54,11 +52,10 @@ internal sealed class PostgresAuthenticationRateLimitAdministrationRepository(Np
             WHERE purpose = @purpose;
             """;
 
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(sql, new
+        var rows = await PostgresAdminQuery.QueryAsync<Row>(_connectionProvider, sql, new
         {
             purpose = request.Purpose
-        }, cancellationToken: cancellationToken));
+        }, cancellationToken);
 
         return rows.Select(row => row.ToLookupResult(now, request.BucketId)).FirstOrDefault(bucket => bucket != null);
     }
@@ -73,8 +70,12 @@ internal sealed class PostgresAuthenticationRateLimitAdministrationRepository(Np
             WHERE purpose = @purpose;
             """;
 
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-        var keys = await connection.QueryAsync<string>(new CommandDefinition(selectSql, new { purpose = request.Purpose }, cancellationToken: cancellationToken));
+        await using var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        var keys = await connectionHandle.Connection.QueryAsync<string>(new CommandDefinition(
+            selectSql,
+            new { purpose = request.Purpose },
+            transaction: connectionHandle.Transaction,
+            cancellationToken: cancellationToken));
         var storedKey = keys.FirstOrDefault(key => string.Equals(ToBucketId(key), request.BucketId, StringComparison.Ordinal));
         if (storedKey == null)
         {
@@ -86,11 +87,11 @@ internal sealed class PostgresAuthenticationRateLimitAdministrationRepository(Np
             WHERE purpose = @purpose AND rate_limit_key = @bucketId;
             """;
 
-        var deleted = await connection.ExecuteAsync(new CommandDefinition(sql, new
+        var deleted = await connectionHandle.Connection.ExecuteAsync(new CommandDefinition(sql, new
         {
             purpose = request.Purpose,
             bucketId = storedKey
-        }, cancellationToken: cancellationToken));
+        }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken));
         return deleted > 0;
     }
 
