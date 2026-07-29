@@ -26,27 +26,9 @@ public static class AshlarWebhooksServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        var httpClientBuilder = services.AddHttpClient(AshlarSecurityEventWebhookSender.HttpClientName)
-            .ConfigurePrimaryHttpMessageHandler(CreateWebhookHttpMessageHandler);
-        if (configureHttpClient != null)
-        {
-            httpClientBuilder.ConfigureHttpClient(configureHttpClient);
-        }
-        services.AddOptions<AshlarSecurityEventWebhookOptions>()
-            .Validate(AshlarSecurityEventWebhookOptions.Validate, "Ashlar security event webhook options are invalid.")
-            .ValidateOnStart();
-        if (configure != null)
-        {
-            services.Configure(configure);
-        }
-
-        services.TryAddSingleton(TimeProvider.System);
-        services.TryAddSingleton<AshlarSecurityEventWebhookDeliveryFactory>();
-        services.TryAddSingleton<IAshlarSecurityEventWebhookDestinationResolver, DnsAshlarSecurityEventWebhookDestinationResolver>();
-        services.TryAddSingleton<AshlarSecurityEventWebhookDestinationValidator>();
+        AddWebhookServices(services, configure, configureHttpClient);
         services.TryAddSingleton<IAshlarSecurityEventWebhookSender, AshlarSecurityEventWebhookSender>();
         services.TryAddScoped<IAshlarSecurityEventWebhookEndpointTester, AshlarSecurityEventWebhookEndpointTester>();
-        services.TryAddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance);
         services.AddAshlarSecurityEventHandler<AshlarSecurityEventWebhookHandler>();
 
         return services;
@@ -66,27 +48,7 @@ public static class AshlarWebhooksServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddOptions<AshlarSecurityEventWebhookOptions>()
-            .Validate(AshlarSecurityEventWebhookOptions.Validate, "Ashlar security event webhook options are invalid.")
-            .ValidateOnStart();
-        if (configure != null)
-        {
-            services.Configure(configure);
-        }
-
-        services.TryAddSingleton(TimeProvider.System);
-        services.TryAddSingleton<AshlarSecurityEventWebhookDeliveryFactory>();
-        services.TryAddSingleton<IAshlarSecurityEventWebhookDestinationResolver, DnsAshlarSecurityEventWebhookDestinationResolver>();
-        services.TryAddSingleton<AshlarSecurityEventWebhookDestinationValidator>();
-        services.AddOptions<AshlarSecurityEventWebhookTransportOptions>();
-        if (configureHttpClient != null)
-        {
-            services.Configure<AshlarSecurityEventWebhookTransportOptions>(options => options.Configurations.Add(configureHttpClient));
-        }
-        services.TryAddSingleton(provider => new AshlarSecurityEventWebhookTransport(
-            provider.GetRequiredService<AshlarSecurityEventWebhookDestinationValidator>(),
-            provider.GetRequiredService<IOptions<AshlarSecurityEventWebhookTransportOptions>>().Value.Configurations));
-        services.TryAddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance);
+        AddWebhookServices(services, configure, configureHttpClient);
 
         return services;
     }
@@ -109,10 +71,32 @@ public static class AshlarWebhooksServiceCollectionExtensions
         return services;
     }
 
-    private static HttpMessageHandler CreateWebhookHttpMessageHandler(IServiceProvider provider)
+    private static void AddWebhookServices(
+        IServiceCollection services,
+        Action<AshlarSecurityEventWebhookOptions>? configure,
+        Action<HttpClient>? configureHttpClient)
     {
-        var destinationValidator = provider.GetRequiredService<AshlarSecurityEventWebhookDestinationValidator>();
-        return AshlarSecurityEventWebhookHttpMessageHandlerFactory.Create(destinationValidator);
+        services.AddOptions<AshlarSecurityEventWebhookOptions>()
+            .Validate(AshlarSecurityEventWebhookOptions.Validate, "Ashlar security event webhook options are invalid.")
+            .ValidateOnStart();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<AshlarSecurityEventWebhookDeliveryFactory>();
+        services.TryAddSingleton<IAshlarSecurityEventWebhookDestinationResolver, DnsAshlarSecurityEventWebhookDestinationResolver>();
+        services.TryAddSingleton<AshlarSecurityEventWebhookDestinationValidator>();
+        services.AddOptions<AshlarSecurityEventWebhookTransportOptions>();
+        if (configureHttpClient != null)
+        {
+            services.Configure<AshlarSecurityEventWebhookTransportOptions>(options => options.Configurations.Add(configureHttpClient));
+        }
+        services.TryAddSingleton(provider => new AshlarSecurityEventWebhookTransport(
+            provider.GetRequiredService<AshlarSecurityEventWebhookDestinationValidator>(),
+            provider.GetRequiredService<IOptions<AshlarSecurityEventWebhookTransportOptions>>().Value.Configurations));
+        services.TryAddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance);
     }
 
     private static void PreserveExistingWebhookDeliveryObservers(IServiceCollection services)

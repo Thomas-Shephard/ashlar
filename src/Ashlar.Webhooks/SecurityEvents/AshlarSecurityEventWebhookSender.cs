@@ -5,16 +5,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Webhooks.SecurityEvents;
 
-/// <summary>
-/// Sends prepared Ashlar security event webhook deliveries over HTTP.
-/// </summary>
-public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebhookSender
+internal sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebhookSender
 {
-    /// <summary>
-    /// Defines the named HTTP client used by Ashlar security event webhooks.
-    /// </summary>
-    public const string HttpClientName = "Ashlar.SecurityEventWebhooks";
-
     internal const string SignatureHeaderName = AshlarSecurityEventWebhookSignature.SignatureHeaderName;
 
     private static readonly Action<ILogger, string, Guid, string, int, Exception?> WebhookEndpointReturnedNonSuccess =
@@ -23,7 +15,7 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
             new EventId(2000, nameof(WebhookEndpointReturnedNonSuccess)),
             "Ashlar security event webhook endpoint returned a non-success response. Endpoint={EndpointName} EventId={EventId} EventType={EventType} StatusCode={StatusCode}");
 
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly AshlarSecurityEventWebhookTransport _transport;
     private readonly ILogger<AshlarSecurityEventWebhookSender> _logger;
     private readonly IAshlarSecurityEventWebhookDeliveryObserver _observer;
     private readonly AshlarSecurityEventWebhookDestinationValidator _destinationValidator;
@@ -34,23 +26,16 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
             new EventId(2001, nameof(WebhookEndpointDestinationRejected)),
             "Ashlar security event webhook endpoint destination was rejected. Endpoint={EndpointName} EventId={EventId} EventType={EventType} Reason={Reason}");
 
-    /// <summary>
-    /// Initializes a new instance of the webhook sender class.
-    /// </summary>
-    /// <param name="httpClientFactory">The HTTP client factory.</param>
-    /// <param name="logger">The logger.</param>
-    /// <param name="observer">The delivery observer.</param>
-    /// <param name="destinationValidator">The webhook destination safety validator.</param>
     public AshlarSecurityEventWebhookSender(
-        IHttpClientFactory httpClientFactory,
+        AshlarSecurityEventWebhookTransport transport,
         ILogger<AshlarSecurityEventWebhookSender>? logger = null,
         IAshlarSecurityEventWebhookDeliveryObserver? observer = null,
         AshlarSecurityEventWebhookDestinationValidator? destinationValidator = null)
     {
-        ArgumentNullException.ThrowIfNull(httpClientFactory);
+        ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(destinationValidator);
 
-        _httpClientFactory = httpClientFactory;
+        _transport = transport;
         _logger = logger ?? NullLogger<AshlarSecurityEventWebhookSender>.Instance;
         _observer = observer ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
         _destinationValidator = destinationValidator;
@@ -78,8 +63,7 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
             }
 
             using var request = CreateRequest(delivery);
-            var client = _httpClientFactory.CreateClient(HttpClientName);
-            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
+            using var response = await _transport.SendAsync(request, timeout.Token).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
