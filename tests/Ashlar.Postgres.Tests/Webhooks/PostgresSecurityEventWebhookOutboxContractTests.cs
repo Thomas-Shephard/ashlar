@@ -26,7 +26,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxContractTests : Security
                 });
             });
             services.AddAshlarPostgresSecurityEventWebhookOutbox();
-            services.AddSingleton<IAuthenticationSessionRepository>(Security.Sessions);
+            services.ReplaceAshlarProviderScoped<PostgresTransactionManager, IAuthenticationSessionRepository>("PostgreSQL", _ => Security.Sessions);
             services.AddSingleton<IAccountSecurityOperationAuthorizer>(Security.Authorizer);
             services.AddPostgresWebhookProviderContractTestService();
         });

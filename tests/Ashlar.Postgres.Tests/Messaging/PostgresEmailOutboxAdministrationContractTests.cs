@@ -20,6 +20,7 @@ internal sealed class PostgresEmailOutboxAdministrationContractTests : EmailOutb
             services.AddSingleton<TimeProvider>(new FakeTimeProvider(AdminNow));
             services.AddSingleton<IAccountSecurityOperationAuthorizer>(
                 new StubAccountSecurityOperationAuthorizer { Authorized = true });
+            services.AddAshlarPostgresAuditSink();
             services.AddAshlarPostgresEmailOutboxSender();
         });
         return _database.ServiceProvider;

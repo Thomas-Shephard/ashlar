@@ -229,6 +229,29 @@ internal sealed class AshlarPostgresCompositionTests
         Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
     }
 
+    [Test]
+    public async Task AddAshlarPostgresOperationalAdministrationResolvesFromProviderLane()
+    {
+        using var dataSource = CreateDataSource("operational-administration");
+        var services = new ServiceCollection();
+        services.AddAshlarIdentity();
+        services.AddScoped<IAccountSecurityOperationAuthorizer, TestAccountSecurityOperationAuthorizer>();
+        services.AddAshlarPostgres(dataSource);
+        services.AddAshlarPostgresAuditSink();
+        services.AddAshlarPostgresEmailOutboxSender();
+        services.AddAshlarPostgresSecurityEventWebhookOutbox();
+
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.ServiceProvider.GetRequiredService<IEmailOutboxAdministrationService>(), Is.TypeOf<PostgresEmailOutboxAdministrationService>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>(), Is.TypeOf<PostgresSecurityEventWebhookOutboxBrowser>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarSecurityEventWebhookOutboxOperations>(), Is.TypeOf<PostgresSecurityEventWebhookOutboxOperations>());
+        }
+    }
+
     private static void AddWebhookOperationalSecurity(IServiceCollection services)
     {
         var security = new AccountSecurityActorTestContext(

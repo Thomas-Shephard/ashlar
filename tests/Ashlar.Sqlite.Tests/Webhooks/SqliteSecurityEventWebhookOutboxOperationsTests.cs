@@ -25,9 +25,10 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
         services.AddSingleton<ISecurityEventHandler>(_audit);
         services.AddAshlarSqlite(GetConnectionString());
         services.AddAshlarSqliteSecurityEventWebhookOutbox();
-        services.AddSingleton<IAuthenticationSessionRepository>(Security.Sessions);
+        services.ReplaceAshlarProviderScoped<SqliteTransactionManager, IAuthenticationSessionRepository>("SQLite", _ => Security.Sessions);
         services.AddSingleton<IAccountSecurityOperationAuthorizer>(Security.Authorizer);
-        services.AddSingleton<IPersistentSecurityEventSink>(Security.AuditSink);
+        services.ReplaceAshlarProviderScoped<SqliteTransactionManager, IPersistentSecurityEventSink>("SQLite", _ => Security.AuditSink);
+        services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
         _provider = services.BuildServiceProvider();
         await _provider.InitializeAshlarSqliteSchemaAsync();
     }

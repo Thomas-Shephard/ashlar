@@ -24,9 +24,10 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
         services.AddSingleton<ISecurityEventHandler>(_audit);
         services.AddAshlarPostgres(GetConnectionString());
         services.AddAshlarPostgresSecurityEventWebhookOutbox();
-        services.AddSingleton<IAuthenticationSessionRepository>(Security.Sessions);
+        services.ReplaceAshlarProviderScoped<PostgresTransactionManager, IAuthenticationSessionRepository>("PostgreSQL", _ => Security.Sessions);
         services.AddSingleton<IAccountSecurityOperationAuthorizer>(Security.Authorizer);
-        services.AddSingleton<IPersistentSecurityEventSink>(Security.AuditSink);
+        services.ReplaceAshlarProviderScoped<PostgresTransactionManager, IPersistentSecurityEventSink>("PostgreSQL", _ => Security.AuditSink);
+        services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
         _provider = services.BuildServiceProvider();
         await _provider.InitializeAshlarPostgresSchemaAsync();
     }
