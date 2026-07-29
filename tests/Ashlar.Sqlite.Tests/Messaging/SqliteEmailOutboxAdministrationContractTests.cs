@@ -20,6 +20,7 @@ internal sealed class SqliteEmailOutboxAdministrationContractTests : EmailOutbox
             services.AddSingleton<ISecurityEventSink, NullSecurityEventSink>();
             services.AddSingleton<IAccountSecurityOperationAuthorizer>(
                 new StubAccountSecurityOperationAuthorizer { Authorized = true });
+            services.AddAshlarSqliteAuditSink();
             services.AddAshlarSqliteEmailOutboxSender();
         });
         return _database.ServiceProvider;

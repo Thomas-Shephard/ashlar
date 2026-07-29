@@ -200,9 +200,9 @@ public static class AshlarSqliteServiceCollectionExtensions
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ISecurityEventSink>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>(),
-            provider.GetRequiredService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
             provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
-            provider.GetRequiredService<IPersistentSecurityEventSink>())));
+            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>())));
         services.Replace(ServiceDescriptor.Scoped<IEmailOutboxDiagnostics, SqliteEmailOutboxDiagnostics>());
         services.Replace(ServiceDescriptor.Scoped<IEmailSender, SqliteEmailOutboxSender>());
 
@@ -278,10 +278,15 @@ public static class AshlarSqliteServiceCollectionExtensions
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ISecurityEventSink>(),
             provider.GetRequiredService<AshlarDurableTransactionProvider>(),
-            provider.GetRequiredService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
             provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
-            provider.GetRequiredService<IPersistentSecurityEventSink>())));
-        services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxBrowser, SqliteSecurityEventWebhookOutboxBrowser>());
+            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>())));
+        services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxBrowser>(provider => new SqliteSecurityEventWebhookOutboxBrowser(
+            provider.GetRequiredService<ISqliteConnectionProvider>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>())));
         services.Replace(ServiceDescriptor.Scoped<ISecurityEventWebhookOutboxDiagnostics, SqliteSecurityEventWebhookOutboxDiagnostics>());
 
         return services;

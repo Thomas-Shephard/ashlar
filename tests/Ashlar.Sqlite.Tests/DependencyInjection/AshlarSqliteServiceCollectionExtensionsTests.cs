@@ -185,6 +185,30 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
     }
 
     [Test]
+    public async Task AddAshlarSqliteOperationalAdministrationResolvesFromProviderLane()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarIdentity();
+        services.AddSingleton<IAccountSecurityOperationAuthorizer>(new AccountSecurityActorTestContext(
+            DateTimeOffset.UtcNow,
+            IAccountSecurityAdministrationService.ProofPurpose).Authorizer);
+        services.AddAshlarSqlite(GetConnectionString());
+        services.AddAshlarSqliteAuditSink();
+        services.AddAshlarSqliteEmailOutboxSender();
+        services.AddAshlarSqliteSecurityEventWebhookOutbox();
+
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.ServiceProvider.GetRequiredService<IEmailOutboxAdministrationService>(), Is.TypeOf<SqliteEmailOutboxAdministrationService>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>(), Is.TypeOf<SqliteSecurityEventWebhookOutboxBrowser>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarSecurityEventWebhookOutboxOperations>(), Is.TypeOf<SqliteSecurityEventWebhookOutboxOperations>());
+        }
+    }
+
+    [Test]
     public async Task AddAshlarSqliteRateLimitingIgnoresOrdinaryTransactionReplacement()
     {
         var services = new ServiceCollection();

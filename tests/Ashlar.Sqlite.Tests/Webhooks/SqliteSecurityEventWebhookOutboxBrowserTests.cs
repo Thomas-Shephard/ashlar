@@ -22,9 +22,10 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         services.AddSingleton<TimeProvider>(_timeProvider);
         services.AddAshlarSqlite(GetConnectionString());
         services.AddAshlarSqliteSecurityEventWebhookOutbox();
-        services.AddSingleton<IAuthenticationSessionRepository>(Security.Sessions);
+        services.ReplaceAshlarProviderScoped<SqliteTransactionManager, IAuthenticationSessionRepository>("SQLite", _ => Security.Sessions);
         services.AddSingleton<IAccountSecurityOperationAuthorizer>(Security.Authorizer);
-        services.AddSingleton<IPersistentSecurityEventSink>(Security.AuditSink);
+        services.ReplaceAshlarProviderScoped<SqliteTransactionManager, IPersistentSecurityEventSink>("SQLite", _ => Security.AuditSink);
+        services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
         _provider = services.BuildServiceProvider();
         await _provider.InitializeAshlarSqliteSchemaAsync();
     }

@@ -31,6 +31,13 @@ public static class AshlarProviderServiceCollectionExtensions
         return provider.GetService<IServiceProviderIsService>()?.IsService(typeof(AshlarProviderService<TService>)) is true;
     }
 
+    /// <summary>Resolves a required contract from Ashlar's provider-owned infrastructure lane.</summary>
+    /// <typeparam name="TService">The provider contract to resolve.</typeparam>
+    /// <param name="provider">The service provider to resolve from.</param>
+    /// <returns>The required provider-owned service.</returns>
+    public static TService GetRequiredAshlarProviderService<TService>(this IServiceProvider provider) where TService : class =>
+        AshlarProviderServiceCollection.GetRequiredAshlarProviderService<TService>(provider);
+
     /// <summary>Registers a provider-owned service factory in Ashlar's private infrastructure lane.</summary>
     /// <typeparam name="TProvider">The transaction provider type that owns the service.</typeparam>
     /// <typeparam name="TService">The provider contract consumed by Ashlar.</typeparam>
