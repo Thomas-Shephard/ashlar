@@ -943,7 +943,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     {
         var logger = new TestLogger<AshlarSecurityEventWebhookSender>();
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.BadGateway);
-        var sender = new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(transport), logger, destinationValidator: CreateDestinationValidator());
+        var sender = new AshlarSecurityEventWebhookSender(new AshlarSecurityEventWebhookTransport(transport), logger, destinationValidator: CreateDestinationValidator());
 
         await sender.SendAsync(CreateDelivery());
 
@@ -959,7 +959,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     public async Task SenderDoesNotBufferResponseContent()
     {
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted, new ThrowingResponseContent());
-        var sender = new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(transport), destinationValidator: CreateDestinationValidator());
+        var sender = new AshlarSecurityEventWebhookSender(new AshlarSecurityEventWebhookTransport(transport), destinationValidator: CreateDestinationValidator());
 
         var result = await sender.SendAsync(CreateDelivery());
 
@@ -971,7 +971,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     {
         var observer = new RecordingDeliveryObserver();
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
-        var sender = new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(transport), observer: observer, destinationValidator: CreateDestinationValidator());
+        var sender = new AshlarSecurityEventWebhookSender(new AshlarSecurityEventWebhookTransport(transport), observer: observer, destinationValidator: CreateDestinationValidator());
 
         await sender.SendAsync(CreateDelivery());
 
@@ -992,7 +992,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     {
         var observer = new RecordingDeliveryObserver();
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.BadGateway);
-        var sender = new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(transport), observer: observer, destinationValidator: CreateDestinationValidator());
+        var sender = new AshlarSecurityEventWebhookSender(new AshlarSecurityEventWebhookTransport(transport), observer: observer, destinationValidator: CreateDestinationValidator());
 
         await sender.SendAsync(CreateDelivery());
 
@@ -1009,7 +1009,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     {
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
         var sender = new AshlarSecurityEventWebhookSender(
-            new TestHttpClientFactory(transport),
+            new AshlarSecurityEventWebhookTransport(transport),
             observer: new ThrowingDeliveryObserver(),
             destinationValidator: CreateDestinationValidator());
 
@@ -1023,7 +1023,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     {
         var observer = new RecordingDeliveryObserver();
         var transport = new QueueingHttpMessageHandler(_ => throw new OperationCanceledException());
-        var sender = new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(transport), observer: observer, destinationValidator: CreateDestinationValidator());
+        var sender = new AshlarSecurityEventWebhookSender(new AshlarSecurityEventWebhookTransport(transport), observer: observer, destinationValidator: CreateDestinationValidator());
 
         Assert.ThrowsAsync<OperationCanceledException>(() => sender.SendAsync(CreateDelivery()));
 
@@ -1036,7 +1036,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         using var cancellation = new CancellationTokenSource();
         var observer = new RecordingDeliveryObserver();
         var transport = new ImmediateThrowHttpMessageHandler(_ => new OperationCanceledException(cancellation.Token));
-        var sender = new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(transport), observer: observer, destinationValidator: CreateDestinationValidator());
+        var sender = new AshlarSecurityEventWebhookSender(new AshlarSecurityEventWebhookTransport(transport), observer: observer, destinationValidator: CreateDestinationValidator());
 
         cancellation.Cancel();
 
@@ -1050,7 +1050,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     {
         var observer = new RecordingDeliveryObserver();
         var transport = new QueueingHttpMessageHandler(_ => throw new InvalidOperationException("transport failed"));
-        var sender = new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(transport), observer: observer, destinationValidator: CreateDestinationValidator());
+        var sender = new AshlarSecurityEventWebhookSender(new AshlarSecurityEventWebhookTransport(transport), observer: observer, destinationValidator: CreateDestinationValidator());
 
         Assert.ThrowsAsync<InvalidOperationException>(() => sender.SendAsync(CreateDelivery()));
 
@@ -1063,7 +1063,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var observer = new RecordingDeliveryObserver();
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
         var sender = new AshlarSecurityEventWebhookSender(
-            new TestHttpClientFactory(transport),
+            new AshlarSecurityEventWebhookTransport(transport),
             observer: observer,
             destinationValidator: CreateDestinationValidator());
         var delivery = CreateDelivery(new Uri("https://127.0.0.1/security-events"));
@@ -1083,7 +1083,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     {
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
         var sender = new AshlarSecurityEventWebhookSender(
-            new TestHttpClientFactory(transport),
+            new AshlarSecurityEventWebhookTransport(transport),
             destinationValidator: CreateDestinationValidator());
 
         await sender.SendAsync(CreateDelivery(new Uri("https://93.184.216.34/security-events")));
@@ -1096,7 +1096,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     {
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
         var sender = new AshlarSecurityEventWebhookSender(
-            new TestHttpClientFactory(transport),
+            new AshlarSecurityEventWebhookTransport(transport),
             destinationValidator: CreateDestinationValidator(AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks));
 
         await sender.SendAsync(CreateDelivery(new Uri("https://10.0.0.5/security-events")));
@@ -1295,7 +1295,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     {
         return new AshlarSecurityEventWebhookHandler(
             new AshlarSecurityEventWebhookDeliveryFactory(Options.Create(options)),
-            new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(transport), destinationValidator: CreateDestinationValidator()),
+            new AshlarSecurityEventWebhookSender(new AshlarSecurityEventWebhookTransport(transport), destinationValidator: CreateDestinationValidator()),
             logger);
     }
 
@@ -1569,15 +1569,6 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         };
     }
 
-    private sealed class TestHttpClientFactory(HttpMessageHandler transport) : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name)
-        {
-            Assert.That(name, Is.EqualTo(AshlarSecurityEventWebhookSender.HttpClientName));
-            return new HttpClient(transport, disposeHandler: false);
-        }
-    }
-
     private sealed class StaticDestinationResolver : IAshlarSecurityEventWebhookDestinationResolver
     {
         public ValueTask<IReadOnlyList<IPAddress>> ResolveAsync(string host, CancellationToken cancellationToken = default)
@@ -1604,18 +1595,18 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     }
 
     [Test]
-    public void SenderThrowsForNullHttpClientFactory()
+    public void SenderThrowsForNullTransport()
     {
         var exception = Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookSender(null!));
 
-        Assert.That(exception?.ParamName, Is.EqualTo("httpClientFactory"));
+        Assert.That(exception?.ParamName, Is.EqualTo("transport"));
     }
 
     [Test]
     public void SenderThrowsForNullDestinationValidator()
     {
         var exception = Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookSender(
-            new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.Accepted))));
+            new AshlarSecurityEventWebhookTransport(new RecordingHttpMessageHandler(HttpStatusCode.Accepted))));
 
         Assert.That(exception?.ParamName, Is.EqualTo("destinationValidator"));
     }
@@ -1623,7 +1614,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     [Test]
     public void SenderThrowsForNullDelivery()
     {
-        var sender = new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.Accepted)), destinationValidator: CreateDestinationValidator());
+        var sender = new AshlarSecurityEventWebhookSender(new AshlarSecurityEventWebhookTransport(new RecordingHttpMessageHandler(HttpStatusCode.Accepted)), destinationValidator: CreateDestinationValidator());
 
         var exception = Assert.ThrowsAsync<ArgumentNullException>(async () => await sender.SendAsync(null!));
 

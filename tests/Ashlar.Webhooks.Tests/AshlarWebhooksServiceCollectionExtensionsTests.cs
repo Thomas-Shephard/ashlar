@@ -1,6 +1,6 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
-using System.Text;
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.Abstractions.Services;
@@ -46,7 +46,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
             });
 
         using var provider = services.BuildServiceProvider();
-        var httpClient = provider.GetRequiredService<IHttpClientFactory>().CreateClient(AshlarSecurityEventWebhookSender.HttpClientName);
+        var transport = provider.GetRequiredService<AshlarSecurityEventWebhookTransport>();
 
         using (Assert.EnterMultipleScope())
         {
@@ -59,7 +59,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
             Assert.That(provider.GetService<IAshlarSecurityEventWebhookOutboxBrowser>(), Is.Null);
             Assert.That(provider.GetRequiredService<IOptions<AshlarSecurityEventWebhookOptions>>().Value.Endpoints.Single().Name, Is.EqualTo("audit"));
             Assert.That(configuredHttpClient, Is.True);
-            Assert.That(httpClient.DefaultRequestHeaders.GetValues("X-Test").Single(), Is.EqualTo("configured"));
+            Assert.That(transport, Is.Not.Null);
         }
     }
 
@@ -84,24 +84,54 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
     }
 
     [Test]
-    public async Task AddAshlarSecurityEventWebhooksWorksThroughFanOutSink()
+    public async Task AddAshlarSecurityEventWebhooksIgnoresCallerOwnedHttpClientFactory()
     {
+        var server = ConnectionServer.TryCreate();
+        if (server is null)
+        {
+            Assert.Ignore("This socket integration test requires a policy-allowed local network address.");
+            return;
+        }
+
+        await using var ownedServer = server;
         var services = new ServiceCollection();
         var httpClientFactory = new TestHttpClientFactory();
         services.AddSingleton<IHttpClientFactory>(httpClientFactory);
-        services.AddAshlarSecurityEventWebhooks();
+        services.AddSingleton<IAshlarSecurityEventWebhookDestinationResolver>(new StaticDestinationResolver(server.Address));
+        services.AddAshlarSecurityEventWebhooks(options =>
+        {
+            options.DestinationPolicy = AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks;
+            options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions
+            {
+                Name = "audit",
+                Uri = server.Uri,
+                SharedSecret = ValidSecret
+            });
+        });
         using var provider = services.BuildServiceProvider();
 
         var sink = provider.GetRequiredService<ISecurityEventSink>();
+        var senderConstructor = typeof(AshlarSecurityEventWebhookSender).GetConstructors().Single();
 
-        await sink.RecordAsync(new AshlarSecurityEvent
+        var delivery = sink.RecordAsync(new AshlarSecurityEvent
         {
             Id = Guid.NewGuid(),
-            EventType = "test.event",
-            OccurredAt = DateTimeOffset.UtcNow
+            EventType = "ashlar.sign_in.failed",
+            OccurredAt = DateTimeOffset.UtcNow,
+            Outcome = SecurityEventOutcomes.Failure
         });
+        await server.AcceptAndCloseAsync();
+        await delivery;
 
-        Assert.That(httpClientFactory.CreatedClients, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(typeof(AshlarSecurityEventWebhookSender).IsNotPublic, Is.True);
+            Assert.That(senderConstructor.GetParameters()[0].ParameterType, Is.EqualTo(typeof(AshlarSecurityEventWebhookTransport)));
+            Assert.That(senderConstructor.GetParameters(), Has.None.Property("ParameterType").EqualTo(typeof(IHttpClientFactory)));
+            Assert.That(ContainsHardenedSocketsHandler(provider.GetRequiredService<AshlarSecurityEventWebhookTransport>()), Is.True);
+            Assert.That(httpClientFactory.CreatedClients, Is.Empty);
+            Assert.That(server.ConnectionCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -141,15 +171,15 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
             client.DefaultRequestHeaders.Add("X-Test", "configured");
         });
         using var provider = services.BuildServiceProvider();
-        using var handler = provider.GetRequiredService<IHttpMessageHandlerFactory>()
-            .CreateHandler(AshlarSecurityEventWebhookSender.HttpClientName);
-        var httpClient = provider.GetRequiredService<IHttpClientFactory>().CreateClient(AshlarSecurityEventWebhookSender.HttpClientName);
+        var transport = provider.GetRequiredService<AshlarSecurityEventWebhookTransport>();
+        var httpClient = GetTransportHttpClient(transport);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ContainsHardenedSocketsHandler(handler), Is.True);
+            Assert.That(ContainsHardenedSocketsHandler(transport), Is.True);
             Assert.That(httpClient.Timeout, Is.EqualTo(TimeSpan.FromSeconds(12)));
             Assert.That(httpClient.DefaultRequestHeaders.GetValues("X-Test").Single(), Is.EqualTo("configured"));
+            Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookSender>(), Is.TypeOf<AshlarSecurityEventWebhookSender>());
         }
     }
 
@@ -400,19 +430,45 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         }
     }
 
-    private sealed class RedirectServer : IAsyncDisposable
+    private sealed class ConnectionServer : IAsyncDisposable
     {
-        private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+        private readonly TcpListener _listener;
 
-        public RedirectServer()
+        private ConnectionServer(IPAddress address)
         {
+            Address = address;
+            _listener = new TcpListener(Address, 0);
             _listener.Start();
-            RedirectUri = new Uri($"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/redirect");
+            Uri = new Uri($"https://example.test:{((IPEndPoint)_listener.LocalEndpoint).Port}/");
         }
 
-        public Uri RedirectUri { get; }
+        public static ConnectionServer? TryCreate()
+        {
+            foreach (var address in NetworkInterface.GetAllNetworkInterfaces()
+                         .Where(network => network.OperationalStatus == OperationalStatus.Up)
+                         .SelectMany(network => network.GetIPProperties().UnicastAddresses)
+                         .Select(unicast => unicast.Address)
+                         .Where(address => !AshlarSecurityEventWebhookDestinationValidator.IsBlockedAddress(
+                             address,
+                             AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks)))
+            {
+                try
+                {
+                    return new ConnectionServer(address);
+                }
+                catch (SocketException)
+                {
+                }
+            }
 
-        public int RequestCount { get; private set; }
+            return null;
+        }
+
+        public IPAddress Address { get; }
+
+        public Uri Uri { get; }
+
+        public int ConnectionCount { get; private set; }
 
         public async ValueTask DisposeAsync()
         {
@@ -420,57 +476,51 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
             await ValueTask.CompletedTask;
         }
 
-        public async Task ServeAsync(CancellationToken cancellationToken)
+        public async Task AcceptAndCloseAsync()
         {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    using var client = await _listener.AcceptTcpClientAsync(cancellationToken);
-                    RequestCount++;
-                    await ReadRequestAsync(client.GetStream(), cancellationToken);
-                    var response = RequestCount == 1
-                        ? "HTTP/1.1 302 Found\r\nLocation: /final\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-                        : "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-                    await client.GetStream().WriteAsync(Encoding.ASCII.GetBytes(response), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-            }
-        }
-
-        private static async Task ReadRequestAsync(NetworkStream stream, CancellationToken cancellationToken)
-        {
-            var buffer = new byte[1024];
-            var builder = new StringBuilder();
-            do
-            {
-                var read = await stream.ReadAsync(buffer, cancellationToken);
-                builder.Append(Encoding.ASCII.GetString(buffer, 0, read));
-            }
-            while (!builder.ToString().Contains("\r\n\r\n", StringComparison.Ordinal));
+            using var client = await _listener.AcceptTcpClientAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            ConnectionCount++;
         }
     }
 
-    private static bool ContainsHardenedSocketsHandler(HttpMessageHandler handler)
+    private sealed class StaticDestinationResolver(IPAddress address) : IAshlarSecurityEventWebhookDestinationResolver
     {
-        if (handler is SocketsHttpHandler socketsHandler)
+        public ValueTask<IReadOnlyList<IPAddress>> ResolveAsync(string host, CancellationToken cancellationToken = default)
         {
-            return !socketsHandler.AllowAutoRedirect && socketsHandler.ConnectCallback != null;
+            IReadOnlyList<IPAddress> addresses = [address];
+            return ValueTask.FromResult(addresses);
+        }
+    }
+
+    private static HttpClient GetTransportHttpClient(AshlarSecurityEventWebhookTransport transport)
+    {
+        return (HttpClient)typeof(AshlarSecurityEventWebhookTransport)
+            .GetField("_httpClient", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(transport)!;
+    }
+
+    private static bool ContainsHardenedSocketsHandler(object value)
+    {
+        if (value is SocketsHttpHandler socketsHandler)
+        {
+            return !socketsHandler.AllowAutoRedirect && !socketsHandler.UseProxy && socketsHandler.ConnectCallback != null;
         }
 
-        if (handler is DelegatingHandler { InnerHandler: { } innerHandler })
+        if (value is DelegatingHandler { InnerHandler: { } innerHandler })
         {
             return ContainsHardenedSocketsHandler(innerHandler);
         }
 
-        var fields = handler.GetType().GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        foreach (var field in fields)
+        for (var type = value.GetType(); type != null; type = type.BaseType)
         {
-            if (field.GetValue(handler) is HttpMessageHandler nestedHandler && ContainsHardenedSocketsHandler(nestedHandler))
+            foreach (var field in type.GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic))
             {
-                return true;
+                if (field.GetValue(value) is { } nested
+                    && (nested is HttpMessageHandler || nested is HttpMessageInvoker)
+                    && ContainsHardenedSocketsHandler(nested))
+                {
+                    return true;
+                }
             }
         }
 

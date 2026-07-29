@@ -429,7 +429,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
     private static AshlarSecurityEventWebhookSender CreateSender(HttpMessageHandler transport)
     {
         return new AshlarSecurityEventWebhookSender(
-            new TestHttpClientFactory(transport),
+            new AshlarSecurityEventWebhookTransport(transport),
             destinationValidator: new AshlarSecurityEventWebhookDestinationValidator(
                 new StaticDestinationResolver(),
                 Options.Create(new AshlarSecurityEventWebhookOptions())));
@@ -505,15 +505,6 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
                 ReplayStore = new AcceptingReplayStore()
             }
         });
-    }
-
-    private sealed class TestHttpClientFactory(HttpMessageHandler transport) : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name)
-        {
-            Assert.That(name, Is.EqualTo(AshlarSecurityEventWebhookSender.HttpClientName));
-            return new HttpClient(transport, disposeHandler: false);
-        }
     }
 
     private sealed class StaticDestinationResolver : IAshlarSecurityEventWebhookDestinationResolver
