@@ -124,7 +124,7 @@ public sealed record AuthenticationRateLimitBucketSummary(
 /// <param name="Items">Page of display-safe bucket summaries.</param>
 /// <param name="Limit">Maximum page size requested for the result.</param>
 /// <param name="Offset">Number of matching buckets skipped before this page.</param>
-/// <param name="HasMore">Whether another page may exist. Redis-backed searches use a bounded scan, so concurrent key changes can affect page exactness.</param>
+/// <param name="HasMore">Whether another page may exist. Concurrent key changes can affect Redis-backed page exactness.</param>
 public sealed record AuthenticationRateLimitBucketSearchResult(
     IReadOnlyList<AuthenticationRateLimitBucketSummary> Items,
     int Limit,
