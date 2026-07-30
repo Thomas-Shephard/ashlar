@@ -403,13 +403,12 @@ internal sealed class InvitationService(
         var normalizedEmail = IdentityNormalization.NormalizeEmail(sanitizedEmail);
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
-        var revocation = await RevokePendingInvitationsAsync(
+        var (revokedCount, complete) = await RevokePendingInvitationsAsync(
             sanitizedEmail, validated.Tenant, validated.IncludeAllTenants, cancellationToken);
-        if (!revocation.Complete)
+        if (!complete)
         {
             return Result.Failure<RevokeInvitationsByEmailAdministrationResult>(AshlarFailureCodes.ConcurrencyConflict);
         }
-        var revokedCount = revocation.Count;
         var auditTenantId = validated.IncludeAllTenants ? null : validated.Tenant.TenantId;
         var tenantScope = validated.Tenant.TenantId.HasValue ? "tenant" : "global";
         if (validated.IncludeAllTenants)
