@@ -411,9 +411,11 @@ internal sealed class InvitationService(
         }
         var revokedCount = revocation.Count;
         var auditTenantId = validated.IncludeAllTenants ? null : validated.Tenant.TenantId;
-        var tenantScope = validated.IncludeAllTenants
-            ? "all"
-            : validated.Tenant.TenantId.HasValue ? "tenant" : "global";
+        var tenantScope = validated.Tenant.TenantId.HasValue ? "tenant" : "global";
+        if (validated.IncludeAllTenants)
+        {
+            tenantScope = "all";
+        }
 
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
@@ -459,24 +461,37 @@ internal sealed class InvitationService(
                 return (count, true);
             }
 
-            var pageCount = 0;
-            foreach (var invitation in pending)
-            {
-                var result = await _dependencies.InvitationRepository.RevokeInvitationByIdAsync(
-                    new RevokeInvitationByIdAdministrationRequest(
-                        invitation.Id, includeAllTenants ? null : tenant, includeAllTenants), now, cancellationToken);
-                if (result?.RevocationStatus == InvitationAdministrationRevocationStatus.Revoked)
-                {
-                    count++;
-                    pageCount++;
-                }
-            }
+            var pageCount = await RevokePendingInvitationPageAsync(
+                pending, tenant, includeAllTenants, now, cancellationToken);
+            count += pageCount;
 
             if (pageCount == 0)
             {
                 return (count, false);
             }
         }
+    }
+
+    private async Task<int> RevokePendingInvitationPageAsync(
+        IReadOnlyList<InvitationAdministrationSummary> pending,
+        TenantContext tenant,
+        bool includeAllTenants,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var count = 0;
+        foreach (var invitation in pending)
+        {
+            var result = await _dependencies.InvitationRepository.RevokeInvitationByIdAsync(
+                new RevokeInvitationByIdAdministrationRequest(
+                    invitation.Id, includeAllTenants ? null : tenant, includeAllTenants), now, cancellationToken);
+            if (result?.RevocationStatus == InvitationAdministrationRevocationStatus.Revoked)
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     private Dictionary<string, string> AddEmailIfEnabled(Dictionary<string, string> properties, string email)
