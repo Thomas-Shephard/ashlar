@@ -7,8 +7,6 @@ namespace Ashlar.Redis.RateLimiting;
 
 internal sealed class RedisAuthenticationRateLimitAdministrationRepository : IAuthenticationRateLimitAdministrationReaderRepository
 {
-    internal const int MaximumScanCount = 1000;
-
     private readonly Func<ValueTask<IConnectionMultiplexer>> _getConnectionAsync;
     private readonly RedisAuthenticationRateLimiterOptions _options;
 
@@ -42,17 +40,22 @@ internal sealed class RedisAuthenticationRateLimitAdministrationRepository : IAu
         var prefix = RedisRateLimitKeyBuilder.NormalizePrefix(_options.KeyPrefix);
         var pattern = $"{prefix}:auth:*";
         var rows = new List<AuthenticationRateLimitBucketSummary>();
-        var scanned = 0;
+        var keys = new HashSet<RedisKey>();
 
         foreach (var endpoint in connection.GetEndPoints())
         {
             var server = connection.GetServer(endpoint);
+            if (server.IsReplica)
+            {
+                continue;
+            }
+
             foreach (var key in server.Keys(_options.Database ?? -1, pattern, pageSize: 250))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (++scanned > MaximumScanCount)
+                if (!keys.Add(key))
                 {
-                    break;
+                    continue;
                 }
 
                 var row = await ReadBucketAsync(database, key, prefix, now);
@@ -60,11 +63,6 @@ internal sealed class RedisAuthenticationRateLimitAdministrationRepository : IAu
                 {
                     rows.Add(row);
                 }
-            }
-
-            if (scanned > MaximumScanCount)
-            {
-                break;
             }
         }
 

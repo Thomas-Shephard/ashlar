@@ -224,6 +224,78 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     }
 
     [Test]
+    public async Task SearchBucketsAsyncSupportsOffsetsBeyondOneThousandAndReportsMore()
+    {
+        const int bucketCount = 1002;
+        var database = GetConnection().GetDatabase();
+        var prefix = _keyPrefix.TrimEnd(':');
+        var writes = Enumerable.Range(0, bucketCount)
+            .Select(index => database.HashSetAsync($"{prefix}:auth:{index:x64}",
+            [
+                new HashEntry("purpose", "bulk"),
+                new HashEntry("count", 1),
+                new HashEntry("windowStart", Start.ToUnixTimeMilliseconds()),
+                new HashEntry("expiresAt", (Start + TimeSpan.FromMinutes(10)).ToUnixTimeMilliseconds())
+            ]));
+        await Task.WhenAll(writes);
+        var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationReader>();
+
+        var result = await administration.SearchBucketsAsync(_actor, OperationalAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest
+        {
+            Purpose = "bulk",
+            Offset = 1000,
+            Limit = 1
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value!.Items, Has.Count.EqualTo(1));
+            Assert.That(result.Value.Items[0].BucketId, Is.EqualTo($"{1000:x64}"));
+            Assert.That(result.Value.HasMore, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task RepositorySkipsReplicaEndpointsAndDeduplicatesPhysicalKeys()
+    {
+        var database = GetConnection().GetDatabase();
+        var prefix = _keyPrefix.TrimEnd(':');
+        var key = (RedisKey)$"{prefix}:auth:{new string('a', 64)}";
+        await database.HashSetAsync(key,
+        [
+            new HashEntry("purpose", "duplicate"),
+            new HashEntry("count", 1),
+            new HashEntry("windowStart", Start.ToUnixTimeMilliseconds()),
+            new HashEntry("expiresAt", (Start + TimeSpan.FromMinutes(10)).ToUnixTimeMilliseconds())
+        ]);
+        var primaryEndpoint = new System.Net.DnsEndPoint("primary", 6379);
+        var duplicateEndpoint = new System.Net.DnsEndPoint("duplicate", 6379);
+        var replicaEndpoint = new System.Net.DnsEndPoint("replica", 6379);
+        var primary = new Mock<IServer>();
+        var duplicate = new Mock<IServer>();
+        var replica = new Mock<IServer>();
+        primary.SetupGet(server => server.IsReplica).Returns(false);
+        duplicate.SetupGet(server => server.IsReplica).Returns(false);
+        replica.SetupGet(server => server.IsReplica).Returns(true);
+        primary.Setup(server => server.Keys(-1, It.IsAny<RedisValue>(), 250, 0, 0, CommandFlags.None)).Returns([key]);
+        duplicate.Setup(server => server.Keys(-1, It.IsAny<RedisValue>(), 250, 0, 0, CommandFlags.None)).Returns([key]);
+        var connection = new Mock<IConnectionMultiplexer>();
+        connection.Setup(candidate => candidate.GetDatabase(-1, null)).Returns(database);
+        connection.Setup(candidate => candidate.GetEndPoints(false)).Returns([primaryEndpoint, duplicateEndpoint, replicaEndpoint]);
+        connection.Setup(candidate => candidate.GetServer(primaryEndpoint, null)).Returns(primary.Object);
+        connection.Setup(candidate => candidate.GetServer(duplicateEndpoint, null)).Returns(duplicate.Object);
+        connection.Setup(candidate => candidate.GetServer(replicaEndpoint, null)).Returns(replica.Object);
+        var repository = new RedisAuthenticationRateLimitAdministrationRepository(
+            connection.Object,
+            Options.Create(new RedisAuthenticationRateLimiterOptions { KeyPrefix = _keyPrefix }));
+
+        var rows = await repository.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "duplicate" }, Start);
+
+        Assert.That(rows, Has.Count.EqualTo(1));
+        replica.Verify(server => server.Keys(It.IsAny<int>(), It.IsAny<RedisValue>(), It.IsAny<int>(), It.IsAny<long>(), It.IsAny<int>(), It.IsAny<CommandFlags>()), Times.Never);
+    }
+
+    [Test]
     public void PublicRepositoryConstructorValidatesInputs()
     {
         var options = Options.Create(new RedisAuthenticationRateLimiterOptions { KeyPrefix = _keyPrefix });
