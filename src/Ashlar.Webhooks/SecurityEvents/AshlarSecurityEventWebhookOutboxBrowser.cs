@@ -1,9 +1,7 @@
-using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions.Repositories;
-using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.Features.Administration;
 using Ashlar.Identity.Models.AccountSecurity;
 using Ashlar.Identity.Models.Administration;
+using Ashlar.Operational;
 
 namespace Ashlar.Webhooks.SecurityEvents;
 
@@ -26,18 +24,12 @@ public interface IAshlarSecurityEventWebhookOutboxBrowser
 }
 
 /// <summary>Shared authorization, paging, and audit behavior for provider-specific webhook outbox browsers.</summary>
-/// <param name="sessions">The authentication-session repository.</param>
-/// <param name="authorizer">The host operation authorizer.</param>
-/// <param name="auditSink">The durable audit sink.</param>
-/// <param name="timeProvider">The clock used for proof validation and audit timestamps.</param>
+/// <param name="administration">Precomposed authorization and audit boundaries.</param>
 public abstract class AshlarSecurityEventWebhookOutboxBrowserBase(
-    IAuthenticationSessionRepository sessions,
-    IAccountSecurityOperationAuthorizer authorizer,
-    IPersistentSecurityEventSink auditSink,
-    TimeProvider timeProvider) : IAshlarSecurityEventWebhookOutboxBrowser
+    AshlarOperationalAdministrationContext administration) : IAshlarSecurityEventWebhookOutboxBrowser
 {
-    private readonly AccountSecurityOperationBoundary _boundary = new(
-        sessions, authorizer, auditSink, timeProvider, eventType: "security_event_webhook.outbox_browse");
+    private readonly AccountSecurityOperationBoundary _boundary =
+        (administration ?? throw new ArgumentNullException(nameof(administration))).ReadBoundary;
 
     /// <inheritdoc />
     public async Task<AshlarSecurityEventWebhookOutboxBrowseResult> ListAsync(

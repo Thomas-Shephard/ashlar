@@ -1,4 +1,5 @@
 using Ashlar.Messaging;
+using Ashlar.Operational;
 using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Messaging;
@@ -8,9 +9,8 @@ internal sealed class SqliteEmailOutboxAdministrationService(
     TimeProvider timeProvider,
     ISecurityEventSink securityEventSink,
     AshlarDurableTransactionProvider transactionProvider,
-    IAuthenticationSessionRepository sessions,
-    IAccountSecurityOperationAuthorizer authorizer,
-    IPersistentSecurityEventSink auditSink) : EmailOutboxAdministrationServiceBase(timeProvider, securityEventSink, transactionProvider, sessions, authorizer, auditSink)
+    AshlarOperationalAdministrationContext administration) : EmailOutboxAdministrationServiceBase(
+        timeProvider, securityEventSink, transactionProvider, administration)
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 

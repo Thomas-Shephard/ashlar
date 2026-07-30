@@ -1,4 +1,5 @@
 using Ashlar.Webhooks.SecurityEvents;
+using Ashlar.Operational;
 using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -43,8 +44,9 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxBrowser(null!, _timeProvider, Security.Sessions, Security.Authorizer, Security.AuditSink));
-            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxBrowser(connectionProvider, null!, Security.Sessions, Security.Authorizer, Security.AuditSink));
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxBrowser(null!, _timeProvider, Administration(Security)));
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxBrowser(connectionProvider, null!, Administration(Security)));
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteSecurityEventWebhookOutboxBrowser(connectionProvider, _timeProvider, null!));
         }
     }
 
@@ -184,7 +186,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
             var security = FailedSecurity(failure, AccountSecurityActorContext.AdministrationReadProofPurpose);
             var browser = new SqliteSecurityEventWebhookOutboxBrowser(
                 _provider.GetRequiredService<ISqliteConnectionProvider>(), _timeProvider,
-                security.Sessions, security.Authorizer, security.AuditSink);
+                Administration(security));
             var result = await browser.ListAsync(security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Scope = OperationalAdministrationScope.Global });
             using (Assert.EnterMultipleScope())
             {
@@ -192,6 +194,12 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
             }
         }
     }
+
+    private AshlarOperationalAdministrationContext Administration(AccountSecurityActorTestContext security) => new(
+        new(security.Sessions, security.Authorizer, security.AuditSink, _timeProvider,
+            eventType: "security_event_webhook.outbox_browse"),
+        new(security.Sessions, security.Authorizer, security.AuditSink, _timeProvider,
+            IAccountSecurityAdministrationService.ProofPurpose, "security_event_webhook.operation"));
 
     private static AccountSecurityActorTestContext FailedSecurity(string failure, string purpose)
     {

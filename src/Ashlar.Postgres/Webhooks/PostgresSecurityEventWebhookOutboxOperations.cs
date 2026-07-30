@@ -1,4 +1,5 @@
 using Ashlar.Webhooks.SecurityEvents;
+using Ashlar.Operational;
 
 namespace Ashlar.Postgres.Webhooks;
 
@@ -7,10 +8,8 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperations(
     TimeProvider timeProvider,
     ISecurityEventSink securityEventSink,
     AshlarDurableTransactionProvider transactionProvider,
-    IAuthenticationSessionRepository sessions,
-    IAccountSecurityOperationAuthorizer authorizer,
-    IPersistentSecurityEventSink auditSink) : AshlarSecurityEventWebhookOutboxOperationsBase(
-        timeProvider, securityEventSink, transactionProvider, sessions, authorizer, auditSink)
+    AshlarOperationalAdministrationContext administration) : AshlarSecurityEventWebhookOutboxOperationsBase(
+        timeProvider, securityEventSink, transactionProvider, administration)
 {
     private const string RetrySql = """
         UPDATE ashlar_security_event_webhook_outbox

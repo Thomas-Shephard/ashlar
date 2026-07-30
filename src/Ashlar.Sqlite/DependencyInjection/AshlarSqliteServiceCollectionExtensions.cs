@@ -195,14 +195,9 @@ public static class AshlarSqliteServiceCollectionExtensions
         }
 
         services.TryAddSingleton(TimeProvider.System);
-        services.Replace(ServiceDescriptor.Scoped<IEmailOutboxAdministrationService>(provider => new SqliteEmailOutboxAdministrationService(
-            provider.GetRequiredService<ISqliteConnectionProvider>(),
-            provider.GetRequiredService<TimeProvider>(),
-            provider.GetRequiredService<ISecurityEventSink>(),
-            provider.GetRequiredService<AshlarDurableTransactionProvider>(),
-            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
-            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
-            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>())));
+        services.ReplaceAshlarOperationalAdministrationScoped<SqliteTransactionManager,
+            IEmailOutboxAdministrationService, SqliteEmailOutboxAdministrationService>(
+            ProviderFamily, AshlarOperationalAdministrationKind.EmailOutbox);
         services.Replace(ServiceDescriptor.Scoped<IEmailOutboxDiagnostics, SqliteEmailOutboxDiagnostics>());
         services.Replace(ServiceDescriptor.Scoped<IEmailSender, SqliteEmailOutboxSender>());
 
@@ -273,20 +268,12 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSqliteProviderScoped<SqliteSecurityEventWebhookEnqueuer, SqliteSecurityEventWebhookEnqueuer>();
         services.AddAshlarDurableSecurityEventFanOutHandler<SqliteSecurityEventWebhookEnqueuer>();
-        services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxOperations>(provider => new SqliteSecurityEventWebhookOutboxOperations(
-            provider.GetRequiredService<ISqliteConnectionProvider>(),
-            provider.GetRequiredService<TimeProvider>(),
-            provider.GetRequiredService<ISecurityEventSink>(),
-            provider.GetRequiredService<AshlarDurableTransactionProvider>(),
-            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
-            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
-            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>())));
-        services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxBrowser>(provider => new SqliteSecurityEventWebhookOutboxBrowser(
-            provider.GetRequiredService<ISqliteConnectionProvider>(),
-            provider.GetRequiredService<TimeProvider>(),
-            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
-            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
-            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>())));
+        services.ReplaceAshlarOperationalAdministrationScoped<SqliteTransactionManager,
+            IAshlarSecurityEventWebhookOutboxOperations, SqliteSecurityEventWebhookOutboxOperations>(
+            ProviderFamily, AshlarOperationalAdministrationKind.SecurityEventWebhookOutbox);
+        services.ReplaceAshlarOperationalAdministrationScoped<SqliteTransactionManager,
+            IAshlarSecurityEventWebhookOutboxBrowser, SqliteSecurityEventWebhookOutboxBrowser>(
+            ProviderFamily, AshlarOperationalAdministrationKind.SecurityEventWebhookOutbox);
         services.Replace(ServiceDescriptor.Scoped<ISecurityEventWebhookOutboxDiagnostics, SqliteSecurityEventWebhookOutboxDiagnostics>());
 
         return services;

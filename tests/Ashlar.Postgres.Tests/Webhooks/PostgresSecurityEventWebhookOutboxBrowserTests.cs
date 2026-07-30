@@ -1,4 +1,5 @@
 using Dapper;
+using Ashlar.Operational;
 using Ashlar.Identity.Models.AccountSecurity;
 using Ashlar.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -51,8 +52,9 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxBrowser(null!, _timeProvider, Security.Sessions, Security.Authorizer, Security.AuditSink));
-            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxBrowser(connectionProvider, null!, Security.Sessions, Security.Authorizer, Security.AuditSink));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxBrowser(null!, _timeProvider, Administration(Security)));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxBrowser(connectionProvider, null!, Administration(Security)));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresSecurityEventWebhookOutboxBrowser(connectionProvider, _timeProvider, null!));
         }
     }
 
@@ -93,9 +95,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
         var browser = new PostgresSecurityEventWebhookOutboxBrowser(
             _provider.GetRequiredService<IPostgresConnectionProvider>(),
             _timeProvider,
-            security.Sessions,
-            security.Authorizer,
-            security.AuditSink);
+            Administration(security));
 
         var result = await browser.ListAsync(
             security.Actor,
@@ -103,6 +103,12 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
 
         Assert.That(result.Deliveries, Is.Empty);
     }
+
+    private AshlarOperationalAdministrationContext Administration(AccountSecurityActorTestContext security) => new(
+        new(security.Sessions, security.Authorizer, security.AuditSink, _timeProvider,
+            eventType: "security_event_webhook.outbox_browse"),
+        new(security.Sessions, security.Authorizer, security.AuditSink, _timeProvider,
+            IAccountSecurityAdministrationService.ProofPurpose, "security_event_webhook.operation"));
 
     [Test]
     public async Task ListAsyncExcludesDiscardedRowsFromFailedFilter()

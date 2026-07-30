@@ -346,14 +346,9 @@ public static class AshlarPostgresServiceCollectionExtensions
         }
 
         services.TryAddSingleton(TimeProvider.System);
-        services.Replace(ServiceDescriptor.Scoped<IEmailOutboxAdministrationService>(provider => new PostgresEmailOutboxAdministrationService(
-            provider.GetRequiredService<IPostgresConnectionProvider>(),
-            provider.GetRequiredService<TimeProvider>(),
-            provider.GetRequiredService<ISecurityEventSink>(),
-            provider.GetRequiredService<AshlarDurableTransactionProvider>(),
-            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
-            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
-            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>())));
+        services.ReplaceAshlarOperationalAdministrationScoped<PostgresTransactionManager,
+            IEmailOutboxAdministrationService, PostgresEmailOutboxAdministrationService>(
+            ProviderFamily, AshlarOperationalAdministrationKind.EmailOutbox);
         services.Replace(ServiceDescriptor.Scoped<IEmailOutboxDiagnostics, PostgresEmailOutboxDiagnostics>());
         services.Replace(ServiceDescriptor.Scoped<IEmailSender, PostgresEmailOutboxSender>());
 
@@ -423,20 +418,12 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddPostgresProviderScoped<PostgresSecurityEventWebhookEnqueuer, PostgresSecurityEventWebhookEnqueuer>();
         services.AddAshlarDurableSecurityEventFanOutHandler<PostgresSecurityEventWebhookEnqueuer>();
-        services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxOperations>(provider => new PostgresSecurityEventWebhookOutboxOperations(
-            provider.GetRequiredService<IPostgresConnectionProvider>(),
-            provider.GetRequiredService<TimeProvider>(),
-            provider.GetRequiredService<ISecurityEventSink>(),
-            provider.GetRequiredService<AshlarDurableTransactionProvider>(),
-            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
-            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
-            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>())));
-        services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxBrowser>(provider => new PostgresSecurityEventWebhookOutboxBrowser(
-            provider.GetRequiredService<IPostgresConnectionProvider>(),
-            provider.GetRequiredService<TimeProvider>(),
-            provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
-            provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
-            provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>())));
+        services.ReplaceAshlarOperationalAdministrationScoped<PostgresTransactionManager,
+            IAshlarSecurityEventWebhookOutboxOperations, PostgresSecurityEventWebhookOutboxOperations>(
+            ProviderFamily, AshlarOperationalAdministrationKind.SecurityEventWebhookOutbox);
+        services.ReplaceAshlarOperationalAdministrationScoped<PostgresTransactionManager,
+            IAshlarSecurityEventWebhookOutboxBrowser, PostgresSecurityEventWebhookOutboxBrowser>(
+            ProviderFamily, AshlarOperationalAdministrationKind.SecurityEventWebhookOutbox);
         services.Replace(ServiceDescriptor.Scoped<ISecurityEventWebhookOutboxDiagnostics, PostgresSecurityEventWebhookOutboxDiagnostics>());
 
         return services;

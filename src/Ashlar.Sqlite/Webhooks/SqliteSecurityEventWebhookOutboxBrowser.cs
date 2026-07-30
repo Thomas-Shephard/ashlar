@@ -1,4 +1,5 @@
 using Ashlar.Webhooks.SecurityEvents;
+using Ashlar.Operational;
 using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Webhooks;
@@ -6,10 +7,8 @@ namespace Ashlar.Sqlite.Webhooks;
 internal sealed class SqliteSecurityEventWebhookOutboxBrowser(
     ISqliteConnectionProvider connectionProvider,
     TimeProvider timeProvider,
-    IAuthenticationSessionRepository sessions,
-    IAccountSecurityOperationAuthorizer authorizer,
-    IPersistentSecurityEventSink auditSink) : AshlarSecurityEventWebhookOutboxBrowserBase(
-        sessions, authorizer, auditSink, timeProvider)
+    AshlarOperationalAdministrationContext administration) : AshlarSecurityEventWebhookOutboxBrowserBase(
+        administration)
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));

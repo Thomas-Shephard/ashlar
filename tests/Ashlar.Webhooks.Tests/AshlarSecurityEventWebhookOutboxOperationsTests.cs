@@ -2,6 +2,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Transactions;
 using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.Models.AccountSecurity;
+using Ashlar.Operational;
 using Ashlar.Testing;
 using Ashlar.Webhooks.SecurityEvents;
 
@@ -228,7 +229,11 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
         IAshlarTransactionProvider transactionProvider,
         AccountSecurityActorTestContext security)
         : AshlarSecurityEventWebhookOutboxOperationsBase(new FixedTimeProvider(Now), sink, DurableTransactionComposition.Create(transactionProvider),
-            security.Sessions, security.Authorizer, security.AuditSink)
+            new AshlarOperationalAdministrationContext(
+                new(security.Sessions, security.Authorizer, security.AuditSink, new FixedTimeProvider(Now),
+                    eventType: "security_event_webhook.outbox_browse"),
+                new(security.Sessions, security.Authorizer, security.AuditSink, new FixedTimeProvider(Now),
+                    IAccountSecurityAdministrationService.ProofPurpose, "security_event_webhook.operation")))
     {
         public int ProviderCallCount { get; private set; }
 

@@ -1,4 +1,5 @@
 using Ashlar.Auditing;
+using Ashlar.Operational;
 
 namespace Ashlar.Messaging;
 
@@ -58,9 +59,7 @@ public interface IEmailOutboxAdministrationService
 /// <param name="timeProvider">Clock used for operation timestamps and audit events.</param>
 /// <param name="securityEventSink">Durable audit sink used for successful mutating operations. It is required so state changes and audit writes share one atomic boundary.</param>
 /// <param name="transactionProvider">Ashlar-owned durable transaction composition used to commit provider mutations with their required audit writes.</param>
-/// <param name="sessions">Authoritative authentication-session repository.</param>
-/// <param name="authorizer">Required host operation authorizer.</param>
-/// <param name="auditSink">Required persistent boundary audit sink.</param>
+/// <param name="administration">Precomposed authorization and audit boundaries.</param>
 /// <remarks>
 /// Providers supply read projections and conditional storage mutations; this base class centralizes audit requirements, stable no-op classification, and the rule that administration
 /// mutations never send emails directly.
@@ -69,17 +68,13 @@ public abstract class EmailOutboxAdministrationServiceBase(
     TimeProvider timeProvider,
     ISecurityEventSink securityEventSink,
     AshlarDurableTransactionProvider transactionProvider,
-    IAuthenticationSessionRepository sessions,
-    IAccountSecurityOperationAuthorizer authorizer,
-    IPersistentSecurityEventSink auditSink) : IEmailOutboxAdministrationService
+    AshlarOperationalAdministrationContext administration) : IEmailOutboxAdministrationService
 {
     private readonly ISecurityEventSink _securityEventSink = securityEventSink ?? throw new ArgumentNullException(nameof(securityEventSink));
     private readonly AshlarDurableTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
-    private readonly AccountSecurityOperationBoundary _readBoundary = new(
-        sessions, authorizer, auditSink, timeProvider, eventType: "email_outbox.administration");
-    private readonly AccountSecurityOperationBoundary _mutationBoundary = new(
-        sessions, authorizer, auditSink, timeProvider, IAccountSecurityAdministrationService.ProofPurpose,
-        "email_outbox.administration");
+    private readonly AccountSecurityOperationBoundary _readBoundary =
+        (administration ?? throw new ArgumentNullException(nameof(administration))).ReadBoundary;
+    private readonly AccountSecurityOperationBoundary _mutationBoundary = administration.MutationBoundary;
 
     /// <summary>
     /// Gets the clock used by provider queries and mutations.
