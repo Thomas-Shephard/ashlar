@@ -40,7 +40,9 @@ public static partial class AshlarServiceCollectionExtensions
             services.Configure(configure);
         }
 
-        services.TryAddScoped<IInvitationService, InvitationService>();
+        services.TryAddScoped<InvitationService>();
+        services.TryAddScoped<IInvitationService>(provider => provider.GetRequiredService<InvitationService>());
+        services.TryAddScoped<IInvitationMutationExecutor>(provider => provider.GetRequiredService<InvitationService>());
         services.TryAddScoped<IInvitationAdministrationReader>(provider => new InvitationAdministrationReader(
             provider.GetRequiredAshlarProviderService<IInvitationRepository>(),
             provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
@@ -53,6 +55,7 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped<IInvitationAdministrationService>(provider => new InvitationAdministrationService(
             provider.GetRequiredAshlarProviderService<IInvitationRepository>(),
             provider.GetRequiredService<InvitationAdministrationServiceDependencies>(),
+            provider.GetRequiredService<IInvitationMutationExecutor>(),
             provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
             provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
             provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>()));

@@ -302,11 +302,11 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         accepted.AcceptedAt = RepositoryNow.AddMinutes(-10);
         Assert.That(await repository.UpdateInvitationAsync(accepted, accepted.Version), Is.True);
 
-        var outOfScope = await repository.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitation.Id, new TenantContext(otherTenantId), Audit: CreateAudit()), RepositoryNow);
-        var revoked = await repository.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitation.Id, new TenantContext(tenantId), Audit: CreateAudit()), RepositoryNow);
-        var second = await repository.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitation.Id, new TenantContext(tenantId), Audit: CreateAudit()), RepositoryNow);
-        var terminal = await repository.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(accepted.Id, new TenantContext(tenantId), Audit: CreateAudit()), RepositoryNow);
-        var expiredTerminal = await repository.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(expired.Id, new TenantContext(tenantId), Audit: CreateAudit()), RepositoryNow);
+        var outOfScope = await repository.RevokeInvitationByIdAsync(new RevokeInvitationByIdAdministrationRequest(invitation.Id, new TenantContext(otherTenantId)), RepositoryNow);
+        var revoked = await repository.RevokeInvitationByIdAsync(new RevokeInvitationByIdAdministrationRequest(invitation.Id, new TenantContext(tenantId)), RepositoryNow);
+        var second = await repository.RevokeInvitationByIdAsync(new RevokeInvitationByIdAdministrationRequest(invitation.Id, new TenantContext(tenantId)), RepositoryNow);
+        var terminal = await repository.RevokeInvitationByIdAsync(new RevokeInvitationByIdAdministrationRequest(accepted.Id, new TenantContext(tenantId)), RepositoryNow);
+        var expiredTerminal = await repository.RevokeInvitationByIdAsync(new RevokeInvitationByIdAdministrationRequest(expired.Id, new TenantContext(tenantId)), RepositoryNow);
 
         using (Assert.EnterMultipleScope())
         {

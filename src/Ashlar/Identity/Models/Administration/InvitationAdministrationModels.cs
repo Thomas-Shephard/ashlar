@@ -1,6 +1,26 @@
-using Ashlar.Auditing;
-
 namespace Ashlar.Identity.Models.Administration;
+
+/// <summary>Actor-bound <paramref name="Invitation" /> creation details with an explicit <paramref name="Tenant" /> scope.</summary>
+/// <param name="Invitation">Invitation recipient and delivery details.</param>
+/// <param name="CallbackBaseUri">Validated callback base URI for the acceptance link.</param>
+/// <param name="Tenant">Explicit tenant or global scope.</param>
+public sealed record CreateInvitationAdministrationRequest(
+    CreateInvitationRequest Invitation,
+    Uri CallbackBaseUri,
+    TenantContext Tenant)
+{
+    /// <summary>Throws when creation details or their explicit scope are invalid.</summary>
+    /// <param name="request">Creation request to validate.</param>
+    public static void ThrowIfInvalid(CreateInvitationAdministrationRequest? request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Invitation);
+        ArgumentNullException.ThrowIfNull(request.CallbackBaseUri);
+        ArgumentNullException.ThrowIfNull(request.Tenant);
+        if (request.Invitation.TenantId != request.Tenant.TenantId)
+            throw new ArgumentException("Invitation tenant must match the explicit administration scope.", nameof(request));
+    }
+}
 
 /// <summary>
 /// Provider-neutral invitation lifecycle states for administrator filtering and display.
@@ -128,6 +148,26 @@ public sealed record InvitationSearchResult(
     int Offset,
     bool HasMore);
 
+/// <summary>Result of revoking pending invitations by email address.</summary>
+/// <param name="RevokedCount">Number of matching pending invitations revoked.</param>
+public sealed record RevokeInvitationsByEmailAdministrationResult(int RevokedCount);
+
+/// <summary>Request to revoke pending invitations created before the operation starts by email address.</summary>
+/// <remarks>
+/// Use <see cref="TenantContext.Global" /> for global invitations, or <see cref="IncludeAllTenants" /> for intentional operator-wide revocation.
+/// </remarks>
+public sealed record RevokeInvitationsByEmailAdministrationRequest
+{
+    /// <summary>Email address whose pending invitations should be revoked.</summary>
+    public string? Email { get; init; }
+
+    /// <summary>Tenant scope to revoke within. Use <see cref="TenantContext.Global" /> for global invitations.</summary>
+    public TenantContext? Tenant { get; init; }
+
+    /// <summary>Whether to revoke matching pending invitations across all tenant scopes. Cannot be combined with <see cref="Tenant" />.</summary>
+    public bool IncludeAllTenants { get; init; }
+}
+
 /// <summary>
 /// Request for an administrator invitation single-item lookup.
 /// </summary>
@@ -164,35 +204,28 @@ public sealed record InvitationAdministrationLookupRequest(
 /// <param name="InvitationId">Invitation to revoke.</param>
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global invitations; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
 /// <param name="IncludeAllTenants">Whether to allow revocation across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
-/// <param name="Audit">Actor and request metadata required for the emitted <paramref name="Audit" /> event context.</param>
 /// <param name="Reason">Optional display-safe reason to include in security event properties.</param>
 /// <remarks>
-/// The administration service enforces actor session, proof, scope, host authorization, and durable security-event recording before executing this operation.
+/// The administration service enforces actor session, proof, scope, host authorization, and durable security-event recording atomic with this operation.
 /// The operation never returns raw invitation tokens or token hashes.
 /// </remarks>
-public sealed record RevokeInvitationAdministrationRequest(
+public sealed record RevokeInvitationByIdAdministrationRequest(
     Guid InvitationId,
     TenantContext? Tenant = null,
     bool IncludeAllTenants = false,
-    AuditContext? Audit = null,
     string? Reason = null)
 {
     /// <summary>
     /// Throws when the invitation revocation request is not safe to execute.
     /// </summary>
     /// <param name="request">Revocation request to validate before mutating invitation state.</param>
-    public static void ThrowIfInvalid(RevokeInvitationAdministrationRequest? request)
+    public static void ThrowIfInvalid(RevokeInvitationByIdAdministrationRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
         AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);
         if (request.InvitationId == Guid.Empty)
         {
             throw new ArgumentException("Invitation ID cannot be empty.", nameof(request));
-        }
-
-        if (request.Audit == null)
-        {
-            throw new ArgumentException("Audit metadata is required for invitation revocation.", nameof(request));
         }
     }
 }
@@ -236,7 +269,7 @@ public enum InvitationAdministrationRevocationStatus
 /// <param name="RevocationStatus">Stable revocation outcome.</param>
 /// <param name="Status">Invitation lifecycle state after the operation.</param>
 /// <param name="RevokedAt">UTC time when the invitation entered its terminal revocation state, when applicable.</param>
-public sealed record RevokeInvitationAdministrationResult(
+public sealed record RevokeInvitationByIdAdministrationResult(
     Guid InvitationId,
     Guid? TenantId,
     InvitationAdministrationRevocationStatus RevocationStatus,

@@ -1,20 +1,10 @@
 namespace Ashlar.Identity.Abstractions.Services;
 
 /// <summary>
-/// Creates, accepts, and revokes user invitations.
+/// Provides bearer-token invitation onboarding flows.
 /// </summary>
 public interface IInvitationService
 {
-    /// <summary>
-    /// Creates an invitation and sends the recipient an acceptance link.
-    /// </summary>
-    /// <param name="request">The invitation details.</param>
-    /// <param name="callbackBaseUri">The callback URI that receives the invitation token as a query parameter.</param>
-    /// <param name="context">Optional request context for auditing and notifications.</param>
-    /// <param name="cancellationToken">A token that can cancel invitation creation or message delivery.</param>
-    /// <returns>A result describing whether the invitation was created.</returns>
-    Task<Result> CreateInvitationAsync(CreateInvitationRequest request, Uri callbackBaseUri, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
-
     /// <summary>
     /// Gets safe invitation details needed to validate an acceptance flow before consuming the invitation token.
     /// </summary>
@@ -32,12 +22,4 @@ public interface IInvitationService
     /// <param name="cancellationToken">A token that can cancel invitation acceptance.</param>
     /// <returns>The accepted user and Ashlar-verified session issuance capability when the invitation is accepted.</returns>
     Task<Result<InvitationAcceptanceResult>> AcceptInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Revokes pending invitations for an email address using explicit scope and audit metadata.
-    /// </summary>
-    /// <param name="request">Email, tenant scope, and required audit metadata for the destructive operation.</param>
-    /// <param name="cancellationToken">A token that can cancel invitation revocation.</param>
-    /// <returns>A result describing whether pending invitations were revoked.</returns>
-    Task<Result> RevokeInvitationsAsync(RevokeInvitationsRequest request, CancellationToken cancellationToken = default);
 }

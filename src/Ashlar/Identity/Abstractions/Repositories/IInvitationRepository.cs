@@ -61,5 +61,5 @@ public interface IInvitationRepository
     /// <param name="now">UTC time to record as the revocation timestamp.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns>The invitation state after revocation, or <see langword="null" /> when no invitation exists in scope.</returns>
-    Task<RevokeInvitationAdministrationResult?> RevokeInvitationAsync(RevokeInvitationAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
+    Task<RevokeInvitationByIdAdministrationResult?> RevokeInvitationByIdAsync(RevokeInvitationByIdAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
 }

@@ -201,9 +201,9 @@ internal sealed class PostgresInvitationRepository(IPostgresConnectionProvider c
         }
     }
 
-    public async Task<RevokeInvitationAdministrationResult?> RevokeInvitationAsync(RevokeInvitationAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    public async Task<RevokeInvitationByIdAdministrationResult?> RevokeInvitationByIdAsync(RevokeInvitationByIdAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        RevokeInvitationAdministrationRequest.ThrowIfInvalid(request);
+        RevokeInvitationByIdAdministrationRequest.ThrowIfInvalid(request);
 
         var sql = $"""
             WITH candidate AS (
@@ -262,7 +262,7 @@ internal sealed class PostgresInvitationRepository(IPostgresConnectionProvider c
         await using (connectionHandle)
         {
             var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync<RevokeInvitationAdministrationResultRow>(command);
+            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync<RevokeInvitationByIdAdministrationResultRow>(command);
             return row?.ToResult();
         }
     }
@@ -382,16 +382,16 @@ internal sealed class PostgresInvitationRepository(IPostgresConnectionProvider c
         }
     }
 
-    private sealed record RevokeInvitationAdministrationResultRow(
+    private sealed record RevokeInvitationByIdAdministrationResultRow(
         Guid InvitationId,
         Guid? TenantId,
         int RevocationStatus,
         int Status,
         DateTime? RevokedAt)
     {
-        public RevokeInvitationAdministrationResult ToResult()
+        public RevokeInvitationByIdAdministrationResult ToResult()
         {
-            return new RevokeInvitationAdministrationResult(
+            return new RevokeInvitationByIdAdministrationResult(
                 InvitationId,
                 TenantId,
                 (InvitationAdministrationRevocationStatus)RevocationStatus,

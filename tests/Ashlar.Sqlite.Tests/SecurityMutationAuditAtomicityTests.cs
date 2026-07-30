@@ -81,20 +81,20 @@ internal sealed class SecurityMutationAuditAtomicityTests
             services.AddScoped<IAccountSecurityOperationAuthorizer, AllowOperations>();
         });
         var provider = _database.ServiceProvider;
-        var actor = await CreateActorAsync(provider, IAccountSecurityAdministrationService.ProofPurpose);
+        var actor = await CreateActorAsync(provider, IInvitationAdministrationService.RevokeProofPurpose);
         var invitation = CreateInvitation();
         await provider.GetRequiredService<IInvitationRepository>().CreateInvitationAsync(invitation);
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await provider.GetRequiredService<IInvitationAdministrationService>().RevokeInvitationAsync(
-                actor, new RevokeInvitationAdministrationRequest(invitation.Id, IncludeAllTenants: true, Audit: actor.Audit)));
+            await provider.GetRequiredService<IInvitationAdministrationService>().RevokeInvitationByIdAsync(
+                actor, new RevokeInvitationByIdAdministrationRequest(invitation.Id, IncludeAllTenants: true)));
 
         var stored = await provider.GetRequiredService<IInvitationRepository>().GetInvitationByTokenHashAsync(invitation.TokenHash);
         Assert.That(stored?.RevokedAt, Is.Null);
     }
 
     [Test]
-    public async Task InvitationServiceRevokeRollsBackWhenRequiredAuditFails()
+    public async Task InvitationAdministrationEmailRevokeRollsBackWhenRequiredAuditFails()
     {
         _database = await CreateDatabaseAsync(services =>
         {
@@ -102,12 +102,13 @@ internal sealed class SecurityMutationAuditAtomicityTests
             services.AddScoped<IAccountSecurityOperationAuthorizer, AllowOperations>();
         });
         var provider = _database.ServiceProvider;
+        var actor = await CreateActorAsync(provider, IInvitationAdministrationService.RevokeProofPurpose);
         var invitation = CreateInvitation();
         await provider.GetRequiredService<IInvitationRepository>().CreateInvitationAsync(invitation);
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await provider.GetRequiredService<IInvitationService>().RevokeInvitationsAsync(
-                new RevokeInvitationsRequest { Email = invitation.DisplayEmail, Tenant = TenantContext.Global, Audit = Audit() }));
+            await provider.GetRequiredService<IInvitationAdministrationService>().RevokeInvitationsByEmailAsync(actor,
+                new RevokeInvitationsByEmailAdministrationRequest { Email = invitation.DisplayEmail, Tenant = TenantContext.Global }));
 
         var stored = await provider.GetRequiredService<IInvitationRepository>().GetInvitationByTokenHashAsync(invitation.TokenHash);
         Assert.That(stored?.RevokedAt, Is.Null);
@@ -358,9 +359,9 @@ internal sealed class SecurityMutationAuditAtomicityTests
             return inner.GetInvitationAsync(request, now, cancellationToken);
         }
 
-        public Task<RevokeInvitationAdministrationResult?> RevokeInvitationAsync(RevokeInvitationAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+        public Task<RevokeInvitationByIdAdministrationResult?> RevokeInvitationByIdAsync(RevokeInvitationByIdAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
-            return inner.RevokeInvitationAsync(request, now, cancellationToken);
+            return inner.RevokeInvitationByIdAsync(request, now, cancellationToken);
         }
     }
 }

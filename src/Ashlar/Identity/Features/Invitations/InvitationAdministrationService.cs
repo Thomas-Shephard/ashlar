@@ -3,7 +3,7 @@ using Ashlar.Auditing;
 namespace Ashlar.Identity.Features.Invitations;
 
 /// <summary>
-/// Implements administrator invitation search, single-item lookup, and revocation operations.
+/// Implements administrator invitation creation and revocation operations.
 /// </summary>
 /// <remarks>Every operation requires an active actor session, fresh administration proof, explicit scope, and host authorization.</remarks>
 internal sealed class InvitationAdministrationService : IInvitationAdministrationService
@@ -16,16 +16,20 @@ internal sealed class InvitationAdministrationService : IInvitationAdministratio
     private readonly SecurityEventEmitter _securityEvents;
     private readonly AshlarDurableTransactionProvider _transactionProvider;
     private readonly AccountSecurityOperationBoundary _boundary;
+    private readonly AccountSecurityOperationBoundary _createBoundary;
+    private readonly IInvitationMutationExecutor _mutations;
 
-    /// <summary>Initializes invitation revocation with durable audit composition.</summary>
+    /// <summary>Initializes invitation mutations with durable audit composition.</summary>
     public InvitationAdministrationService(
         IInvitationRepository repository,
         InvitationAdministrationServiceDependencies dependencies,
+        IInvitationMutationExecutor mutations,
         IAuthenticationSessionRepository sessions,
         IAccountSecurityOperationAuthorizer authorizer,
         IPersistentSecurityEventSink auditSink)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _mutations = mutations ?? throw new ArgumentNullException(nameof(mutations));
         ArgumentNullException.ThrowIfNull(dependencies);
         _transactionProvider = dependencies.TransactionProvider ?? throw new ArgumentNullException(nameof(dependencies));
         _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
@@ -33,11 +37,62 @@ internal sealed class InvitationAdministrationService : IInvitationAdministratio
             DurableSecurityMutationComposition.Require(dependencies.SecurityEventSink, _transactionProvider, "Invitation revocation", repository),
             _timeProvider);
         _boundary = new(sessions, authorizer, auditSink, _timeProvider,
-            IAccountSecurityAdministrationService.ProofPurpose, AshlarSecurityEventTypes.InvitationRevoked);
+            IInvitationAdministrationService.RevokeProofPurpose, AshlarSecurityEventTypes.InvitationRevoked);
+        _createBoundary = new(sessions, authorizer, auditSink, _timeProvider,
+            IInvitationAdministrationService.CreateProofPurpose, AshlarSecurityEventTypes.InvitationCreated);
     }
 
     /// <inheritdoc />
-    public async Task<Result<RevokeInvitationAdministrationResult>> RevokeInvitationAsync(AccountSecurityActorContext actor, RevokeInvitationAdministrationRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result> CreateInvitationAsync(AccountSecurityActorContext actor, CreateInvitationAdministrationRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        try
+        {
+            CreateInvitationAdministrationRequest.ThrowIfInvalid(request);
+            _mutations.ValidateCreateInvitation(request.Invitation, request.CallbackBaseUri);
+        }
+        catch (ArgumentException exception)
+        {
+            return Result.Failure(AshlarFailureCodes.ValidationError, exception.Message);
+        }
+
+        if (!await _createBoundary.AuthorizeAsync(actor, request.Tenant, false, Guid.Empty,
+                AccountSecurityOperation.CreateInvitation, cancellationToken))
+            return Result.Failure(AshlarFailureCodes.ValidationError);
+
+        var audit = actor.Audit;
+        var context = new AuthenticationContext(TenantId: request.Tenant.TenantId, IpAddress: audit.IpAddress,
+            UserAgent: audit.UserAgent, CorrelationId: audit.CorrelationId, UserId: actor.ActorUserId,
+            CurrentSessionId: actor.CurrentSessionId);
+        return await _mutations.CreateInvitationAsync(request.Invitation, request.CallbackBaseUri, context, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<RevokeInvitationsByEmailAdministrationResult>> RevokeInvitationsByEmailAsync(AccountSecurityActorContext actor, RevokeInvitationsByEmailAdministrationRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(request);
+        try
+        {
+            _mutations.ValidateRevokeInvitationsByEmail(request);
+        }
+        catch (ArgumentException exception)
+        {
+            return Result.Failure<RevokeInvitationsByEmailAdministrationResult>(AshlarFailureCodes.ValidationError, exception.Message);
+        }
+
+        if (!await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants, Guid.Empty,
+                AccountSecurityOperation.RevokeInvitationsByEmail, cancellationToken))
+            return Result.Failure<RevokeInvitationsByEmailAdministrationResult>(AshlarFailureCodes.ValidationError);
+
+        var result = await _mutations.RevokeInvitationsByEmailAsync(request, actor.Audit, actor.CurrentSessionId, cancellationToken);
+        if (!result.Succeeded)
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.RevokeInvitationsByEmail);
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<RevokeInvitationByIdAdministrationResult>> RevokeInvitationByIdAsync(AccountSecurityActorContext actor, RevokeInvitationByIdAdministrationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
@@ -49,39 +104,35 @@ internal sealed class InvitationAdministrationService : IInvitationAdministratio
 
         if (request.Reason?.Length > MaximumReasonLength)
         {
-            return Result.Failure<RevokeInvitationAdministrationResult>(AshlarFailureCodes.ValidationError, $"Reason cannot exceed {MaximumReasonLength} characters.");
-        }
-        if (request.Audit!.ActorUserId != actor.ActorUserId)
-        {
-            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.RevokeInvitation);
-            return Result.Failure<RevokeInvitationAdministrationResult>(AshlarFailureCodes.ValidationError);
+            return Result.Failure<RevokeInvitationByIdAdministrationResult>(AshlarFailureCodes.ValidationError, $"Reason cannot exceed {MaximumReasonLength} characters.");
         }
         if (!await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants, Guid.Empty,
-                AccountSecurityOperation.RevokeInvitation, cancellationToken))
-            return Result.Failure<RevokeInvitationAdministrationResult>(AshlarFailureCodes.ValidationError);
+                AccountSecurityOperation.RevokeInvitationById, cancellationToken))
+            return Result.Failure<RevokeInvitationByIdAdministrationResult>(AshlarFailureCodes.ValidationError);
 
         var now = _timeProvider.GetUtcNow();
-        RevokeInvitationAdministrationResult? result;
+        RevokeInvitationByIdAdministrationResult? result;
         await using (var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken))
         {
-            result = await _repository.RevokeInvitationAsync(request, now, cancellationToken);
+            result = await _repository.RevokeInvitationByIdAsync(request, now, cancellationToken);
             if (result != null && result.InvitationId == request.InvitationId
                 && AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants, result.TenantId))
             {
-                await RecordRevocationAttemptAsync(request, result, cancellationToken);
+                await RecordRevocationAttemptAsync(actor, request, result, cancellationToken);
 
                 await transaction.CommitAsync(cancellationToken);
                 return Result.Success(result);
             }
         }
 
-        await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.RevokeInvitation);
-        return Result.Failure<RevokeInvitationAdministrationResult>(AshlarFailureCodes.InvitationNotFound, "Invitation was not found.");
+        await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.RevokeInvitationById);
+        return Result.Failure<RevokeInvitationByIdAdministrationResult>(AshlarFailureCodes.InvitationNotFound, "Invitation was not found.");
     }
 
     private Task RecordRevocationAttemptAsync(
-        RevokeInvitationAdministrationRequest request,
-        RevokeInvitationAdministrationResult result,
+        AccountSecurityActorContext actor,
+        RevokeInvitationByIdAdministrationRequest request,
+        RevokeInvitationByIdAdministrationResult result,
         CancellationToken cancellationToken)
     {
         var requestedTenantId = request.Tenant?.TenantId;
@@ -121,7 +172,8 @@ internal sealed class InvitationAdministrationService : IInvitationAdministratio
                 ? SecurityEventOutcomes.Success
                 : SecurityEventOutcomes.Failure,
             TenantId = invitationTenantId,
-            Audit = request.Audit,
+            SessionId = actor.CurrentSessionId,
+            Audit = actor.Audit,
             Properties = properties
         }, cancellationToken);
     }
@@ -156,17 +208,17 @@ internal sealed class InvitationAdministrationService : IInvitationAdministratio
         }
     }
 
-    private static bool TryValidateRevokeRequest(RevokeInvitationAdministrationRequest request, out Result<RevokeInvitationAdministrationResult> failure)
+    private static bool TryValidateRevokeRequest(RevokeInvitationByIdAdministrationRequest request, out Result<RevokeInvitationByIdAdministrationResult> failure)
     {
         try
         {
-            RevokeInvitationAdministrationRequest.ThrowIfInvalid(request);
+            RevokeInvitationByIdAdministrationRequest.ThrowIfInvalid(request);
             failure = null!;
             return true;
         }
         catch (ArgumentException exception)
         {
-            failure = Result.Failure<RevokeInvitationAdministrationResult>(AshlarFailureCodes.ValidationError, exception.Message);
+            failure = Result.Failure<RevokeInvitationByIdAdministrationResult>(AshlarFailureCodes.ValidationError, exception.Message);
             return false;
         }
     }

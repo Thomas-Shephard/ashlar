@@ -59,8 +59,12 @@ public enum AccountSecurityOperation
     SearchInvitations,
     /// <summary>Reads an invitation.</summary>
     ReadInvitation,
-    /// <summary>Revokes an invitation.</summary>
-    RevokeInvitation,
+    /// <summary>Creates an invitation.</summary>
+    CreateInvitation,
+    /// <summary>Revokes an invitation by identifier.</summary>
+    RevokeInvitationById,
+    /// <summary>Revokes invitations matching an email address.</summary>
+    RevokeInvitationsByEmail,
     /// <summary>Authorizes an administrator to query stored automatic-lockout summaries.</summary>
     SearchAccountLockouts,
     /// <summary>Reads an account lockout.</summary>

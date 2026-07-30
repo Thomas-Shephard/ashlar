@@ -505,24 +505,52 @@ services.AddAshlarInvitations(options =>
 });
 ```
 
-Create an invitation:
+Create an invitation through the actor-bound administration boundary:
 
 ```csharp
-var invitations = httpContext.RequestServices.GetRequiredService<IInvitationService>();
+var invitations = httpContext.RequestServices.GetRequiredService<IInvitationAdministrationService>();
 
 await invitations.CreateInvitationAsync(
-    new CreateInvitationRequest
+    actor, // active session, fresh "invitation-create" MFA proof, and matching audit actor
+    new CreateInvitationAdministrationRequest(
+        new CreateInvitationRequest
+        {
+            Email = "invitee@example.com",
+            TenantId = tenant.TenantId,
+            Metadata = "{\"role\": \"editor\"}"
+        },
+        new Uri("https://app.example.com/join"),
+        tenant));
+```
+
+Revoke pending invitations by email through the same boundary:
+
+```csharp
+var result = await invitations.RevokeInvitationsByEmailAsync(
+    actor, // active session, fresh "invitation-revoke" MFA proof, and matching audit actor
+    new RevokeInvitationsByEmailAdministrationRequest
     {
         Email = "invitee@example.com",
-        Metadata = "{\"role\": \"editor\"}"
-    },
-    new Uri("https://app.example.com/join"));
+        Tenant = tenant
+    });
+
+var revokedCount = result.Value?.RevokedCount ?? 0;
+```
+
+Revoke one invitation by identifier through the same boundary:
+
+```csharp
+var result = await invitations.RevokeInvitationByIdAsync(
+    actor, // active session, fresh "invitation-revoke" MFA proof, and matching audit actor
+    new RevokeInvitationByIdAdministrationRequest(invitationId, tenant));
 ```
 
 Accept an invitation:
 
 ```csharp
-var result = await invitations.AcceptInvitationAsync(
+var onboarding = httpContext.RequestServices.GetRequiredService<IInvitationService>();
+
+var result = await onboarding.AcceptInvitationAsync(
     new AcceptInvitationRequest
     {
         Token = tokenFromUrl,
@@ -535,7 +563,7 @@ if (result.Succeeded)
 }
 ```
 
-`CreateInvitationAsync` generates a high-entropy token, stores its hash, and sends an invitation link via `IEmailSender`. When an invitation is accepted, Ashlar automatically creates a new active user if one does not exist, or activates/links an existing inactive user. Acceptance is atomic and single-use. PostgreSQL acceptance updates require the invitation to still be unaccepted, unrevoked, and unexpired at write time, so stale reads cannot replay or revive an invitation.
+`IInvitationAdministrationService` creation and revocation operations require host authorization and an actor context bound to an active session, operation-specific fresh MFA proof, explicit scope, and matching audit identity. Creation generates a high-entropy token, stores its hash, and sends an invitation link via `IEmailSender`. `IInvitationService` remains limited to bearer-token preview and acceptance onboarding flows. Acceptance is atomic and single-use. PostgreSQL acceptance updates require the invitation to still be unaccepted, unrevoked, and unexpired at write time, so stale reads cannot replay or revive an invitation.
 
 Invitation emails contain live acceptance links and are classified as `EmailMessageSensitivity.ContainsLiveSecret`.
 
