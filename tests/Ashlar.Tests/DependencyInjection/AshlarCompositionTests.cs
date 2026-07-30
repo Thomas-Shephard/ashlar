@@ -3,6 +3,7 @@ using Ashlar.Identity.Providers.Local;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
+using Ashlar.Operational;
 using Ashlar.Operational.Diagnostics;
 using Ashlar.Security.Encryption;
 using Ashlar.Testing.DependencyInjection;
@@ -50,6 +51,11 @@ internal sealed class AshlarCompositionTests
     public void CoreDurableParticipantRegistrationRejectsNullServices()
     {
         Assert.Throws<ArgumentNullException>(() => AshlarProviderServiceCollectionExtensions.AddAshlarIdentityDurableTransactionParticipants(null!));
+        Assert.Throws<ArgumentNullException>(() =>
+            AshlarProviderServiceCollectionExtensions.ReplaceAshlarOperationalAdministrationScoped<
+                IndependentTransactionProvider, ICustomOperationalAdministrationService,
+                CustomOperationalAdministrationService>(
+                null!, "Custom", AshlarOperationalAdministrationKind.EmailOutbox));
     }
 
     [Test]
@@ -93,11 +99,86 @@ internal sealed class AshlarCompositionTests
             Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(ICredentialRepository)), Is.False);
             Assert.That(provider.GetService<IUserRepository>(), Is.Null);
             Assert.That(provider.GetService<ICredentialRepository>(), Is.Null);
+            Assert.That(provider.GetKeyedService<IUserRepository>("ashlar-provider"), Is.Null);
+            Assert.That(provider.GetKeyedService<ICredentialRepository>("ashlar-provider"), Is.Null);
             Assert.That(services.Where(descriptor => descriptor.ServiceKey is not null)
                 .Select(descriptor => provider.GetKeyedService(typeof(IUserRepository), descriptor.ServiceKey!)), Is.All.Null);
             Assert.That(Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<IUserRepository>(provider), Is.Not.Null);
             Assert.That(Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<ICredentialRepository>(provider), Is.Not.Null);
         }
+    }
+
+    [Test]
+    public void ProviderContractsExposeNoRuntimeProviderServiceResolver()
+    {
+        Assert.That(typeof(AshlarProviderServiceCollectionExtensions).GetMethods()
+            .Any(method => method.IsPublic &&
+                           method.Name == "GetRequiredAshlarProviderService"), Is.False);
+    }
+
+    [TestCase(AshlarOperationalAdministrationKind.EmailOutbox)]
+    [TestCase(AshlarOperationalAdministrationKind.SecurityEventWebhookOutbox)]
+    public void CustomProviderCanPublishOperationalAdministrationWithoutExposingRawDependencies(
+        AshlarOperationalAdministrationKind kind)
+    {
+        var sessions = Mock.Of<IAuthenticationSessionRepository>();
+        var auditSink = Mock.Of<IPersistentSecurityEventSink>();
+        var ordinary = new ScopedDependency();
+        var services = new ServiceCollection();
+        services.AddAshlarProviderScoped<IndependentTransactionProvider, IAuthenticationSessionRepository>(
+            "Custom", _ => sessions);
+        services.AddAshlarProviderScoped<IndependentTransactionProvider, IPersistentSecurityEventSink>(
+            "Custom", _ => auditSink);
+        services.AddScoped(_ => ordinary);
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
+        services.ReplaceAshlarOperationalAdministrationScoped<IndependentTransactionProvider,
+            ICustomOperationalAdministrationService, CustomOperationalAdministrationService>(
+            "Custom", kind);
+
+        using var provider = services.BuildServiceProvider();
+        ICustomOperationalAdministrationService administration;
+        using (var scope = provider.CreateScope())
+        {
+            administration = scope.ServiceProvider.GetRequiredService<ICustomOperationalAdministrationService>();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(administration.Administration.ReadBoundary, Is.Not.Null);
+                Assert.That(administration.Administration.MutationBoundary, Is.Not.Null);
+                Assert.That(administration.Ordinary, Is.SameAs(ordinary));
+                Assert.That(scope.ServiceProvider.GetService<IAuthenticationSessionRepository>(), Is.Null);
+                Assert.That(scope.ServiceProvider.GetService<IPersistentSecurityEventSink>(), Is.Null);
+                Assert.That(scope.ServiceProvider.GetKeyedService<IAuthenticationSessionRepository>("ashlar-provider"), Is.Null);
+                Assert.That(scope.ServiceProvider.GetKeyedService<IPersistentSecurityEventSink>("ashlar-provider"), Is.Null);
+                Assert.Throws<ArgumentNullException>(() => new AshlarOperationalAdministrationContext(
+                    null!, administration.Administration.MutationBoundary));
+                Assert.Throws<ArgumentNullException>(() => new AshlarOperationalAdministrationContext(
+                    administration.Administration.ReadBoundary, null!));
+            }
+        }
+
+        Assert.That(administration.DisposeCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void OperationalAdministrationRegistrationRejectsUnknownBoundaryKindOnResolution()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarProviderScoped<IndependentTransactionProvider, IAuthenticationSessionRepository>(
+            "Custom", _ => Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarProviderScoped<IndependentTransactionProvider, IPersistentSecurityEventSink>(
+            "Custom", _ => Mock.Of<IPersistentSecurityEventSink>());
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
+        services.AddScoped<ScopedDependency>();
+        services.ReplaceAshlarOperationalAdministrationScoped<IndependentTransactionProvider,
+            ICustomOperationalAdministrationService, CustomOperationalAdministrationService>(
+            "Custom", (AshlarOperationalAdministrationKind)int.MaxValue);
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            provider.GetRequiredService<ICustomOperationalAdministrationService>());
     }
 
     [Test]
@@ -619,6 +700,24 @@ internal sealed class AshlarCompositionTests
     }
 
     private sealed class ScopedDependency;
+
+    private interface ICustomOperationalAdministrationService
+    {
+        AshlarOperationalAdministrationContext Administration { get; }
+        ScopedDependency Ordinary { get; }
+        int DisposeCount { get; }
+    }
+
+    private sealed class CustomOperationalAdministrationService(
+        AshlarOperationalAdministrationContext administration,
+        ScopedDependency ordinary) : ICustomOperationalAdministrationService, IDisposable
+    {
+        public AshlarOperationalAdministrationContext Administration { get; } = administration;
+        public ScopedDependency Ordinary { get; } = ordinary;
+        public int DisposeCount { get; private set; }
+
+        public void Dispose() => DisposeCount++;
+    }
 
     private sealed class DisposableDependency : IAshlarTransactionProvider, IDisposable
     {

@@ -1,4 +1,5 @@
 using Ashlar.Messaging;
+using Ashlar.Operational;
 using Ashlar.Testing;
 using Ashlar.Identity.Models.AccountSecurity;
 using Ashlar.Identity.Models.Tenants;
@@ -89,16 +90,15 @@ internal sealed class PostgresEmailOutboxAdministrationContractTests : EmailOutb
         var sessions = provider.GetRequiredService<IAuthenticationSessionRepository>();
         var authorizer = provider.GetRequiredService<IAccountSecurityOperationAuthorizer>();
         var auditSink = provider.GetRequiredService<IPersistentSecurityEventSink>();
+        var administration = CreateAdministration(sessions, authorizer, auditSink, TimeProvider.System);
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(null!, TimeProvider.System, audit, transactionProvider, sessions, authorizer, auditSink));
-            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(connectionProvider, null!, audit, transactionProvider, sessions, authorizer, auditSink));
-            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, null!, transactionProvider, sessions, authorizer, auditSink));
-            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, audit, null!, sessions, authorizer, auditSink));
-            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, audit, transactionProvider, null!, authorizer, auditSink));
-            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, audit, transactionProvider, sessions, null!, auditSink));
-            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, audit, transactionProvider, sessions, authorizer, null!));
-            Assert.DoesNotThrow(() => new PostgresEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, audit, transactionProvider, sessions, authorizer, auditSink));
+            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(null!, TimeProvider.System, audit, transactionProvider, administration));
+            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(connectionProvider, null!, audit, transactionProvider, administration));
+            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, null!, transactionProvider, administration));
+            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, audit, null!, administration));
+            Assert.Throws<ArgumentNullException>(() => new PostgresEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, audit, transactionProvider, null!));
+            Assert.DoesNotThrow(() => new PostgresEmailOutboxAdministrationService(connectionProvider, TimeProvider.System, audit, transactionProvider, administration));
         }
     }
 
@@ -233,10 +233,21 @@ internal sealed class PostgresEmailOutboxAdministrationContractTests : EmailOutb
         var services = _database!.ServiceProvider;
         return new(services.GetRequiredService<IPostgresConnectionProvider>(), services.GetRequiredService<TimeProvider>(),
             sink, services.GetRequiredService<AshlarDurableTransactionProvider>(),
-            services.GetRequiredService<IAuthenticationSessionRepository>(),
-            services.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
-            services.GetRequiredService<IPersistentSecurityEventSink>());
+            CreateAdministration(
+                services.GetRequiredService<IAuthenticationSessionRepository>(),
+                services.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
+                services.GetRequiredService<IPersistentSecurityEventSink>(),
+                services.GetRequiredService<TimeProvider>()));
     }
+
+    private static AshlarOperationalAdministrationContext CreateAdministration(
+        IAuthenticationSessionRepository sessions,
+        IAccountSecurityOperationAuthorizer authorizer,
+        IPersistentSecurityEventSink auditSink,
+        TimeProvider timeProvider) => new(
+            new(sessions, authorizer, auditSink, timeProvider, eventType: "email_outbox.administration"),
+            new(sessions, authorizer, auditSink, timeProvider, IAccountSecurityAdministrationService.ProofPurpose,
+                "email_outbox.administration"));
 
     private async Task<AccountSecurityActorContext> CreateActorAsync(
         AuditContext? audit = null,

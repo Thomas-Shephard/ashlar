@@ -10,7 +10,6 @@ global using Ashlar.Postgres.Transactions;
 
 global using Ashlar.Auditing;
 global using Ashlar.Identity.Abstractions.Repositories;
-global using Ashlar.Identity.Abstractions.Services;
 global using Ashlar.Identity.Abstractions.Tenancy;
 global using Ashlar.Identity.Abstractions.Transactions;
 global using Ashlar.Identity.Models.AccountSecurity;

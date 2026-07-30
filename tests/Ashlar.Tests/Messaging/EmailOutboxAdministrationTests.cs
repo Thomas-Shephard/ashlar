@@ -1,5 +1,6 @@
 using Ashlar.Auditing;
 using Ashlar.Messaging;
+using Ashlar.Operational;
 using Ashlar.Testing;
 using Microsoft.Extensions.Time.Testing;
 
@@ -694,9 +695,7 @@ internal sealed class EmailOutboxAdministrationProviderTests
             new FakeTimeProvider(Now),
             sink,
             global::Ashlar.Testing.DurableTransactionComposition.Create(transactionProvider),
-            (security ?? Security).Sessions,
-            (security ?? Security).Authorizer,
-            auditSink ?? (security ?? Security).AuditSink)
+            CreateAdministrationContext(security ?? Security, auditSink))
     {
         public int ProviderCalls { get; private set; }
         public bool ThrowSearch { get; set; }
@@ -713,6 +712,18 @@ internal sealed class EmailOutboxAdministrationProviderTests
         public string? InvalidMutationStateField { get; set; }
         public bool ReturnNoMutationState { get; set; }
         public bool ReturnMismatchedLoadState { get; set; }
+
+        private static AshlarOperationalAdministrationContext CreateAdministrationContext(
+            AccountSecurityActorTestContext security,
+            IPersistentSecurityEventSink? auditSink)
+        {
+            var sink = auditSink ?? security.AuditSink;
+            var timeProvider = new FakeTimeProvider(Now);
+            return new(
+                new(security.Sessions, security.Authorizer, sink, timeProvider, eventType: "email_outbox.administration"),
+                new(security.Sessions, security.Authorizer, sink, timeProvider,
+                    IAccountSecurityAdministrationService.ProofPurpose, "email_outbox.administration"));
+        }
         public EmailOutboxStatus LoadStateStatus { get; set; } = EmailOutboxStatus.Pending;
 
         protected override Task<EmailOutboxAdministrationProviderSearchResult> SearchAuthorizedAsync(

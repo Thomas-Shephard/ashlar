@@ -12,4 +12,12 @@ services.TryAddAshlarProviderScoped<CustomTransactionProvider, IUserRepository, 
 services.AddAshlarIdentityDurableTransactionParticipants();
 ```
 
+Operational administration implementations use constructor injection for ordinary application services and an `AshlarOperationalAdministrationContext` containing only the precomposed authorization and audit boundaries:
+
+```csharp
+services.ReplaceAshlarOperationalAdministrationScoped<CustomTransactionProvider,
+    IEmailOutboxAdministrationService, CustomEmailOutboxAdministrationService>(
+    "Custom", AshlarOperationalAdministrationKind.EmailOutbox);
+```
+
 Provider contract tests register test-only aliases in their provider test projects. Ordinary application DI does not expose provider-owned services.

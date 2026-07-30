@@ -1,10 +1,9 @@
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions.Repositories;
-using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.Abstractions.Transactions;
 using Ashlar.Identity.Features.Administration;
 using Ashlar.Identity.Models.AccountSecurity;
 using Ashlar.Identity.Models.Administration;
+using Ashlar.Operational;
 
 namespace Ashlar.Webhooks.SecurityEvents;
 
@@ -121,21 +120,17 @@ public sealed record AshlarSecurityEventWebhookOutboxOperationState(
 /// <param name="timeProvider">Clock used for operation audit timestamps.</param>
 /// <param name="securityEventSink">Durable audit sink used for successful mutating operations. It is required so state changes and audit writes share one atomic boundary.</param>
 /// <param name="transactionProvider">Ashlar-owned durable transaction composition used to commit provider mutations with their required audit writes.</param>
-/// <param name="sessions">The authentication-session repository.</param>
-/// <param name="authorizer">The host operation authorizer.</param>
-/// <param name="auditSink">The durable audit sink.</param>
+/// <param name="administration">Precomposed authorization and audit boundaries.</param>
 public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
     TimeProvider timeProvider,
     ISecurityEventSink securityEventSink,
     AshlarDurableTransactionProvider transactionProvider,
-    IAuthenticationSessionRepository sessions,
-    IAccountSecurityOperationAuthorizer authorizer,
-    IPersistentSecurityEventSink auditSink) : IAshlarSecurityEventWebhookOutboxOperations
+    AshlarOperationalAdministrationContext administration) : IAshlarSecurityEventWebhookOutboxOperations
 {
     private readonly ISecurityEventSink _securityEventSink = securityEventSink ?? throw new ArgumentNullException(nameof(securityEventSink));
     private readonly AshlarDurableTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
-    private readonly AccountSecurityOperationBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider,
-        IAccountSecurityAdministrationService.ProofPurpose, "security_event_webhook.operation");
+    private readonly AccountSecurityOperationBoundary _boundary =
+        (administration ?? throw new ArgumentNullException(nameof(administration))).MutationBoundary;
 
     /// <summary>
     /// Gets the time provider.

@@ -1,7 +1,9 @@
 namespace Ashlar.ProviderContracts.DependencyInjection;
 
 using Ashlar.Auditing;
+using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.Abstractions.Transactions;
+using Ashlar.Operational;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -30,13 +32,6 @@ public static class AshlarProviderServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(provider);
         return provider.GetService<IServiceProviderIsService>()?.IsService(typeof(AshlarProviderService<TService>)) is true;
     }
-
-    /// <summary>Resolves a required contract from Ashlar's provider-owned infrastructure lane.</summary>
-    /// <typeparam name="TService">The provider contract to resolve.</typeparam>
-    /// <param name="provider">The service provider to resolve from.</param>
-    /// <returns>The required provider-owned service.</returns>
-    public static TService GetRequiredAshlarProviderService<TService>(this IServiceProvider provider) where TService : class =>
-        AshlarProviderServiceCollection.GetRequiredAshlarProviderService<TService>(provider);
 
     /// <summary>Registers a provider-owned service factory in Ashlar's private infrastructure lane.</summary>
     /// <typeparam name="TProvider">The transaction provider type that owns the service.</typeparam>
@@ -79,6 +74,52 @@ public static class AshlarProviderServiceCollectionExtensions
         services.RemoveAll<AshlarProviderService<TService>>();
         services.AddScoped(provider => new AshlarProviderService<TService>(factory(provider)));
         return services;
+    }
+
+    /// <summary>Replaces and publishes a provider-owned operational administration implementation.</summary>
+    /// <typeparam name="TProvider">The transaction provider type that owns the service.</typeparam>
+    /// <typeparam name="TService">The application-facing operational administration contract.</typeparam>
+    /// <typeparam name="TImplementation">The provider implementation.</typeparam>
+    /// <param name="services">The provider package's service collection.</param>
+    /// <param name="family">The durable provider family name used in conflict diagnostics.</param>
+    /// <param name="kind">The operational boundary configuration.</param>
+    /// <returns>The same service collection.</returns>
+    public static IServiceCollection ReplaceAshlarOperationalAdministrationScoped<TProvider, TService, TImplementation>(
+        this IServiceCollection services,
+        string family,
+        AshlarOperationalAdministrationKind kind)
+        where TProvider : class, IAshlarTransactionProvider
+        where TService : class
+        where TImplementation : class, TService
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.AddAshlarDurableProviderBundle<TProvider>(family);
+        services.RemoveAll<TService>();
+        services.AddScoped<TService>(provider => ActivatorUtilities.CreateInstance<TImplementation>(
+            provider, CreateOperationalAdministrationContext(provider, kind)));
+        return services;
+    }
+
+    private static AshlarOperationalAdministrationContext CreateOperationalAdministrationContext(
+        IServiceProvider provider,
+        AshlarOperationalAdministrationKind kind)
+    {
+        var sessions = AshlarProviderServiceCollection.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(provider);
+        var auditSink = AshlarProviderServiceCollection.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(provider);
+        var authorizer = provider.GetRequiredService<IAccountSecurityOperationAuthorizer>();
+        var timeProvider = provider.GetRequiredService<TimeProvider>();
+        var (readEventType, mutationEventType) = kind switch
+        {
+            AshlarOperationalAdministrationKind.EmailOutbox =>
+                ("email_outbox.administration", "email_outbox.administration"),
+            AshlarOperationalAdministrationKind.SecurityEventWebhookOutbox =>
+                ("security_event_webhook.outbox_browse", "security_event_webhook.operation"),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        };
+        return new(
+            new(sessions, authorizer, auditSink, timeProvider, eventType: readEventType),
+            new(sessions, authorizer, auditSink, timeProvider, IAccountSecurityAdministrationService.ProofPurpose,
+                mutationEventType));
     }
 
     /// <summary>Registers a provider-owned service in Ashlar's private infrastructure lane.</summary>

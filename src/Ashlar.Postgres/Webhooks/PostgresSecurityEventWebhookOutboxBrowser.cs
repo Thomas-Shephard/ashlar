@@ -1,14 +1,13 @@
 using Ashlar.Webhooks.SecurityEvents;
+using Ashlar.Operational;
 
 namespace Ashlar.Postgres.Webhooks;
 
 internal sealed class PostgresSecurityEventWebhookOutboxBrowser(
     IPostgresConnectionProvider connectionProvider,
     TimeProvider timeProvider,
-    IAuthenticationSessionRepository sessions,
-    IAccountSecurityOperationAuthorizer authorizer,
-    IPersistentSecurityEventSink auditSink) : AshlarSecurityEventWebhookOutboxBrowserBase(
-        sessions, authorizer, auditSink, timeProvider)
+    AshlarOperationalAdministrationContext administration) : AshlarSecurityEventWebhookOutboxBrowserBase(
+        administration)
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
