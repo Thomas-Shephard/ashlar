@@ -65,8 +65,8 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         await repository.CreateInvitationAsync(expired);
 
         var revoked = await repository.RevokeInvitationsByEmailAsync("TENANT@example.com", tenantId);
-        var alreadyRevoked = await repository.RevokeInvitationAsync(
-            new RevokeInvitationAdministrationRequest(revokeTarget.Id, new TenantContext(tenantId), Audit: new AuditContext(Guid.NewGuid(), "127.0.0.1")),
+        var alreadyRevoked = await repository.RevokeInvitationByIdAsync(
+            new RevokeInvitationByIdAdministrationRequest(revokeTarget.Id, new TenantContext(tenantId)),
             DateTimeOffset.UtcNow);
         expired.AcceptedAt = DateTimeOffset.UtcNow;
         var expiredAccepted = await repository.UpdateInvitationAsync(expired, expired.Version);
@@ -90,8 +90,8 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         await repository.CreateInvitationAsync(invitation);
         await IgnoreRevokeUpdateAsync(invitation.Id);
 
-        var result = await repository.RevokeInvitationAsync(
-            new RevokeInvitationAdministrationRequest(invitation.Id, new TenantContext(tenantId), Audit: new AuditContext(Guid.NewGuid(), "127.0.0.1")),
+        var result = await repository.RevokeInvitationByIdAsync(
+            new RevokeInvitationByIdAdministrationRequest(invitation.Id, new TenantContext(tenantId)),
             DateTimeOffset.UtcNow);
 
         using (Assert.EnterMultipleScope())

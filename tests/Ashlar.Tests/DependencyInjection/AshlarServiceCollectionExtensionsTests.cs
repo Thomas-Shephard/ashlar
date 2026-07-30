@@ -534,7 +534,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
 
         using (Assert.EnterMultipleScope())
         {
-            AssertDescriptor<IInvitationService, InvitationService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<InvitationService, InvitationService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IInvitationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IInvitationAdministrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<InvitationAdministrationServiceDependencies>(services, ServiceLifetime.Scoped);
         }

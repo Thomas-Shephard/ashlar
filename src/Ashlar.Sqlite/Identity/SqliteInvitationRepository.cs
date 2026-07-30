@@ -195,9 +195,9 @@ internal sealed class SqliteInvitationRepository(ISqliteConnectionProvider conne
         return await reader.ReadAsync(cancellationToken) ? ReadAdministrationSummary(reader) : null;
     }
 
-    public async Task<RevokeInvitationAdministrationResult?> RevokeInvitationAsync(RevokeInvitationAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    public async Task<RevokeInvitationByIdAdministrationResult?> RevokeInvitationByIdAsync(RevokeInvitationByIdAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        RevokeInvitationAdministrationRequest.ThrowIfInvalid(request);
+        RevokeInvitationByIdAdministrationRequest.ThrowIfInvalid(request);
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
 
@@ -281,9 +281,9 @@ internal sealed class SqliteInvitationRepository(ISqliteConnectionProvider conne
         };
     }
 
-    private static async Task<RevokeInvitationAdministrationResult?> GetRevokeCandidateAsync(
+    private static async Task<RevokeInvitationByIdAdministrationResult?> GetRevokeCandidateAsync(
         SqliteConnectionHandle handle,
-        RevokeInvitationAdministrationRequest request,
+        RevokeInvitationByIdAdministrationRequest request,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
@@ -378,12 +378,12 @@ internal sealed class SqliteInvitationRepository(ISqliteConnectionProvider conne
             reader.GetNullableDateTimeOffsetFromText(RevokedAtColumn));
     }
 
-    private static RevokeInvitationAdministrationResult ReadRevokeResult(SqliteDataReader reader)
+    private static RevokeInvitationByIdAdministrationResult ReadRevokeResult(SqliteDataReader reader)
     {
         var invitationId = reader.GetGuidFromText("invitation_id");
         var tenantId = reader.GetNullableGuidFromText(TenantIdColumn);
         var status = (InvitationAdministrationStatus)reader.GetInt32ByName("status");
-        return new RevokeInvitationAdministrationResult(
+        return new RevokeInvitationByIdAdministrationResult(
             invitationId,
             tenantId,
             ToRevocationStatus(status),

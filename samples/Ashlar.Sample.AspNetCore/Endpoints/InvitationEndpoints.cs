@@ -1,4 +1,7 @@
 using Ashlar.AspNetCore.Sessions;
+using Ashlar.AspNetCore.Mfa;
+using Ashlar.Identity.Features.Mfa;
+using Ashlar.Identity.Models.Administration;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
 using Microsoft.Extensions.Options;
@@ -7,24 +10,36 @@ namespace Ashlar.Sample.AspNetCore.Endpoints;
 
 internal static class InvitationEndpoints
 {
+    private static readonly StepUpRequirement InvitationCreationRequirement = new(TimeSpan.FromMinutes(5));
+
     public static void MapInvitationEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/invitations", async (
             CreateInvitationRequest request,
-            IInvitationService invitations,
+            IInvitationAdministrationService invitations,
+            StepUpAuthenticationService stepUp,
             IOptions<SampleAshlarOptions> options,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
+            if (!httpContext.TryGetAshlarSessionContext(out var actorUserId, out var sessionId, out var actorTenant) || actorTenant == null)
+                return Results.Forbid();
+            var proof = httpContext.CreateFreshMfaProof(stepUp, InvitationCreationRequirement, IInvitationAdministrationService.CreateProofPurpose);
+            if (!proof.TryGetValue(out var freshProof))
+                return Results.Forbid();
+
             var callback = new Uri(new Uri(options.Value.PublicAppUrl), "/invitations/accept");
+            var tenant = new TenantContext(httpContext.GetDemoTenantIdFromUntrustedHeader());
             var invitation = new CreateInvitationRequest
             {
                 Email = request.Email,
-                TenantId = httpContext.GetDemoTenantIdFromUntrustedHeader(),
+                TenantId = tenant.TenantId,
                 Expiry = request.Expiry,
                 Metadata = request.Metadata
             };
-            var result = await invitations.CreateInvitationAsync(invitation, callback, httpContext.ToAuthenticationContext(), cancellationToken);
+            var actor = new AccountSecurityActorContext(actorUserId, actorTenant, sessionId, freshProof, httpContext.ToAuditContext());
+            var result = await invitations.CreateInvitationAsync(actor,
+                new CreateInvitationAdministrationRequest(invitation, callback, tenant), cancellationToken);
             return result.Succeeded ? Results.Accepted() : Results.BadRequest(SampleResultErrors.From(result));
         }).RequireAuthorization("admin").RequireFreshMfa().RequireSampleAntiforgery();
 
