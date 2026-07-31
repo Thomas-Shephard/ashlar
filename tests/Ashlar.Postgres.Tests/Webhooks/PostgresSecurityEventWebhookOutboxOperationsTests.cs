@@ -255,9 +255,9 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
 
     private AshlarOperationalAdministrationContext Administration() => new(
         new(Security.Sessions, Security.Authorizer, Security.AuditSink, _timeProvider,
-            eventType: "security_event_webhook.outbox_browse"),
+            eventType: AshlarSecurityEventTypes.SecurityEventWebhookOutboxBrowse),
         new(Security.Sessions, Security.Authorizer, Security.AuditSink, _timeProvider,
-            IAccountSecurityAdministrationService.ProofPurpose, "security_event_webhook.operation"));
+            IAccountSecurityAdministrationService.ProofPurpose, AshlarSecurityEventTypes.SecurityEventWebhookOutboxOperation));
 
     private static AshlarSecurityEventWebhookOutboxOperationRequest Request(Guid id)
     {

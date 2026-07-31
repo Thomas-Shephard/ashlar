@@ -111,9 +111,9 @@ public static class AshlarProviderServiceCollectionExtensions
         var (readEventType, mutationEventType) = kind switch
         {
             AshlarOperationalAdministrationKind.EmailOutbox =>
-                ("email_outbox.administration", "email_outbox.administration"),
+                (AshlarSecurityEventTypes.EmailOutboxAdministration, AshlarSecurityEventTypes.EmailOutboxAdministration),
             AshlarOperationalAdministrationKind.SecurityEventWebhookOutbox =>
-                ("security_event_webhook.outbox_browse", "security_event_webhook.operation"),
+                (AshlarSecurityEventTypes.SecurityEventWebhookOutboxBrowse, AshlarSecurityEventTypes.SecurityEventWebhookOutboxOperation),
             _ => throw new ArgumentOutOfRangeException(nameof(kind))
         };
         return new(

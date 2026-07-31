@@ -271,9 +271,9 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
 
     private AshlarOperationalAdministrationContext Administration(AccountSecurityActorTestContext security) => new(
         new(security.Sessions, security.Authorizer, security.AuditSink, _timeProvider,
-            eventType: "security_event_webhook.outbox_browse"),
+            eventType: AshlarSecurityEventTypes.SecurityEventWebhookOutboxBrowse),
         new(security.Sessions, security.Authorizer, security.AuditSink, _timeProvider,
-            IAccountSecurityAdministrationService.ProofPurpose, "security_event_webhook.operation"));
+            IAccountSecurityAdministrationService.ProofPurpose, AshlarSecurityEventTypes.SecurityEventWebhookOutboxOperation));
 
     private static AccountSecurityActorTestContext FailedSecurity(string failure)
     {

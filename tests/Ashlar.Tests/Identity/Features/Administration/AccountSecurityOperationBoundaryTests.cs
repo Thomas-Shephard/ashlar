@@ -159,7 +159,7 @@ internal sealed class AccountSecurityOperationBoundaryTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(boundary.Sink.Events.Single().EventType, Is.EqualTo(AccountSecurityOperationBoundary.EventType));
+            Assert.That(boundary.Sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AdministrationRead));
             Assert.That(boundary.Sink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Success));
             Assert.That(boundary.Sink.Events.Single().Properties!["operation"], Is.EqualTo(nameof(AccountSecurityOperation.SearchCredentials)));
             Assert.That(boundary.Sink.Events.Single().Properties!["scope"], Is.EqualTo("global"));

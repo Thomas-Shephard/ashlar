@@ -1,4 +1,5 @@
 using System.Net;
+using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.Models.AccountSecurity;
 using Ashlar.Operational;
@@ -234,9 +235,9 @@ internal sealed class AshlarSecurityEventWebhookOutboxBrowserTests
         : AshlarSecurityEventWebhookOutboxBrowserBase(
             new AshlarOperationalAdministrationContext(
                 new(security.Sessions, security.Authorizer, security.AuditSink, new FixedTimeProvider(Now),
-                    eventType: "security_event_webhook.outbox_browse"),
+                    eventType: AshlarSecurityEventTypes.SecurityEventWebhookOutboxBrowse),
                 new(security.Sessions, security.Authorizer, security.AuditSink, new FixedTimeProvider(Now),
-                    IAccountSecurityAdministrationService.ProofPurpose, "security_event_webhook.operation")))
+                    IAccountSecurityAdministrationService.ProofPurpose, AshlarSecurityEventTypes.SecurityEventWebhookOutboxOperation)))
     {
         public int LoadCount { get; private set; }
 
