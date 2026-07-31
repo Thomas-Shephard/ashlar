@@ -176,7 +176,7 @@ internal sealed class AuthenticationPipeline(
         {
             await ResetAccountLockoutIfApplicableAsync(shouldApplyAccountLockout, user, provider.Key, context, cancellationToken);
 
-            return new AuthenticationResponse(false, user, AuthenticationStatus.MfaRequired, result.Claims);
+            return new AuthenticationResponse(user, AuthenticationStatus.MfaRequired, result.Claims);
         }
 
         var status = result.Status == AuthenticationResultStatus.SucceededWithCredentialUpdate ? AuthenticationStatus.SuccessWithCredentialUpdate : AuthenticationStatus.Success;
@@ -384,7 +384,7 @@ internal sealed class AuthenticationPipeline(
             FailureReason = SecurityEventFailureReasons.RateLimited
         }, cancellationToken);
 
-        return new AuthenticationResponse(false, Status: AuthenticationStatus.RateLimited);
+        return new AuthenticationResponse(Status: AuthenticationStatus.RateLimited);
     }
 
     private async Task<AuthenticationResponse> ProcessCredentialLifecycleAsync(
@@ -473,7 +473,7 @@ internal sealed class AuthenticationPipeline(
             FailureReason = reason
         }, cancellationToken);
 
-        return new AuthenticationResponse(false, returnedUser, returnedStatus);
+        return new AuthenticationResponse(returnedUser, returnedStatus);
     }
 
     private async Task<AuthenticationResponse> CompleteSuccessfulLoginAsync(
@@ -494,7 +494,7 @@ internal sealed class AuthenticationPipeline(
         }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
-        return new AuthenticationResponse(true, lifecycle.User, lifecycle.Status, lifecycle.Result.Claims, credentialUpdatePersisted)
+        return new AuthenticationResponse(lifecycle.User, lifecycle.Status, lifecycle.Result.Claims, credentialUpdatePersisted)
         {
             StepUpSessionMarkingProof = lifecycle.IsFactor && lifecycle.Context.CurrentSessionId is { } sessionId
                 ? StepUpSessionMarkingProof.Create(

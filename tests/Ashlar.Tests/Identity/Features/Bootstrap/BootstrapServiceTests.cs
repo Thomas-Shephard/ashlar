@@ -831,12 +831,12 @@ internal sealed class BootstrapServiceTests
     }
 
     [Test]
-    public async Task BootstrapFirstAdminAsyncUsesDefaultFailureWhenGrantCreationFailsWithoutReason()
+    public async Task BootstrapFirstAdminAsyncPreservesGrantCreationFailure()
     {
         ArrangeSuccessfulBootstrap();
         _options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
         _grantService.Setup(s => s.CreateGrantAsync(It.IsAny<CreateAuthorizationGrantRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Result<AuthorizationGrant>(false));
+            .ReturnsAsync(Result.Failure<AuthorizationGrant>(AshlarFailureCodes.ValidationError));
 
         var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
         {
@@ -847,7 +847,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.GrantCreationFailed));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
         }
     }
 

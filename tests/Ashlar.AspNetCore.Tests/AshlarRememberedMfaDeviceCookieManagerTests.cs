@@ -199,14 +199,14 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
     }
 
     [Test]
-    public void IssueAsyncUsesDefaultFailureWhenServiceFailsWithoutDetails()
+    public void IssueAsyncPreservesServiceFailure()
     {
         var userId = Guid.NewGuid();
         var mfaResult = CreatePublicFreshMfaSignalOnlyResult(userId);
         var service = new Mock<IRememberedMfaDeviceService>();
         service
             .Setup(s => s.CreateAfterSuccessfulMfaAsync(mfaResult, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Result<RememberedMfaDeviceCreated>(false));
+            .ReturnsAsync(Result.Failure<RememberedMfaDeviceCreated>(AshlarFailureCodes.ValidationError));
         var manager = CreateManager(service.Object);
         var context = CreateContext();
 
@@ -215,7 +215,7 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exception!.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That(exception.Message, Is.EqualTo("Failed to create remembered MFA device."));
+            Assert.That(exception.Message, Is.EqualTo(AshlarFailureCodes.ValidationError.Value));
             Assert.That(context.Response.Headers.SetCookie.ToString(), Is.Empty);
         }
     }

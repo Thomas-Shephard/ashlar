@@ -122,7 +122,7 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeO
                 cancellationToken);
         if (!userResult.TryGetValue(out _))
         {
-            return Result.Failure<AuthenticationHandshakeCreated>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFound));
+            return Result.Failure<AuthenticationHandshakeCreated>(userResult.GetFailure());
         }
 
         var token = _tokenGenerator.GenerateToken();

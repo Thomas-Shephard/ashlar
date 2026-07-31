@@ -40,10 +40,29 @@ public sealed record AshlarFailure(AshlarFailureCode Code, string? Message = nul
 /// <summary>
 /// Represents a success or failure outcome for an Ashlar operation.
 /// </summary>
-/// <param name="Succeeded">Whether the operation completed successfully.</param>
-/// <param name="FailureDetails">Stable failure details when the operation failed.</param>
-public record Result(bool Succeeded, AshlarFailure? FailureDetails = null)
+public record Result
 {
+    private protected Result()
+    {
+        Succeeded = true;
+    }
+
+    private protected Result(AshlarFailure failure)
+    {
+        ArgumentNullException.ThrowIfNull(failure);
+        ArgumentException.ThrowIfNullOrWhiteSpace(failure.Code.Value);
+        FailureDetails = failure;
+    }
+
+    /// <summary>
+    /// Whether the operation completed successfully.
+    /// </summary>
+    [MemberNotNullWhen(false, nameof(FailureDetails))]
+    public bool Succeeded { get; }
+    /// <summary>
+    /// Stable failure details when the operation failed.
+    /// </summary>
+    public AshlarFailure? FailureDetails { get; }
     /// <summary>
     /// Stable failure identifier when the operation failed.
     /// </summary>
@@ -57,31 +76,32 @@ public record Result(bool Succeeded, AshlarFailure? FailureDetails = null)
     /// </summary>
     public string? FailureReason => FailureDetails?.Message ?? FailureDetails?.Code.Value;
     /// <summary>
-    /// Returns attached failure details, or creates fallback details when none were supplied.
+    /// Returns the failure details.
     /// </summary>
-    /// <param name="fallback">Failure identifier to use when no structured failure is available.</param>
-    /// <returns>Attached or fallback failure details.</returns>
-    public AshlarFailure GetFailureOr(AshlarFailureCode fallback) => FailureDetails ?? new AshlarFailure(fallback);
+    /// <returns>The attached failure details.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the result succeeded.</exception>
+    public AshlarFailure GetFailure() =>
+        FailureDetails ?? throw new InvalidOperationException("A successful result does not contain failure details.");
 
     /// <summary>
     /// Creates a successful result.
     /// </summary>
     /// <returns>A successful result without a value.</returns>
-    public static Result Success() => new(true);
+    public static Result Success() => new();
     /// <summary>
     /// Creates a successful result with a value.
     /// </summary>
     /// <typeparam name="T">The result value type.</typeparam>
     /// <param name="value">Successful operation payload.</param>
     /// <returns>A successful typed result.</returns>
-    public static Result<T> Success<T>(T value) => new(true, value);
+    public static Result<T> Success<T>(T value) where T : notnull => Result<T>.CreateSuccess(value);
     /// <summary>
     /// Creates a failed result.
     /// </summary>
     /// <param name="code">Stable failure identifier to attach to the result.</param>
     /// <param name="message">Optional diagnostic text for the failure. Map failures to host-owned user-facing copy.</param>
     /// <returns>A failed result containing the supplied failure code and message.</returns>
-    public static Result Failure(AshlarFailureCode code, string? message = null) => new(false, new AshlarFailure(code, message));
+    public static Result Failure(AshlarFailureCode code, string? message = null) => new(new AshlarFailure(code, message));
     /// <summary>
     /// Creates a failed result.
     /// </summary>
@@ -90,7 +110,7 @@ public record Result(bool Succeeded, AshlarFailure? FailureDetails = null)
     public static Result Failure(AshlarFailure failure)
     {
         ArgumentNullException.ThrowIfNull(failure);
-        return new Result(false, failure);
+        return new Result(failure);
     }
 
     /// <summary>
@@ -100,17 +120,18 @@ public record Result(bool Succeeded, AshlarFailure? FailureDetails = null)
     /// <param name="code">Stable failure identifier to attach to the result.</param>
     /// <param name="message">Optional diagnostic text for the failure. Map failures to host-owned user-facing copy.</param>
     /// <returns>A failed typed result containing the supplied failure code and message.</returns>
-    public static Result<T> Failure<T>(AshlarFailureCode code, string? message = null) => new(false, default, new AshlarFailure(code, message));
+    public static Result<T> Failure<T>(AshlarFailureCode code, string? message = null) where T : notnull =>
+        Result<T>.CreateFailure(new AshlarFailure(code, message));
     /// <summary>
     /// Creates a failed typed result.
     /// </summary>
     /// <typeparam name="T">The result value type.</typeparam>
     /// <param name="failure">The failure details to attach.</param>
     /// <returns>A failed typed result containing the supplied failure details.</returns>
-    public static Result<T> Failure<T>(AshlarFailure failure)
+    public static Result<T> Failure<T>(AshlarFailure failure) where T : notnull
     {
         ArgumentNullException.ThrowIfNull(failure);
-        return new Result<T>(false, default, failure);
+        return Result<T>.CreateFailure(failure);
     }
 
     /// <summary>
@@ -122,15 +143,29 @@ public record Result(bool Succeeded, AshlarFailure? FailureDetails = null)
 }
 
 /// <summary>
-/// Represents a success or failure outcome that may carry <paramref name="Value" />.
+/// Represents a success or failure outcome that carries a value on success.
 /// </summary>
 /// <typeparam name="T">The contained result type.</typeparam>
-/// <param name="Succeeded">Whether the operation completed successfully.</param>
-/// <param name="Value">Successful operation payload, when available.</param>
-/// <param name="FailureDetails">Stable failure details when the operation failed.</param>
-public record Result<T>(bool Succeeded, T? Value = default, AshlarFailure? FailureDetails = null)
-    : Result(Succeeded, FailureDetails)
+public record Result<T> : Result where T : notnull
 {
+    private Result(T value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        Value = value;
+    }
+
+    private Result(AshlarFailure failure) : base(failure)
+    {
+    }
+
+    internal static Result<T> CreateSuccess(T value) => new(value);
+    internal static Result<T> CreateFailure(AshlarFailure failure) => new(failure);
+
+    /// <summary>
+    /// Successful operation payload, when available.
+    /// </summary>
+    public T? Value { get; }
+
     /// <summary>
     /// Attempts to get a non-<see langword="null" /> value from a successful result.
     /// </summary>
@@ -140,5 +175,25 @@ public record Result<T>(bool Succeeded, T? Value = default, AshlarFailure? Failu
     {
         value = Value;
         return Succeeded && value is not null;
+    }
+
+    /// <summary>
+    /// Attempts to get a successful value and otherwise returns the failure details.
+    /// </summary>
+    /// <param name="value">Successful operation payload, when available.</param>
+    /// <param name="failure">Failure details when no value is available.</param>
+    /// <returns><see langword="true" /> when a value is available.</returns>
+    public bool TryGetValue(
+        [NotNullWhen(true)] out T? value,
+        [NotNullWhen(false)] out AshlarFailure? failure)
+    {
+        if (TryGetValue(out value))
+        {
+            failure = null;
+            return true;
+        }
+
+        failure = GetFailure();
+        return false;
     }
 }

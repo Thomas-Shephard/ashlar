@@ -283,7 +283,7 @@ internal sealed class MfaPolicyEvaluatorsTests
         ]);
         var orchestrator = new AuthenticationOrchestrator(pipeline.Object, factorPipeline.Object, handshakeService.Object, new TestAuthenticationHandshakeCompletionService(), policy, Mock.Of<IAuthenticationProviderRegistry>());
         pipeline.Setup(p => p.LoginAsync(_context, assertion.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, user.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(user.Object, AuthenticationStatus.Success));
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
             user.Object.Id,

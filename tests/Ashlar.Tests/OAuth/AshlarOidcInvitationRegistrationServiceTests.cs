@@ -282,7 +282,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     [Test]
     public async Task RegisterShouldReturnFailedWhenPreviewFailsWithoutCode()
     {
-        var invitations = CreateInvitations(preview: new Result<InvitationAcceptancePreview>(false));
+        var invitations = CreateInvitations(preview: Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.ValidationError));
         var service = CreateService(invitations.Object);
 
         var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
@@ -293,7 +293,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     [Test]
     public async Task RegisterShouldReturnInvalidInvitationWhenPreviewValueIsMissing()
     {
-        var invitations = CreateInvitations(preview: Result.Success<InvitationAcceptancePreview>(null!));
+        var invitations = CreateInvitations(preview: Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.InvalidInvitation));
         var service = CreateService(invitations.Object);
 
         var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
@@ -706,7 +706,18 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     [Test]
     public async Task RegisterShouldMapInvitationAcceptanceFailureWithoutCode()
     {
-        var invitations = CreateInvitations(acceptance: new Result<InvitationAcceptanceResult>(false));
+        var invitations = CreateInvitations(acceptance: Result.Failure<InvitationAcceptanceResult>(AshlarFailureCodes.ValidationError));
+        var service = CreateService(invitations.Object);
+
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Failed));
+    }
+
+    [Test]
+    public async Task RegisterShouldFailWhenAcceptedUserIdIsEmpty()
+    {
+        var invitations = CreateInvitations(acceptance: AcceptResult(Guid.Empty));
         var service = CreateService(invitations.Object);
 
         var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
@@ -801,7 +812,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var mapper = typeof(AshlarOidcInvitationRegistrationService).GetMethod("MapLinkFailure", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
 
-        var status = mapper.Invoke(null, [new Result(false)]);
+        var status = mapper.Invoke(null, [Result.Failure(AshlarFailureCodes.ValidationError)]);
 
         Assert.That(status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.LinkFailed));
     }

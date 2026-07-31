@@ -433,7 +433,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
                 It.IsAny<ValidatedAuthenticationSession>(),
                 It.IsAny<TimeSpan?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Result<AccountSecurityPosture>(false, posture));
+            .ReturnsAsync(Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.ValidationError));
         var context = CreateContext(
             session,
             new AshlarStepUpRequirement(
@@ -478,7 +478,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
                 It.IsAny<ValidatedAuthenticationSession>(),
                 It.IsAny<TimeSpan?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Result<AccountSecurityPosture>(true));
+            .ReturnsAsync(Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.ValidationError));
         var context = CreateContext(
             session,
             new AshlarStepUpRequirement(

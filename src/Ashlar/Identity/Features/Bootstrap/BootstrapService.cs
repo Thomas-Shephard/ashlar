@@ -141,13 +141,13 @@ internal sealed class BootstrapService(
                     {
                         EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                         Outcome = SecurityEventOutcomes.Failure,
-                        FailureReason = grantResult.FailureCode?.Value ?? AshlarFailureCodes.GrantCreationFailed.Value,
+                        FailureReason = grantResult.GetFailure().Code.Value,
                         UserId = userId,
                         TenantId = request.TenantId,
                         Audit = request.Audit,
                         Context = context
                     }, cancellationToken);
-                    return Result.Failure<BootstrapFirstAdminResult>(grantResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.GrantCreationFailed));
+                    return Result.Failure<BootstrapFirstAdminResult>(grantResult.GetFailure());
                 }
             }
         }

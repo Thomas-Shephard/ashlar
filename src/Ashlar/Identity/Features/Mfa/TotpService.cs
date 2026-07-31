@@ -67,7 +67,7 @@ internal sealed class TotpService : ITotpService
         var proofResult = await ValidateEnrollmentProofAsync(CreateEnrollmentProofValidationRequest(request, tenant, AshlarSecurityEventTypes.TotpEnrollmentStarted), AccountSecurityOperation.StartTotpEnrollment, cancellationToken);
         if (!proofResult.Succeeded)
         {
-            var failureCode = proofResult.GetFailureOr(AshlarFailureCodes.StepUpRequired).Code;
+            var failureCode = proofResult.GetFailure().Code;
             throw new AshlarOperationException(failureCode, "Fresh verification is required for TOTP enrollment.");
         }
 
@@ -157,7 +157,7 @@ internal sealed class TotpService : ITotpService
                 return completionResult;
         }
 
-        await RecordEnrollmentCompletionFailureAsync(request, completionResult.GetFailureOr(AshlarFailureCodes.ValidationError).Code, cancellationToken);
+        await RecordEnrollmentCompletionFailureAsync(request, completionResult.GetFailure().Code, cancellationToken);
         return completionResult;
     }
 
@@ -186,7 +186,7 @@ internal sealed class TotpService : ITotpService
             cancellationToken);
 
         if (!linkResult.Succeeded)
-            return Result.Failure<TotpEnrollmentCompletionResult>(linkResult.GetFailureOr(AshlarFailureCodes.LinkFailed));
+            return Result.Failure<TotpEnrollmentCompletionResult>(linkResult.GetFailure());
 
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
@@ -452,14 +452,14 @@ internal sealed class TotpService : ITotpService
         return false;
     }
 
-    private static Result<TotpEnrollmentCompletionResult> ToEnrollmentFailureResult<T>(Result<T> result)
+    private static Result<TotpEnrollmentCompletionResult> ToEnrollmentFailureResult<T>(Result<T> result) where T : notnull
     {
-        return Result.Failure<TotpEnrollmentCompletionResult>(result.GetFailureOr(AshlarFailureCodes.ValidationError));
+        return Result.Failure<TotpEnrollmentCompletionResult>(result.GetFailure());
     }
 
     private static Result<TotpEnrollmentCompletionResult> ToEnrollmentFailureResult(Result result)
     {
-        return Result.Failure<TotpEnrollmentCompletionResult>(result.GetFailureOr(AshlarFailureCodes.ValidationError));
+        return Result.Failure<TotpEnrollmentCompletionResult>(result.GetFailure());
     }
 
     private async Task<Result<IUser>> ValidateUserTenantAsync(
@@ -476,7 +476,7 @@ internal sealed class TotpService : ITotpService
             return result;
         }
 
-        var failureCode = result.GetFailureOr(AshlarFailureCodes.ValidationError).Code;
+        var failureCode = result.GetFailure().Code;
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = eventType,
@@ -490,7 +490,7 @@ internal sealed class TotpService : ITotpService
 
         if (throwOnFailure)
         {
-            throw new AshlarOperationException(result.GetFailureOr(AshlarFailureCodes.ValidationError).Code, "TOTP user validation failed for the requested tenant.");
+            throw new AshlarOperationException(result.GetFailure().Code, "TOTP user validation failed for the requested tenant.");
         }
 
         return result;

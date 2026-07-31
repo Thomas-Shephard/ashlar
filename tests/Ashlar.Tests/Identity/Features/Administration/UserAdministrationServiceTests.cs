@@ -232,7 +232,7 @@ internal sealed class UserAdministrationServiceTests
         var repository = new RecordingUserAdministrationRepository { UserSummary = CreateSummary("detail@example.com") with { UserId = userId } };
         var accountSecurity = new RecordingAccountSecurityService
         {
-            PostureResult = new Result<AccountSecurityPosture>(true)
+            PostureResult = Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.UserNotFound)
         };
         var service = CreateService(repository, accountSecurity);
 

@@ -102,26 +102,22 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             };
         }
 
-        if (response.User == null)
-        {
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: AuthenticationFailedMessage);
-        }
-
-        var policyEvaluation = await _policyEvaluator.EvaluateAsync(response.User, context, cancellationToken);
+        var user = response.GetUser();
+        var policyEvaluation = await _policyEvaluator.EvaluateAsync(user, context, cancellationToken);
 
         if (response.Status == AuthenticationStatus.MfaRequired || policyEvaluation.IsMfaRequired)
         {
-            return await CreateMfaRequiredResultAsync(response.User, response, policyEvaluation, options, context, primaryAssertion, cancellationToken);
+            return await CreateMfaRequiredResultAsync(user, response, policyEvaluation, options, context, primaryAssertion, cancellationToken);
         }
 
         return new MfaAuthenticationResult(
             MfaAuthenticationStatus.Succeeded,
-            response.User,
+            user,
             Claims: response.Claims)
         {
             CredentialUpdatePersisted = response.CredentialUpdatePersisted,
             SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(
-                response.User.Id, primaryAssertion.ProviderIdentity, _timeProvider.GetUtcNow())
+                user.Id, primaryAssertion.ProviderIdentity, _timeProvider.GetUtcNow())
         };
     }
 
@@ -138,13 +134,12 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
 
         var beginRequest = new BeginAuthenticationHandshakeVerificationRequest(handshakeToken, context);
         var beginResult = await _handshakeService.BeginVerificationAsync(beginRequest, cancellationToken);
-        if (!beginResult.Succeeded || beginResult.Value == null)
+        if (!beginResult.TryGetValue(out var handshake, out var failure))
         {
-            MfaFactorVerificationRejected(_logger, beginResult.FailureReason ?? "handshake_verification_failed", null);
-            return CreateHandshakeFailureResult(beginResult.FailureCode);
+            MfaFactorVerificationRejected(_logger, failure.Message ?? failure.Code.Value, null);
+            return CreateHandshakeFailureResult(failure.Code);
         }
 
-        var handshake = beginResult.Value;
         if (!TryGetFactorProvider(assertion, out var factorProvider) ||
             !TryResolveRequiredFactor(handshake, factorType, factorProvider, out var resolvedFactorType))
         {
@@ -162,7 +157,13 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
         var verificationRequest = new VerifyAuthenticationHandshakeRequest(handshakeToken, resolvedFactorType, Context: factorContext);
 
         var response = await _factorPipeline.VerifyFactorAsync(factorContext, assertion, cancellationToken);
-        if (!response.Succeeded || response.User?.Id != handshake.UserId)
+        if (!response.Succeeded)
+        {
+            return CreateFactorAuthenticationFailureResult(handshake.UserId, response);
+        }
+
+        var responseUser = response.GetUser();
+        if (responseUser.Id != handshake.UserId)
         {
             return CreateFactorAuthenticationFailureResult(handshake.UserId, response);
         }
@@ -170,14 +171,14 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
         var metadata = CreateFactorVerificationMetadata(response);
         var result = await _handshakeCompletionService.CompleteFactorVerificationAsync(verificationRequest with { Metadata = metadata }, cancellationToken);
 
-        if (!result.Succeeded || result.Value == null)
+        if (!result.TryGetValue(out var completedHandshake))
         {
             MfaHandshakeOperationFailed(_logger, handshake.UserId, result.FailureReason, null);
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: GetHandshakeVerificationFailureMessage(result.FailureCode));
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: GetHandshakeVerificationFailureMessage(result.GetFailure().Code));
         }
 
         return CreateResultFromHandshake(
-            result.Value, response.User, handshakeToken, response.CredentialUpdatePersisted,
+            completedHandshake, responseUser, handshakeToken, response.CredentialUpdatePersisted,
             factorProvider.Key, factorProvider.FactorType);
     }
 
@@ -212,9 +213,9 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
         return metadata;
     }
 
-    private static MfaAuthenticationResult CreateHandshakeFailureResult(AshlarFailureCode? failureCode)
+    private static MfaAuthenticationResult CreateHandshakeFailureResult(AshlarFailureCode failureCode)
     {
-        var status = failureCode?.Value == AshlarFailureCodes.RateLimitExceededValue
+        var status = failureCode.Value == AshlarFailureCodes.RateLimitExceededValue
             ? MfaAuthenticationStatus.RateLimited
             : MfaAuthenticationStatus.Failed;
         return new MfaAuthenticationResult(status, ErrorMessage: GetHandshakeVerificationFailureMessage(failureCode));
@@ -314,7 +315,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             {
                 CredentialUpdatePersisted = response.CredentialUpdatePersisted,
                 SessionIssuanceProof = AuthenticationSessionIssuanceProof.CreatePrimary(
-                    response.User!.Id, primaryAssertion.ProviderIdentity, _timeProvider.GetUtcNow())
+                    user.Id, primaryAssertion.ProviderIdentity, _timeProvider.GetUtcNow())
             };
         }
 
@@ -325,7 +326,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
         if (!result.TryGetValue(out var created))
         {
             MfaHandshakeOperationFailed(_logger, user.Id, result.FailureReason, null);
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: GetHandshakeCreationFailureMessage(result.FailureCode));
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: GetHandshakeCreationFailureMessage(result.GetFailure().Code));
         }
 
         return new MfaAuthenticationResult(
@@ -452,9 +453,9 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
                 kvp => (IReadOnlyList<string>)(JsonSerializer.Deserialize<string[]>(kvp.Value) ?? [])) ?? [];
     }
 
-    private static string GetHandshakeVerificationFailureMessage(AshlarFailureCode? failureCode)
+    private static string GetHandshakeVerificationFailureMessage(AshlarFailureCode failureCode)
     {
-        return failureCode?.Value switch
+        return failureCode.Value switch
         {
             AshlarFailureCodes.EmptyTokenValue => "Handshake token is required.",
             AshlarFailureCodes.HandshakeNotFoundValue => "Handshake not found.",
@@ -469,9 +470,9 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
         };
     }
 
-    private static string GetHandshakeCreationFailureMessage(AshlarFailureCode? failureCode)
+    private static string GetHandshakeCreationFailureMessage(AshlarFailureCode failureCode)
     {
-        return failureCode?.Value switch
+        return failureCode.Value switch
         {
             AshlarFailureCodes.NoFactorsSpecifiedValue => "MFA is required but no factors are configured.",
             AshlarFailureCodes.InvalidMetadataValue => "Invalid metadata.",

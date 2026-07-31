@@ -87,7 +87,7 @@ internal sealed class IdentityServiceTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new LocalPasswordAssertion("pass");
         using var cancellationTokenSource = new CancellationTokenSource();
-        var expected = new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
+        var expected = new AuthenticationResponse(Status: AuthenticationStatus.Failed);
 
         authenticationPipeline.Setup(p => p.LoginAsync(context, assertion, cancellationTokenSource.Token))
             .ReturnsAsync(expected);

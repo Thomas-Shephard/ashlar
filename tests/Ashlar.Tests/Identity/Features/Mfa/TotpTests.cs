@@ -1628,7 +1628,7 @@ internal sealed class TotpTests
                 It.Is<AuthenticationContext>(c => c.UserId == userId),
                 assertion,
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, responseUser.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(responseUser.Object, AuthenticationStatus.Success));
 
         handshakeService.Setup(x => x.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));

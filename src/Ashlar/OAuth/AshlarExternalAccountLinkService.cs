@@ -195,7 +195,7 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.Linked, linkResult);
         }
 
-        var status = linkResult.FailureCode?.Value switch
+        var status = linkResult.GetFailure().Code.Value switch
         {
             AshlarFailureCodes.AlreadyLinkedToSelfValue => AshlarExternalAccountLinkStatus.AlreadyLinked,
             AshlarFailureCodes.AlreadyLinkedToOtherValue => AshlarExternalAccountLinkStatus.AlreadyLinkedToAnotherUser,
@@ -259,13 +259,13 @@ public sealed class AshlarExternalAccountLinkService
             provider,
             new AccountSecurityOperationRequest(request.Audit, request.Tenant, request.Reason, PreservePrimarySignInMethod: true),
             cancellationToken);
-        if (!revokeResult.Succeeded)
+        if (!revokeResult.TryGetValue(out var revoke))
         {
             return new AshlarExternalAccountUnlinkResult(MapRevokeFailure(revokeResult), revokeResult);
         }
 
         return new AshlarExternalAccountUnlinkResult(
-            revokeResult.Value?.CredentialsRevoked > 0
+            revoke.CredentialsRevoked > 0
                 ? AshlarExternalAccountUnlinkStatus.Unlinked
                 : AshlarExternalAccountUnlinkStatus.NotLinked,
             revokeResult);
@@ -289,7 +289,7 @@ public sealed class AshlarExternalAccountLinkService
 
     private static AshlarExternalAccountUnlinkStatus MapRevokeFailure(Result<AccountSecurityOperationResult> result)
     {
-        return result.FailureCode?.Value switch
+        return result.GetFailure().Code.Value switch
         {
             AshlarFailureCodes.UserNotFoundValue => AshlarExternalAccountUnlinkStatus.UserNotFound,
             AshlarFailureCodes.TenantMismatchValue => AshlarExternalAccountUnlinkStatus.TenantMismatch,

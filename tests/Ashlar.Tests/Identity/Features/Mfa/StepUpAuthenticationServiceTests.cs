@@ -320,29 +320,23 @@ internal sealed class StepUpAuthenticationServiceTests
             VerifiedProvider = TotpProvider(),
             VerifiedFactor = "totp"
         };
-        var missingProof = new AuthenticationResponse(true, new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" }, AuthenticationStatus.Success, null);
-        var missingUser = new AuthenticationResponse(true, null, AuthenticationStatus.Success, null)
+        var missingProof = new AuthenticationResponse(new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" }, AuthenticationStatus.Success, null);
+        var emptyUserId = new AuthenticationResponse(new User { Id = Guid.Empty, DisplayEmail = "user@example.com" }, AuthenticationStatus.Success, null)
         {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _now)
+            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.Empty, Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _now)
         };
-        var emptyUserId = new AuthenticationResponse(true, new User { Id = Guid.Empty, DisplayEmail = "user@example.com" }, AuthenticationStatus.Success, null)
-        {
-            StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _now)
-        };
-        var failed = new AuthenticationResponse(false, new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" }, AuthenticationStatus.Failed, null)
+        var failed = new AuthenticationResponse(new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" }, AuthenticationStatus.Failed, null)
         {
             StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _now)
         };
 
         var missingProofResult = await service.MarkVerifiedAsync(missingProof, request);
-        var missingUserResult = await service.MarkVerifiedAsync(missingUser, request);
         var emptyUserIdResult = await service.MarkVerifiedAsync(emptyUserId, request);
         var failedResult = await service.MarkVerifiedAsync(failed, request);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(missingProofResult.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
-            Assert.That(missingUserResult.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
             Assert.That(emptyUserIdResult.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
             Assert.That(failedResult.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
             sessionService.Verify(s => s.MarkStepUpVerifiedAsync(It.IsAny<MfaAuthenticationResult>(), It.IsAny<MarkSessionStepUpVerifiedRequest>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -382,7 +376,7 @@ internal sealed class StepUpAuthenticationServiceTests
     public async Task MarkVerifiedAsyncShouldRejectResponseWhoseUserIdentityChanged()
     {
         var user = new MutableUser { Id = Guid.NewGuid() };
-        var response = new AuthenticationResponse(true, user, AuthenticationStatus.Success, null)
+        var response = new AuthenticationResponse(user, AuthenticationStatus.Success, null)
         {
             StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(Guid.NewGuid(), Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _now)
         };
@@ -547,7 +541,7 @@ internal sealed class StepUpAuthenticationServiceTests
 
     private AuthenticationResponse CreateStepUpResponse(Guid userId)
     {
-        return new AuthenticationResponse(true, new User { Id = userId, DisplayEmail = "user@example.com" }, AuthenticationStatus.Success, null)
+        return new AuthenticationResponse(new User { Id = userId, DisplayEmail = "user@example.com" }, AuthenticationStatus.Success, null)
         {
             StepUpSessionMarkingProof = StepUpSessionMarkingProof.Create(userId, Guid.NewGuid(), AuthenticationProviderKey.Passkey, "passkey", _now)
         };

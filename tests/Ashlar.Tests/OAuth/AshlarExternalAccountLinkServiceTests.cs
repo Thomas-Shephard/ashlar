@@ -423,7 +423,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var credentialService = new ValidatedExternalCredentialLinkServiceMock();
         credentialService
             .Setup(s => s.LinkValidatedExternalCredentialAsync(It.IsAny<InternalValidatedExternalCredentialLinkRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Result(false));
+            .ReturnsAsync(Result.Failure(AshlarFailureCodes.ValidationError));
         var service = CreateService(credentialService.Object);
 
         var result = await service.LinkWithFreshProofAsync(Guid.NewGuid(), "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")), TenantContext.Global);
@@ -1267,15 +1267,15 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
-    public async Task UnlinkExternalAccountShouldReturnNotLinkedWhenRevocationSucceedsWithoutValue()
+    public async Task UnlinkExternalAccountShouldFailWhenRevocationFails()
     {
         var userId = Guid.NewGuid();
-        var accountSecurity = CreateAccountSecurityService(new Result<AccountSecurityOperationResult>(true));
+        var accountSecurity = CreateAccountSecurityService(Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.ValidationError));
         var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(actorUserId: userId));
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.NotLinked));
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
     }
 
     [Test]
@@ -1308,7 +1308,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task UnlinkExternalAccountShouldReturnFailedForRevocationFailureWithoutDetails()
     {
         var userId = Guid.NewGuid();
-        var accountSecurity = CreateAccountSecurityService(new Result<AccountSecurityOperationResult>(false));
+        var accountSecurity = CreateAccountSecurityService(Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.ValidationError));
         var service = CreateService(accountSecurityService: accountSecurity);
 
         var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(actorUserId: userId));

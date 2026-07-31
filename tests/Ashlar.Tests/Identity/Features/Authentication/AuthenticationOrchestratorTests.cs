@@ -66,7 +66,7 @@ internal sealed class AuthenticationOrchestratorTests
         var options = new MfaOrchestrationOptions();
         var claims = new Dictionary<string, string> { ["test"] = "value" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate, AuthenticationClaims.FromSingleValues(claims), CredentialUpdatePersisted: true));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate, AuthenticationClaims.FromSingleValues(claims), CredentialUpdatePersisted: true));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
@@ -86,7 +86,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task AuthenticateAsyncDoesNotInferCredentialUpdatePersistenceFromStatus()
     {
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
@@ -171,7 +171,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var claims = new Dictionary<string, string> { ["test"] = "value" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success, AuthenticationClaims.FromSingleValues(claims)));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success, AuthenticationClaims.FromSingleValues(claims)));
 
         var requiredFactors = new[] { "totp" };
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
@@ -207,7 +207,7 @@ internal sealed class AuthenticationOrchestratorTests
         context = context.WithRememberedMfaDeviceToken("remembered-token");
         var claims = new Dictionary<string, string> { ["test"] = "value" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate, AuthenticationClaims.FromSingleValues(claims), CredentialUpdatePersisted: true));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate, AuthenticationClaims.FromSingleValues(claims), CredentialUpdatePersisted: true));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         var rememberedMfaDeviceService = CreateRememberedDeviceService(
@@ -257,7 +257,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var context = _context.WithRememberedMfaDeviceToken("remembered-token");
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
@@ -285,7 +285,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task AuthenticateAsyncFallsBackToMfaHandshakeWhenRememberedDeviceTokenIsMissing()
     {
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
@@ -314,7 +314,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var context = _context.WithRememberedMfaDeviceToken("remembered-token");
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
@@ -340,7 +340,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var context = _context.WithRememberedMfaDeviceToken("remembered-token");
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
@@ -373,7 +373,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var context = _context.WithRememberedMfaDeviceToken("remembered-token");
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.MfaRequired));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
@@ -403,7 +403,7 @@ internal sealed class AuthenticationOrchestratorTests
         var providerKey = new AuthenticationProviderKey(ProviderType.Passkey, "passkey");
         var assertion = new TestCredentialKeyAssertion(providerKey, "credential-id");
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), assertion, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["passkey"])));
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "passkey" }, new HashSet<string>());
@@ -425,7 +425,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task AuthenticateAsyncReturnsMfaRequiredWhenProviderRequiresMfa()
     {
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.MfaRequired));
 
         var requiredFactors = new[] { "email_code" };
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
@@ -449,7 +449,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var claims = new Dictionary<string, string> { ["mfa_factors"] = "totp, email_code, " };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
@@ -480,7 +480,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var claims = new Dictionary<string, string> { ["provider_factors"] = "email_code" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
@@ -516,7 +516,7 @@ internal sealed class AuthenticationOrchestratorTests
 
         var claims = new Dictionary<string, string> { ["provider_factors"] = "email_code" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
@@ -541,7 +541,7 @@ internal sealed class AuthenticationOrchestratorTests
         // ReSharper disable once NullableWarningSuppressionIsUsed
         var claims = new Dictionary<string, string> { ["mfa_factors"] = null! };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
@@ -562,7 +562,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var claims = new Dictionary<string, string> { ["mfa_factors"] = "   " };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
 
@@ -577,7 +577,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var claims = new Dictionary<string, string>();
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.MfaRequired, AuthenticationClaims.FromSingleValues(claims)));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
 
@@ -591,7 +591,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task AuthenticateAsyncDeduplicatesMfaFactorsIgnoringCase()
     {
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         var requiredFactors = new[] { "TOTP", "totp" };
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
@@ -620,7 +620,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var claims = new Dictionary<string, string> { ["mfa_factors"] = "email_code" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success, AuthenticationClaims.FromSingleValues(claims)));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success, AuthenticationClaims.FromSingleValues(claims)));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
@@ -636,7 +636,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task AuthenticateAsyncTrimsAndDropsBlankPolicyFactors()
     {
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         // ReSharper disable once NullableWarningSuppressionIsUsed
         var requiredFactors = new[] { " totp ", "", "   ", null! };
@@ -665,7 +665,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task AuthenticateAsyncFailsWhenPrimaryAuthFails()
     {
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, Status: AuthenticationStatus.Failed));
+            .ReturnsAsync(new AuthenticationResponse(Status: AuthenticationStatus.Failed));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -676,7 +676,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task AuthenticateAsyncFailsWhenUserIsDisabled()
     {
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.Disabled));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Disabled));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -691,7 +691,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task AuthenticateAsyncReturnsRateLimitedMessageWhenPrimaryAuthIsRateLimited()
     {
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, Status: AuthenticationStatus.RateLimited));
+            .ReturnsAsync(new AuthenticationResponse(Status: AuthenticationStatus.RateLimited));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -700,17 +700,6 @@ internal sealed class AuthenticationOrchestratorTests
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.RateLimited));
             Assert.That(result.ErrorMessage, Is.EqualTo("Rate limit exceeded."));
         }
-    }
-
-    [Test]
-    public async Task AuthenticateAsyncFailsWhenUserIsNull()
-    {
-        _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, User: null, Status: AuthenticationStatus.Success));
-
-        var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
-
-        Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
     }
 
     [Test]
@@ -726,7 +715,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate, CredentialUpdatePersisted: true));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate, CredentialUpdatePersisted: true));
 
         var updatedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp" } };
         _handshakeCompletionService.CompletionResult = Result.Success(updatedHandshake);
@@ -763,7 +752,7 @@ internal sealed class AuthenticationOrchestratorTests
                 It.IsAny<AuthenticationContext>(),
                 _assertionMock.Object,
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
         handshakeCompletionService.CompletionResult = Result.Success(updatedHandshake);
 
         var result = await orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
@@ -789,7 +778,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         var updatedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp" } };
         _handshakeCompletionService.CompletionResult = Result.Success(updatedHandshake);
@@ -817,7 +806,6 @@ internal sealed class AuthenticationOrchestratorTests
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResponse(
-                true,
                 _userMock.Object,
                 AuthenticationStatus.SuccessWithCredentialUpdate,
                 AuthenticationClaims.FromSingleValues(new Dictionary<string, string> { ["new_claim"] = "new_val" }),
@@ -873,7 +861,7 @@ internal sealed class AuthenticationOrchestratorTests
         _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
         _handshakeCompletionService.CompletionResult = Result.Success(handshake with
         {
             IsCompleted = true,
@@ -908,12 +896,12 @@ internal sealed class AuthenticationOrchestratorTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncFailsWhenBeginReturnsNoHandshake()
+    public async Task VerifyFactorAsyncFailsWhenBeginFails()
     {
         var logger = new RecordingLogger<AuthenticationOrchestrator>();
         var orchestrator = CreateOrchestrator(logger);
         _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success<AuthenticationHandshake>(null!));
+            .ReturnsAsync(Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.ValidationError));
 
         var result = await orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
@@ -923,7 +911,7 @@ internal sealed class AuthenticationOrchestratorTests
             Assert.That(result.ErrorMessage, Is.EqualTo("Factor verification failed."));
             Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
                 entry.Level == LogLevel.Debug
-                && entry.Message.Contains("Reason=handshake_verification_failed", StringComparison.Ordinal)));
+                && entry.Message.Contains("Reason=validation_error", StringComparison.Ordinal)));
         }
     }
 
@@ -937,7 +925,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, Status: AuthenticationStatus.Failed));
+            .ReturnsAsync(new AuthenticationResponse(Status: AuthenticationStatus.Failed));
 
         var result = await orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
@@ -978,25 +966,6 @@ internal sealed class AuthenticationOrchestratorTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncFailsWhenAssertionReturnsNoUser()
-    {
-        var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(handshake));
-
-        _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, User: null, AuthenticationStatus.Success));
-
-        var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
-            Assert.That(result.ErrorMessage, Is.EqualTo("Factor verification failed."));
-        }
-    }
-
-    [Test]
     public async Task VerifyFactorAsyncMapsDisabledUserConsistently()
     {
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
@@ -1004,7 +973,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.Disabled));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Disabled));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
@@ -1023,7 +992,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(false, Status: AuthenticationStatus.RateLimited));
+            .ReturnsAsync(new AuthenticationResponse(Status: AuthenticationStatus.RateLimited));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
@@ -1143,7 +1112,7 @@ internal sealed class AuthenticationOrchestratorTests
             _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Result.Success(handshake));
             _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), assertion, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+                .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
             _handshakeCompletionService.CompletionResult = Result.Success(handshake with { IsCompleted = true, VerifiedFactors = new HashSet<string> { "passkey" }, Purpose = AuthenticationHandshakePurpose.LoginSession });
 
             var result = await _orchestrator.VerifyFactorAsync("token", "passkey", _context, assertion);
@@ -1203,7 +1172,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), assertion.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "TOTP" }, IsCompleted = true, Purpose = AuthenticationHandshakePurpose.LoginSession };
         _handshakeCompletionService.CompletionResult = Result.Success(completedHandshake);
@@ -1257,7 +1226,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), assertion.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "custom_step_up" }, IsCompleted = true, Purpose = AuthenticationHandshakePurpose.LoginSession };
         _handshakeCompletionService.CompletionResult = Result.Success(completedHandshake);
@@ -1294,7 +1263,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), assertion.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp", "passkey" }, IsCompleted = true, Purpose = AuthenticationHandshakePurpose.LoginSession };
         _handshakeCompletionService.CompletionResult = Result.Success(completedHandshake);
@@ -1330,7 +1299,7 @@ internal sealed class AuthenticationOrchestratorTests
         _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), assertion.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
         var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { AuthenticationFactorTypes.Totp }, IsCompleted = true, Purpose = AuthenticationHandshakePurpose.LoginSession };
         _handshakeCompletionService.CompletionResult = Result.Success(completedHandshake);
 
@@ -1371,7 +1340,7 @@ internal sealed class AuthenticationOrchestratorTests
         _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.Is<AuthenticationContext>(c => c.UserId == _userMock.Object.Id), assertion, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
         var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { AuthenticationFactorTypes.Totp }, IsCompleted = true, Purpose = AuthenticationHandshakePurpose.LoginSession };
         _handshakeCompletionService.CompletionResult = Result.Success(completedHandshake);
 
@@ -1535,7 +1504,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
@@ -1556,7 +1525,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         _handshakeCompletionService.CompletionResult = Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeExpired);
 
@@ -1589,7 +1558,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         _handshakeCompletionService.CompletionResult = Result.Failure<AuthenticationHandshake>(new AshlarFailureCode(failureReason));
 
@@ -1606,7 +1575,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         _handshakeCompletionService.CompletionResult = Result.Failure<AuthenticationHandshake>(new AshlarFailureCode("unexpected_internal_reason"));
 
@@ -1620,16 +1589,16 @@ internal sealed class AuthenticationOrchestratorTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncUsesDefaultErrorWhenHandshakeServiceFailsWithoutDetails()
+    public async Task VerifyFactorAsyncUsesDefaultErrorForUnknownHandshakeFailure()
     {
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
-        _handshakeCompletionService.CompletionResult = new Result<AuthenticationHandshake>(false);
+        _handshakeCompletionService.CompletionResult = Result.Failure<AuthenticationHandshake>(new AshlarFailureCode("unknown"));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
@@ -1644,7 +1613,7 @@ internal sealed class AuthenticationOrchestratorTests
         var logger = new RecordingLogger<AuthenticationOrchestrator>();
         var orchestrator = CreateOrchestrator(logger);
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
@@ -1667,16 +1636,16 @@ internal sealed class AuthenticationOrchestratorTests
     }
 
     [Test]
-    public async Task AuthenticateAsyncUsesDefaultErrorWhenHandshakeCreationFailsWithoutDetails()
+    public async Task AuthenticateAsyncUsesDefaultErrorForUnknownHandshakeFailure()
     {
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
 
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Result<AuthenticationHandshakeCreated>(false));
+            .ReturnsAsync(Result.Failure<AuthenticationHandshakeCreated>(new AshlarFailureCode("unknown")));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -1743,7 +1712,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task AuthenticateAsyncReturnsFailedWhenPolicyRequiresMfaButNoFactorsSpecified()
     {
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true));
@@ -1768,7 +1737,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp" }, IsCompleted = true, Purpose = AuthenticationHandshakePurpose.LoginSession };
         _handshakeCompletionService.CompletionResult = Result.Success(completedHandshake);
@@ -1795,7 +1764,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(_userMock.Object, AuthenticationStatus.Success));
 
         var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp" }, IsCompleted = true, Metadata = metadata, Purpose = AuthenticationHandshakePurpose.LoginSession };
         _handshakeCompletionService.CompletionResult = Result.Success(completedHandshake);

@@ -178,17 +178,17 @@ public sealed class AshlarOidcInvitationRegistrationService
         }
 
         var preview = await _invitationService.GetInvitationAcceptancePreviewAsync(invitationToken, context, cancellationToken);
-        if (!preview.Succeeded || preview.Value == null)
+        if (!preview.TryGetValue(out var invitation))
         {
             return new AshlarOidcInvitationRegistrationResult(MapInvitationPreviewFailure(preview));
         }
 
-        if (context?.TenantId is Guid requestedTenantId && preview.Value.TenantId != requestedTenantId)
+        if (context?.TenantId is Guid requestedTenantId && invitation.TenantId != requestedTenantId)
         {
             return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.InvalidInvitation);
         }
 
-        var emailMatch = _emailMatchPolicy.Validate(new OidcInvitationEmailMatchContext(provider.ProviderName, principal, preview.Value));
+        var emailMatch = _emailMatchPolicy.Validate(new OidcInvitationEmailMatchContext(provider.ProviderName, principal, invitation));
         if (!emailMatch.Succeeded)
         {
             return new AshlarOidcInvitationRegistrationResult(emailMatch.Status ?? AshlarOidcInvitationRegistrationStatus.Failed);
@@ -200,33 +200,39 @@ public sealed class AshlarOidcInvitationRegistrationService
             new AcceptInvitationRequest { Token = invitationToken, UserName = displayName },
             context,
             cancellationToken);
-        if (!acceptance.Succeeded || acceptance.Value == null || acceptance.Value.UserId == Guid.Empty)
+        if (!acceptance.TryGetValue(out var accepted))
         {
             await transaction.CommitAsync(cancellationToken);
             return new AshlarOidcInvitationRegistrationResult(MapInvitationFailure(acceptance), InvitationAcceptance: acceptance);
         }
 
+        if (accepted.UserId == Guid.Empty)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.Failed, InvitationAcceptance: acceptance);
+        }
+
         var link = await _credentialLinkService.LinkValidatedExternalCredentialAsync(new InternalValidatedExternalCredentialLinkRequest(
-            acceptance.Value.UserId,
+            accepted.UserId,
             assertion.ProviderIdentity.Type,
             assertion.ProviderIdentity.Name,
             assertion.ProviderKey,
             new AuditContext(context?.UserId, context?.IpAddress, context?.UserAgent, context?.CorrelationId),
-            preview.Value.TenantId), cancellationToken);
+            invitation.TenantId), cancellationToken);
 
         if (!link.Succeeded)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return new AshlarOidcInvitationRegistrationResult(MapLinkFailure(link), acceptance.Value.UserId, acceptance, link);
+            return new AshlarOidcInvitationRegistrationResult(MapLinkFailure(link), accepted.UserId, acceptance, link);
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.Registered, acceptance.Value.UserId, acceptance, link);
+        return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.Registered, accepted.UserId, acceptance, link);
     }
 
     private static AshlarOidcInvitationRegistrationStatus MapInvitationFailure(Result<InvitationAcceptanceResult> result)
     {
-        return result.FailureCode?.Value switch
+        return result.GetFailure().Code.Value switch
         {
             AshlarFailureCodes.InvalidInvitationValue => AshlarOidcInvitationRegistrationStatus.InvalidInvitation,
             AshlarFailureCodes.RateLimitedValue => AshlarOidcInvitationRegistrationStatus.RateLimited,
@@ -236,18 +242,17 @@ public sealed class AshlarOidcInvitationRegistrationService
 
     private static AshlarOidcInvitationRegistrationStatus MapInvitationPreviewFailure(Result<InvitationAcceptancePreview> result)
     {
-        return result.FailureCode?.Value switch
+        return result.GetFailure().Code.Value switch
         {
             AshlarFailureCodes.RateLimitedValue => AshlarOidcInvitationRegistrationStatus.RateLimited,
             AshlarFailureCodes.InvalidInvitationValue => AshlarOidcInvitationRegistrationStatus.InvalidInvitation,
-            _ when result.Succeeded => AshlarOidcInvitationRegistrationStatus.InvalidInvitation,
             _ => AshlarOidcInvitationRegistrationStatus.Failed
         };
     }
 
     private static AshlarOidcInvitationRegistrationStatus MapLinkFailure(Result result)
     {
-        return result.FailureCode?.Value switch
+        return result.GetFailure().Code.Value switch
         {
             AshlarFailureCodes.AlreadyLinkedToSelfValue => AshlarOidcInvitationRegistrationStatus.AlreadyLinked,
             AshlarFailureCodes.AlreadyLinkedToOtherValue => AshlarOidcInvitationRegistrationStatus.AlreadyLinkedToAnotherUser,
