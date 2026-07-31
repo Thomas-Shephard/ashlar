@@ -87,7 +87,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
             AshlarSecurityEventTypes.RecoveryCodesGenerated, cancellationToken);
         if (!userResult.TryGetValue(out var user))
         {
-            return Result.Failure<IReadOnlyList<string>>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFoundOrUnavailable));
+            return Result.Failure<IReadOnlyList<string>>(userResult.GetFailure());
         }
 
         var codeCount = request.CodeCount ?? _options.CodeCount;
@@ -117,7 +117,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
         if (!lockedUserResult.TryGetValue(out user))
         {
             await transaction.CommitAsync(cancellationToken);
-            return Result.Failure<IReadOnlyList<string>>(lockedUserResult.GetFailureOr(AshlarFailureCodes.UserNotFoundOrUnavailable));
+            return Result.Failure<IReadOnlyList<string>>(lockedUserResult.GetFailure());
         }
 
         // Revoke existing recovery codes if requested
@@ -209,7 +209,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
             AshlarSecurityEventTypes.RecoveryCodesRevoked, cancellationToken);
         if (!userResult.Succeeded)
         {
-            return Result.Failure<int>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFoundOrUnavailable));
+            return Result.Failure<int>(userResult.GetFailure());
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
@@ -219,7 +219,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
         if (!lockedUserResult.TryGetValue(out var user))
         {
             await transaction.CommitAsync(cancellationToken);
-            return Result.Failure<int>(lockedUserResult.GetFailureOr(AshlarFailureCodes.UserNotFoundOrUnavailable));
+            return Result.Failure<int>(lockedUserResult.GetFailure());
         }
 
         var count = await _credentialRepository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
@@ -358,7 +358,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
             return result;
         }
 
-        var failureCode = result.GetFailureOr(AshlarFailureCodes.ValidationError).Code;
+        var failureCode = result.GetFailure().Code;
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = eventType,

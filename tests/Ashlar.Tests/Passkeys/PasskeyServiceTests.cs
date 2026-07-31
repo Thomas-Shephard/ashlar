@@ -2258,7 +2258,7 @@ internal sealed class PasskeyServiceTests
     {
         var handshakes = new Mock<IAuthenticationHandshakeService>();
         handshakes.Setup(h => h.BeginFactorChallengeAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success<AuthenticationHandshake>(null!));
+            .ReturnsAsync(Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.ValidationError));
         var service = CreateVerifiedPasskeyService(
             new Mock<IUserRepository>().Object,
             new Mock<ICredentialRepository>().Object,

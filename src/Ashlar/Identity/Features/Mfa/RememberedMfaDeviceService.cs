@@ -111,7 +111,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
         var userResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.RememberedMfaDeviceCreated, cancellationToken);
         if (!userResult.TryGetValue(out var user))
         {
-            return Result.Failure<RememberedMfaDeviceCreated>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFound));
+            return Result.Failure<RememberedMfaDeviceCreated>(userResult.GetFailure());
         }
 
         var accountState = user.AccountState;
@@ -347,7 +347,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService, 
             UserId = userId,
             TenantId = tenant.TenantId,
             Audit = audit,
-            FailureReason = result.GetFailureOr(AshlarFailureCodes.ValidationError).Code.Value
+            FailureReason = result.GetFailure().Code.Value
         }, cancellationToken);
 
         return result;

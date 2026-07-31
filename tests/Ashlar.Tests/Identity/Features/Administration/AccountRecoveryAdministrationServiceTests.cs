@@ -74,7 +74,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
     [Test]
     public async Task GetAccountRecoveryOptionsAsyncMapsNullDetailValueToUserNotFound()
     {
-        var service = CreateService(new Result<UserAdministrationDetail>(true));
+        var service = CreateService(Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.UserNotFound));
 
         var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(Guid.NewGuid(), TenantContext.Global));
 

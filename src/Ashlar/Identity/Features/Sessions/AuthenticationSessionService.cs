@@ -451,7 +451,7 @@ internal sealed class AuthenticationSessionService(
         if (!userResult.TryGetValue(out var user))
         {
             return await RecordStepUpUserFailureAsync(
-                userId, request, verifiedFactor, userResult.GetFailureOr(AshlarFailureCodes.UserNotFound), cancellationToken);
+                userId, request, verifiedFactor, userResult.GetFailure(), cancellationToken);
         }
 
         return await MarkStepUpVerifiedForVerifiedUserAsync(
@@ -472,7 +472,7 @@ internal sealed class AuthenticationSessionService(
         if (!userResult.TryGetValue(out var user))
         {
             return await RecordStepUpUserFailureAsync(
-                userId, request, verifiedFactor, userResult.GetFailureOr(AshlarFailureCodes.UserNotFound), cancellationToken);
+                userId, request, verifiedFactor, userResult.GetFailure(), cancellationToken);
         }
 
         return await MarkStepUpVerifiedForVerifiedUserAsync(user, userId, request, verifiedFactor, now, cancellationToken);

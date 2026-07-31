@@ -69,7 +69,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         var userResult = await GetUserForMutationAsync(userId, request, cancellationToken);
         if (!userResult.TryGetValue(out var user))
         {
-            var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
+            var failure = userResult.GetFailure();
             await RecordFailureAsync(
                 new AccountSecurityFailureEvent(
                     AshlarSecurityEventTypes.UserAccountStateChanged,
@@ -91,7 +91,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
             var guardResult = await _accountSecurityGuard.CanChangeAccountStateAsync(user, request.AccountState, request, cancellationToken);
             if (!guardResult.Succeeded)
             {
-                var failure = guardResult.GetFailureOr(AshlarFailureCodes.ValidationError);
+                var failure = guardResult.GetFailure();
                 await RecordFailureAsync(
                     new AccountSecurityFailureEvent(
                         AshlarSecurityEventTypes.UserAccountStateChanged,
@@ -143,7 +143,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         if (deviceId == Guid.Empty) throw new ArgumentException("Remembered MFA device ID cannot be empty.", nameof(deviceId));
         request = RequireAudit(request);
         var userResult = await GetUserForMutationAsync(userId, request, cancellationToken);
-        if (!userResult.TryGetValue(out _)) return Result.Failure<AccountSecurityOperationResult>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFound));
+        if (!userResult.TryGetValue(out _)) return Result.Failure<AccountSecurityOperationResult>(userResult.GetFailure());
         if (_rememberedMfaDevices == null) return Result.Success(new AccountSecurityOperationResult(userId));
 
         var revoked = await _rememberedMfaDevices.RevokeAsync(userId, new RevokeRememberedMfaDeviceRequest(deviceId)
@@ -161,7 +161,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         ValidateUserId(userId);
         request = RequireAudit(request);
         var userResult = await GetUserForMutationAsync(userId, request, cancellationToken);
-        if (!userResult.TryGetValue(out _)) return Result.Failure<AccountSecurityOperationResult>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFound));
+        if (!userResult.TryGetValue(out _)) return Result.Failure<AccountSecurityOperationResult>(userResult.GetFailure());
         var revoked = await RevokeRememberedMfaDevicesAsync(userId, request, request.Reason ?? AdminReason, cancellationToken);
         return Result.Success(new AccountSecurityOperationResult(userId, RememberedMfaDevicesRevoked: revoked));
     }
@@ -173,7 +173,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         var userResult = await GetUserForMutationAsync(userId, request, cancellationToken);
         if (!userResult.TryGetValue(out var user))
         {
-            var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
+            var failure = userResult.GetFailure();
             await RecordFailureAsync(
                 new AccountSecurityFailureEvent(AshlarSecurityEventTypes.SessionsRevokedForUser, userId, request, failure.Code.Value),
                 cancellationToken);
@@ -196,7 +196,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         var userResult = await GetUserForMutationAsync(userId, request, cancellationToken);
         if (!userResult.TryGetValue(out _))
         {
-            var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
+            var failure = userResult.GetFailure();
             await RecordFailureAsync(
                 new AccountSecurityFailureEvent(AshlarSecurityEventTypes.UserCredentialsRevoked, userId, request, failure.Code.Value, Provider: provider),
                 cancellationToken);
@@ -208,7 +208,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         var lockedUserResult = await GetUserForMutationAsync(userId, request, cancellationToken);
         if (!lockedUserResult.TryGetValue(out var user))
         {
-            var failure = lockedUserResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
+            var failure = lockedUserResult.GetFailure();
             await RecordFailureAsync(new AccountSecurityFailureEvent(
                 AshlarSecurityEventTypes.UserCredentialsRevoked, userId, request, failure.Code.Value, Provider: provider), cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -221,7 +221,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
                 userId, new AccountSecurityPostureRequest(request.Tenant), cancellationToken);
             if (!postureResult.TryGetValue(out var posture))
             {
-                var failure = postureResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
+                var failure = postureResult.GetFailure();
                 await RecordFailureAsync(new AccountSecurityFailureEvent(
                     AshlarSecurityEventTypes.UserCredentialsRevoked, userId, request, failure.Code.Value,
                     Provider: provider, AuditTenantId: GetAuditTenantId(request, user)), cancellationToken);
@@ -260,7 +260,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         var userResult = await GetUserForMutationAsync(userId, request, cancellationToken);
         if (!userResult.TryGetValue(out _))
         {
-            var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
+            var failure = userResult.GetFailure();
             await RecordFailureAsync(
                 new AccountSecurityFailureEvent(AshlarSecurityEventTypes.UserMfaReset, userId, request, failure.Code.Value),
                 cancellationToken);
@@ -272,7 +272,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         var lockedUserResult = await GetUserForMutationAsync(userId, request, cancellationToken);
         if (!lockedUserResult.TryGetValue(out var user))
         {
-            var failure = lockedUserResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
+            var failure = lockedUserResult.GetFailure();
             await RecordFailureAsync(new AccountSecurityFailureEvent(
                 AshlarSecurityEventTypes.UserMfaReset, userId, request, failure.Code.Value), cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -327,7 +327,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
         if (!userResult.TryGetValue(out var user))
         {
-            return Result.Failure<AccountSecurityPosture>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFound));
+            return Result.Failure<AccountSecurityPosture>(userResult.GetFailure());
         }
         if (!Enum.IsDefined(user.AccountState))
             return Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.UserNotFound);
@@ -338,7 +338,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService, IAccount
         var sessions = await _sessionReader.ListSessionsForUserAsync(userId, request.Tenant.TenantId,
             new ListAuthenticationSessionsRequest { ActiveOnly = true }, cancellationToken);
         if (!sessions.Succeeded)
-            return Result.Failure<AccountSecurityPosture>(sessions.GetFailureOr(AshlarFailureCodes.TenantMismatch));
+            return Result.Failure<AccountSecurityPosture>(sessions.GetFailure());
         int? eventCount = null;
         if (_securityEventSummaryRepository != null && eventStart is { } since)
         {

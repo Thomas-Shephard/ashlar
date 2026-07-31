@@ -34,26 +34,26 @@ public sealed class AshlarRememberedMfaDeviceCookieManager(
 
         if (mfaResult.User.Id == Guid.Empty) throw new ArgumentException("The MFA authentication result user ID cannot be empty.", nameof(mfaResult));
 
-        var creationRequest = CreateRequestFromAuthenticationContext(context, mfaResult.User.Id, request);
+        var (creationRequest, audit) = CreateRequestFromAuthenticationContext(context, mfaResult.User.Id, request);
         var result = await _rememberedMfaDevices.CreateAfterSuccessfulMfaAsync(mfaResult, creationRequest, cancellationToken);
-        if (!result.Succeeded || result.Value == null)
+        if (!result.TryGetValue(out var created, out var failure))
         {
-            throw new AshlarOperationException(result.FailureCode ?? AshlarFailureCodes.ValidationError, result.FailureReason ?? "Failed to create remembered MFA device.");
+            throw new AshlarOperationException(failure.Code, failure.Message ?? failure.Code.Value);
         }
 
         var cookieOptions = _options.Cookie.Build(httpContext);
-        cookieOptions.Expires = result.Value.Device.ExpiresAt;
+        cookieOptions.Expires = created.Device.ExpiresAt;
         try
         {
-            httpContext.Response.Cookies.Append(_options.CookieName, result.Value.Token, cookieOptions);
+            httpContext.Response.Cookies.Append(_options.CookieName, created.Token, cookieOptions);
         }
         catch (Exception exception)
         {
-            await RollBackRememberedDeviceAsync(result.Value, creationRequest.Audit!, exception);
+            await RollBackRememberedDeviceAsync(created, audit, exception);
             throw;
         }
 
-        return result.Value.Device;
+        return created.Device;
     }
 
     private async Task RollBackRememberedDeviceAsync(
@@ -124,20 +124,21 @@ public sealed class AshlarRememberedMfaDeviceCookieManager(
         return revoked;
     }
 
-    private static CreateRememberedMfaDeviceRequest CreateRequestFromAuthenticationContext(
+    private static (CreateRememberedMfaDeviceRequest Request, AuditContext Audit) CreateRequestFromAuthenticationContext(
         AuthenticationContext context,
         Guid userId,
         CreateRememberedMfaDeviceRequest? request)
     {
-        return (request ?? new CreateRememberedMfaDeviceRequest()) with
+        var audit = new AuditContext(
+            ActorUserId: userId,
+            IpAddress: context.IpAddress,
+            UserAgent: context.UserAgent,
+            CorrelationId: context.CorrelationId);
+        return ((request ?? new CreateRememberedMfaDeviceRequest()) with
         {
             Tenant = context.TenantId.HasValue ? new TenantContext(context.TenantId.Value) : null,
-            Audit = new AuditContext(
-                ActorUserId: userId,
-                IpAddress: context.IpAddress,
-                UserAgent: context.UserAgent,
-                CorrelationId: context.CorrelationId)
-        };
+            Audit = audit
+        }, audit);
     }
 
     private static AuditContext CreateAuditContextFromHttpContext(HttpContext httpContext, Guid? actorUserId)

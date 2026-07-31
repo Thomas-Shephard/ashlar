@@ -33,9 +33,9 @@ internal sealed class AccountRecoveryAdministrationService(
                 request.RecentSecurityEventWindow,
                 request.Actor),
             cancellationToken);
-        if (!detailResult.Succeeded || detailResult.Value == null)
+        if (!detailResult.TryGetValue(out var detail))
         {
-            return Result.Failure<AccountRecoveryOptions>(detailResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.UserNotFound));
+            return Result.Failure<AccountRecoveryOptions>(detailResult.GetFailure());
         }
 
         var rememberedMfaDeviceCount = await _rememberedMfaDeviceRepository.CountForUserAsync(
@@ -44,7 +44,6 @@ internal sealed class AccountRecoveryAdministrationService(
             activeOnly: true,
             _timeProvider.GetUtcNow(),
             cancellationToken);
-        var detail = detailResult.Value;
         var posture = detail.SecurityPosture;
         var activeCredentials = posture.CredentialInventory
             .Where(credential => credential.Status == CredentialStatus.Active)

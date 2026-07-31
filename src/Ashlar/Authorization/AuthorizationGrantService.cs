@@ -173,7 +173,7 @@ internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IA
         var tenantValidation = await ValidateUserTenantAsync(request.UserId, request.TenantId, request.Audit, cancellationToken);
         if (!tenantValidation.Succeeded)
         {
-            return Result.Failure<AuthorizationGrant>(tenantValidation.FailureDetails!);
+            return Result.Failure<AuthorizationGrant>(tenantValidation.GetFailure());
         }
 
         var grant = new AuthorizationGrant

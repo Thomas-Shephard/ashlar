@@ -1874,7 +1874,7 @@ internal sealed class AccountSecurityServiceTests
     {
         public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityGuardContext request, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(new Result(false));
+            return Task.FromResult(Result.Failure(AshlarFailureCodes.ValidationError));
         }
     }
 

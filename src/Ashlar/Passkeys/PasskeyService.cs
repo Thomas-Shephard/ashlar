@@ -109,7 +109,7 @@ internal sealed class PasskeyService : IPasskeyService
             credentials, cancellationToken);
         if (!proofBindingResult.TryGetValue(out var proofBinding))
         {
-            var failure = proofBindingResult.GetFailureOr(AshlarFailureCodes.StepUpRequired);
+            var failure = proofBindingResult.GetFailure();
             await RecordAsync(AshlarSecurityEventTypes.PasskeyRegistrationStarted, SecurityEventOutcomes.Failure, request.ActorUserId, failure.Code.Value, request.Audit, cancellationToken);
             throw new AshlarOperationException(failure.Code, "Fresh verification is required for passkey registration.");
         }
@@ -165,7 +165,7 @@ internal sealed class PasskeyService : IPasskeyService
                 request.CurrentSessionId), cancellationToken);
         if (!proofResult.Succeeded)
         {
-            return Result.Failure(proofResult.GetFailureOr(AshlarFailureCodes.StepUpRequired));
+            return Result.Failure(proofResult.GetFailure());
         }
 
         var user = await _credentials.GetUserByIdAsync(challenge.UserId.Value, cancellationToken);
@@ -398,15 +398,14 @@ internal sealed class PasskeyService : IPasskeyService
         var handshakeResult = await _handshakeService.BeginFactorChallengeAsync(
             new VerifyAuthenticationHandshakeRequest(request.HandshakeToken, factorType, Context: ToAuthenticationContext(request.Audit) with { TenantId = tenant.TenantId }),
             cancellationToken);
-        if (!handshakeResult.Succeeded || handshakeResult.Value == null)
+        if (!handshakeResult.TryGetValue(out var handshake, out var failure))
         {
-            var failureCode = handshakeResult.FailureCode == AshlarFailureCodes.RateLimitExceeded
+            var failureCode = failure.Code == AshlarFailureCodes.RateLimitExceeded
                 ? AshlarFailureCodes.RateLimitExceeded
                 : AshlarFailureCodes.PasskeyChallengeInvalid;
             return Result.Failure<PasskeyCeremonyOptions>(failureCode);
         }
 
-        var handshake = handshakeResult.Value;
         if (!SecureTokenHashing.TryHashToken(_tokenHasher, request.HandshakeToken, out var handshakeTokenHash))
         {
             return Result.Failure<PasskeyCeremonyOptions>(AshlarFailureCodes.PasskeyChallengeInvalid);
@@ -582,7 +581,7 @@ internal sealed class PasskeyService : IPasskeyService
         var lookup = await FindManagedPasskeyAsync(request.ActorUserId, request.Tenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit, request.CredentialId, cancellationToken);
         if (!lookup.TryGetValue(out var passkey))
         {
-            return Result.Failure(lookup.GetFailureOr(AshlarFailureCodes.PasskeyCredentialNotFound));
+            return Result.Failure(lookup.GetFailure());
         }
 
         if (!PasskeyCredentialMetadataOperations.TryRead(passkey.Metadata, out var metadata))
@@ -605,7 +604,7 @@ internal sealed class PasskeyService : IPasskeyService
         var lookup = await FindManagedPasskeyAsync(request.ActorUserId, request.Tenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit, request.CredentialId, cancellationToken);
         if (!lookup.TryGetValue(out var passkey))
         {
-            return Result.Failure(lookup.GetFailureOr(AshlarFailureCodes.PasskeyCredentialNotFound));
+            return Result.Failure(lookup.GetFailure());
         }
 
         passkey.Status = CredentialStatus.Revoked;
@@ -777,7 +776,7 @@ internal sealed class PasskeyService : IPasskeyService
             return Result.Success(binding);
         }
 
-        return Result.Failure<RegistrationProofBinding>(result.GetFailureOr(AshlarFailureCodes.StepUpRequired));
+        return Result.Failure<RegistrationProofBinding>(result.GetFailure());
     }
 
     private async Task<Result> ValidateRegistrationCompletionProofAsync(PasskeyChallenge challenge, RegistrationProofValidationRequest request, CancellationToken cancellationToken)
@@ -817,7 +816,7 @@ internal sealed class PasskeyService : IPasskeyService
     {
         if (!result.TryGetValue(out var binding))
         {
-            return Result.Failure(result.GetFailureOr(AshlarFailureCodes.StepUpRequired));
+            return Result.Failure(result.GetFailure());
         }
 
         if (challenge.RegistrationProofSessionId != binding.SessionId)

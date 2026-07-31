@@ -72,7 +72,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     [Test]
     public async Task CompleteExternalAuthenticationShouldReturnProviderMismatchForWrongProviderType()
     {
-        var service = CreateService(new AuthenticationResponse(false), includeGitHub: true);
+        var service = CreateService(new AuthenticationResponse(), includeGitHub: true);
         var httpContext = CreateHttpContextWithExternalTicket("GitHub", "GitHub", ProviderType.Oidc, CreateGitHubPrincipal("12345"));
 
         var result = await service.CompleteExternalAuthenticationAsync(httpContext, "GitHub");
@@ -83,7 +83,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     [Test]
     public async Task CompleteExternalAuthenticationShouldReturnProviderMismatchForOAuthTicketWithoutProviderType()
     {
-        var service = CreateService(new AuthenticationResponse(false), includeGitHub: true);
+        var service = CreateService(new AuthenticationResponse(), includeGitHub: true);
         var httpContext = CreateHttpContext(new TestAuthenticationService(
             AuthenticateResult.Success(new AuthenticationTicket(
                 CreateGitHubPrincipal("12345"),
@@ -233,7 +233,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     [Test]
     public async Task CompleteExternalAuthenticationShouldReturnProviderMismatchForMismatchedExternalTicketProvider()
     {
-        var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
+        var service = CreateService(new AuthenticationResponse(new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" }, AuthenticationStatus.Success));
         var httpContext = CreateHttpContextWithExternalTicket("Microsoft", "Microsoft", "subject");
 
         var result = await service.CompleteExternalAuthenticationAsync(httpContext, "Google");
@@ -248,7 +248,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     [Test]
     public async Task CompleteExternalAuthenticationShouldReturnAuthenticationFailedForFailedTicket()
     {
-        var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
+        var service = CreateService(new AuthenticationResponse(new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" }, AuthenticationStatus.Success));
         var httpContext = CreateHttpContext(new TestAuthenticationService(AuthenticateResult.Fail("failed")));
 
         var result = await service.CompleteExternalAuthenticationAsync(httpContext, "Google");
@@ -259,7 +259,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     [Test]
     public async Task CompleteExternalAuthenticationShouldReturnProviderMismatchWhenTicketPropertiesAreMissing()
     {
-        var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
+        var service = CreateService(new AuthenticationResponse(new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" }, AuthenticationStatus.Success));
         var httpContext = CreateHttpContext(new TestAuthenticationService(
             AuthenticateResult.Success(new AuthenticationTicket(CreatePrincipal("subject"), "Ashlar.OAuth.External"))));
 
@@ -271,7 +271,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     [Test]
     public async Task CompleteExternalAuthenticationShouldReturnInvalidPrincipalForMissingSubject()
     {
-        var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
+        var service = CreateService(new AuthenticationResponse(new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" }, AuthenticationStatus.Success));
         var httpContext = CreateHttpContext(new TestAuthenticationService(
             AuthenticateResult.Success(new AuthenticationTicket(
                 new ClaimsPrincipal(new ClaimsIdentity([], "oidc")),
@@ -325,7 +325,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     [Test]
     public async Task CompleteExternalAuthenticationShouldClearExternalTicketForUnsupportedProvider()
     {
-        var service = CreateService(new AuthenticationResponse(false));
+        var service = CreateService(new AuthenticationResponse());
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult());
         var httpContext = CreateHttpContext(authService);
 
@@ -341,7 +341,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     [Test]
     public async Task CompleteExternalAuthenticationShouldClearUnsupportedProviderTicketWhenRequestIsCanceled()
     {
-        var service = CreateService(new AuthenticationResponse(false));
+        var service = CreateService(new AuthenticationResponse());
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult());
         var httpContext = CreateHttpContext(authService);
         using var cts = new CancellationTokenSource();
@@ -479,7 +479,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     [Test]
     public async Task CompleteExternalAuthenticationShouldIgnoreCleanupFailureForUnsupportedProvider()
     {
-        var service = CreateService(new AuthenticationResponse(false));
+        var service = CreateService(new AuthenticationResponse());
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult(), signOutException: new InvalidOperationException("cleanup failed"));
         var httpContext = CreateHttpContext(authService);
 
@@ -495,7 +495,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     [Test]
     public void CompleteExternalAuthenticationShouldClearExternalTicketWhenAuthenticateThrows()
     {
-        var service = CreateService(new AuthenticationResponse(false));
+        var service = CreateService(new AuthenticationResponse());
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult(), new InvalidOperationException("auth failed"));
         var httpContext = CreateHttpContext(authService);
 
@@ -506,7 +506,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     [Test]
     public async Task CompleteExternalAuthenticationShouldFailWhenClearingSuccessfulTicketThrows()
     {
-        var service = CreateService(new AuthenticationResponse(false));
+        var service = CreateService(new AuthenticationResponse());
         var authService = new TestAuthenticationService(
             AuthenticateResult.Success(new AuthenticationTicket(CreatePrincipal("subject"), CreateProperties("Google", "Google"), "Ashlar.OAuth.External")),
             signOutException: new InvalidOperationException("clear failed"));
@@ -519,7 +519,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     [Test]
     public void CompleteExternalAuthenticationShouldRejectNullHttpContext()
     {
-        var service = CreateService(new AuthenticationResponse(false));
+        var service = CreateService(new AuthenticationResponse());
 
         Assert.ThrowsAsync<ArgumentNullException>(() => service.CompleteExternalAuthenticationAsync(null!, "Google"));
     }
