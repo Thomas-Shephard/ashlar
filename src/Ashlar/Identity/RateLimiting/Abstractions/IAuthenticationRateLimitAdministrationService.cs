@@ -19,7 +19,7 @@ public interface IAuthenticationRateLimitAdministrationService
     /// </summary>
     /// <param name="actor">Authenticated administrator context.</param>
     /// <param name="scope">Explicit global operational scope.</param>
-    /// <param name="request">Reset request containing the bucket identifier, purpose, and audit context.</param>
+    /// <param name="request">Reset request containing the bucket identifier and purpose.</param>
     /// <param name="cancellationToken">Token for aborting administration storage work.</param>
     /// <returns>A result describing whether the selected bucket was reset.</returns>
     Task<Result<AuthenticationRateLimitBucketResetResult>> ResetBucketAsync(AccountSecurityActorContext actor, OperationalAdministrationScope scope, ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default);

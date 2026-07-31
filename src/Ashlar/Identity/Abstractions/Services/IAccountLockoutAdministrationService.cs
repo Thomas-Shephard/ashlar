@@ -17,7 +17,7 @@ public interface IAccountLockoutAdministrationService
     /// <param name="actor">Authenticated administrator context.</param>
     /// <param name="userId">User whose automatic lockout state should be cleared.</param>
     /// <param name="provider">The authentication provider key.</param>
-    /// <param name="request">Explicit tenant scope and required audit metadata for the reset.</param>
+    /// <param name="request">Explicit tenant scope and optional safe reason for the reset.</param>
     /// <param name="cancellationToken">A token that can cancel lockout reset.</param>
     /// <returns>Stable reset outcome and the target scope.</returns>
     Task<Result<ResetAccountLockoutResult>> ResetLockoutAsync(

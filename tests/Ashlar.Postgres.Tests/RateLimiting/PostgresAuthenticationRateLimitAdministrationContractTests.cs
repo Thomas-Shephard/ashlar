@@ -57,6 +57,8 @@ internal sealed class PostgresAuthenticationRateLimitAdministrationContractTests
         await using var scope = CreateAsyncScope();
         var services = scope.ServiceProvider;
         var actor = await CreateActorAsync(services, IAccountSecurityAdministrationService.ProofPurpose);
+        actor = new Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext(actor.ActorUserId, actor.ActorTenant, actor.CurrentSessionId,
+            actor.FreshMfaProof, actor.Audit with { CorrelationId = FailingResetSecurityEventSink.CorrelationId });
         await services.GetRequiredService<IAuthenticationRateLimiter>().CheckAsync(
             new RateLimitAttempt { Purpose = "audit-rollback", Key = "203.0.113.10" },
             new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(5) });
@@ -70,8 +72,7 @@ internal sealed class PostgresAuthenticationRateLimitAdministrationContractTests
                 OperationalAdministrationScope.Global,
                 new ResetAuthenticationRateLimitBucketRequest(
                     bucket.BucketId,
-                    bucket.Purpose,
-                    actor.Audit with { CorrelationId = FailingResetSecurityEventSink.CorrelationId })));
+                    bucket.Purpose)));
 
         Assert.That(await repository.GetBucketAsync(
             new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, bucket.Purpose), Now), Is.Not.Null);

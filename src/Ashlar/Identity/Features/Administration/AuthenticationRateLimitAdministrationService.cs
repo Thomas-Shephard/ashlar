@@ -47,11 +47,6 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
         }
         if (scope != OperationalAdministrationScope.Global)
             return Result.Failure<AuthenticationRateLimitBucketResetResult>(AshlarFailureCodes.ValidationError, "Rate-limit administration requires global operational scope.");
-        if (request.Audit.ActorUserId != actor.ActorUserId)
-        {
-            await _boundary.RecordFailureAsync(actor, null, true, AccountSecurityOperation.ResetAuthenticationRateLimitBucket);
-            return Result.Failure<AuthenticationRateLimitBucketResetResult>(AshlarFailureCodes.ValidationError);
-        }
         if (await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
                 AccountSecurityOperation.ResetAuthenticationRateLimitBucket, cancellationToken) is { } authorizationFailure)
             return Result.Failure<AuthenticationRateLimitBucketResetResult>(authorizationFailure);
@@ -89,7 +84,7 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
             }
         }
 
-        await RecordResetAttemptAsync(request, result.Status, cancellationToken);
+        await RecordResetAttemptAsync(request, result.Status, actor.Audit, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         return Result.Success(result);
@@ -98,6 +93,7 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
     private Task RecordResetAttemptAsync(
         ResetAuthenticationRateLimitBucketRequest request,
         AuthenticationRateLimitBucketResetStatus status,
+        AuditContext audit,
         CancellationToken cancellationToken)
     {
         var outcome = status == AuthenticationRateLimitBucketResetStatus.Reset
@@ -108,7 +104,7 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
             new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.AuthenticationRateLimitBucketReset,
-                Audit = request.Audit,
+                Audit = audit,
                 Outcome = outcome,
                 Properties = CreateResetAttemptProperties(request, status)
             },
