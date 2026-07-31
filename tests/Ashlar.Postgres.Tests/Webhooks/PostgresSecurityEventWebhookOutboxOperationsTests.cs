@@ -72,7 +72,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
     {
         var id = await InsertRowAsync("failed", failedAt: Now.AddMinutes(-1), lastError: "secret https://example.test");
 
-        var result = await Operations.RetryAsync(Request(id));
+        var result = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id));
 
         var row = await QueryStateAsync(id);
         var audit = _audit.Events.Single();
@@ -100,7 +100,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
     {
         var id = await InsertRowAsync("failed", failedAt: Now.AddMinutes(-1), lastError: "failure", lockedBy: "worker", lockedUntil: Now.AddMinutes(5));
 
-        var result = await Operations.DiscardAsync(Request(id));
+        var result = await Operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id));
 
         var row = await QueryStateAsync(id);
         await using var connection = await GetDataSource().OpenConnectionAsync();
@@ -129,7 +129,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
             _provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             Administration());
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.RetryAsync(Request(id)));
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id)));
         var row = await QueryStateAsync(id);
 
         using (Assert.EnterMultipleScope())
@@ -151,7 +151,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
             _provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             Administration());
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.DiscardAsync(Request(id)));
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id)));
         var row = await QueryStateAsync(id);
 
         using (Assert.EnterMultipleScope())
@@ -169,12 +169,12 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
         var sent = await InsertRowAsync("sent", sentAt: Now);
         var discarded = await InsertRowAsync("discarded", failedAt: Now.AddMinutes(-1), discardedAt: Now);
 
-        var missingResult = await Operations.RetryAsync(Request(missing));
-        var pendingRetry = await Operations.RetryAsync(Request(pending));
-        var pendingDiscard = await Operations.DiscardAsync(Request(pending));
-        var sentRetry = await Operations.RetryAsync(Request(sent));
-        var discardedRetry = await Operations.RetryAsync(Request(discarded));
-        var discardedDiscard = await Operations.DiscardAsync(Request(discarded));
+        var missingResult = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(missing));
+        var pendingRetry = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(pending));
+        var pendingDiscard = await Operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, Request(pending));
+        var sentRetry = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(sent));
+        var discardedRetry = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(discarded));
+        var discardedDiscard = await Operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, Request(discarded));
 
         using (Assert.EnterMultipleScope())
         {
@@ -193,8 +193,8 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
     {
         var id = await InsertRowAsync("failed", failedAt: Now.AddMinutes(-1), lastError: "failure");
 
-        var first = await Operations.RetryAsync(Request(id));
-        var second = await Operations.RetryAsync(Request(id));
+        var first = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id));
+        var second = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id));
 
         using (Assert.EnterMultipleScope())
         {
@@ -220,8 +220,8 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
             _ => throw new ArgumentOutOfRangeException(nameof(state))
         };
 
-        var retry = await Operations.RetryAsync(Request(id));
-        var discard = await Operations.DiscardAsync(Request(id));
+        var retry = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id));
+        var discard = await Operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id));
 
         using (Assert.EnterMultipleScope())
         {
@@ -261,7 +261,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
 
     private static AshlarSecurityEventWebhookOutboxOperationRequest Request(Guid id)
     {
-        return new AshlarSecurityEventWebhookOutboxOperationRequest(id, Security.Actor, OperationalAdministrationScope.Global);
+        return new AshlarSecurityEventWebhookOutboxOperationRequest(id);
     }
 
     private async Task<Guid> InsertRowAsync(

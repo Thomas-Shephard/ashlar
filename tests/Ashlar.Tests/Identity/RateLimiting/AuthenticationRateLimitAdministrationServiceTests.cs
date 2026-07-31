@@ -161,6 +161,22 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     }
 
     [Test]
+    public void ReaderRejectsNullActorBeforeRepositoryAccess()
+    {
+        var repository = new RecordingRepository();
+        var reader = CreateReader(repository);
+
+        Assert.ThrowsAsync<ArgumentNullException>(() => reader.SearchBucketsAsync(null!, OperationalAdministrationScope.Global, new()));
+        Assert.ThrowsAsync<ArgumentNullException>(() => reader.GetBucketAsync(null!, OperationalAdministrationScope.Global, new("bucket", "login")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.SearchCalls, Is.Zero);
+            Assert.That(repository.GetCalls, Is.Zero);
+        }
+    }
+
+    [Test]
     public async Task GlobalOperationalRequestsStillWork()
     {
         var repository = new RecordingRepository { ResetResult = true };
@@ -216,10 +232,12 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         {
             Assert.That(new[] { search.Succeeded, lookup.Succeeded, reset.Succeeded }, Is.All.True);
             Assert.That(readAudit.Events, Has.Count.EqualTo(2));
+            Assert.That(readAudit.Events.Select(securityEvent => securityEvent.ActorUserId), Is.All.EqualTo(ReadBoundary.Actor.ActorUserId));
             Assert.That(readAudit.Events.Select(securityEvent => securityEvent.TenantId), Is.All.Null);
             Assert.That(readAudit.Events.Select(securityEvent => securityEvent.Properties!["scope"]), Is.All.EqualTo("all-tenants"));
             Assert.That(mutationAudit.Events, Is.Empty);
             Assert.That(resetEvents.Events, Has.Count.EqualTo(1));
+            Assert.That(resetEvents.Events[0].ActorUserId, Is.EqualTo(MutationBoundary.Actor.ActorUserId));
             Assert.That(resetEvents.Events[0].TenantId, Is.Null);
         }
     }

@@ -14,6 +14,7 @@ internal sealed class AuthenticationRateLimitAdministrationReader(IAuthenticatio
 
     public async Task<Result<AuthenticationRateLimitBucketSearchResult>> SearchBucketsAsync(AccountSecurityActorContext actor, OperationalAdministrationScope scope, SearchAuthenticationRateLimitBucketsRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
         if (!AuthenticationRateLimitAdministrationService.TryValidateSearchRequest(request, out var failure)) return failure;
         if (request.Offset < 0) return Result.Failure<AuthenticationRateLimitBucketSearchResult>(AshlarFailureCodes.ValidationError, "Offset cannot be negative.");
@@ -37,6 +38,7 @@ internal sealed class AuthenticationRateLimitAdministrationReader(IAuthenticatio
 
     public async Task<Result<AuthenticationRateLimitBucketSummary>> GetBucketAsync(AccountSecurityActorContext actor, OperationalAdministrationScope scope, AuthenticationRateLimitBucketLookupRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
         if (!AuthenticationRateLimitAdministrationService.TryValidateLookupRequest(request, out var failure)) return failure;
         if (scope != OperationalAdministrationScope.Global)

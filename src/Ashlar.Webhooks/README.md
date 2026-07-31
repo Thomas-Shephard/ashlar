@@ -56,7 +56,7 @@ Applications can test one configured security event webhook endpoint without rec
 
 ```csharp
 var tester = services.GetRequiredService<IAshlarSecurityEventWebhookEndpointTester>();
-var result = await tester.TestAsync(actor, "audit", cancellationToken);
+var result = await tester.TestAsync(actor, OperationalAdministrationScope.Global, "audit", cancellationToken);
 
 if (result.Status == AshlarSecurityEventWebhookEndpointTestStatus.Sent)
 {

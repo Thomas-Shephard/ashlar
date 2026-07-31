@@ -4,6 +4,7 @@ using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.Features.Administration;
 using Ashlar.Identity.Models.AccountSecurity;
+using Ashlar.Identity.Models.Administration;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.Webhooks.SecurityEvents;
@@ -17,11 +18,13 @@ public interface IAshlarSecurityEventWebhookEndpointTester
     /// Sends one synthetic test webhook request to the configured endpoint named by <paramref name="endpointName" />.
     /// </summary>
     /// <param name="actor">The authenticated and proof-bound actor.</param>
+    /// <param name="scope">The explicit global operational scope.</param>
     /// <param name="endpointName">The configured endpoint name.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The safe test result.</returns>
     Task<AshlarSecurityEventWebhookEndpointTestResult> TestAsync(
         AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         string endpointName,
         CancellationToken cancellationToken = default);
 }
@@ -156,10 +159,12 @@ public sealed class AshlarSecurityEventWebhookEndpointTester : IAshlarSecurityEv
     /// <inheritdoc />
     public async Task<AshlarSecurityEventWebhookEndpointTestResult> TestAsync(
         AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         string endpointName,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(actor);
+        AshlarSecurityEventWebhookOutboxBrowser.ValidateScope(scope);
         ArgumentException.ThrowIfNullOrWhiteSpace(endpointName);
         cancellationToken.ThrowIfCancellationRequested();
         if (await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,

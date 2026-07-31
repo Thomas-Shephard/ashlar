@@ -21,16 +21,14 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
         var admin = GetEmailOutboxAdministration(scope.ServiceProvider);
         var actor = await CreateActorAsync(scope.ServiceProvider);
 
-        var page = await admin.SearchAsync(CreateSearchRequest(actor) with { Limit = 2, Offset = 1 });
-        var failed = await admin.SearchAsync(new EmailOutboxSearchRequest
+        var page = await admin.SearchAsync(actor, OperationalAdministrationScope.Global, CreateSearchRequest() with { Limit = 2, Offset = 1 });
+        var failed = await admin.SearchAsync(actor, OperationalAdministrationScope.Global, new EmailOutboxSearchRequest
         {
-            Actor = actor,
-            Scope = OperationalAdministrationScope.Global,
             Statuses = new HashSet<EmailOutboxStatus> { EmailOutboxStatus.Failed },
             Limit = 10
         });
         var failedSummary = failed.Items.Single();
-        var failedDetail = await admin.GetAsync(new(failedSummary.Id, actor, OperationalAdministrationScope.Global));
+        var failedDetail = await admin.GetAsync(actor, OperationalAdministrationScope.Global, new(failedSummary.Id));
 
         using (Assert.EnterMultipleScope())
         {
@@ -61,11 +59,9 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
         var admin = GetEmailOutboxAdministration(scope.ServiceProvider);
         var actor = await CreateActorAsync(scope.ServiceProvider);
 
-        var detail = await admin.GetAsync(new(sensitive, actor, OperationalAdministrationScope.Global));
-        var failed = await admin.SearchAsync(new EmailOutboxSearchRequest
+        var detail = await admin.GetAsync(actor, OperationalAdministrationScope.Global, new(sensitive));
+        var failed = await admin.SearchAsync(actor, OperationalAdministrationScope.Global, new EmailOutboxSearchRequest
         {
-            Actor = actor,
-            Scope = OperationalAdministrationScope.Global,
             Statuses = new HashSet<EmailOutboxStatus> { EmailOutboxStatus.Failed },
             Limit = 10
         });
@@ -109,24 +105,24 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
         var actor = await CreateActorAsync(
             scope.ServiceProvider, IAccountSecurityAdministrationService.ProofPurpose);
 
-        var missingRetry = await admin.RetryAsync(CreateOperationRequest(Guid.NewGuid(), actor));
-        var missingDiscard = await admin.DiscardAsync(CreateOperationRequest(Guid.NewGuid(), actor));
-        var retry = await admin.RetryAsync(CreateOperationRequest(failed, actor));
+        var missingRetry = await admin.RetryAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(Guid.NewGuid()));
+        var missingDiscard = await admin.DiscardAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(Guid.NewGuid()));
+        var retry = await admin.RetryAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(failed));
         var retriedState = await ReadEmailOutboxAdminRowStateAsync(failed);
-        var retriedRetry = await admin.RetryAsync(CreateOperationRequest(failed, actor));
-        var retriedDiscard = await admin.DiscardAsync(CreateOperationRequest(failed, actor));
-        var pendingRetry = await admin.RetryAsync(CreateOperationRequest(pending, actor));
-        var scheduledRetry = await admin.RetryAsync(CreateOperationRequest(scheduled, actor));
-        var lockedRetry = await admin.RetryAsync(CreateOperationRequest(locked, actor));
-        var expiredLockRetry = await admin.RetryAsync(CreateOperationRequest(expiredLock, actor));
-        var sentRetry = await admin.RetryAsync(CreateOperationRequest(sent, actor));
-        var retryableDiscard = await admin.DiscardAsync(CreateOperationRequest(retryable, actor));
-        var discardedRetry = await admin.RetryAsync(CreateOperationRequest(discarded, actor));
-        var discardedDiscard = await admin.DiscardAsync(CreateOperationRequest(discarded, actor));
-        var sensitiveRetryResult = await admin.RetryAsync(CreateOperationRequest(sensitiveRetry, actor));
-        var sensitiveDiscardResult = await admin.DiscardAsync(CreateOperationRequest(sensitiveDiscard, actor));
+        var retriedRetry = await admin.RetryAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(failed));
+        var retriedDiscard = await admin.DiscardAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(failed));
+        var pendingRetry = await admin.RetryAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(pending));
+        var scheduledRetry = await admin.RetryAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(scheduled));
+        var lockedRetry = await admin.RetryAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(locked));
+        var expiredLockRetry = await admin.RetryAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(expiredLock));
+        var sentRetry = await admin.RetryAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(sent));
+        var retryableDiscard = await admin.DiscardAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(retryable));
+        var discardedRetry = await admin.RetryAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(discarded));
+        var discardedDiscard = await admin.DiscardAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(discarded));
+        var sensitiveRetryResult = await admin.RetryAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(sensitiveRetry));
+        var sensitiveDiscardResult = await admin.DiscardAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(sensitiveDiscard));
         var failedAgain = await SeedEmailOutboxAdminRowAsync(SeedEmailOutboxAdminRow.Failed("discard@example.com"));
-        var discard = await admin.DiscardAsync(CreateOperationRequest(failedAgain, actor));
+        var discard = await admin.DiscardAsync(actor, OperationalAdministrationScope.Global, CreateOperationRequest(failedAgain));
         var discardedState = await ReadEmailOutboxAdminRowStateAsync(failedAgain);
 
         using (Assert.EnterMultipleScope())
@@ -179,12 +175,11 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
         return serviceProvider.GetRequiredService<IEmailOutboxAdministrationService>();
     }
 
-    private static EmailOutboxSearchRequest CreateSearchRequest(AccountSecurityActorContext actor) =>
-        new() { Actor = actor, Scope = OperationalAdministrationScope.Global };
+    private static EmailOutboxSearchRequest CreateSearchRequest() => new();
 
-    private static EmailOutboxOperationRequest CreateOperationRequest(Guid id, AccountSecurityActorContext actor)
+    private static EmailOutboxOperationRequest CreateOperationRequest(Guid id)
     {
-        return new EmailOutboxOperationRequest(id, actor, OperationalAdministrationScope.Global);
+        return new EmailOutboxOperationRequest(id);
     }
 
     private static async Task<AccountSecurityActorContext> CreateActorAsync(

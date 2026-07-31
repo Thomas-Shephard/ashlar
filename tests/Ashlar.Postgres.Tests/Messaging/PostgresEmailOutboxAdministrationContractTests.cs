@@ -110,8 +110,8 @@ internal sealed class PostgresEmailOutboxAdministrationContractTests : EmailOutb
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.ThrowsAsync<ArgumentException>(() => admin.GetAsync(new(Guid.Empty, actor, OperationalAdministrationScope.Global)));
-            Assert.That(await admin.GetAsync(new(Guid.NewGuid(), actor, OperationalAdministrationScope.Global)), Is.Null);
+            Assert.ThrowsAsync<ArgumentException>(() => admin.GetAsync(actor, OperationalAdministrationScope.Global, new(Guid.Empty)));
+            Assert.That(await admin.GetAsync(actor, OperationalAdministrationScope.Global, new(Guid.NewGuid())), Is.Null);
         }
     }
 
@@ -134,9 +134,9 @@ internal sealed class PostgresEmailOutboxAdministrationContractTests : EmailOutb
             new { id, now = AdminNow, headers = """{"X-Test":"1"}""", metadata = """{"trace":"1"}""" });
 
         var actor = await CreateActorAsync();
-        var detail = await _database.ServiceProvider.GetRequiredService<IEmailOutboxAdministrationService>().GetAsync(new(id, actor, OperationalAdministrationScope.Global));
+        var detail = await _database.ServiceProvider.GetRequiredService<IEmailOutboxAdministrationService>().GetAsync(actor, OperationalAdministrationScope.Global, new(id));
         var empty = await SeedEmailOutboxAdminRowAsync(SeedEmailOutboxAdminRow.Pending("empty@example.com", textBody: null, htmlBody: null));
-        var emptyDetail = await _database.ServiceProvider.GetRequiredService<IEmailOutboxAdministrationService>().GetAsync(new(empty, actor, OperationalAdministrationScope.Global));
+        var emptyDetail = await _database.ServiceProvider.GetRequiredService<IEmailOutboxAdministrationService>().GetAsync(actor, OperationalAdministrationScope.Global, new(empty));
 
         using (Assert.EnterMultipleScope())
         {
@@ -157,7 +157,7 @@ internal sealed class PostgresEmailOutboxAdministrationContractTests : EmailOutb
         var admin = CreateAdmin(new ThrowingSecurityEventSink(new InvalidOperationException("audit failed")));
         var actor = await CreateActorAsync(purpose: IAccountSecurityAdministrationService.ProofPurpose);
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await admin.RetryAsync(new(id, actor, OperationalAdministrationScope.Global)));
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await admin.RetryAsync(actor, OperationalAdministrationScope.Global, new(id)));
         var state = await ReadEmailOutboxAdminRowStateAsync(id);
 
         using (Assert.EnterMultipleScope())
@@ -175,7 +175,7 @@ internal sealed class PostgresEmailOutboxAdministrationContractTests : EmailOutb
         var admin = CreateAdmin(new ThrowingSecurityEventSink(new InvalidOperationException("audit failed")));
         var actor = await CreateActorAsync(purpose: IAccountSecurityAdministrationService.ProofPurpose);
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await admin.DiscardAsync(new(id, actor, OperationalAdministrationScope.Global)));
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await admin.DiscardAsync(actor, OperationalAdministrationScope.Global, new(id)));
         var state = await ReadEmailOutboxAdminRowStateAsync(id);
 
         using (Assert.EnterMultipleScope())
@@ -192,7 +192,7 @@ internal sealed class PostgresEmailOutboxAdministrationContractTests : EmailOutb
         var admin = CreateAdmin(new ThrowingSecurityEventSink(new OperationCanceledException("audit canceled")));
         var actor = await CreateActorAsync(purpose: IAccountSecurityAdministrationService.ProofPurpose);
 
-        Assert.ThrowsAsync<OperationCanceledException>(async () => await admin.RetryAsync(new(id, actor, OperationalAdministrationScope.Global)));
+        Assert.ThrowsAsync<OperationCanceledException>(async () => await admin.RetryAsync(actor, OperationalAdministrationScope.Global, new(id)));
     }
 
     [Test]
@@ -207,8 +207,8 @@ internal sealed class PostgresEmailOutboxAdministrationContractTests : EmailOutb
             IAccountSecurityAdministrationService.ProofPurpose);
         var actorId = actor.ActorUserId;
 
-        await admin.RetryAsync(new(retryId, actor, OperationalAdministrationScope.Global));
-        await admin.DiscardAsync(new(discardId, actor, OperationalAdministrationScope.Global));
+        await admin.RetryAsync(actor, OperationalAdministrationScope.Global, new(retryId));
+        await admin.DiscardAsync(actor, OperationalAdministrationScope.Global, new(discardId));
 
         using (Assert.EnterMultipleScope())
         {
