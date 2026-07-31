@@ -2,14 +2,14 @@ namespace Ashlar.Tests.Identity.Features.Sessions;
 
 using Ashlar.Tests.Support;
 
-internal sealed class AuthenticationSessionAdministrationServiceTests
+internal sealed class AuthenticationSessionAdministrationReaderTests
 {
     private static readonly DateTimeOffset Now = new(2026, 6, 2, 12, 0, 0, TimeSpan.Zero);
 
     [Test]
     public void ConstructorRejectsNullRepository()
     {
-        Assert.Throws<ArgumentNullException>(() => new AuthenticationSessionAdministrationService(null!, null!, null!, null!));
+        Assert.Throws<ArgumentNullException>(() => new AuthenticationSessionAdministrationReader(null!, null!, null!, null!));
     }
 
     [Test]
@@ -259,20 +259,20 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
             new SearchAuthenticationSessionsRequest { Tenant = tenant, UserId = userId, Limit = 1 }));
     }
 
-    private static AuthorizedSessionAdministrationService CreateService(RecordingAuthenticationSessionAdministrationRepository? repository = null, TimeProvider? timeProvider = null)
+    private static AuthorizedSessionAdministrationReader CreateService(RecordingAuthenticationSessionAdministrationRepository? repository = null, TimeProvider? timeProvider = null)
     {
         var boundary = new AdminReadTestBoundary(timeProvider?.GetUtcNow() ?? Now);
-        return new AuthorizedSessionAdministrationService(new AuthenticationSessionAdministrationService(
+        return new AuthorizedSessionAdministrationReader(new AuthenticationSessionAdministrationReader(
             repository ?? new RecordingAuthenticationSessionAdministrationRepository(), boundary.Sessions,
             boundary.Authorizer, boundary.Sink, timeProvider ?? new StaticTimeProvider(Now)), boundary.Actor);
     }
 
-    private sealed class AuthorizedSessionAdministrationService(AuthenticationSessionAdministrationService service, AccountSecurityActorContext actor)
+    private sealed class AuthorizedSessionAdministrationReader(AuthenticationSessionAdministrationReader reader, AccountSecurityActorContext actor)
     {
         public Task<Result<AuthenticationSessionSearchResult>> SearchAuthenticationSessionsAsync(SearchAuthenticationSessionsRequest request) =>
-            service.SearchAuthenticationSessionsAsync(request is null ? null! : request with { Actor = actor });
+            reader.SearchAuthenticationSessionsAsync(actor, request);
         public Task<Result<AuthenticationSessionAdministrationSummary>> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationLookupRequest request) =>
-            service.GetAuthenticationSessionAsync(request with { Actor = actor });
+            reader.GetAuthenticationSessionAsync(actor, request);
     }
 
     private static AuthenticationSessionAdministrationSummary CreateSummary()

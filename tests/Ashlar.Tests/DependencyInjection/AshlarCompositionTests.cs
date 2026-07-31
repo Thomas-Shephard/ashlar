@@ -347,14 +347,15 @@ internal sealed class AshlarCompositionTests
         var services = new ServiceCollection();
         services.AddAshlarProviderScoped(_ => Mock.Of<IUserRepository>());
         services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialRepository>());
-        services.AddSingleton(Mock.Of<IUserAdministrationRepository>());
-        services.AddSingleton(Mock.Of<ICredentialAdministrationRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IUserAdministrationRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<ICredentialAdministrationRepository>());
         services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionRepository>());
-        services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
+        services.AddAshlarProviderScoped(_ => Mock.Of<IAuthenticationSessionAdministrationRepository>());
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
         services.AddSingleton<ISecretProtector>(secretProtector);
         services.AddSingleton<IEmailSender>(emailSender);
         services.AddSingleton<IAuthenticationRateLimiter>(rateLimiter);
+        services.AddSingleton(Mock.Of<IAccountSecurityOperationAuthorizer>());
         services
             .AddAshlarIdentity()
             .AddDurableAuditForTests()
@@ -367,6 +368,9 @@ internal sealed class AshlarCompositionTests
             typeof(IIdentityService),
             typeof(IAuthenticationPipeline),
             typeof(ICredentialService),
+            typeof(IUserAdministrationReader),
+            typeof(ICredentialAdministrationReader),
+            typeof(IAuthenticationSessionAdministrationReader),
             typeof(IdentityInfrastructureContext),
             typeof(AshlarDurableTransactionProvider),
             typeof(IAuthenticationRateLimiterDiagnostics),
@@ -378,6 +382,9 @@ internal sealed class AshlarCompositionTests
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecretProtector>(), Is.SameAs(secretProtector));
             Assert.That(scope.ServiceProvider.GetRequiredService<IEmailSender>(), Is.SameAs(emailSender));
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiter>(), Is.SameAs(rateLimiter));
+            Assert.That(scope.ServiceProvider.GetRequiredService<IUserAdministrationReader>(), Is.TypeOf<UserAdministrationReader>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<ICredentialAdministrationReader>(), Is.TypeOf<CredentialAdministrationReader>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationSessionAdministrationReader>(), Is.TypeOf<AuthenticationSessionAdministrationReader>());
             Assert.That(scope.ServiceProvider.GetRequiredService<AshlarDurableTransactionProvider>(), Is.TypeOf<AshlarDurableTransactionProvider>());
             Assert.That(Microsoft.Extensions.DependencyInjection.AshlarProviderServiceCollection.GetRequiredAshlarProviderService<RecordingTransactionProvider>(scope.ServiceProvider), Is.Not.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());

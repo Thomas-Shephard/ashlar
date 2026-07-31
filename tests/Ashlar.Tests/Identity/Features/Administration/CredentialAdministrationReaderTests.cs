@@ -2,14 +2,14 @@ namespace Ashlar.Tests.Identity.Features.Administration;
 
 using Ashlar.Tests.Support;
 
-internal sealed class CredentialAdministrationServiceTests
+internal sealed class CredentialAdministrationReaderTests
 {
     private static readonly DateTimeOffset Now = new(2026, 6, 2, 12, 0, 0, TimeSpan.Zero);
 
     [Test]
     public void ConstructorRejectsNullRepository()
     {
-        Assert.Throws<ArgumentNullException>(() => new CredentialAdministrationService(null!, null!, null!, null!));
+        Assert.Throws<ArgumentNullException>(() => new CredentialAdministrationReader(null!, null!, null!, null!));
     }
 
     [Test]
@@ -311,20 +311,20 @@ internal sealed class CredentialAdministrationServiceTests
             new SearchCredentialsRequest { Tenant = tenant, UserId = userId, Limit = 1 }));
     }
 
-    private static AuthorizedCredentialAdministrationService CreateService(RecordingCredentialAdministrationRepository? repository = null, TimeProvider? timeProvider = null)
+    private static AuthorizedCredentialAdministrationReader CreateService(RecordingCredentialAdministrationRepository? repository = null, TimeProvider? timeProvider = null)
     {
         var boundary = new AdminReadTestBoundary(timeProvider?.GetUtcNow() ?? Now);
-        return new AuthorizedCredentialAdministrationService(new CredentialAdministrationService(
+        return new AuthorizedCredentialAdministrationReader(new CredentialAdministrationReader(
             repository ?? new RecordingCredentialAdministrationRepository(), boundary.Sessions, boundary.Authorizer,
             boundary.Sink, timeProvider ?? new StaticTimeProvider(Now)), boundary.Actor);
     }
 
-    private sealed class AuthorizedCredentialAdministrationService(CredentialAdministrationService service, AccountSecurityActorContext actor)
+    private sealed class AuthorizedCredentialAdministrationReader(CredentialAdministrationReader reader, AccountSecurityActorContext actor)
     {
         public Task<Result<CredentialSearchResult>> SearchCredentialsAsync(SearchCredentialsRequest request) =>
-            service.SearchCredentialsAsync(request is null ? null! : request with { Actor = actor });
+            reader.SearchCredentialsAsync(actor, request);
         public Task<Result<CredentialAdministrationSummary>> GetCredentialAsync(CredentialAdministrationLookupRequest request) =>
-            service.GetCredentialAsync(request with { Actor = actor });
+            reader.GetCredentialAsync(actor, request);
     }
 
     private static CredentialAdministrationSummary CreateSummary(DateTimeOffset? expiresAt = null, bool isAvailable = true)

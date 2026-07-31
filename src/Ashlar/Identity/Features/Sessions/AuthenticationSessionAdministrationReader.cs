@@ -13,13 +13,13 @@ namespace Ashlar.Identity.Features.Sessions;
 /// <remarks>
 /// Every operation enforces actor-bound active-session proof, scope, host authorization, and durable audit requirements.
 /// </remarks>
-public sealed class AuthenticationSessionAdministrationService(
+internal sealed class AuthenticationSessionAdministrationReader(
     IAuthenticationSessionAdministrationRepository repository,
     IAuthenticationSessionRepository sessions,
     IAccountSecurityOperationAuthorizer authorizer,
     IPersistentSecurityEventSink auditSink,
     TimeProvider? timeProvider = null)
-    : IAuthenticationSessionAdministrationService
+    : IAuthenticationSessionAdministrationReader
 {
     internal const int MaximumLimit = 100;
 
@@ -28,8 +28,9 @@ public sealed class AuthenticationSessionAdministrationService(
     private readonly AccountSecurityOperationBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
 
     /// <inheritdoc />
-    public async Task<Result<AuthenticationSessionSearchResult>> SearchAuthenticationSessionsAsync(SearchAuthenticationSessionsRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<AuthenticationSessionSearchResult>> SearchAuthenticationSessionsAsync(AccountSecurityActorContext actor, SearchAuthenticationSessionsRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
 
         if (!TryValidateSearchRequest(request, out var validationFailure))
@@ -47,12 +48,12 @@ public sealed class AuthenticationSessionAdministrationService(
             return Result.Failure<AuthenticationSessionSearchResult>(AshlarFailureCodes.ValidationError, "Limit must be greater than zero.");
         }
 
-        if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+        if (await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants,
                 request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchAuthenticationSessions, cancellationToken) is { } authorizationFailure)
             return Result.Failure<AuthenticationSessionSearchResult>(authorizationFailure);
 
         var limit = Math.Min(request.Limit, MaximumLimit);
-        var repositoryRequest = request with { Actor = null, Limit = limit + 1 };
+        var repositoryRequest = request with { Limit = limit + 1 };
         var now = _timeProvider.GetUtcNow();
         List<AuthenticationSessionAdministrationSummary> results;
         try
@@ -61,16 +62,16 @@ public sealed class AuthenticationSessionAdministrationService(
         }
         catch
         {
-            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchAuthenticationSessions);
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchAuthenticationSessions);
             throw;
         }
         if (results.Any(session => !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants,
                 session.TenantId, request.UserId, session.UserId)))
         {
-            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchAuthenticationSessions);
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchAuthenticationSessions);
             throw new InvalidOperationException("The authentication-session administration provider returned a result outside the authorized scope.");
         }
-        await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchAuthenticationSessions);
+        await _boundary.RecordSuccessAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchAuthenticationSessions);
         var hasMore = results.Count > limit;
         var page = results.Take(limit).ToList().AsReadOnly();
 
@@ -78,8 +79,9 @@ public sealed class AuthenticationSessionAdministrationService(
     }
 
     /// <inheritdoc />
-    public async Task<Result<AuthenticationSessionAdministrationSummary>> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationLookupRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<AuthenticationSessionAdministrationSummary>> GetAuthenticationSessionAsync(AccountSecurityActorContext actor, AuthenticationSessionAdministrationLookupRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
 
         if (!TryValidateLookupRequest(request, out var validationFailure))
@@ -87,31 +89,31 @@ public sealed class AuthenticationSessionAdministrationService(
             return validationFailure;
         }
 
-        if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+        if (await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants,
                 Guid.Empty, AccountSecurityOperation.ReadAuthenticationSession, cancellationToken) is { } authorizationFailure)
             return Result.Failure<AuthenticationSessionAdministrationSummary>(authorizationFailure);
 
         AuthenticationSessionAdministrationSummary? session;
         try
         {
-            session = await _repository.GetAuthenticationSessionAsync(request with { Actor = null }, _timeProvider.GetUtcNow(), cancellationToken);
+            session = await _repository.GetAuthenticationSessionAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
         }
         catch
         {
-            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadAuthenticationSession);
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadAuthenticationSession);
             throw;
         }
         if (session is null || session.Id != request.SessionId
             || !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants, session.TenantId))
         {
-            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadAuthenticationSession);
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadAuthenticationSession);
             session = null;
         }
-        else if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+        else if (await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants,
                 session.UserId, AccountSecurityOperation.ReadAuthenticationSession, cancellationToken) is not null)
             session = null;
         else
-            await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants,
+            await _boundary.RecordSuccessAsync(actor, request.Tenant, request.IncludeAllTenants,
                 AccountSecurityOperation.ReadAuthenticationSession);
         return session == null
             ? Result.Failure<AuthenticationSessionAdministrationSummary>(AshlarFailureCodes.SessionNotFound, "Session was not found.")

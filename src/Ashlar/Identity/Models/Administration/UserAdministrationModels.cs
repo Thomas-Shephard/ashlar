@@ -5,9 +5,6 @@ namespace Ashlar.Identity.Models.Administration;
 /// </summary>
 public sealed record SearchUsersRequest
 {
-    /// <summary>Authenticated actor, active session, fresh proof, and audit metadata.</summary>
-    public AccountSecurityActorContext? Actor { get; init; }
-
     /// <summary>Optional query matched against normalized email addresses and display names.</summary>
     public string? Query { get; init; }
 
@@ -92,13 +89,11 @@ public sealed record UserAdministrationDetail(
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
 /// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
 /// <param name="RecentSecurityEventWindow">Optional positive recent security event window for the embedded account-security posture; it must fit within the UTC timestamp range.</param>
-/// <param name="Actor">Authenticated actor, active session, fresh proof, and audit metadata.</param>
 public sealed record UserAdministrationDetailRequest(
     Guid UserId,
     TenantContext? Tenant = null,
     bool IncludeAllTenants = false,
-    TimeSpan? RecentSecurityEventWindow = null,
-    AccountSecurityActorContext? Actor = null)
+    TimeSpan? RecentSecurityEventWindow = null)
 {
     /// <summary>
     /// Throws when the user lookup request is not safe to execute.

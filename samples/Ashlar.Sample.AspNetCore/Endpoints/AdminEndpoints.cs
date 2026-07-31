@@ -121,7 +121,7 @@ internal static partial class AdminEndpoints
 
     private static async Task<IResult> ListAdminUsersAsync(
         IAuthorizationEvaluator auth,
-        IUserAdministrationService users,
+        IUserAdministrationReader users,
         StepUpAuthenticationService stepUp,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -134,9 +134,9 @@ internal static partial class AdminEndpoints
 
         var proof = httpContext.CreateFreshMfaProof(stepUp, AdminReadRequirement, AccountSecurityActorContext.AdministrationReadProofPurpose);
         if (!proof.TryGetValue(out var freshProof)) return Results.Forbid();
-        var result = await users.SearchUsersAsync(new SearchUsersRequest
+        var actor = new AccountSecurityActorContext(actorUserId, actorTenant, sessionId, freshProof, httpContext.ToAuditContext());
+        var result = await users.SearchUsersAsync(actor, new SearchUsersRequest
         {
-            Actor = new AccountSecurityActorContext(actorUserId, actorTenant, sessionId, freshProof, httpContext.ToAuditContext()),
             Tenant = tenant,
             Limit = 100
         }, cancellationToken);
@@ -147,7 +147,7 @@ internal static partial class AdminEndpoints
 
     private static async Task<IResult> GetAdminUserSecurityAsync(
         Guid userId,
-        IUserAdministrationService users,
+        IUserAdministrationReader users,
         StepUpAuthenticationService stepUp,
         IAuthorizationEvaluator auth,
         HttpContext httpContext,
@@ -161,9 +161,9 @@ internal static partial class AdminEndpoints
 
         var proof = httpContext.CreateFreshMfaProof(stepUp, AdminReadRequirement, AccountSecurityActorContext.AdministrationReadProofPurpose);
         if (!proof.TryGetValue(out var freshProof)) return Results.Forbid();
-        var result = await users.GetUserDetailAsync(new UserAdministrationDetailRequest(
-            userId, tenant, RecentSecurityEventWindow: TimeSpan.FromDays(30),
-            Actor: new AccountSecurityActorContext(actorUserId, actorTenant, sessionId, freshProof, httpContext.ToAuditContext())), cancellationToken);
+        var actor = new AccountSecurityActorContext(actorUserId, actorTenant, sessionId, freshProof, httpContext.ToAuditContext());
+        var result = await users.GetUserDetailAsync(actor,
+            new UserAdministrationDetailRequest(userId, tenant, RecentSecurityEventWindow: TimeSpan.FromDays(30)), cancellationToken);
         return ToAccountSecurityPostureResult(result);
     }
 

@@ -13,13 +13,13 @@ namespace Ashlar.Identity.Features.Administration;
 /// <remarks>
 /// Every operation enforces actor-bound active-session proof, scope, host authorization, and durable audit requirements.
 /// </remarks>
-public sealed class CredentialAdministrationService(
+internal sealed class CredentialAdministrationReader(
     ICredentialAdministrationRepository repository,
     IAuthenticationSessionRepository sessions,
     IAccountSecurityOperationAuthorizer authorizer,
     IPersistentSecurityEventSink auditSink,
     TimeProvider? timeProvider = null)
-    : ICredentialAdministrationService
+    : ICredentialAdministrationReader
 {
     internal const int MaximumLimit = 100;
 
@@ -28,8 +28,9 @@ public sealed class CredentialAdministrationService(
     private readonly AccountSecurityOperationBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
 
     /// <inheritdoc />
-    public async Task<Result<CredentialSearchResult>> SearchCredentialsAsync(SearchCredentialsRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<CredentialSearchResult>> SearchCredentialsAsync(AccountSecurityActorContext actor, SearchCredentialsRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
 
         if (!TryValidateSearchRequest(request, out var validationFailure))
@@ -47,12 +48,12 @@ public sealed class CredentialAdministrationService(
             return Result.Failure<CredentialSearchResult>(AshlarFailureCodes.ValidationError, "Limit must be greater than zero.");
         }
 
-        if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+        if (await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants,
                 request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchCredentials, cancellationToken) is { } authorizationFailure)
             return Result.Failure<CredentialSearchResult>(authorizationFailure);
 
         var limit = Math.Min(request.Limit, MaximumLimit);
-        var repositoryRequest = request with { Actor = null, Limit = limit + 1 };
+        var repositoryRequest = request with { Limit = limit + 1 };
         List<CredentialAdministrationSummary> credentials;
         try
         {
@@ -60,16 +61,16 @@ public sealed class CredentialAdministrationService(
         }
         catch
         {
-            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchCredentials);
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchCredentials);
             throw;
         }
         if (credentials.Any(credential => !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants,
                 credential.TenantId, request.UserId, credential.UserId)))
         {
-            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchCredentials);
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchCredentials);
             throw new InvalidOperationException("The credential administration provider returned a result outside the authorized scope.");
         }
-        await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchCredentials);
+        await _boundary.RecordSuccessAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchCredentials);
         var hasMore = credentials.Count > limit;
         var page = credentials.Take(limit).ToList().AsReadOnly();
 
@@ -77,8 +78,9 @@ public sealed class CredentialAdministrationService(
     }
 
     /// <inheritdoc />
-    public async Task<Result<CredentialAdministrationSummary>> GetCredentialAsync(CredentialAdministrationLookupRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<CredentialAdministrationSummary>> GetCredentialAsync(AccountSecurityActorContext actor, CredentialAdministrationLookupRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
 
         if (!TryValidateLookupRequest(request, out var validationFailure))
@@ -86,31 +88,31 @@ public sealed class CredentialAdministrationService(
             return validationFailure;
         }
 
-        if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+        if (await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants,
                 Guid.Empty, AccountSecurityOperation.ReadCredential, cancellationToken) is { } authorizationFailure)
             return Result.Failure<CredentialAdministrationSummary>(authorizationFailure);
 
         CredentialAdministrationSummary? credential;
         try
         {
-            credential = await _repository.GetCredentialAsync(request with { Actor = null }, _timeProvider.GetUtcNow(), cancellationToken);
+            credential = await _repository.GetCredentialAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
         }
         catch
         {
-            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadCredential);
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadCredential);
             throw;
         }
         if (credential is null || credential.CredentialId != request.CredentialId
             || !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants, credential.TenantId))
         {
-            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadCredential);
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadCredential);
             credential = null;
         }
-        else if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+        else if (await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants,
                 credential.UserId, AccountSecurityOperation.ReadCredential, cancellationToken) is not null)
             credential = null;
         else
-            await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants,
+            await _boundary.RecordSuccessAsync(actor, request.Tenant, request.IncludeAllTenants,
                 AccountSecurityOperation.ReadCredential);
         return credential == null
             ? Result.Failure<CredentialAdministrationSummary>(AshlarFailureCodes.CredentialNotFound, "Credential was not found.")

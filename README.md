@@ -946,32 +946,33 @@ await signInManager.RevokeOtherSessionsForCurrentUserAsync(httpContext);
 Session listing is ordered by `CreatedAt` descending (newest first). Sensitive fields like IP address and user agent are only populated if they were enabled during session creation. Token hashes are never exposed through these APIs. In the PostgreSQL store, last-seen writes are ignored once a session is revoked or expired, so a concurrent sign-out or expiry cannot be undone by validation telemetry.
 
 #### Admin User Browsing
-Use `IUserAdministrationService` for read-only admin and operations tooling that needs to browse users without querying provider tables directly:
+Use `IUserAdministrationReader` for read-only admin and operations tooling that needs to browse users without querying provider tables directly:
 
 ```csharp
 var users = await userAdministration.SearchUsersAsync(
+    adminReadActor,
     new SearchUsersRequest
     {
-        Actor = adminReadActor,
         Tenant = new TenantContext(tenantId), // or TenantContext.Global, or IncludeAllTenants = true
         Query = "alex@example.com",
         Limit = 50
     });
 
 var detail = await userAdministration.GetUserDetailAsync(
-    new UserAdministrationDetailRequest(userId, new TenantContext(tenantId), Actor: adminReadActor));
+    adminReadActor,
+    new UserAdministrationDetailRequest(userId, new TenantContext(tenantId)));
 ```
 
-Search, lookup, and detail requests require `AccountSecurityActorContext` with the authenticated actor, actor tenant, current active session, matching `AuditContext`, and an Ashlar-issued fresh MFA proof for the `administration-read` purpose. They also require an explicit tenant/global/all-tenant scope and host `IAccountSecurityOperationAuthorizer` approval; all-tenant requests carry a distinct authorization decision. Successes and failures are durably audited and fail closed when audit persistence fails. User admin detail includes safe projections only.
+Search and detail calls require a separate `AccountSecurityActorContext` with the authenticated actor, actor tenant, current active session, matching `AuditContext`, and an Ashlar-issued fresh MFA proof for the `administration-read` purpose. Requests require an explicit tenant/global/all-tenant scope, and calls require host `IAccountSecurityOperationAuthorizer` approval; all-tenant requests carry a distinct authorization decision. Successes and failures are durably audited and fail closed when audit persistence fails. User admin detail includes safe projections only.
 
 #### Admin Session Browsing
-Use `IAuthenticationSessionAdministrationService` for read-only admin and operations tooling that needs to browse sessions across users and tenants without querying provider tables directly:
+Use `IAuthenticationSessionAdministrationReader` for read-only admin and operations tooling that needs to browse sessions across users and tenants without querying provider tables directly:
 
 ```csharp
 var result = await sessionAdministration.SearchAuthenticationSessionsAsync(
+    adminReadActor,
     new SearchAuthenticationSessionsRequest
     {
-        Actor = adminReadActor,
         Tenant = new TenantContext(tenantId), // or TenantContext.Global, or IncludeAllTenants = true
         UserId = userId,
         Active = true,
@@ -987,19 +988,20 @@ if (result.Succeeded)
 }
 
 var session = await sessionAdministration.GetAuthenticationSessionAsync(
-    new AuthenticationSessionAdministrationLookupRequest(sessionId, new TenantContext(tenantId), Actor: adminReadActor));
+    adminReadActor,
+    new AuthenticationSessionAdministrationLookupRequest(sessionId, new TenantContext(tenantId)));
 ```
 
-Search and single-session requests require the shared actor-bound admin-read context and an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. The single-session lookup returns the same safe projection shape as search. Raw session tokens and token hashes are never returned, and session metadata is not included in the admin read model.
+Search and single-session calls require the separate actor-bound admin-read context; their requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. The single-session lookup returns the same safe projection shape as search. Raw session tokens and token hashes are never returned, and session metadata is not included in the admin read model.
 
 #### Admin Credential Inventory
-Use `ICredentialAdministrationService` for read-only admin and operations tooling that needs to browse credential inventory across users or tenants without querying provider tables directly:
+Use `ICredentialAdministrationReader` for read-only admin and operations tooling that needs to browse credential inventory across users or tenants without querying provider tables directly:
 
 ```csharp
 var result = await credentialAdministration.SearchCredentialsAsync(
+    adminReadActor,
     new SearchCredentialsRequest
     {
-        Actor = adminReadActor,
         Tenant = new TenantContext(tenantId), // or TenantContext.Global, or IncludeAllTenants = true
         UserId = userId,
         Provider = AuthenticationProviderKey.Passkey,
@@ -1016,7 +1018,7 @@ if (result.Succeeded)
 }
 ```
 
-Call `GetCredentialAsync(new CredentialAdministrationLookupRequest(credentialId, new TenantContext(tenantId), Actor: adminReadActor))` for the same safe projection shape for a single credential. Single-credential requests also require `TenantContext.Global` or `IncludeAllTenants = true` when appropriate. Raw credential values, provider keys, metadata, password hashes, token hashes, passkey payloads, recovery codes, OAuth/OIDC subject identifiers, provider-specific raw identifiers, and other secrets are never returned.
+Call `GetCredentialAsync(adminReadActor, new CredentialAdministrationLookupRequest(credentialId, new TenantContext(tenantId)))` for the same safe projection shape for a single credential. Single-credential requests also require `TenantContext.Global` or `IncludeAllTenants = true` when appropriate. Raw credential values, provider keys, metadata, password hashes, token hashes, passkey payloads, recovery codes, OAuth/OIDC subject identifiers, provider-specific raw identifiers, and other secrets are never returned.
 
 #### Admin Account Recovery Options
 Use `IAccountRecoveryAdministrationService` when admin tooling needs a display-safe preview of account recovery actions before presenting destructive controls:

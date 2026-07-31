@@ -8,7 +8,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
     [Test]
     public void ConstructorRejectsNullDependency()
     {
-        var users = new RecordingUserAdministrationService(Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.UserNotFound));
+        var users = new RecordingUserAdministrationReader(Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.UserNotFound));
         var devices = Mock.Of<IRememberedMfaDeviceRepository>();
 
         using (Assert.EnterMultipleScope())
@@ -105,7 +105,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
     public async Task GetAccountRecoveryOptionsAsyncPreservesGlobalTenantScope()
     {
         var userId = Guid.NewGuid();
-        var userAdministration = new RecordingUserAdministrationService(Result.Success(CreateDetail(userId)));
+        var userAdministration = new RecordingUserAdministrationReader(Result.Success(CreateDetail(userId)));
         var service = CreateService(userAdministration: userAdministration);
         var eventWindow = TimeSpan.FromDays(3);
         var actor = CreateActor();
@@ -117,7 +117,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             Assert.That(userAdministration.LastRequest?.Tenant, Is.EqualTo(TenantContext.Global));
             Assert.That(userAdministration.LastRequest?.IncludeAllTenants, Is.False);
             Assert.That(userAdministration.LastRequest?.RecentSecurityEventWindow, Is.EqualTo(eventWindow));
-            Assert.That(userAdministration.LastRequest?.Actor, Is.SameAs(actor));
+            Assert.That(userAdministration.LastActor, Is.SameAs(actor));
         }
     }
 
@@ -135,7 +135,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
     public async Task GetAccountRecoveryOptionsAsyncPreservesIncludeAllTenantsScope()
     {
         var userId = Guid.NewGuid();
-        var userAdministration = new RecordingUserAdministrationService(Result.Success(CreateDetail(userId, Guid.NewGuid())));
+        var userAdministration = new RecordingUserAdministrationReader(Result.Success(CreateDetail(userId, Guid.NewGuid())));
         var service = CreateService(userAdministration: userAdministration);
 
         await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, IncludeAllTenants: true));
@@ -421,11 +421,11 @@ internal sealed class AccountRecoveryAdministrationServiceTests
 
     private static AccountRecoveryAdministrationService CreateService(
         Result<UserAdministrationDetail>? detailResult = null,
-        RecordingUserAdministrationService? userAdministration = null,
+        RecordingUserAdministrationReader? userAdministration = null,
         IRememberedMfaDeviceRepository? rememberedMfaDeviceRepository = null)
     {
         return new AccountRecoveryAdministrationService(
-            userAdministration ?? new RecordingUserAdministrationService(detailResult ?? Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.UserNotFound)),
+            userAdministration ?? new RecordingUserAdministrationReader(detailResult ?? Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.UserNotFound)),
             rememberedMfaDeviceRepository ?? Mock.Of<IRememberedMfaDeviceRepository>());
     }
 
@@ -488,17 +488,19 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             status);
     }
 
-    private sealed class RecordingUserAdministrationService(Result<UserAdministrationDetail> detailResult) : IUserAdministrationService
+    private sealed class RecordingUserAdministrationReader(Result<UserAdministrationDetail> detailResult) : IUserAdministrationReader
     {
+        public AccountSecurityActorContext? LastActor { get; private set; }
         public UserAdministrationDetailRequest? LastRequest { get; private set; }
 
-        public Task<Result<UserSearchResult>> SearchUsersAsync(SearchUsersRequest request, CancellationToken cancellationToken = default)
+        public Task<Result<UserSearchResult>> SearchUsersAsync(AccountSecurityActorContext actor, SearchUsersRequest request, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<Result<UserAdministrationDetail>> GetUserDetailAsync(UserAdministrationDetailRequest request, CancellationToken cancellationToken = default)
+        public Task<Result<UserAdministrationDetail>> GetUserDetailAsync(AccountSecurityActorContext actor, UserAdministrationDetailRequest request, CancellationToken cancellationToken = default)
         {
+            LastActor = actor;
             LastRequest = request;
             return Task.FromResult(detailResult);
         }
