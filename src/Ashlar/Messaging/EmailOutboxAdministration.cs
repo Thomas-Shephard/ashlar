@@ -15,40 +15,56 @@ public interface IEmailOutboxAdministrationService
     /// <summary>
     /// Searches durable email outbox rows using safe administrator projections.
     /// </summary>
-    /// <param name="request">Actor, explicit global operational scope, paging, and status filters for the read-only search.</param>
+    /// <param name="actor">The authenticated operator context.</param>
+    /// <param name="scope">The explicit global operational scope.</param>
+    /// <param name="request">Paging and status filters for the read-only search.</param>
     /// <param name="cancellationToken">A token that can cancel the search before results are returned.</param>
     /// <returns>Matching outbox summaries with body, protected payload, header, metadata, and lock-owner values omitted.</returns>
     Task<EmailOutboxSearchResult> SearchAsync(
+        AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         EmailOutboxSearchRequest request,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets one durable email outbox row using a safe administrator projection.
     /// </summary>
-    /// <param name="request">Actor-bound request with explicit global operational scope for the outbox entry.</param>
+    /// <param name="actor">The authenticated operator context.</param>
+    /// <param name="scope">The explicit global operational scope.</param>
+    /// <param name="request">The outbox entry request.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup before a result is returned.</param>
     /// <returns>The matching outbox detail, or <see langword="null" /> when no entry exists.</returns>
     Task<EmailOutboxDetail?> GetAsync(
+        AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         EmailOutboxDetailRequest request,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Clears terminal failure state so a failed email can be claimed by the normal dispatcher.
     /// </summary>
-    /// <param name="request">Outbox entry id, actor context, and explicit global operational scope required for the mutation.</param>
+    /// <param name="actor">The authenticated operator context.</param>
+    /// <param name="scope">The explicit global operational scope.</param>
+    /// <param name="request">Outbox entry id required for the mutation.</param>
     /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
     /// <returns>The stable retry outcome with sensitive recipient and subject metadata suppressed when needed.</returns>
     Task<EmailOutboxOperationResult> RetryAsync(
+        AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         EmailOutboxOperationRequest request,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Marks a terminal failed email as discarded so the normal dispatcher will ignore it.
     /// </summary>
-    /// <param name="request">Outbox entry id, actor context, and explicit global operational scope required for the mutation.</param>
+    /// <param name="actor">The authenticated operator context.</param>
+    /// <param name="scope">The explicit global operational scope.</param>
+    /// <param name="request">Outbox entry id required for the mutation.</param>
     /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
     /// <returns>The stable discard outcome with sensitive recipient and subject metadata suppressed when needed.</returns>
     Task<EmailOutboxOperationResult> DiscardAsync(
+        AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         EmailOutboxOperationRequest request,
         CancellationToken cancellationToken = default);
 }
@@ -83,20 +99,22 @@ public abstract class EmailOutboxAdministrationServiceBase(
 
     /// <inheritdoc />
     public async Task<EmailOutboxSearchResult> SearchAsync(
+        AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         EmailOutboxSearchRequest request,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            EmailOutboxAdministrationProvider.ValidateSearchRequest(request);
+            EmailOutboxAdministrationProvider.ValidateSearchRequest(actor, scope, request);
         }
         catch (ArgumentException)
         {
             await _readBoundary.RecordValidatedFailureAsync(
-                request?.Actor, null, true, AccountSecurityOperation.SearchEmailOutbox, cancellationToken).ConfigureAwait(false);
+                actor, null, true, AccountSecurityOperation.SearchEmailOutbox, cancellationToken).ConfigureAwait(false);
             throw;
         }
-        if (await _readBoundary.AuthorizeAsync(request.Actor, null, true, Guid.Empty,
+        if (await _readBoundary.AuthorizeAsync(actor, null, true, Guid.Empty,
                 AccountSecurityOperation.SearchEmailOutbox, cancellationToken).ConfigureAwait(false) is not null)
             return new([], request.Limit, request.Offset, false);
         var requestedStatuses = EmailOutboxAdministrationProvider.GetStatuses(request).ToHashSet();
@@ -122,27 +140,27 @@ public abstract class EmailOutboxAdministrationServiceBase(
         }
         catch
         {
-            await _readBoundary.RecordFailureAsync(request.Actor, null, true, AccountSecurityOperation.SearchEmailOutbox).ConfigureAwait(false);
+            await _readBoundary.RecordFailureAsync(actor, null, true, AccountSecurityOperation.SearchEmailOutbox).ConfigureAwait(false);
             throw;
         }
-        await _readBoundary.RecordSuccessAsync(request.Actor, null, true, AccountSecurityOperation.SearchEmailOutbox).ConfigureAwait(false);
+        await _readBoundary.RecordSuccessAsync(actor, null, true, AccountSecurityOperation.SearchEmailOutbox).ConfigureAwait(false);
         return new(items, request.Limit, request.Offset, providerResult.HasMore);
     }
 
     /// <inheritdoc />
-    public async Task<EmailOutboxDetail?> GetAsync(EmailOutboxDetailRequest request, CancellationToken cancellationToken = default)
+    public async Task<EmailOutboxDetail?> GetAsync(AccountSecurityActorContext actor, OperationalAdministrationScope scope, EmailOutboxDetailRequest request, CancellationToken cancellationToken = default)
     {
         try
         {
-            EmailOutboxAdministrationProvider.ValidateDetailRequest(request);
+            EmailOutboxAdministrationProvider.ValidateDetailRequest(actor, scope, request);
         }
         catch (ArgumentException)
         {
             await _readBoundary.RecordValidatedFailureAsync(
-                request?.Actor, null, true, AccountSecurityOperation.ReadEmailOutbox, cancellationToken).ConfigureAwait(false);
+                actor, null, true, AccountSecurityOperation.ReadEmailOutbox, cancellationToken).ConfigureAwait(false);
             throw;
         }
-        if (await _readBoundary.AuthorizeAsync(request.Actor, null, true, Guid.Empty,
+        if (await _readBoundary.AuthorizeAsync(actor, null, true, Guid.Empty,
                 AccountSecurityOperation.ReadEmailOutbox, cancellationToken).ConfigureAwait(false) is not null)
             return null;
         EmailOutboxDetail? result;
@@ -155,17 +173,17 @@ public abstract class EmailOutboxAdministrationServiceBase(
         }
         catch
         {
-            await _readBoundary.RecordFailureAsync(request.Actor, null, true, AccountSecurityOperation.ReadEmailOutbox).ConfigureAwait(false);
+            await _readBoundary.RecordFailureAsync(actor, null, true, AccountSecurityOperation.ReadEmailOutbox).ConfigureAwait(false);
             throw;
         }
         await (result is null
-            ? _readBoundary.RecordFailureAsync(request.Actor, null, true, AccountSecurityOperation.ReadEmailOutbox)
-            : _readBoundary.RecordSuccessAsync(request.Actor, null, true, AccountSecurityOperation.ReadEmailOutbox)).ConfigureAwait(false);
+            ? _readBoundary.RecordFailureAsync(actor, null, true, AccountSecurityOperation.ReadEmailOutbox)
+            : _readBoundary.RecordSuccessAsync(actor, null, true, AccountSecurityOperation.ReadEmailOutbox)).ConfigureAwait(false);
         return result;
     }
 
     /// <summary>Loads a validated and authorized safe search page.</summary>
-    /// <param name="request">Validated search filters and actor context.</param>
+    /// <param name="request">Validated search filters.</param>
     /// <param name="cancellationToken">A token that can cancel provider loading.</param>
     /// <returns>The safe provider search page.</returns>
     protected abstract Task<EmailOutboxAdministrationProviderSearchResult> SearchAuthorizedAsync(
@@ -178,11 +196,15 @@ public abstract class EmailOutboxAdministrationServiceBase(
 
     /// <inheritdoc />
     public async Task<EmailOutboxOperationResult> RetryAsync(
+        AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         EmailOutboxOperationRequest request,
         CancellationToken cancellationToken = default)
     {
         return await ExecuteAsync(
             request,
+            actor,
+            scope,
             EmailOutboxOperationStatus.Retried,
             AshlarSecurityEventTypes.EmailOutboxDeliveryRetried,
             RetryFailedAsync,
@@ -191,11 +213,15 @@ public abstract class EmailOutboxAdministrationServiceBase(
 
     /// <inheritdoc />
     public async Task<EmailOutboxOperationResult> DiscardAsync(
+        AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         EmailOutboxOperationRequest request,
         CancellationToken cancellationToken = default)
     {
         return await ExecuteAsync(
             request,
+            actor,
+            scope,
             EmailOutboxOperationStatus.Discarded,
             AshlarSecurityEventTypes.EmailOutboxDeliveryDiscarded,
             DiscardFailedAsync,
@@ -234,17 +260,19 @@ public abstract class EmailOutboxAdministrationServiceBase(
 
     private async Task<EmailOutboxOperationResult> ExecuteAsync(
         EmailOutboxOperationRequest request,
+        AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         EmailOutboxOperationStatus successStatus,
         string eventType,
         Func<Guid, CancellationToken, Task<EmailOutboxAdministrationOperationState?>> applyAsync,
         CancellationToken cancellationToken)
     {
-        EmailOutboxAdministrationProvider.ValidateOperationRequest(request);
+        EmailOutboxAdministrationProvider.ValidateOperationRequest(actor, scope, request);
         var operation = successStatus == EmailOutboxOperationStatus.Retried
             ? AccountSecurityOperation.RetryEmailOutboxDelivery
             : AccountSecurityOperation.DiscardEmailOutboxDelivery;
         if (await _mutationBoundary.AuthorizeAsync(
-                request.Actor, null, true, Guid.Empty, operation, cancellationToken).ConfigureAwait(false) is not null)
+                actor, null, true, Guid.Empty, operation, cancellationToken).ConfigureAwait(false) is not null)
             return new(EmailOutboxOperationStatus.Failed, request.Id);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
@@ -268,7 +296,7 @@ public abstract class EmailOutboxAdministrationServiceBase(
             _securityEventSink,
             TimeProvider,
             eventType,
-            request,
+            actor,
             result,
             cancellationToken).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -304,10 +332,6 @@ public abstract class EmailOutboxAdministrationServiceBase(
 /// </summary>
 public sealed record EmailOutboxSearchRequest
 {
-    /// <summary>Gets the authenticated operator context.</summary>
-    public AccountSecurityActorContext Actor { get; init; } = null!;
-    /// <summary>Gets the required global operational scope.</summary>
-    public required OperationalAdministrationScope Scope { get; init; }
     /// <summary>
     /// Maximum number of entries that can be requested.
     /// </summary>
@@ -334,11 +358,9 @@ public sealed record EmailOutboxSearchRequest
     public int Offset { get; init; }
 }
 
-/// <summary>Request bound to an operator for one global email outbox projection.</summary>
+/// <summary>Request for one global email outbox projection.</summary>
 /// <param name="Id">The durable email outbox entry id.</param>
-/// <param name="Actor">The authenticated operator context.</param>
-/// <param name="Scope">The required global operational scope.</param>
-public sealed record EmailOutboxDetailRequest(Guid Id, AccountSecurityActorContext Actor, OperationalAdministrationScope Scope);
+public sealed record EmailOutboxDetailRequest(Guid Id);
 
 /// <summary>
 /// Safe email outbox status values exposed to administrators.
@@ -465,15 +487,11 @@ public sealed record EmailOutboxSearchResult(
     bool HasMore);
 
 /// <summary>
-/// Request for an audited durable email outbox mutation.
+/// Request for a durable email outbox mutation.
 /// </summary>
 /// <param name="Id">The durable email outbox entry id.</param>
-/// <param name="Actor">Authenticated operator context containing matching required audit metadata.</param>
-/// <param name="Scope">The required global operational scope.</param>
 public sealed record EmailOutboxOperationRequest(
-    Guid Id,
-    AccountSecurityActorContext Actor,
-    OperationalAdministrationScope Scope);
+    Guid Id);
 
 /// <summary>
 /// Safe result statuses for manual durable email outbox operations.
@@ -615,11 +633,13 @@ public static class EmailOutboxAdministrationProvider
     /// <summary>
     /// Ensures a search request uses supported paging and status filters.
     /// </summary>
+    /// <param name="actor">Authenticated operator context.</param>
+    /// <param name="scope">Required global operational scope.</param>
     /// <param name="request">Search request to validate.</param>
-    public static void ValidateSearchRequest(EmailOutboxSearchRequest request)
+    public static void ValidateSearchRequest(AccountSecurityActorContext actor, OperationalAdministrationScope scope, EmailOutboxSearchRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        ValidateActorAndScope(request.Actor, request.Scope);
+        ValidateActorAndScope(actor, scope);
         if (request.Limit < 1)
         {
             throw new ArgumentOutOfRangeException(nameof(request), request.Limit, "Limit must be greater than zero.");
@@ -642,14 +662,16 @@ public static class EmailOutboxAdministrationProvider
         }
     }
 
-    /// <summary>Validates an actor-bound detail request.</summary>
+    /// <summary>Validates a detail request and its administration context.</summary>
+    /// <param name="actor">Authenticated operator context.</param>
+    /// <param name="scope">Required global operational scope.</param>
     /// <param name="request">Detail request to validate.</param>
-    public static void ValidateDetailRequest(EmailOutboxDetailRequest request)
+    public static void ValidateDetailRequest(AccountSecurityActorContext actor, OperationalAdministrationScope scope, EmailOutboxDetailRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.Id == Guid.Empty)
             throw new ArgumentException("Email outbox entry ID cannot be empty.", nameof(request));
-        ValidateActorAndScope(request.Actor, request.Scope);
+        ValidateActorAndScope(actor, scope);
     }
 
     /// <summary>
@@ -664,10 +686,12 @@ public static class EmailOutboxAdministrationProvider
     }
 
     /// <summary>
-    /// Validates a manual operation request and its required audit context.
+    /// Validates a manual operation request and its administration context.
     /// </summary>
+    /// <param name="actor">Authenticated operator context.</param>
+    /// <param name="scope">Required global operational scope.</param>
     /// <param name="request">Mutation request to validate.</param>
-    public static void ValidateOperationRequest(EmailOutboxOperationRequest request)
+    public static void ValidateOperationRequest(AccountSecurityActorContext actor, OperationalAdministrationScope scope, EmailOutboxOperationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.Id == Guid.Empty)
@@ -675,7 +699,7 @@ public static class EmailOutboxAdministrationProvider
             throw new ArgumentException("Email outbox entry ID cannot be empty.", nameof(request));
         }
 
-        ValidateActorAndScope(request.Actor, request.Scope);
+        ValidateActorAndScope(actor, scope);
     }
 
     /// <summary>Creates a safe public summary from a safe provider projection.</summary>
@@ -827,21 +851,21 @@ public static class EmailOutboxAdministrationProvider
         ISecurityEventSink sink,
         TimeProvider timeProvider,
         string eventType,
-        EmailOutboxOperationRequest request,
+        AccountSecurityActorContext actor,
         EmailOutboxOperationResult result,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(sink);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentException.ThrowIfNullOrWhiteSpace(eventType);
-        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(result);
 
         await SecurityEventAuditEmission.RecordCompletedOperationAsync(
             sink,
             timeProvider,
             eventType,
-            request.Actor.Audit,
+            actor.Audit,
             new Dictionary<string, string> { ["email_outbox_id"] = result.Id.ToString("D") },
             cancellationToken).ConfigureAwait(false);
     }

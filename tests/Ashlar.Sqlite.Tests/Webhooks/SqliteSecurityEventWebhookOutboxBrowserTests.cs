@@ -57,7 +57,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         await InsertDiscardedRowAsync();
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Scope = OperationalAdministrationScope.Global, Limit = 10 });
+            .ListAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 10 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -86,9 +86,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         await InsertDiscardedRowAsync();
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .ListAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
-                Scope = OperationalAdministrationScope.Global,
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
             });
@@ -102,13 +101,12 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         await InsertRowsAsync();
 
         var browser = _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>();
-        var failed = await browser.ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
+        var failed = await browser.ListAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
         {
-            Scope = OperationalAdministrationScope.Global,
             Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
             Limit = 10
         });
-        var page = await browser.ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Scope = OperationalAdministrationScope.Global, Limit = 2, Offset = 1 });
+        var page = await browser.ListAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 2, Offset = 1 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -129,9 +127,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         await InsertRowsAsync(eventType: "bad\nevent", outcome: "bad\routcome", lastError: longError);
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .ListAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
-                Scope = OperationalAdministrationScope.Global,
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
             });
@@ -151,9 +148,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         await InsertRowsAsync(lastError: "kind=http_status;status=502;reason=non_success_status");
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .ListAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
-                Scope = OperationalAdministrationScope.Global,
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
             });
@@ -167,9 +163,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         await InsertRowsAsync(lastError: null);
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(Security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .ListAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
-                Scope = OperationalAdministrationScope.Global,
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
             });
@@ -187,7 +182,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
             var browser = new SqliteSecurityEventWebhookOutboxBrowser(
                 _provider.GetRequiredService<ISqliteConnectionProvider>(), _timeProvider,
                 Administration(security));
-            var result = await browser.ListAsync(security.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Scope = OperationalAdministrationScope.Global });
+            var result = await browser.ListAsync(security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest());
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result.Deliveries, Is.Empty, failure);

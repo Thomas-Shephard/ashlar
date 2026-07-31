@@ -46,10 +46,9 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         await using var scope = CreateAsyncScope();
         var browser = GetSecurityEventWebhookOutboxBrowser(scope.ServiceProvider);
 
-        var page = await browser.ListAsync(ReadSecurity.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest { Scope = OperationalAdministrationScope.Global, Limit = 2, Offset = 1 });
-        var failed = await browser.ListAsync(ReadSecurity.Actor, new AshlarSecurityEventWebhookOutboxBrowseRequest
+        var page = await browser.ListAsync(ReadSecurity.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 2, Offset = 1 });
+        var failed = await browser.ListAsync(ReadSecurity.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
         {
-            Scope = OperationalAdministrationScope.Global,
             Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
             Limit = 10
         });
@@ -78,24 +77,24 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         await using var scope = CreateAsyncScope();
         var operations = GetSecurityEventWebhookOutboxOperations(scope.ServiceProvider);
 
-        var missingRetry = await operations.RetryAsync(CreateOperationRequest(Guid.NewGuid()));
-        var missingDiscard = await operations.DiscardAsync(CreateOperationRequest(Guid.NewGuid()));
-        var retry = await operations.RetryAsync(CreateOperationRequest(failed));
+        var missingRetry = await operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, CreateOperationRequest(Guid.NewGuid()));
+        var missingDiscard = await operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, CreateOperationRequest(Guid.NewGuid()));
+        var retry = await operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, CreateOperationRequest(failed));
         var retriedState = await ReadWebhookOutboxRowStateAsync(failed);
-        var retriedRetry = await operations.RetryAsync(CreateOperationRequest(failed));
-        var retriedDiscard = await operations.DiscardAsync(CreateOperationRequest(failed));
-        var pendingRetry = await operations.RetryAsync(CreateOperationRequest(pending));
-        var pendingDiscard = await operations.DiscardAsync(CreateOperationRequest(pending));
-        var sentRetry = await operations.RetryAsync(CreateOperationRequest(sent));
-        var sentDiscard = await operations.DiscardAsync(CreateOperationRequest(sent));
+        var retriedRetry = await operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, CreateOperationRequest(failed));
+        var retriedDiscard = await operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, CreateOperationRequest(failed));
+        var pendingRetry = await operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, CreateOperationRequest(pending));
+        var pendingDiscard = await operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, CreateOperationRequest(pending));
+        var sentRetry = await operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, CreateOperationRequest(sent));
+        var sentDiscard = await operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, CreateOperationRequest(sent));
         var sentState = await ReadWebhookOutboxRowStateAsync(sent);
-        var retryableRetry = await operations.RetryAsync(CreateOperationRequest(retryable));
-        var retryableDiscard = await operations.DiscardAsync(CreateOperationRequest(retryable));
+        var retryableRetry = await operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, CreateOperationRequest(retryable));
+        var retryableDiscard = await operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, CreateOperationRequest(retryable));
         var retryableState = await ReadWebhookOutboxRowStateAsync(retryable);
-        var discardedRetry = await operations.RetryAsync(CreateOperationRequest(discarded));
-        var discardedDiscard = await operations.DiscardAsync(CreateOperationRequest(discarded));
+        var discardedRetry = await operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, CreateOperationRequest(discarded));
+        var discardedDiscard = await operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, CreateOperationRequest(discarded));
         var failedAgain = await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Failed("failed-discard"));
-        var discard = await operations.DiscardAsync(CreateOperationRequest(failedAgain));
+        var discard = await operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, CreateOperationRequest(failedAgain));
         var discardedState = await ReadWebhookOutboxRowStateAsync(failedAgain);
 
         using (Assert.EnterMultipleScope())
@@ -333,7 +332,7 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
 
     private static AshlarSecurityEventWebhookOutboxOperationRequest CreateOperationRequest(Guid id)
     {
-        return new AshlarSecurityEventWebhookOutboxOperationRequest(id, Security.Actor, OperationalAdministrationScope.Global);
+        return new AshlarSecurityEventWebhookOutboxOperationRequest(id);
     }
 
     private static AshlarSecurityEventWebhookDelivery CreateDelivery(string endpointName)

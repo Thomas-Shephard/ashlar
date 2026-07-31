@@ -20,12 +20,11 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(null!));
-            Assert.Throws<ArgumentOutOfRangeException>(() => AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(new AshlarSecurityEventWebhookOutboxOperationRequest(
-                Guid.NewGuid(), Security.Actor, OperationalAdministrationScope.Unspecified)));
-            Assert.Throws<ArgumentOutOfRangeException>(() => AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.NewGuid(), Security.Actor, (OperationalAdministrationScope)99)));
-            Assert.Throws<ArgumentException>(() => AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.Empty, Security.Actor, OperationalAdministrationScope.Global)));
-            Assert.Throws<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.NewGuid(), null!, OperationalAdministrationScope.Global)));
+            Assert.Throws<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(Security.Actor, OperationalAdministrationScope.Global, null!));
+            Assert.Throws<ArgumentOutOfRangeException>(() => AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(Security.Actor, OperationalAdministrationScope.Unspecified, new(Guid.NewGuid())));
+            Assert.Throws<ArgumentOutOfRangeException>(() => AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(Security.Actor, (OperationalAdministrationScope)99, new(Guid.NewGuid())));
+            Assert.Throws<ArgumentException>(() => AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(Security.Actor, OperationalAdministrationScope.Global, new(Guid.Empty)));
+            Assert.Throws<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(null!, OperationalAdministrationScope.Global, new(Guid.NewGuid())));
         }
     }
 
@@ -70,11 +69,8 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
         var actorUserId = Security.Actor.ActorUserId;
         var deliveryId = Guid.NewGuid();
         var eventId = Guid.NewGuid();
-        var request = new AshlarSecurityEventWebhookOutboxOperationRequest(
-            deliveryId,
-            new AccountSecurityActorContext(actorUserId, Security.Actor.ActorTenant, Security.Actor.CurrentSessionId,
-                Security.Actor.FreshMfaProof, new AuditContext(actorUserId, "203.0.113.10", "agent", "corr", new Dictionary<string, string> { ["ignored"] = "ignored" })),
-            OperationalAdministrationScope.Global);
+        var actor = new AccountSecurityActorContext(actorUserId, Security.Actor.ActorTenant, Security.Actor.CurrentSessionId,
+            Security.Actor.FreshMfaProof, new AuditContext(actorUserId, "203.0.113.10", "agent", "corr", new Dictionary<string, string> { ["ignored"] = "ignored" }));
         var result = AshlarSecurityEventWebhookOutboxOperations.CreateResult(
             AshlarSecurityEventWebhookOutboxOperationStatus.Retried,
             deliveryId,
@@ -87,7 +83,7 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
             sink,
             time,
             AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryRetried,
-            request,
+            actor,
             result,
             CancellationToken.None);
 
@@ -113,17 +109,17 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
     [Test]
     public async Task RecordSuccessfulOperationAsyncOmitsAbsentPropertiesAndPropagatesAuditFailures()
     {
-        var request = new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.NewGuid(), Security.Actor, OperationalAdministrationScope.Global);
+        var deliveryId = Guid.NewGuid();
         var result = AshlarSecurityEventWebhookOutboxOperations.CreateResult(
             AshlarSecurityEventWebhookOutboxOperationStatus.Discarded,
-            request.DeliveryId);
+            deliveryId);
 
         var sink = new RecordingSecurityEventSink();
         await AshlarSecurityEventWebhookOutboxOperations.RecordSuccessfulOperationAsync(
             sink,
             TimeProvider.System,
             AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryDiscarded,
-            request,
+            Security.Actor,
             result,
             CancellationToken.None);
 
@@ -132,14 +128,17 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
             new ThrowingSecurityEventSink(new InvalidOperationException("boom")),
             TimeProvider.System,
             AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryDiscarded,
-            request,
+            Security.Actor,
             result,
             CancellationToken.None));
+        Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxOperations.RecordSuccessfulOperationAsync(
+            sink, TimeProvider.System, AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryDiscarded,
+            null!, result, CancellationToken.None));
         Assert.ThrowsAsync<OperationCanceledException>(async () => await AshlarSecurityEventWebhookOutboxOperations.RecordSuccessfulOperationAsync(
             new ThrowingSecurityEventSink(new OperationCanceledException()),
             TimeProvider.System,
             AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryDiscarded,
-            request,
+            Security.Actor,
             result,
             CancellationToken.None));
     }
@@ -159,7 +158,7 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
         var transactionProvider = new RecordingTransactionProvider();
         var operations = new TestWebhookOutboxOperations(sink, transactionProvider, Security);
 
-        var result = await operations.RetryAsync(new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.NewGuid(), Security.Actor, OperationalAdministrationScope.Global));
+        var result = await operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, new(Guid.NewGuid()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -181,10 +180,12 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
         var sink = new RecordingSecurityEventSink();
         var transactionProvider = new RecordingTransactionProvider();
         var operations = new TestWebhookOutboxOperations(sink, transactionProvider, security);
-        var request = new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.NewGuid(), security.Actor, scope);
+        var request = new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.NewGuid());
 
+        Assert.ThrowsAsync<ArgumentNullException>(() =>
+            retry ? operations.RetryAsync(null!, OperationalAdministrationScope.Global, request) : operations.DiscardAsync(null!, OperationalAdministrationScope.Global, request));
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            retry ? operations.RetryAsync(request) : operations.DiscardAsync(request));
+            retry ? operations.RetryAsync(security.Actor, scope, request) : operations.DiscardAsync(security.Actor, scope, request));
 
         using (Assert.EnterMultipleScope())
         {

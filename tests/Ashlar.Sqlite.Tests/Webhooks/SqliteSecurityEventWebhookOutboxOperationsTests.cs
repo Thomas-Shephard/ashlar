@@ -64,7 +64,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
     {
         var id = await InsertRowAsync("failed", failedAt: Now.AddMinutes(-1), lastError: "secret https://example.test");
 
-        var result = await Operations.RetryAsync(Request(id));
+        var result = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id));
 
         var row = await QueryStateAsync(id);
         var audit = _audit.Events.Single();
@@ -93,7 +93,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
     {
         var id = await InsertRowAsync("failed", failedAt: Now.AddMinutes(-1), lastError: "failure", lockedBy: "worker", lockedUntil: Now.AddMinutes(5));
 
-        var result = await Operations.DiscardAsync(Request(id));
+        var result = await Operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id));
 
         var row = await QueryStateAsync(id);
         var dispatchable = await CountDispatchableAsync(id);
@@ -121,7 +121,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
             _provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             Administration(Security));
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.RetryAsync(Request(id)));
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id)));
         var row = await QueryStateAsync(id);
 
         using (Assert.EnterMultipleScope())
@@ -143,7 +143,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
             _provider.GetRequiredService<AshlarDurableTransactionProvider>(),
             Administration(Security));
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.DiscardAsync(Request(id)));
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id)));
         var row = await QueryStateAsync(id);
 
         using (Assert.EnterMultipleScope())
@@ -161,12 +161,12 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
         var sent = await InsertRowAsync("sent", sentAt: Now);
         var discarded = await InsertRowAsync("discarded", failedAt: Now.AddMinutes(-1), discardedAt: Now);
 
-        var missingResult = await Operations.RetryAsync(Request(missing));
-        var pendingRetry = await Operations.RetryAsync(Request(pending));
-        var pendingDiscard = await Operations.DiscardAsync(Request(pending));
-        var sentRetry = await Operations.RetryAsync(Request(sent));
-        var discardedRetry = await Operations.RetryAsync(Request(discarded));
-        var discardedDiscard = await Operations.DiscardAsync(Request(discarded));
+        var missingResult = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(missing));
+        var pendingRetry = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(pending));
+        var pendingDiscard = await Operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, Request(pending));
+        var sentRetry = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(sent));
+        var discardedRetry = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(discarded));
+        var discardedDiscard = await Operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, Request(discarded));
 
         using (Assert.EnterMultipleScope())
         {
@@ -185,8 +185,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
     {
         var id = await InsertRowAsync("failed", failedAt: Now.AddMinutes(-1), lastError: "failure");
 
-        var first = await Operations.RetryAsync(Request(id));
-        var second = await Operations.RetryAsync(Request(id));
+        var first = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id));
+        var second = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id));
 
         using (Assert.EnterMultipleScope())
         {
@@ -212,8 +212,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
             _ => throw new ArgumentOutOfRangeException(nameof(state))
         };
 
-        var retry = await Operations.RetryAsync(Request(id));
-        var discard = await Operations.DiscardAsync(Request(id));
+        var retry = await Operations.RetryAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id));
+        var discard = await Operations.DiscardAsync(Security.Actor, OperationalAdministrationScope.Global, Request(id));
 
         using (Assert.EnterMultipleScope())
         {
@@ -258,8 +258,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
                 _provider.GetRequiredService<ISecurityEventSink>(), _provider.GetRequiredService<AshlarDurableTransactionProvider>(),
                 Administration(security));
 
-            await operations.RetryAsync(new AshlarSecurityEventWebhookOutboxOperationRequest(retryId, security.Actor, OperationalAdministrationScope.Global));
-            await operations.DiscardAsync(new AshlarSecurityEventWebhookOutboxOperationRequest(discardId, security.Actor, OperationalAdministrationScope.Global));
+            await operations.RetryAsync(security.Actor, OperationalAdministrationScope.Global, new(retryId));
+            await operations.DiscardAsync(security.Actor, OperationalAdministrationScope.Global, new(discardId));
 
             using (Assert.EnterMultipleScope())
             {
@@ -294,7 +294,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxOperationsTests : SqliteTe
 
     private static AshlarSecurityEventWebhookOutboxOperationRequest Request(Guid id)
     {
-        return new AshlarSecurityEventWebhookOutboxOperationRequest(id, Security.Actor, OperationalAdministrationScope.Global);
+        return new AshlarSecurityEventWebhookOutboxOperationRequest(id);
     }
 
     private async Task<Guid> InsertRowAsync(

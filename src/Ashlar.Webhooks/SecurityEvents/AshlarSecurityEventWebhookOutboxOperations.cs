@@ -15,20 +15,28 @@ public interface IAshlarSecurityEventWebhookOutboxOperations
     /// <summary>
     /// Makes a terminal failed delivery dispatchable immediately.
     /// </summary>
-    /// <param name="request">Delivery id, authenticated actor context, and explicit global operational scope required for the retry mutation.</param>
+    /// <param name="actor">The authenticated operator context.</param>
+    /// <param name="scope">The explicit global operational scope.</param>
+    /// <param name="request">Delivery id required for the retry mutation.</param>
     /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
     /// <returns>The stable retry outcome with only header-safe event metadata.</returns>
     Task<AshlarSecurityEventWebhookOutboxOperationResult> RetryAsync(
+        AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         AshlarSecurityEventWebhookOutboxOperationRequest request,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Marks a terminal failed delivery as discarded.
     /// </summary>
-    /// <param name="request">Delivery id, authenticated actor context, and explicit global operational scope required for the discard mutation.</param>
+    /// <param name="actor">The authenticated operator context.</param>
+    /// <param name="scope">The explicit global operational scope.</param>
+    /// <param name="request">Delivery id required for the discard mutation.</param>
     /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
     /// <returns>The stable discard outcome with only header-safe event metadata.</returns>
     Task<AshlarSecurityEventWebhookOutboxOperationResult> DiscardAsync(
+        AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         AshlarSecurityEventWebhookOutboxOperationRequest request,
         CancellationToken cancellationToken = default);
 }
@@ -37,12 +45,8 @@ public interface IAshlarSecurityEventWebhookOutboxOperations
 /// Request for a global operational administration operation on the durable security event webhook outbox.
 /// </summary>
 /// <param name="DeliveryId">The durable outbox delivery id.</param>
-/// <param name="Actor">The authenticated actor context.</param>
-/// <param name="Scope">The explicit global operational administration scope.</param>
 public sealed record AshlarSecurityEventWebhookOutboxOperationRequest(
-    Guid DeliveryId,
-    AccountSecurityActorContext Actor,
-    OperationalAdministrationScope Scope);
+    Guid DeliveryId);
 
 /// <summary>
 /// Safe result statuses for manual durable security event webhook outbox operations.
@@ -139,11 +143,15 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
 
     /// <inheritdoc />
     public async Task<AshlarSecurityEventWebhookOutboxOperationResult> RetryAsync(
+        AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         AshlarSecurityEventWebhookOutboxOperationRequest request,
         CancellationToken cancellationToken = default)
     {
         return await ExecuteAsync(
             request,
+            actor,
+            scope,
             AshlarSecurityEventWebhookOutboxOperationStatus.Retried,
             AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryRetried,
             RetryFailedAsync,
@@ -152,11 +160,15 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
 
     /// <inheritdoc />
     public async Task<AshlarSecurityEventWebhookOutboxOperationResult> DiscardAsync(
+        AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         AshlarSecurityEventWebhookOutboxOperationRequest request,
         CancellationToken cancellationToken = default)
     {
         return await ExecuteAsync(
             request,
+            actor,
+            scope,
             AshlarSecurityEventWebhookOutboxOperationStatus.Discarded,
             AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryDiscarded,
             DiscardFailedAsync,
@@ -195,16 +207,18 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
 
     private async Task<AshlarSecurityEventWebhookOutboxOperationResult> ExecuteAsync(
         AshlarSecurityEventWebhookOutboxOperationRequest request,
+        AccountSecurityActorContext actor,
+        OperationalAdministrationScope scope,
         AshlarSecurityEventWebhookOutboxOperationStatus successStatus,
         string auditEventType,
         Func<Guid, CancellationToken, Task<AshlarSecurityEventWebhookOutboxOperationState?>> applyAsync,
         CancellationToken cancellationToken)
     {
-        AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(request);
+        AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(actor, scope, request);
         var operation = successStatus == AshlarSecurityEventWebhookOutboxOperationStatus.Retried
             ? AccountSecurityOperation.RetrySecurityEventWebhookDelivery
             : AccountSecurityOperation.DiscardSecurityEventWebhookDelivery;
-        if (await _boundary.AuthorizeAsync(request.Actor, null, true, Guid.Empty, operation, cancellationToken).ConfigureAwait(false) is not null)
+        if (await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty, operation, cancellationToken).ConfigureAwait(false) is not null)
         {
             return AshlarSecurityEventWebhookOutboxOperations.CreateResult(AshlarSecurityEventWebhookOutboxOperationStatus.Failed, request.DeliveryId);
         }
@@ -222,7 +236,7 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
             _securityEventSink,
             TimeProvider,
             auditEventType,
-            request,
+            actor,
             result,
             cancellationToken).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -251,16 +265,16 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
 
 internal static class AshlarSecurityEventWebhookOutboxOperations
 {
-    public static void ValidateRequest(AshlarSecurityEventWebhookOutboxOperationRequest request)
+    public static void ValidateRequest(AccountSecurityActorContext actor, OperationalAdministrationScope scope, AshlarSecurityEventWebhookOutboxOperationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        AshlarSecurityEventWebhookOutboxBrowser.ValidateScope(request.Scope);
+        ArgumentNullException.ThrowIfNull(actor);
+        AshlarSecurityEventWebhookOutboxBrowser.ValidateScope(scope);
         if (request.DeliveryId == Guid.Empty)
         {
             throw new ArgumentException("Delivery ID cannot be empty.", nameof(request));
         }
 
-        ArgumentNullException.ThrowIfNull(request.Actor);
     }
 
     public static AshlarSecurityEventWebhookOutboxOperationResult CreateResult(
@@ -284,21 +298,21 @@ internal static class AshlarSecurityEventWebhookOutboxOperations
         ISecurityEventSink sink,
         TimeProvider timeProvider,
         string eventType,
-        AshlarSecurityEventWebhookOutboxOperationRequest request,
+        AccountSecurityActorContext actor,
         AshlarSecurityEventWebhookOutboxOperationResult result,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(sink);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentException.ThrowIfNullOrWhiteSpace(eventType);
-        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(result);
 
         await SecurityEventAuditEmission.RecordCompletedOperationAsync(
             sink,
             timeProvider,
             eventType,
-            request.Actor.Audit,
+            actor.Audit,
             CreateAuditProperties(result),
             cancellationToken).ConfigureAwait(false);
     }

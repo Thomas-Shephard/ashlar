@@ -122,7 +122,7 @@ services.AddAshlarIdentity();
 
 Durable provider outbox senders can also implement `ITransactionalEmailOutboxSender`. Ashlar token flows enqueue sensitive messages inside the active Ashlar transaction when this marker is present. Direct/non-transactional senders still run after commit, so SMTP delivery is not attempted while credential state can still roll back.
 
-`IEmailOutboxAdministrationService` is an operator/admin capability, not a diagnostics API. Every search, detail, retry, and discard request requires explicit global scope plus an active-session-bound `AccountSecurityActorContext`; hosts must provide `IAccountSecurityOperationAuthorizer`. Reads are durably audited, and retry/discard retain transaction-atomic mutation audit.
+`IEmailOutboxAdministrationService` is an operator/admin capability, not a diagnostics API. Every search, detail, retry, and discard method takes an active-session-bound `AccountSecurityActorContext` and explicit global scope; request DTOs carry only operation inputs. Hosts must provide `IAccountSecurityOperationAuthorizer`. Reads are durably audited, and retry/discard retain transaction-atomic mutation audit.
 
 ## Passwordless Email Sign-In
 Ashlar includes framework-neutral passwordless email sign-in services for one-time codes and magic links. Both flows use `IEmailSender`, `IAuthenticationRateLimiter`, `ISecureTokenGenerator`, and `ISecureTokenHasher`, so applications should replace the default `NullEmailSender` before using them in production.
