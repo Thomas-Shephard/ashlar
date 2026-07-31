@@ -21,15 +21,13 @@ public sealed class AccountSecurityOperationBoundary(
 {
     /// <summary>Gets the default proof purpose for privileged reads.</summary>
     public const string ProofPurpose = AccountSecurityActorContext.AdministrationReadProofPurpose;
-    /// <summary>Gets the default durable audit event type.</summary>
-    public const string EventType = "administration.read";
     private readonly ActiveSessionFreshProofValidator _proof = new(
         sessions ?? throw new ArgumentNullException(nameof(sessions)),
         timeProvider ?? throw new ArgumentNullException(nameof(timeProvider)));
     private readonly IAccountSecurityOperationAuthorizer _authorizer = authorizer ?? throw new ArgumentNullException(nameof(authorizer));
     private readonly SecurityEventEmitter _audit = new(auditSink ?? throw new ArgumentNullException(nameof(auditSink)), timeProvider);
     private readonly string _proofPurpose = proofPurpose ?? ProofPurpose;
-    private readonly string _eventType = eventType ?? EventType;
+    private readonly string _eventType = eventType ?? AshlarSecurityEventTypes.AdministrationRead;
 
     /// <summary>Validates the actor, proof source session, audit identity, and host authorization.</summary>
     /// <param name="actor">The authenticated actor context.</param>

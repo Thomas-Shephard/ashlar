@@ -231,9 +231,9 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
         : AshlarSecurityEventWebhookOutboxOperationsBase(new FixedTimeProvider(Now), sink, DurableTransactionComposition.Create(transactionProvider),
             new AshlarOperationalAdministrationContext(
                 new(security.Sessions, security.Authorizer, security.AuditSink, new FixedTimeProvider(Now),
-                    eventType: "security_event_webhook.outbox_browse"),
+                    eventType: AshlarSecurityEventTypes.SecurityEventWebhookOutboxBrowse),
                 new(security.Sessions, security.Authorizer, security.AuditSink, new FixedTimeProvider(Now),
-                    IAccountSecurityAdministrationService.ProofPurpose, "security_event_webhook.operation")))
+                    IAccountSecurityAdministrationService.ProofPurpose, AshlarSecurityEventTypes.SecurityEventWebhookOutboxOperation)))
     {
         public int ProviderCallCount { get; private set; }
 

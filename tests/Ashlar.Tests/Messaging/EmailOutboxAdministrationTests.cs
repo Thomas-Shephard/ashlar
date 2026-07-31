@@ -720,9 +720,9 @@ internal sealed class EmailOutboxAdministrationProviderTests
             var sink = auditSink ?? security.AuditSink;
             var timeProvider = new FakeTimeProvider(Now);
             return new(
-                new(security.Sessions, security.Authorizer, sink, timeProvider, eventType: "email_outbox.administration"),
+                new(security.Sessions, security.Authorizer, sink, timeProvider, eventType: AshlarSecurityEventTypes.EmailOutboxAdministration),
                 new(security.Sessions, security.Authorizer, sink, timeProvider,
-                    IAccountSecurityAdministrationService.ProofPurpose, "email_outbox.administration"));
+                    IAccountSecurityAdministrationService.ProofPurpose, AshlarSecurityEventTypes.EmailOutboxAdministration));
         }
         public EmailOutboxStatus LoadStateStatus { get; set; } = EmailOutboxStatus.Pending;
 

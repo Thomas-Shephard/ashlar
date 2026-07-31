@@ -115,7 +115,7 @@ public sealed record AshlarSecurityEventWebhookEndpointTestResult(
 public sealed class AshlarSecurityEventWebhookEndpointTester : IAshlarSecurityEventWebhookEndpointTester
 {
     /// <summary>
-    /// Defines the synthetic security event webhook test event type.
+    /// Defines the synthetic webhook payload event type. This is not a durable Ashlar audit event.
     /// </summary>
     public const string TestEventType = "ashlar.webhook.test";
 
@@ -150,7 +150,7 @@ public sealed class AshlarSecurityEventWebhookEndpointTester : IAshlarSecurityEv
         _sender = sender;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _boundary = new AccountSecurityOperationBoundary(sessions, authorizer, auditSink, _timeProvider,
-            IAccountSecurityAdministrationService.ProofPurpose, "security_event_webhook.endpoint_test");
+            IAccountSecurityAdministrationService.ProofPurpose, AshlarSecurityEventTypes.SecurityEventWebhookEndpointTest);
     }
 
     /// <inheritdoc />

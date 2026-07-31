@@ -106,9 +106,9 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
 
     private AshlarOperationalAdministrationContext Administration(AccountSecurityActorTestContext security) => new(
         new(security.Sessions, security.Authorizer, security.AuditSink, _timeProvider,
-            eventType: "security_event_webhook.outbox_browse"),
+            eventType: AshlarSecurityEventTypes.SecurityEventWebhookOutboxBrowse),
         new(security.Sessions, security.Authorizer, security.AuditSink, _timeProvider,
-            IAccountSecurityAdministrationService.ProofPurpose, "security_event_webhook.operation"));
+            IAccountSecurityAdministrationService.ProofPurpose, AshlarSecurityEventTypes.SecurityEventWebhookOutboxOperation));
 
     [Test]
     public async Task ListAsyncExcludesDiscardedRowsFromFailedFilter()

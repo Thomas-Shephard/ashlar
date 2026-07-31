@@ -36,6 +36,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.FailureReason, Is.Empty);
             Assert.That(result.EventId, Is.EqualTo(payload.GetProperty("id").GetGuid()));
+            Assert.That(security.AuditSink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.SecurityEventWebhookEndpointTest));
             Assert.That(security.Authorizer.LastContext!.TargetTenant, Is.Null);
             Assert.That(security.Authorizer.LastContext.IncludeAllTenants, Is.True);
             Assert.That(request.Method, Is.EqualTo(HttpMethod.Post));
@@ -52,6 +53,7 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
             Assert.That(json, Does.Not.Contain("correlationId"));
             Assert.That(json, Does.Not.Contain("metadata"));
             Assert.That(headers["X-Ashlar-Event-Type"], Is.EqualTo(AshlarSecurityEventWebhookEndpointTester.TestEventType));
+            Assert.That(AshlarSecurityEventWebhookEndpointTester.TestEventType, Is.Not.EqualTo(AshlarSecurityEventTypes.SecurityEventWebhookEndpointTest));
             Assert.That(headers["X-Ashlar-Webhook-Endpoint"], Is.EqualTo("audit"));
             Assert.That(VerifySignature(request.Body, headers, ValidSecret, payload.GetProperty("id").GetGuid(), "audit", "/security-events").IsValid, Is.True);
         }

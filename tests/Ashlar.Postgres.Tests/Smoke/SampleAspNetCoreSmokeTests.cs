@@ -186,9 +186,9 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         await using var auditConnection = new NpgsqlConnection(GetConnectionString());
         var tenantSecurityAuditCount = await auditConnection.ExecuteScalarAsync<int>("""
             SELECT count(*) FROM ashlar_security_events
-            WHERE event_type = 'administration.read' AND actor_user_id = @ActorUserId
+            WHERE event_type = @EventType AND actor_user_id = @ActorUserId
               AND tenant_id = @TenantId AND outcome = 'success' AND properties->>'operation' = 'ReadUser'
-            """, new { ActorUserId = tenantAdminId, TenantId = tenantId });
+            """, new { EventType = AshlarSecurityEventTypes.AdministrationRead, ActorUserId = tenantAdminId, TenantId = tenantId });
         var tenantGrant = await PostAsJsonWithCsrfAsync(tenantAdminClient, "/api/projects/alpha/grants", new { userId = tenantMemberId });
         var projectGrantTenantId = await GetProjectGrantTenantIdAsync(tenantMemberId, "alpha");
         var disableTenantMember = await PostAsJsonWithCsrfAsync(tenantAdminClient, $"/api/admin/users/{tenantMemberId}/disable", new { reason = "tenant-scope-test" });

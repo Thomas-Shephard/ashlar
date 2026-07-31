@@ -6,6 +6,26 @@ namespace Ashlar.Auditing;
 public static class AshlarSecurityEventTypes
 {
     /// <summary>
+    /// Emitted when a privileged administration read is attempted.
+    /// </summary>
+    public const string AdministrationRead = "ashlar.administration.read";
+    /// <summary>
+    /// Emitted when an operator tests a security-event webhook endpoint.
+    /// </summary>
+    public const string SecurityEventWebhookEndpointTest = "ashlar.security_event_webhook.endpoint_test";
+    /// <summary>
+    /// Emitted when an operator administers the email outbox.
+    /// </summary>
+    public const string EmailOutboxAdministration = "ashlar.email_outbox.administration";
+    /// <summary>
+    /// Emitted when an operator browses the security-event webhook outbox.
+    /// </summary>
+    public const string SecurityEventWebhookOutboxBrowse = "ashlar.security_event_webhook.outbox_browse";
+    /// <summary>
+    /// Emitted when an operator mutates the security-event webhook outbox.
+    /// </summary>
+    public const string SecurityEventWebhookOutboxOperation = "ashlar.security_event_webhook.operation";
+    /// <summary>
     /// Emitted when a primary credential is authenticated successfully.
     /// </summary>
     public const string AuthenticationSucceeded = "ashlar.authentication.succeeded";

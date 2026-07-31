@@ -264,9 +264,9 @@ internal sealed class SqliteEmailOutboxAdministrationContractTests : EmailOutbox
         IAccountSecurityOperationAuthorizer authorizer,
         IPersistentSecurityEventSink auditSink,
         TimeProvider timeProvider) => new(
-            new(sessions, authorizer, auditSink, timeProvider, eventType: "email_outbox.administration"),
+            new(sessions, authorizer, auditSink, timeProvider, eventType: AshlarSecurityEventTypes.EmailOutboxAdministration),
             new(sessions, authorizer, auditSink, timeProvider, IAccountSecurityAdministrationService.ProofPurpose,
-                "email_outbox.administration"));
+                AshlarSecurityEventTypes.EmailOutboxAdministration));
 
     private async Task<AccountSecurityActorContext> CreateActorAsync(
         AuditContext? audit = null,

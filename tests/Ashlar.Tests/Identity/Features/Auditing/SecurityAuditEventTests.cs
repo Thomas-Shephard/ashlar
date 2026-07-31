@@ -22,6 +22,15 @@ internal sealed class SecurityAuditEventTests
     ];
 
     [Test]
+    public void DurableEventTypeCatalogIsAshlarNamespaced()
+    {
+        var eventTypes = typeof(AshlarSecurityEventTypes).GetFields()
+            .Select(field => field.GetRawConstantValue());
+
+        Assert.That(eventTypes, Has.All.Matches("^ashlar\\.[a-z0-9._]+$"));
+    }
+
+    [Test]
     public async Task SecurityEventEmitterPrefersExplicitAuditAndTenantMetadata()
     {
         var sink = new RecordingSecurityEventSink();
