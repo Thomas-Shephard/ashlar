@@ -38,7 +38,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             typeof(IIdentityService),
             typeof(ICredentialService),
             typeof(IAccountSecurityService),
-            typeof(IUserAdministrationService),
+            typeof(IUserAdministrationReader),
             typeof(IInvitationService),
             typeof(IBootstrapService),
             typeof(IEmailVerificationService),
@@ -57,7 +57,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             "Credential persistence",
             typeof(ICredentialService),
             typeof(IAccountSecurityService),
-            typeof(IUserAdministrationService),
+            typeof(IUserAdministrationReader),
             typeof(IEmailVerificationService),
             typeof(IEmailChangeService),
             typeof(IEmailCodeSignInService),
@@ -85,7 +85,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             "Session persistence",
             typeof(IAuthenticationSessionService),
             typeof(IAccountSecurityService),
-            typeof(IUserAdministrationService),
+            typeof(IUserAdministrationReader),
             typeof(IEmailChangeService));
 
         AddMissingServiceIssue<IUserAdministrationRepository>(
@@ -95,7 +95,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             "User administration persistence is not configured.",
             "Register an IUserAdministrationRepository implementation, usually from an Ashlar persistence provider.",
             "User administration",
-            typeof(IUserAdministrationService));
+            typeof(IUserAdministrationReader));
 
         AddMissingServiceIssue<ICredentialAdministrationRepository>(
             serviceProvider,
@@ -104,7 +104,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             "Credential administration persistence is not configured.",
             "Register an ICredentialAdministrationRepository implementation, usually from an Ashlar persistence provider.",
             "Credential administration",
-            typeof(ICredentialAdministrationService));
+            typeof(ICredentialAdministrationReader));
 
         AddMissingServiceIssue<ISecurityEventAdministrationRepository>(
             serviceProvider,
@@ -122,7 +122,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             "Authentication session administration persistence is not configured.",
             "Register an IAuthenticationSessionAdministrationRepository implementation, usually from an Ashlar persistence provider.",
             "Session administration",
-            typeof(IAuthenticationSessionAdministrationService));
+            typeof(IAuthenticationSessionAdministrationReader));
 
         AddMissingProviderServiceIssue<IInvitationRepository>(
             serviceProvider,

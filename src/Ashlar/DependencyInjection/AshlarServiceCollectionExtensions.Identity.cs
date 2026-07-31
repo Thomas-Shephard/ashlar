@@ -195,21 +195,21 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped(provider => new AccountLockoutServiceDependencies(
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>()));
-        services.TryAddScoped<IUserAdministrationService>(provider => new UserAdministrationService(
+        services.TryAddScoped<IUserAdministrationReader>(provider => new UserAdministrationReader(
             provider.GetRequiredAshlarProviderService<IUserAdministrationRepository>(),
             provider.GetRequiredService<IAccountSecurityPostureReader>(),
             provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
             provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
             provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(),
             provider.GetService<TimeProvider>()));
-        services.TryAddScoped<ICredentialAdministrationService>(provider => new CredentialAdministrationService(
+        services.TryAddScoped<ICredentialAdministrationReader>(provider => new CredentialAdministrationReader(
             provider.GetRequiredAshlarProviderService<ICredentialAdministrationRepository>(),
             provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
             provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
             provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(),
             provider.GetService<TimeProvider>()));
         services.TryAddScoped<IAccountRecoveryAdministrationService>(provider => new AccountRecoveryAdministrationService(
-            provider.GetRequiredService<IUserAdministrationService>(),
+            provider.GetRequiredService<IUserAdministrationReader>(),
             provider.GetRequiredAshlarProviderService<IRememberedMfaDeviceRepository>(),
             provider.GetService<TimeProvider>()));
         services.TryAddScoped(provider => new AccountLockoutAdministrationServiceDependencies(
@@ -233,7 +233,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),
             provider.GetRequiredAshlarProviderService<IPersistentSecurityEventSink>(),
             provider.GetService<TimeProvider>()));
-        services.TryAddScoped<IAuthenticationSessionAdministrationService>(provider => new AuthenticationSessionAdministrationService(
+        services.TryAddScoped<IAuthenticationSessionAdministrationReader>(provider => new AuthenticationSessionAdministrationReader(
             provider.GetRequiredAshlarProviderService<IAuthenticationSessionAdministrationRepository>(),
             provider.GetRequiredAshlarProviderService<IAuthenticationSessionRepository>(),
             provider.GetRequiredService<IAccountSecurityOperationAuthorizer>(),

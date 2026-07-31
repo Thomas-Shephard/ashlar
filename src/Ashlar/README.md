@@ -63,11 +63,11 @@ Use `PrimaryCredentials` for sign-in methods, `AdditionalVerificationFactors` fo
 
 ## Admin User Reads
 
-`IUserAdministrationService` provides reusable read-only operations for admin and operations UIs. Every request requires `AccountSecurityActorContext`, an explicit tenant/global/all-tenant scope, an active-session-bound fresh MFA proof for `administration-read`, matching audit identity, and host authorizer approval. Reads are durably audited and fail closed when audit persistence fails. Provider repositories remain provider-facing and results are safe projections.
+`IUserAdministrationReader` provides reusable read-only operations for admin and operations UIs. Every call requires `AccountSecurityActorContext` separately from its query request, an explicit tenant/global/all-tenant scope, an active-session-bound fresh MFA proof for `administration-read`, matching audit identity, and host authorizer approval. Reads are durably audited and fail closed when audit persistence fails. Provider repositories remain provider-facing and results are safe projections.
 
 ## Admin Session Reads
 
-`IAuthenticationSessionAdministrationService` uses the same actor-bound `administration-read` proof, scope, host authorization, and durable audit boundary as other administration reads.
+`IAuthenticationSessionAdministrationReader` uses the same actor-bound `administration-read` proof, scope, host authorization, and durable audit boundary as other administration reads.
 
 Provider packages implement `IAuthenticationSessionAdministrationRepository`; raw session tokens, token hashes, and session metadata are not exposed.
 

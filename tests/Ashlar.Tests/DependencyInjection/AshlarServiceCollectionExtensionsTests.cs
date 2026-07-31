@@ -137,7 +137,9 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<CredentialService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IValidatedExternalCredentialLinkService>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<ICredentialAdministrationService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IUserAdministrationReader>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<ICredentialAdministrationReader>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IAuthenticationSessionAdministrationReader>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAccountRecoveryAdministrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAccountSecurityAdministrationService>(services, ServiceLifetime.Scoped);
             Assert.That(services.Any(d => d.ServiceType == typeof(IAccountSecurityOperationAuthorizer)), Is.False);

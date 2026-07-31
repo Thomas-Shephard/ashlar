@@ -3,7 +3,7 @@ namespace Ashlar.Tests.Identity.Features.Administration;
 using Ashlar.Auditing;
 using Ashlar.Tests.Support;
 
-internal sealed class UserAdministrationServiceTests
+internal sealed class UserAdministrationReaderTests
 {
     [Test]
     public void SearchUsersAsyncRejectsNullRequest()
@@ -18,8 +18,8 @@ internal sealed class UserAdministrationServiceTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => new UserAdministrationService(null!, new RecordingAccountSecurityService(), null!, null!, null!));
-            Assert.Throws<ArgumentNullException>(() => new UserAdministrationService(new RecordingUserAdministrationRepository(), null!, null!, null!, null!));
+            Assert.Throws<ArgumentNullException>(() => new UserAdministrationReader(null!, new RecordingAccountSecurityService(), null!, null!, null!));
+            Assert.Throws<ArgumentNullException>(() => new UserAdministrationReader(new RecordingUserAdministrationRepository(), null!, null!, null!, null!));
         }
     }
 
@@ -56,13 +56,12 @@ internal sealed class UserAdministrationServiceTests
     public async Task SearchUsersAsyncDurablyAuditsValidatedActorRequestRejection()
     {
         var boundary = new AdminReadTestBoundary(DateTimeOffset.UtcNow);
-        var service = new UserAdministrationService(new RecordingUserAdministrationRepository(),
+        var service = new UserAdministrationReader(new RecordingUserAdministrationRepository(),
             new RecordingAccountSecurityService(), boundary.Sessions, boundary.Authorizer, boundary.Sink,
             boundary.TimeProvider);
 
-        var result = await service.SearchUsersAsync(new SearchUsersRequest
+        var result = await service.SearchUsersAsync(boundary.Actor, new SearchUsersRequest
         {
-            Actor = boundary.Actor,
             Tenant = TenantContext.Global,
             Limit = 0
         });
@@ -421,23 +420,23 @@ internal sealed class UserAdministrationServiceTests
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
     }
 
-    private static AuthorizedUserAdministrationService CreateService(
+    private static AuthorizedUserAdministrationReader CreateService(
         RecordingUserAdministrationRepository? repository = null,
         RecordingAccountSecurityService? accountSecurityService = null)
     {
         var boundary = new AdminReadTestBoundary(DateTimeOffset.UtcNow);
-        return new AuthorizedUserAdministrationService(new UserAdministrationService(
+        return new AuthorizedUserAdministrationReader(new UserAdministrationReader(
             repository ?? new RecordingUserAdministrationRepository(),
             accountSecurityService ?? new RecordingAccountSecurityService(), boundary.Sessions,
             boundary.Authorizer, boundary.Sink, boundary.TimeProvider), boundary.Actor);
     }
 
-    private sealed class AuthorizedUserAdministrationService(UserAdministrationService service, AccountSecurityActorContext actor)
+    private sealed class AuthorizedUserAdministrationReader(UserAdministrationReader reader, AccountSecurityActorContext actor)
     {
         public Task<Result<UserSearchResult>> SearchUsersAsync(SearchUsersRequest request) =>
-            service.SearchUsersAsync(request is null ? null! : request with { Actor = actor });
+            reader.SearchUsersAsync(actor, request);
         public Task<Result<UserAdministrationDetail>> GetUserDetailAsync(UserAdministrationDetailRequest request) =>
-            service.GetUserDetailAsync(request with { Actor = actor });
+            reader.GetUserDetailAsync(actor, request);
     }
 
     private static UserSummary CreateSummary(string email, Guid? tenantId = null)

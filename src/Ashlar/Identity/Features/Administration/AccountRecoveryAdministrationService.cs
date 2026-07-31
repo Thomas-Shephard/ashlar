@@ -3,14 +3,14 @@ using System.Diagnostics.CodeAnalysis;
 namespace Ashlar.Identity.Features.Administration;
 
 internal sealed class AccountRecoveryAdministrationService(
-    IUserAdministrationService userAdministrationService,
+    IUserAdministrationReader userAdministrationReader,
     IRememberedMfaDeviceRepository rememberedMfaDeviceRepository,
     TimeProvider? timeProvider = null)
     : IAccountRecoveryAdministrationService
 {
     internal const string LastPrimarySignInMethodWarningCode = "last_primary_sign_in_method";
 
-    private readonly IUserAdministrationService _userAdministrationService = userAdministrationService ?? throw new ArgumentNullException(nameof(userAdministrationService));
+    private readonly IUserAdministrationReader _userAdministrationReader = userAdministrationReader ?? throw new ArgumentNullException(nameof(userAdministrationReader));
     private readonly IRememberedMfaDeviceRepository _rememberedMfaDeviceRepository = rememberedMfaDeviceRepository ?? throw new ArgumentNullException(nameof(rememberedMfaDeviceRepository));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
@@ -25,13 +25,13 @@ internal sealed class AccountRecoveryAdministrationService(
             return validationFailure;
         }
 
-        var detailResult = await _userAdministrationService.GetUserDetailAsync(
+        var detailResult = await _userAdministrationReader.GetUserDetailAsync(
+            request.Actor!,
             new UserAdministrationDetailRequest(
                 request.UserId,
                 request.Tenant,
                 request.IncludeAllTenants,
-                request.RecentSecurityEventWindow,
-                request.Actor),
+                request.RecentSecurityEventWindow),
             cancellationToken);
         if (!detailResult.TryGetValue(out var detail))
         {

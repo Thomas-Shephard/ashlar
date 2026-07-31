@@ -5,9 +5,6 @@ namespace Ashlar.Identity.Models.Administration;
 /// </summary>
 public sealed record SearchCredentialsRequest
 {
-    /// <summary>Authenticated actor, active session, fresh proof, and audit metadata.</summary>
-    public AccountSecurityActorContext? Actor { get; init; }
-
     /// <summary>Tenant scope to search. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <see cref="IncludeAllTenants" /> is enabled.</summary>
     public TenantContext? Tenant { get; init; }
 
@@ -121,12 +118,10 @@ public sealed record CredentialSearchResult(
 /// <param name="CredentialId">Credential to load.</param>
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
 /// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
-/// <param name="Actor">Authenticated actor, active session, fresh proof, and audit metadata.</param>
 public sealed record CredentialAdministrationLookupRequest(
     Guid CredentialId,
     TenantContext? Tenant = null,
-    bool IncludeAllTenants = false,
-    AccountSecurityActorContext? Actor = null)
+    bool IncludeAllTenants = false)
 {
     /// <summary>
     /// Throws when the credential lookup request is not safe to execute.
