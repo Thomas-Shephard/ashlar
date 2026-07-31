@@ -50,7 +50,7 @@ internal sealed class AccountSecurityAdministrationService(
 
         var authorized = await authorizer.AuthorizeAsync(CreateAuthorizationContext(request, operation), cancellationToken);
         if (!authorized)
-            return await RejectAsync(request, eventType, AshlarFailureCodes.ValidationError,
+            return await RejectAsync(request, eventType, AshlarFailureCodes.AuthorizationDenied,
                 "Account-security operation was not authorized.", cancellationToken);
 
         return await execute();

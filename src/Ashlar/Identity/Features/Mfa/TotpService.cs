@@ -240,7 +240,7 @@ internal sealed class TotpService : ITotpService
 
         if (!await AuthorizeAsync(request.ActorUserId, tenant, request.CurrentSessionId, AccountSecurityOperation.DisableTotp, cancellationToken))
         {
-            await RecordProofFailureAsync(request.ActorUserId, tenant, request.Audit, AshlarSecurityEventTypes.TotpDisabled, AshlarFailureCodes.ValidationError, cancellationToken);
+            await RecordProofFailureAsync(request.ActorUserId, tenant, request.Audit, AshlarSecurityEventTypes.TotpDisabled, AshlarFailureCodes.AuthorizationDenied, cancellationToken);
             return false;
         }
 
@@ -352,8 +352,8 @@ internal sealed class TotpService : ITotpService
 
         if (!await AuthorizeAsync(request.UserId, request.Tenant, request.CurrentSessionId, operation, cancellationToken))
         {
-            await RecordProofFailureAsync(request.UserId, request.Tenant, request.Audit, request.EventType, AshlarFailureCodes.ValidationError, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.ValidationError);
+            await RecordProofFailureAsync(request.UserId, request.Tenant, request.Audit, request.EventType, AshlarFailureCodes.AuthorizationDenied, cancellationToken);
+            return Result.Failure(AshlarFailureCodes.AuthorizationDenied);
         }
 
         return Result.Success();

@@ -204,7 +204,7 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
         var operation = successStatus == AshlarSecurityEventWebhookOutboxOperationStatus.Retried
             ? AccountSecurityOperation.RetrySecurityEventWebhookDelivery
             : AccountSecurityOperation.DiscardSecurityEventWebhookDelivery;
-        if (!await _boundary.AuthorizeAsync(request.Actor, null, true, Guid.Empty, operation, cancellationToken).ConfigureAwait(false))
+        if (await _boundary.AuthorizeAsync(request.Actor, null, true, Guid.Empty, operation, cancellationToken).ConfigureAwait(false) is not null)
         {
             return AshlarSecurityEventWebhookOutboxOperations.CreateResult(AshlarSecurityEventWebhookOutboxOperationStatus.Failed, request.DeliveryId);
         }

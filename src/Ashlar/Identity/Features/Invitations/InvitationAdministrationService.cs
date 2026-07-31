@@ -56,9 +56,9 @@ internal sealed class InvitationAdministrationService : IInvitationAdministratio
             return Result.Failure(AshlarFailureCodes.ValidationError, exception.Message);
         }
 
-        if (!await _createBoundary.AuthorizeAsync(actor, request.Tenant, false, Guid.Empty,
-                AccountSecurityOperation.CreateInvitation, cancellationToken))
-            return Result.Failure(AshlarFailureCodes.ValidationError);
+        if (await _createBoundary.AuthorizeAsync(actor, request.Tenant, false, Guid.Empty,
+                AccountSecurityOperation.CreateInvitation, cancellationToken) is { } authorizationFailure)
+            return Result.Failure(authorizationFailure);
 
         var audit = actor.Audit;
         var context = new AuthenticationContext(TenantId: request.Tenant.TenantId, IpAddress: audit.IpAddress,
@@ -81,9 +81,9 @@ internal sealed class InvitationAdministrationService : IInvitationAdministratio
             return Result.Failure<RevokeInvitationsByEmailAdministrationResult>(AshlarFailureCodes.ValidationError, exception.Message);
         }
 
-        if (!await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants, Guid.Empty,
-                AccountSecurityOperation.RevokeInvitationsByEmail, cancellationToken))
-            return Result.Failure<RevokeInvitationsByEmailAdministrationResult>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants, Guid.Empty,
+                AccountSecurityOperation.RevokeInvitationsByEmail, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<RevokeInvitationsByEmailAdministrationResult>(authorizationFailure);
 
         var result = await _mutations.RevokeInvitationsByEmailAsync(request, actor.Audit, actor.CurrentSessionId, cancellationToken);
         if (!result.Succeeded)
@@ -106,9 +106,9 @@ internal sealed class InvitationAdministrationService : IInvitationAdministratio
         {
             return Result.Failure<RevokeInvitationByIdAdministrationResult>(AshlarFailureCodes.ValidationError, $"Reason cannot exceed {MaximumReasonLength} characters.");
         }
-        if (!await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants, Guid.Empty,
-                AccountSecurityOperation.RevokeInvitationById, cancellationToken))
-            return Result.Failure<RevokeInvitationByIdAdministrationResult>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants, Guid.Empty,
+                AccountSecurityOperation.RevokeInvitationById, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<RevokeInvitationByIdAdministrationResult>(authorizationFailure);
 
         var now = _timeProvider.GetUtcNow();
         RevokeInvitationByIdAdministrationResult? result;

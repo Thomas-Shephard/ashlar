@@ -347,7 +347,7 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(create.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(create.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
             Assert.That(revoke.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.NotFound));
             Assert.That(grant.RevokedAt, Is.Null);
             Assert.That(events.Events, Has.Count.EqualTo(2));
@@ -374,7 +374,7 @@ internal sealed class AuthorizationGrantMutationBoundaryTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(create.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(create.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
             Assert.That(revoke.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.NotFound));
             Assert.That(repository.Grants, Has.Count.EqualTo(1));
             Assert.That(grant.RevokedAt, Is.Null);

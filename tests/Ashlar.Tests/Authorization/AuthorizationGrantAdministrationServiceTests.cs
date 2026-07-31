@@ -354,10 +354,11 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new[] { missingActor.FailureCode, missingAudit.FailureCode, mismatch.FailureCode, denied.FailureCode,
+            Assert.That(new[] { missingActor.FailureCode, missingAudit.FailureCode, mismatch.FailureCode,
                 missingLookupActor.FailureCode }
                 .All(code => code == AshlarFailureCodes.ValidationError), Is.True);
-            Assert.That(deniedLookup.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(denied.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
+            Assert.That(deniedLookup.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
             Assert.That(missingGrant.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationGrantNotFound));
         }
     }
@@ -385,7 +386,7 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(wrongPurpose.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That(selfOnly.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(selfOnly.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
             Assert.That(repository.LastSearchRequest, Is.Null);
         }
     }

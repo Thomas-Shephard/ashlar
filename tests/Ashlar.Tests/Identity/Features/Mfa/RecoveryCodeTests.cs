@@ -146,7 +146,7 @@ internal sealed class RecoveryCodeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
             Assert.That(observed, Is.Not.Null);
             Assert.That(observed!.ActorUserId, Is.EqualTo(actorId));
             Assert.That(observed.TargetUserId, Is.EqualTo(targetId));
@@ -393,7 +393,7 @@ internal sealed class RecoveryCodeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(proofFailure.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
-            Assert.That(denied.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(denied.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
             Assert.That(events.Events.Count(e => e.Outcome == SecurityEventOutcomes.Failure), Is.EqualTo(2));
         }
         authorizer.Verify(a => a.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>()), Times.Once);
@@ -432,7 +432,7 @@ internal sealed class RecoveryCodeTests
             Assert.That(proofFailure.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
             Assert.That(purposeFailure.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
             Assert.That(auditFailure.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That(denied.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(denied.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
             Assert.That(events.Events.Count(e => e.Outcome == SecurityEventOutcomes.Failure && e.TenantId == null &&
                 e.Properties?.GetValueOrDefault("scope") == "all_tenants"), Is.EqualTo(1));
         }

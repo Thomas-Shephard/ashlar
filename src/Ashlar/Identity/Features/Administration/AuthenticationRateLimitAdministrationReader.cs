@@ -20,8 +20,9 @@ internal sealed class AuthenticationRateLimitAdministrationReader(IAuthenticatio
         if (request.Limit < 1) return Result.Failure<AuthenticationRateLimitBucketSearchResult>(AshlarFailureCodes.ValidationError, "Limit must be greater than zero.");
         if (scope != OperationalAdministrationScope.Global)
             return Result.Failure<AuthenticationRateLimitBucketSearchResult>(AshlarFailureCodes.ValidationError, "Rate-limit administration requires global operational scope.");
-        if (!await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
-                AccountSecurityOperation.SearchAuthenticationRateLimitBuckets, cancellationToken)) return Result.Failure<AuthenticationRateLimitBucketSearchResult>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
+                AccountSecurityOperation.SearchAuthenticationRateLimitBuckets, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<AuthenticationRateLimitBucketSearchResult>(authorizationFailure);
 
         var limit = Math.Min(request.Limit, AuthenticationRateLimitAdministrationService.MaximumLimit);
         var buckets = await _repository.SearchBucketsAsync(request with { Limit = limit + 1 }, _timeProvider.GetUtcNow(), cancellationToken);
@@ -40,8 +41,9 @@ internal sealed class AuthenticationRateLimitAdministrationReader(IAuthenticatio
         if (!AuthenticationRateLimitAdministrationService.TryValidateLookupRequest(request, out var failure)) return failure;
         if (scope != OperationalAdministrationScope.Global)
             return Result.Failure<AuthenticationRateLimitBucketSummary>(AshlarFailureCodes.ValidationError, "Rate-limit administration requires global operational scope.");
-        if (!await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
-                AccountSecurityOperation.ReadAuthenticationRateLimitBucket, cancellationToken)) return Result.Failure<AuthenticationRateLimitBucketSummary>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
+                AccountSecurityOperation.ReadAuthenticationRateLimitBucket, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<AuthenticationRateLimitBucketSummary>(authorizationFailure);
         var bucket = await _repository.GetBucketAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
         if (bucket == null || !string.Equals(bucket.BucketId, request.BucketId, StringComparison.Ordinal)
             || !string.Equals(bucket.Purpose, request.Purpose, StringComparison.Ordinal))

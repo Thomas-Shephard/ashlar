@@ -39,13 +39,14 @@ public sealed class AccountSecurityOperationBoundary(
     /// <param name="operation">The operation requiring authorization.</param>
     /// <param name="cancellationToken">A token that can cancel validation.</param>
     /// <param name="provider">The target authentication provider, when applicable.</param>
-    /// <returns><see langword="true" /> only when every boundary check succeeds.</returns>
-    public async ValueTask<bool> AuthorizeAsync(AccountSecurityActorContext? actor, TenantContext? tenant,
+    /// <returns>The failure code, or <see langword="null" /> when every boundary check succeeds.</returns>
+    public async ValueTask<AshlarFailureCode?> AuthorizeAsync(AccountSecurityActorContext? actor, TenantContext? tenant,
         bool includeAllTenants, Guid targetUserId, AccountSecurityOperation operation, CancellationToken cancellationToken,
         AuthenticationProviderKey? provider = null)
     {
-        if (actor is null) return false;
-        if (!await ValidateActorAsync(actor, tenant, includeAllTenants, operation, cancellationToken)) return false;
+        if (actor is null) return AshlarFailureCodes.ValidationError;
+        if (!await ValidateActorAsync(actor, tenant, includeAllTenants, operation, cancellationToken))
+            return AshlarFailureCodes.ValidationError;
         bool authorized;
         try
         {
@@ -60,8 +61,11 @@ public sealed class AccountSecurityOperationBoundary(
             throw;
         }
         if (!authorized)
-            await RecordAsync(actor, tenant, includeAllTenants, operation, false);
-        return authorized;
+        {
+            await RecordAsync(actor, tenant, includeAllTenants, operation, false, AshlarFailureCodes.AuthorizationDenied);
+            return AshlarFailureCodes.AuthorizationDenied;
+        }
+        return null;
     }
 
     internal async Task RecordValidatedFailureAsync(AccountSecurityActorContext? actor, TenantContext? tenant,
@@ -120,7 +124,7 @@ public sealed class AccountSecurityOperationBoundary(
     }
 
     private Task RecordAsync(AccountSecurityActorContext actor, TenantContext? tenant, bool includeAllTenants,
-        AccountSecurityOperation operation, bool succeeded, bool actorAuthenticated = true)
+        AccountSecurityOperation operation, bool succeeded, AshlarFailureCode? failure = null, bool actorAuthenticated = true)
     {
         var scope = "all-tenants";
         if (!includeAllTenants)
@@ -132,7 +136,7 @@ public sealed class AccountSecurityOperationBoundary(
             TenantId = tenant?.TenantId,
             SessionId = actorAuthenticated ? actor.CurrentSessionId : null,
             Audit = actor.Audit with { ActorUserId = actorAuthenticated ? actor.ActorUserId : null },
-            FailureReason = succeeded ? null : AshlarFailureCodes.ValidationError.Value,
+            FailureReason = succeeded ? null : (failure ?? AshlarFailureCodes.ValidationError).Value,
             Properties = new Dictionary<string, string>
             {
                 ["operation"] = operation.ToString(),

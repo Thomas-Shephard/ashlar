@@ -57,9 +57,9 @@ internal sealed class AuthorizationGrantAdministrationService(
             return Result.Failure<AuthorizationGrantSearchResult>(AshlarFailureCodes.ValidationError, exception.Message);
         }
 
-        if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchAuthorizationGrants, cancellationToken))
-            return Result.Failure<AuthorizationGrantSearchResult>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchAuthorizationGrants, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<AuthorizationGrantSearchResult>(authorizationFailure);
 
         var limit = Math.Min(request.Limit, MaximumLimit);
         List<AuthorizationGrantAdministrationSummary> grants;
@@ -94,9 +94,9 @@ internal sealed class AuthorizationGrantAdministrationService(
             return validationFailure;
         }
 
-        if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                Guid.Empty, AccountSecurityOperation.ReadAuthorizationGrant, cancellationToken))
-            return Result.Failure<AuthorizationGrantAdministrationSummary>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                Guid.Empty, AccountSecurityOperation.ReadAuthorizationGrant, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<AuthorizationGrantAdministrationSummary>(authorizationFailure);
 
         AuthorizationGrantAdministrationSummary? grant;
         try
@@ -120,8 +120,8 @@ internal sealed class AuthorizationGrantAdministrationService(
             await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadAuthorizationGrant);
             return Result.Failure<AuthorizationGrantAdministrationSummary>(AshlarFailureCodes.AuthorizationGrantNotFound, "Authorization grant was not found.");
         }
-        if (!await _boundary.AuthorizeAsync(request.Actor!, request.Tenant, request.IncludeAllTenants,
-                grant.UserId, AccountSecurityOperation.ReadAuthorizationGrant, cancellationToken))
+        if (await _boundary.AuthorizeAsync(request.Actor!, request.Tenant, request.IncludeAllTenants,
+                grant.UserId, AccountSecurityOperation.ReadAuthorizationGrant, cancellationToken) is not null)
             return Result.Failure<AuthorizationGrantAdministrationSummary>(AshlarFailureCodes.AuthorizationGrantNotFound, "Authorization grant was not found.");
 
         await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadAuthorizationGrant);

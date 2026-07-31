@@ -96,8 +96,8 @@ public abstract class EmailOutboxAdministrationServiceBase(
                 request?.Actor, null, true, AccountSecurityOperation.SearchEmailOutbox, cancellationToken).ConfigureAwait(false);
             throw;
         }
-        if (!await _readBoundary.AuthorizeAsync(request.Actor, null, true, Guid.Empty,
-                AccountSecurityOperation.SearchEmailOutbox, cancellationToken).ConfigureAwait(false))
+        if (await _readBoundary.AuthorizeAsync(request.Actor, null, true, Guid.Empty,
+                AccountSecurityOperation.SearchEmailOutbox, cancellationToken).ConfigureAwait(false) is not null)
             return new([], request.Limit, request.Offset, false);
         var requestedStatuses = EmailOutboxAdministrationProvider.GetStatuses(request).ToHashSet();
         EmailOutboxAdministrationProviderSearchResult providerResult;
@@ -142,8 +142,8 @@ public abstract class EmailOutboxAdministrationServiceBase(
                 request?.Actor, null, true, AccountSecurityOperation.ReadEmailOutbox, cancellationToken).ConfigureAwait(false);
             throw;
         }
-        if (!await _readBoundary.AuthorizeAsync(request.Actor, null, true, Guid.Empty,
-                AccountSecurityOperation.ReadEmailOutbox, cancellationToken).ConfigureAwait(false))
+        if (await _readBoundary.AuthorizeAsync(request.Actor, null, true, Guid.Empty,
+                AccountSecurityOperation.ReadEmailOutbox, cancellationToken).ConfigureAwait(false) is not null)
             return null;
         EmailOutboxDetail? result;
         try
@@ -243,8 +243,8 @@ public abstract class EmailOutboxAdministrationServiceBase(
         var operation = successStatus == EmailOutboxOperationStatus.Retried
             ? AccountSecurityOperation.RetryEmailOutboxDelivery
             : AccountSecurityOperation.DiscardEmailOutboxDelivery;
-        if (!await _mutationBoundary.AuthorizeAsync(
-                request.Actor, null, true, Guid.Empty, operation, cancellationToken).ConfigureAwait(false))
+        if (await _mutationBoundary.AuthorizeAsync(
+                request.Actor, null, true, Guid.Empty, operation, cancellationToken).ConfigureAwait(false) is not null)
             return new(EmailOutboxOperationStatus.Failed, request.Id);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);

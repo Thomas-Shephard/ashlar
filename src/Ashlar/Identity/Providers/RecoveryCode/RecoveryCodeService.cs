@@ -280,8 +280,8 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService, IRecoveryCodeM
                 request.IncludeAllTenants, operation, CurrentSessionId: request.CurrentSessionId), cancellationToken))
             return null;
 
-        await RecordPublicFailureAsync(request, eventType, AshlarFailureCodes.ValidationError, request.Audit, cancellationToken);
-        return AshlarFailureCodes.ValidationError;
+        await RecordPublicFailureAsync(request, eventType, AshlarFailureCodes.AuthorizationDenied, request.Audit, cancellationToken);
+        return AshlarFailureCodes.AuthorizationDenied;
     }
 
     private Task RecordPublicFailureAsync(AccountSecurityAdministrationRequest request, string eventType,

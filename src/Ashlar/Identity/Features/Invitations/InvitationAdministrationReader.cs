@@ -14,8 +14,9 @@ internal sealed class InvitationAdministrationReader(IInvitationRepository repos
     {
         ArgumentNullException.ThrowIfNull(request);
         if (!InvitationAdministrationService.TryValidateSearchRequest(request, out var failure)) return failure;
-        if (!await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants, Guid.Empty,
-                AccountSecurityOperation.SearchInvitations, cancellationToken)) return Result.Failure<InvitationSearchResult>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants, Guid.Empty,
+                AccountSecurityOperation.SearchInvitations, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<InvitationSearchResult>(authorizationFailure);
 
         var limit = Math.Min(request.Limit, InvitationAdministrationService.MaximumLimit);
         var invitations = await _repository.SearchInvitationsAsync(request with { Limit = limit + 1 }, _timeProvider.GetUtcNow(), cancellationToken);
@@ -34,8 +35,9 @@ internal sealed class InvitationAdministrationReader(IInvitationRepository repos
     {
         ArgumentNullException.ThrowIfNull(request);
         if (!InvitationAdministrationService.TryValidateLookupRequest(request, out var failure)) return failure;
-        if (!await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants, Guid.Empty,
-                AccountSecurityOperation.ReadInvitation, cancellationToken)) return Result.Failure<InvitationAdministrationSummary>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants, Guid.Empty,
+                AccountSecurityOperation.ReadInvitation, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<InvitationAdministrationSummary>(authorizationFailure);
 
         var invitation = await _repository.GetInvitationAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
         if (invitation == null || invitation.Id != request.InvitationId || !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants, invitation.TenantId))
