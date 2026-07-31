@@ -7,6 +7,8 @@ public static class AshlarFailureCodes
 {
     /// <summary>Generic validation failure.</summary>
     public const string ValidationErrorValue = "validation_error";
+    /// <summary>Host authorization denied the operation.</summary>
+    public const string AuthorizationDeniedValue = "authorization_denied";
     /// <summary>Configured metadata is invalid.</summary>
     public const string InvalidMetadataValue = "invalid_metadata";
     /// <summary>Metadata JSON could not be parsed.</summary>
@@ -127,6 +129,8 @@ public static class AshlarFailureCodes
     public const string RememberedMfaDeviceLimitExceededValue = "remembered_mfa_device_limit_exceeded";
     /// <summary>Generic validation failure.</summary>
     public static readonly AshlarFailureCode ValidationError = new(ValidationErrorValue);
+    /// <summary>Host authorization denied the operation.</summary>
+    public static readonly AshlarFailureCode AuthorizationDenied = new(AuthorizationDeniedValue);
     /// <summary>Configured metadata is invalid.</summary>
     public static readonly AshlarFailureCode InvalidMetadata = new(InvalidMetadataValue);
     /// <summary>Metadata JSON could not be parsed.</summary>

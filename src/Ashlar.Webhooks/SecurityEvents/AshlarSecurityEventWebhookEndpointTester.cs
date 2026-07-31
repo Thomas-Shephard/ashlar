@@ -162,8 +162,8 @@ public sealed class AshlarSecurityEventWebhookEndpointTester : IAshlarSecurityEv
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentException.ThrowIfNullOrWhiteSpace(endpointName);
         cancellationToken.ThrowIfCancellationRequested();
-        if (!await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
-                AccountSecurityOperation.TestSecurityEventWebhookEndpoint, cancellationToken).ConfigureAwait(false))
+        if (await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
+                AccountSecurityOperation.TestSecurityEventWebhookEndpoint, cancellationToken).ConfigureAwait(false) is not null)
         {
             return new AshlarSecurityEventWebhookEndpointTestResult(AshlarSecurityEventWebhookEndpointTestStatus.Unauthorized);
         }

@@ -39,8 +39,8 @@ public abstract class AshlarSecurityEventWebhookOutboxBrowserBase(
     {
         ArgumentNullException.ThrowIfNull(actor);
         AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(request);
-        if (!await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
-                AccountSecurityOperation.BrowseSecurityEventWebhookOutbox, cancellationToken).ConfigureAwait(false))
+        if (await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
+                AccountSecurityOperation.BrowseSecurityEventWebhookOutbox, cancellationToken).ConfigureAwait(false) is not null)
             return new AshlarSecurityEventWebhookOutboxBrowseResult([], request.Limit, request.Offset, false);
 
         var rows = await LoadAsync(request, cancellationToken).ConfigureAwait(false);

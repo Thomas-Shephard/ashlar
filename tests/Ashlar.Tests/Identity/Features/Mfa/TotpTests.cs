@@ -1101,14 +1101,14 @@ internal sealed class TotpTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(start?.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That(complete.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(start?.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
+            Assert.That(complete.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
             Assert.That(disable, Is.False);
             foreach (var eventType in new[] { AshlarSecurityEventTypes.TotpEnrollmentStarted,
                          AshlarSecurityEventTypes.TotpEnrollmentCompleted, AshlarSecurityEventTypes.TotpDisabled })
                 _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
                     e.EventType == eventType && e.Outcome == SecurityEventOutcomes.Failure && e.UserId == actor &&
-                    e.ActorUserId == actor && e.FailureReason == AshlarFailureCodes.ValidationErrorValue &&
+                    e.ActorUserId == actor && e.FailureReason == AshlarFailureCodes.AuthorizationDeniedValue &&
                     e.Provider == _options.ProviderKey), It.IsAny<CancellationToken>()), Times.Once);
             _credentialRepository.Verify(x => x.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(),
                 It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);

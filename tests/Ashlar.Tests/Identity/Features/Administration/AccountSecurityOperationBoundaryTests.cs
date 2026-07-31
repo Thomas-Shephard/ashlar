@@ -109,8 +109,10 @@ internal sealed class AccountSecurityOperationBoundaryTests
             }));
 
         AssertAllFailed(await InvokeAllAsync(boundary.Actor, new AllowByScopeAuthorizer(), revoked));
-        AssertAllFailed(await InvokeAllAsync(boundary.Actor, new DenyAuthorizer(), boundary.Sessions));
-        AssertAllFailed(await InvokeAllAsync(boundary.Actor, new AllowByScopeAuthorizer(), boundary.Sessions, includeAllTenants: true));
+        AssertAllFailed(await InvokeAllAsync(boundary.Actor, new DenyAuthorizer(), boundary.Sessions),
+            AshlarFailureCodes.AuthorizationDenied);
+        AssertAllFailed(await InvokeAllAsync(boundary.Actor, new AllowByScopeAuthorizer(), boundary.Sessions, includeAllTenants: true),
+            AshlarFailureCodes.AuthorizationDenied);
     }
 
     [Test]
@@ -119,7 +121,8 @@ internal sealed class AccountSecurityOperationBoundaryTests
         var boundary = new AdminReadTestBoundary(Now);
 
         AssertAllFailed(await InvokeAllAsync(boundary.Actor,
-            new DenyOtherTargetAuthorizer(boundary.Actor.ActorUserId), boundary.Sessions));
+            new DenyOtherTargetAuthorizer(boundary.Actor.ActorUserId), boundary.Sessions),
+            AshlarFailureCodes.AuthorizationDenied);
     }
 
     [Test]
@@ -160,8 +163,9 @@ internal sealed class AccountSecurityOperationBoundaryTests
             Assert.That(boundary.Sink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Success));
             Assert.That(boundary.Sink.Events.Single().Properties!["operation"], Is.EqualTo(nameof(AccountSecurityOperation.SearchCredentials)));
             Assert.That(boundary.Sink.Events.Single().Properties!["scope"], Is.EqualTo("global"));
-            Assert.That(denied.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(denied.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
             Assert.That(deniedBoundary.Sink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+            Assert.That(deniedBoundary.Sink.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.AuthorizationDeniedValue));
         }
         Assert.ThrowsAsync<InvalidOperationException>(async () => await throwing.SearchCredentialsAsync(request));
     }
@@ -262,10 +266,10 @@ internal sealed class AccountSecurityOperationBoundaryTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(credential.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That(session.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That(securityEvent.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That(user.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(credential.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
+            Assert.That(session.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
+            Assert.That(securityEvent.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
+            Assert.That(user.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
         }
     }
 
@@ -341,8 +345,9 @@ internal sealed class AccountSecurityOperationBoundaryTests
         ];
     }
 
-    private static void AssertAllFailed(IReadOnlyList<AshlarFailureCode?> failures) =>
-        Assert.That(failures, Is.All.EqualTo(AshlarFailureCodes.ValidationError));
+    private static void AssertAllFailed(IReadOnlyList<AshlarFailureCode?> failures,
+        AshlarFailureCode? expected = null) =>
+        Assert.That(failures, Is.All.EqualTo(expected ?? AshlarFailureCodes.ValidationError));
 
     private sealed class AllowAuthorizer : IAccountSecurityOperationAuthorizer
     {

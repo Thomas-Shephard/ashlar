@@ -37,9 +37,9 @@ internal sealed class UserAdministrationService(IUserAdministrationRepository re
             return Result.Failure<UserSearchResult>(AshlarFailureCodes.ValidationError, "Limit must be greater than zero.");
         }
 
-        if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                Guid.Empty, AccountSecurityOperation.SearchUsers, cancellationToken))
-            return Result.Failure<UserSearchResult>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                Guid.Empty, AccountSecurityOperation.SearchUsers, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<UserSearchResult>(authorizationFailure);
 
         var limit = Math.Min(request.Limit, MaximumLimit);
         var repositoryRequest = request with { Actor = null, Limit = limit + 1 };
@@ -77,9 +77,9 @@ internal sealed class UserAdministrationService(IUserAdministrationRepository re
             return validationFailure;
         }
 
-        if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                request.UserId, AccountSecurityOperation.ReadUser, cancellationToken))
-            return Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                request.UserId, AccountSecurityOperation.ReadUser, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<UserAdministrationDetail>(authorizationFailure);
 
         UserSummary? user;
         try

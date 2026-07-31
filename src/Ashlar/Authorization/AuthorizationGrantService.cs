@@ -447,6 +447,6 @@ internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IA
         var authorized = await _authorizer.AuthorizeAsync(new AccountSecurityAuthorizationContext(
             actor.ActorUserId, actor.ActorTenant, targetUserId, new TenantContext(tenantId), false, operation,
             CurrentSessionId: actor.CurrentSessionId), cancellationToken);
-        return authorized ? null : AshlarFailureCodes.ValidationError;
+        return authorized ? null : AshlarFailureCodes.AuthorizationDenied;
     }
 }

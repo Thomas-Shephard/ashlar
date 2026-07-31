@@ -47,9 +47,9 @@ public sealed class CredentialAdministrationService(
             return Result.Failure<CredentialSearchResult>(AshlarFailureCodes.ValidationError, "Limit must be greater than zero.");
         }
 
-        if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchCredentials, cancellationToken))
-            return Result.Failure<CredentialSearchResult>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchCredentials, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<CredentialSearchResult>(authorizationFailure);
 
         var limit = Math.Min(request.Limit, MaximumLimit);
         var repositoryRequest = request with { Actor = null, Limit = limit + 1 };
@@ -86,9 +86,9 @@ public sealed class CredentialAdministrationService(
             return validationFailure;
         }
 
-        if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                Guid.Empty, AccountSecurityOperation.ReadCredential, cancellationToken))
-            return Result.Failure<CredentialAdministrationSummary>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                Guid.Empty, AccountSecurityOperation.ReadCredential, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<CredentialAdministrationSummary>(authorizationFailure);
 
         CredentialAdministrationSummary? credential;
         try
@@ -106,8 +106,8 @@ public sealed class CredentialAdministrationService(
             await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadCredential);
             credential = null;
         }
-        else if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                credential.UserId, AccountSecurityOperation.ReadCredential, cancellationToken))
+        else if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                credential.UserId, AccountSecurityOperation.ReadCredential, cancellationToken) is not null)
             credential = null;
         else
             await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants,

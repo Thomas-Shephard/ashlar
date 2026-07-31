@@ -51,9 +51,9 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
             await _boundary.RecordFailureAsync(actor, request.Tenant, false, AccountSecurityOperation.ResetAccountLockout);
             return Result.Failure<ResetAccountLockoutResult>(AshlarFailureCodes.ValidationError);
         }
-        if (!await _boundary.AuthorizeAsync(actor, request.Tenant, false, userId,
-                AccountSecurityOperation.ResetAccountLockout, cancellationToken, provider))
-            return Result.Failure<ResetAccountLockoutResult>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(actor, request.Tenant, false, userId,
+                AccountSecurityOperation.ResetAccountLockout, cancellationToken, provider) is { } authorizationFailure)
+            return Result.Failure<ResetAccountLockoutResult>(authorizationFailure);
 
         var existing = await _repository.GetAsync(userId, tenantId, provider, cancellationToken);
         if (existing is not null && (existing.UserId != userId || existing.TenantId != tenantId || existing.Provider != provider))

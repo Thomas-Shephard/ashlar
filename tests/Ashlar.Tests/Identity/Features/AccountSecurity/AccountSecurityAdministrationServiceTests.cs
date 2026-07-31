@@ -130,8 +130,10 @@ internal sealed class AccountSecurityAdministrationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
             Assert.That(_executor.CallCount, Is.Zero);
             Assert.That(_events.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.UserMfaReset));
+            Assert.That(_events.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.AuthorizationDeniedValue));
         }
         _authorizer.Verify(x => x.AuthorizeAsync(It.IsAny<AccountSecurityAuthorizationContext>(), It.IsAny<CancellationToken>()), Times.Once);
     }

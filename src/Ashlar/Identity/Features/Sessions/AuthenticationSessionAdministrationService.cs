@@ -47,9 +47,9 @@ public sealed class AuthenticationSessionAdministrationService(
             return Result.Failure<AuthenticationSessionSearchResult>(AshlarFailureCodes.ValidationError, "Limit must be greater than zero.");
         }
 
-        if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchAuthenticationSessions, cancellationToken))
-            return Result.Failure<AuthenticationSessionSearchResult>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchAuthenticationSessions, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<AuthenticationSessionSearchResult>(authorizationFailure);
 
         var limit = Math.Min(request.Limit, MaximumLimit);
         var repositoryRequest = request with { Actor = null, Limit = limit + 1 };
@@ -87,9 +87,9 @@ public sealed class AuthenticationSessionAdministrationService(
             return validationFailure;
         }
 
-        if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                Guid.Empty, AccountSecurityOperation.ReadAuthenticationSession, cancellationToken))
-            return Result.Failure<AuthenticationSessionAdministrationSummary>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                Guid.Empty, AccountSecurityOperation.ReadAuthenticationSession, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<AuthenticationSessionAdministrationSummary>(authorizationFailure);
 
         AuthenticationSessionAdministrationSummary? session;
         try
@@ -107,8 +107,8 @@ public sealed class AuthenticationSessionAdministrationService(
             await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadAuthenticationSession);
             session = null;
         }
-        else if (!await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
-                session.UserId, AccountSecurityOperation.ReadAuthenticationSession, cancellationToken))
+        else if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+                session.UserId, AccountSecurityOperation.ReadAuthenticationSession, cancellationToken) is not null)
             session = null;
         else
             await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants,

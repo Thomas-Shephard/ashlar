@@ -52,9 +52,9 @@ internal sealed class AuthenticationRateLimitAdministrationService : IAuthentica
             await _boundary.RecordFailureAsync(actor, null, true, AccountSecurityOperation.ResetAuthenticationRateLimitBucket);
             return Result.Failure<AuthenticationRateLimitBucketResetResult>(AshlarFailureCodes.ValidationError);
         }
-        if (!await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
-                AccountSecurityOperation.ResetAuthenticationRateLimitBucket, cancellationToken))
-            return Result.Failure<AuthenticationRateLimitBucketResetResult>(AshlarFailureCodes.ValidationError);
+        if (await _boundary.AuthorizeAsync(actor, null, true, Guid.Empty,
+                AccountSecurityOperation.ResetAuthenticationRateLimitBucket, cancellationToken) is { } authorizationFailure)
+            return Result.Failure<AuthenticationRateLimitBucketResetResult>(authorizationFailure);
 
         var bucket = await _repository.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(request.BucketId, request.Purpose),
             _timeProvider.GetUtcNow(), cancellationToken);

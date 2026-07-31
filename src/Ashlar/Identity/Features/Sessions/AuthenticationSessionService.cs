@@ -697,11 +697,16 @@ internal sealed class AuthenticationSessionService(
     private async ValueTask AuthorizeSelfServiceAsync(AccountSecurityAuthorizationContext context, AuditContext audit,
         string eventType, Guid? targetSessionId, CancellationToken cancellationToken)
     {
-        if (_operationAuthorizer == null || !await _operationAuthorizer.AuthorizeAsync(context, cancellationToken))
+        if (_operationAuthorizer is null)
+            throw await RejectionAsync(AshlarFailureCodes.ValidationError);
+        if (!await _operationAuthorizer.AuthorizeAsync(context, cancellationToken))
+            throw await RejectionAsync(AshlarFailureCodes.AuthorizationDenied);
+
+        async Task<AshlarOperationException> RejectionAsync(AshlarFailureCode failure)
         {
             await RecordSelfServiceRevocationFailureAsync(context.ActorUserId, context.ActorTenant, audit, eventType,
-                targetSessionId, AshlarFailureCodes.ValidationError, cancellationToken);
-            throw new AshlarOperationException(AshlarFailureCodes.ValidationError, "Authentication-session operation was not authorized.");
+                targetSessionId, failure, cancellationToken);
+            return new AshlarOperationException(failure, "Authentication-session operation was not authorized.");
         }
     }
 

@@ -1085,7 +1085,7 @@ internal sealed class AuthenticationSessionServiceTests
         events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
             e.EventType == AshlarSecurityEventTypes.SessionRevoked && e.Outcome == SecurityEventOutcomes.Failure &&
             e.UserId == actor && e.ActorUserId == actor && e.SessionId == targetSession &&
-            e.CorrelationId == "revoke-denied" && e.FailureReason == AshlarFailureCodes.ValidationErrorValue),
+                e.CorrelationId == "revoke-denied" && e.FailureReason == AshlarFailureCodes.AuthorizationDeniedValue),
             It.IsAny<CancellationToken>()), Times.Once);
         _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
             It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -1111,7 +1111,8 @@ internal sealed class AuthenticationSessionServiceTests
 
         events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
             e.EventType == AshlarSecurityEventTypes.SessionsRevokedForUser && e.Outcome == SecurityEventOutcomes.Failure &&
-            e.UserId == actor && e.ActorUserId == actor && e.SessionId == null), It.IsAny<CancellationToken>()), Times.Once);
+            e.UserId == actor && e.ActorUserId == actor && e.SessionId == null &&
+            e.FailureReason == AshlarFailureCodes.AuthorizationDeniedValue), It.IsAny<CancellationToken>()), Times.Once);
         _repositoryMock.Verify(r => r.RevokeOtherSessionsForUserAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(),
             It.IsAny<string?>(), It.IsAny<TenantContext?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -1137,13 +1138,21 @@ internal sealed class AuthenticationSessionServiceTests
             It.IsAny<CancellationToken>()), Times.Once);
 
         events.Invocations.Clear();
-        var validProof = new FreshMfaVerificationProof(actor, null, currentSession, _timeProvider.GetUtcNow(), _timeProvider.GetUtcNow().AddMinutes(5), AuthenticationSessionService.SelfServiceProofPurpose);
+        var validProof = CreateProof(actor, currentSession);
         Assert.ThrowsAsync<AshlarOperationException>(() => service.RevokeSessionForCurrentUserAsync(
             new RevokeOwnAuthenticationSessionRequest(actor, TenantContext.Global, currentSession, validProof,
                 new AuditContext(Guid.NewGuid(), IpAddress: "untrusted", CorrelationId: "mismatch"), targetSession)));
         events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e => e.ActorUserId == actor && e.IpAddress == null &&
             e.SessionId == targetSession && e.CorrelationId == null && e.FailureReason == AshlarFailureCodes.ValidationErrorValue),
             It.IsAny<CancellationToken>()), Times.Once);
+
+        events.Invocations.Clear();
+        Assert.ThrowsAsync<AshlarOperationException>(() => service.RevokeSessionForCurrentUserAsync(
+            new RevokeOwnAuthenticationSessionRequest(actor, TenantContext.Global, currentSession, validProof,
+                new AuditContext(actor, CorrelationId: "missing-authorizer"), targetSession)));
+        events.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e => e.ActorUserId == actor &&
+            e.SessionId == targetSession && e.CorrelationId == "missing-authorizer" &&
+            e.FailureReason == AshlarFailureCodes.ValidationErrorValue), It.IsAny<CancellationToken>()), Times.Once);
 
         events.Invocations.Clear();
         Assert.ThrowsAsync<AshlarOperationException>(() => service.RevokeOtherSessionsForCurrentUserAsync(
