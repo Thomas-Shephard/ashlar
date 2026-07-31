@@ -207,7 +207,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IAccountLockoutAdministrationService>()
-                .ResetLockoutAsync(actor, userId, authProvider, new ResetAccountLockoutRequest(tenant, actor.Audit)));
+                .ResetLockoutAsync(actor, userId, authProvider, new ResetAccountLockoutRequest(tenant)));
 
         var stored = await repository.GetAsync(userId, tenant.TenantId, authProvider);
         Assert.That(stored, Is.Not.Null);
@@ -234,7 +234,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>().ResetBucketAsync(
                 actor, OperationalAdministrationScope.Global,
-                new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, bucket.Purpose, actor.Audit)));
+                new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, bucket.Purpose)));
 
         var stored = await provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>().GetBucketAsync(
             new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, bucket.Purpose),

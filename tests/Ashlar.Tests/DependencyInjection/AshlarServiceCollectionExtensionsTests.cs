@@ -656,11 +656,13 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using var scope = provider.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IAccountLockoutAdministrationService>();
 
+        var actor = new AccountSecurityActorContext(boundary.Actor.ActorUserId, boundary.Actor.ActorTenant,
+            boundary.Actor.CurrentSessionId, boundary.Actor.FreshMfaProof, boundary.Actor.Audit with { CorrelationId = "di-corr" });
         var result = await service.ResetLockoutAsync(
-            boundary.Actor,
+            actor,
             userId,
             AuthenticationProviderKey.Local,
-            new ResetAccountLockoutRequest(new TenantContext(tenantId), boundary.Actor.Audit with { CorrelationId = "di-corr" }));
+            new ResetAccountLockoutRequest(new TenantContext(tenantId)));
 
         using (Assert.EnterMultipleScope())
         {

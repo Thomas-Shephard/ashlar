@@ -192,10 +192,10 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
             new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(10) });
         var bucket = (await administration.SearchBucketsAsync(actor, OperationalAdministrationScope.Global, new SearchAuthenticationRateLimitBucketsRequest { Purpose = "reset" })).Value!.Items.Single();
 
-        var reset = await mutations.ResetBucketAsync(mutationActor, OperationalAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset", mutationActor.Audit));
-        var missing = await mutations.ResetBucketAsync(mutationActor, OperationalAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset", mutationActor.Audit));
+        var reset = await mutations.ResetBucketAsync(mutationActor, OperationalAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset"));
+        var missing = await mutations.ResetBucketAsync(mutationActor, OperationalAdministrationScope.Global, new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset"));
         var providerMissing = await scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>()
-            .ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset", mutationActor.Audit));
+            .ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset"));
         var afterReset = await administration.GetBucketAsync(actor, OperationalAdministrationScope.Global, new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "reset"));
 
         using (Assert.EnterMultipleScope())

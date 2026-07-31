@@ -251,7 +251,6 @@ public sealed record AccountLockoutStatusRequest(TenantContext Tenant);
 /// Request for administrator account lockout reset.
 /// </summary>
 /// <param name="Tenant">Explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
-/// <param name="Audit">Required safe audit metadata describing who requested reset.</param>
 /// <param name="Reason">Optional provider-neutral, display-safe reason recorded with the reset event. Do not include secrets, tokens, or credentials. Cannot exceed 512 characters.</param>
 public sealed record ResetAccountLockoutRequest
 {
@@ -259,20 +258,15 @@ public sealed record ResetAccountLockoutRequest
     /// Initializes administrator account lockout reset metadata.
     /// </summary>
     /// <param name="Tenant">Explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
-    /// <param name="Audit">Required safe audit metadata describing who requested reset.</param>
     /// <param name="Reason">Optional provider-neutral, display-safe reason recorded with the reset event. Do not include secrets, tokens, or credentials. Cannot exceed 512 characters.</param>
-    public ResetAccountLockoutRequest(TenantContext Tenant, AuditContext Audit, string? Reason = null)
+    public ResetAccountLockoutRequest(TenantContext Tenant, string? Reason = null)
     {
         this.Tenant = Tenant;
-        this.Audit = Audit ?? throw new ArgumentNullException(nameof(Audit), "Admin account lockout reset requires audit metadata.");
         this.Reason = Reason;
     }
 
     /// <summary>Explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</summary>
     public TenantContext Tenant { get; init; }
-
-    /// <summary>Required safe audit metadata describing who requested the reset.</summary>
-    public AuditContext Audit { get; }
 
     /// <summary>Optional provider-neutral, display-safe reason recorded with the reset event. Do not include secrets, tokens, or credentials.</summary>
     public string? Reason { get; init; }

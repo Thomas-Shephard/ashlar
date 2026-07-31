@@ -46,11 +46,6 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
         {
             return Result.Failure<ResetAccountLockoutResult>(reasonFailure);
         }
-        if (request.Audit.ActorUserId != actor.ActorUserId)
-        {
-            await _boundary.RecordFailureAsync(actor, request.Tenant, false, AccountSecurityOperation.ResetAccountLockout);
-            return Result.Failure<ResetAccountLockoutResult>(AshlarFailureCodes.ValidationError);
-        }
         if (await _boundary.AuthorizeAsync(actor, request.Tenant, false, userId,
                 AccountSecurityOperation.ResetAccountLockout, cancellationToken, provider) is { } authorizationFailure)
             return Result.Failure<ResetAccountLockoutResult>(authorizationFailure);
@@ -64,7 +59,7 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         var reset = existing is not null && await _repository.ResetAsync(userId, tenantId, provider, cancellationToken);
-        await RecordResetAsync(userId, tenantId, provider, reset, request, cancellationToken);
+        await RecordResetAsync(userId, tenantId, provider, reset, request, actor.Audit, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         var status = reset ? AccountLockoutResetStatus.Reset : AccountLockoutResetStatus.NotFound;
@@ -169,6 +164,7 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
         AuthenticationProviderKey provider,
         bool lockoutStateCleared,
         ResetAccountLockoutRequest request,
+        AuditContext audit,
         CancellationToken cancellationToken)
     {
         var properties = new Dictionary<string, string>
@@ -193,7 +189,7 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
             Outcome = SecurityEventOutcomes.Success,
             UserId = userId,
             TenantId = tenantId,
-            Audit = request.Audit,
+            Audit = audit,
             Provider = provider,
             Properties = properties
         }, cancellationToken);

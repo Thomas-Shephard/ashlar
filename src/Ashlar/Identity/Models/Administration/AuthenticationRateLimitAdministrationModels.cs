@@ -1,5 +1,3 @@
-using Ashlar.Auditing;
-
 namespace Ashlar.Identity.Models.Administration;
 
 /// <summary>
@@ -155,11 +153,10 @@ public sealed record AuthenticationRateLimitBucketLookupRequest(string BucketId,
 /// </summary>
 /// <param name="BucketId">Opaque bucket identifier returned by search.</param>
 /// <param name="Purpose">Purpose that scopes the bucket identifier.</param>
-/// <param name="Audit">Required audit context for the operator or calling workflow.</param>
 /// <remarks>
 /// The administration service enforces actor session, proof, scope, host authorization, and durable security-event recording before executing this operation.
 /// </remarks>
-public sealed record ResetAuthenticationRateLimitBucketRequest(string BucketId, string Purpose, AuditContext Audit)
+public sealed record ResetAuthenticationRateLimitBucketRequest(string BucketId, string Purpose)
 {
     /// <summary>
     /// Throws when the bucket reset request is not safe to execute.
@@ -170,7 +167,6 @@ public sealed record ResetAuthenticationRateLimitBucketRequest(string BucketId, 
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.BucketId);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Purpose);
-        ArgumentNullException.ThrowIfNull(request.Audit);
     }
 }
 
