@@ -195,7 +195,8 @@ internal static class PasskeyEndpoints
         var proof = httpContext.CreateFreshMfaProof(httpContext.RequestServices.GetRequiredService<StepUpAuthenticationService>(), SelfServicePasskeyManagementRequirement, IPasskeyService.ManagementProofPurpose);
         if (!proof.Succeeded || proof.Value == null) return Results.Forbid();
 
-        var result = await passkeys.ListAsync(new ListPasskeysRequest(user.GetAshlarUserId(), httpContext.ToTenantContext(), sessionId, proof.Value, httpContext.ToAuditContext()), cancellationToken);
+        var actor = new AccountSecurityActorContext(user.GetAshlarUserId(), httpContext.ToTenantContext(), sessionId, proof.Value, httpContext.ToAuditContext());
+        var result = await passkeys.ListAsync(actor, cancellationToken);
         return result.Succeeded ? Results.Ok(result.Value) : Results.Forbid();
     }
 
@@ -205,7 +206,8 @@ internal static class PasskeyEndpoints
         var proof = httpContext.CreateFreshMfaProof(httpContext.RequestServices.GetRequiredService<StepUpAuthenticationService>(), SelfServicePasskeyManagementRequirement, IPasskeyService.ManagementProofPurpose);
         if (!proof.Succeeded || proof.Value == null) return Results.Forbid();
 
-        var result = await passkeys.RenameAsync(new RenamePasskeyRequest(user.GetAshlarUserId(), httpContext.ToTenantContext(), sessionId, proof.Value, credentialId, request.DisplayName ?? "Passkey", httpContext.ToAuditContext()), cancellationToken);
+        var actor = new AccountSecurityActorContext(user.GetAshlarUserId(), httpContext.ToTenantContext(), sessionId, proof.Value, httpContext.ToAuditContext());
+        var result = await passkeys.RenameAsync(actor, new RenamePasskeyRequest(credentialId, request.DisplayName ?? "Passkey"), cancellationToken);
         return result.Succeeded ? Results.Ok() : Results.BadRequest(SampleResultErrors.From(result));
     }
 
@@ -215,7 +217,8 @@ internal static class PasskeyEndpoints
         var proof = httpContext.CreateFreshMfaProof(httpContext.RequestServices.GetRequiredService<StepUpAuthenticationService>(), SelfServicePasskeyManagementRequirement, IPasskeyService.ManagementProofPurpose);
         if (!proof.Succeeded || proof.Value == null) return Results.Forbid();
 
-        var result = await passkeys.RevokeAsync(new RevokePasskeyRequest(user.GetAshlarUserId(), httpContext.ToTenantContext(), sessionId, proof.Value, credentialId, httpContext.ToAuditContext()), cancellationToken);
+        var actor = new AccountSecurityActorContext(user.GetAshlarUserId(), httpContext.ToTenantContext(), sessionId, proof.Value, httpContext.ToAuditContext());
+        var result = await passkeys.RevokeAsync(actor, new RevokePasskeyRequest(credentialId), cancellationToken);
         return result.Succeeded ? Results.NoContent() : Results.BadRequest(SampleResultErrors.From(result));
     }
 
