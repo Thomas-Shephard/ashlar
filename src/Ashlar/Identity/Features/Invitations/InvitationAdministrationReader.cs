@@ -19,13 +19,24 @@ internal sealed class InvitationAdministrationReader(IInvitationRepository repos
             return Result.Failure<InvitationSearchResult>(authorizationFailure);
 
         var limit = Math.Min(request.Limit, InvitationAdministrationService.MaximumLimit);
-        var invitations = await _repository.SearchInvitationsAsync(request with { Limit = limit + 1 }, _timeProvider.GetUtcNow(), cancellationToken);
-        if (invitations.Any(invitation => !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants, invitation.TenantId)
-            || request.Email != null && !string.Equals(invitation.DisplayEmail, request.Email, StringComparison.OrdinalIgnoreCase)
-            || request.EmailQuery != null && !invitation.DisplayEmail.Contains(request.EmailQuery, StringComparison.OrdinalIgnoreCase)))
+        List<InvitationAdministrationSummary> invitations;
+        try
+        {
+            invitations = (await _repository.SearchInvitationsAsync(request with { Limit = limit + 1 }, _timeProvider.GetUtcNow(), cancellationToken)
+                ?? throw new InvalidOperationException("The invitation administration provider returned a null result.")).ToList();
+        }
+        catch
         {
             await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchInvitations);
-            return Result.Failure<InvitationSearchResult>(AshlarFailureCodes.ValidationError);
+            throw;
+        }
+        if (invitations.Any(invitation => invitation is null || !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants, invitation.TenantId)
+            || request.Email != null && !string.Equals(invitation.DisplayEmail, request.Email, StringComparison.OrdinalIgnoreCase)
+            || request.EmailQuery != null && (invitation.DisplayEmail is null
+                || !invitation.DisplayEmail.Contains(request.EmailQuery, StringComparison.OrdinalIgnoreCase))))
+        {
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchInvitations);
+            throw new InvalidOperationException("The invitation administration provider returned a result outside the authorized scope.");
         }
         await _boundary.RecordSuccessAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchInvitations);
         return Result.Success(new InvitationSearchResult(invitations.Take(limit).ToList().AsReadOnly(), limit, request.Offset, invitations.Count > limit));
@@ -39,7 +50,16 @@ internal sealed class InvitationAdministrationReader(IInvitationRepository repos
                 AccountSecurityOperation.ReadInvitation, cancellationToken) is { } authorizationFailure)
             return Result.Failure<InvitationAdministrationSummary>(authorizationFailure);
 
-        var invitation = await _repository.GetInvitationAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
+        InvitationAdministrationSummary? invitation;
+        try
+        {
+            invitation = await _repository.GetInvitationAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
+        }
+        catch
+        {
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadInvitation);
+            throw;
+        }
         if (invitation == null || invitation.Id != request.InvitationId || !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants, invitation.TenantId))
         {
             await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadInvitation);

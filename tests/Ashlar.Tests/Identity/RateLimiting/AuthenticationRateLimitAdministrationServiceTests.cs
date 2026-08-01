@@ -66,14 +66,17 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     [Test]
     public async Task GetBucketAsyncReturnsNotFoundForMissingBucket()
     {
-        var service = CreateReader(new RecordingRepository { BucketExists = false });
+        var boundary = new AdminReadTestBoundary(Now);
+        var service = new AuthenticationRateLimitAdministrationReader(new RecordingRepository { BucketExists = false },
+            boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider);
 
-        var result = await service.GetBucketAsync(ReadBoundary.Actor, OperationalAdministrationScope.Global, new AuthenticationRateLimitBucketLookupRequest("bucket", "login"));
+        var result = await service.GetBucketAsync(boundary.Actor, OperationalAdministrationScope.Global, new AuthenticationRateLimitBucketLookupRequest("bucket", "login"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureDetails?.Code, Is.EqualTo(AshlarFailureCodes.RateLimitBucketNotFound));
+            Assert.That(boundary.Sink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
         }
     }
 
@@ -105,22 +108,77 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         };
         var denied = new AdminReadTestBoundary(Now, authorized: false);
         var deniedReader = new AuthenticationRateLimitAdministrationReader(mismatchedSearch, denied.Sessions, denied.Authorizer, denied.Sink, denied.TimeProvider);
+        var hostileBoundary = new AdminReadTestBoundary(Now);
+        var hostileReader = new AuthenticationRateLimitAdministrationReader(mismatchedSearch, hostileBoundary.Sessions,
+            hostileBoundary.Authorizer, hostileBoundary.Sink, hostileBoundary.TimeProvider);
 
         var missingScope = await CreateReader(mismatchedSearch).SearchBucketsAsync(ReadBoundary.Actor, OperationalAdministrationScope.Unspecified, new());
         var invalidScope = await CreateReader(mismatchedSearch).GetBucketAsync(ReadBoundary.Actor, (OperationalAdministrationScope)99, new("bucket", "login"));
         var deniedResult = await deniedReader.SearchBucketsAsync(denied.Actor, OperationalAdministrationScope.Global, new());
         var deniedLookup = await deniedReader.GetBucketAsync(denied.Actor, OperationalAdministrationScope.Global, new("bucket", "login"));
-        var searchMismatch = await CreateReader(mismatchedSearch).SearchBucketsAsync(ReadBoundary.Actor, OperationalAdministrationScope.Global, new() { Purpose = "login" });
+        Assert.ThrowsAsync<InvalidOperationException>(() => hostileReader.SearchBucketsAsync(hostileBoundary.Actor, OperationalAdministrationScope.Global, new() { Purpose = "login" }));
+        mismatchedSearch.SearchResults = [null!];
+        Assert.ThrowsAsync<InvalidOperationException>(() => hostileReader.SearchBucketsAsync(hostileBoundary.Actor, OperationalAdministrationScope.Global, new()));
         var idMismatch = await CreateReader(mismatchedLookup).GetBucketAsync(ReadBoundary.Actor, OperationalAdministrationScope.Global, new("bucket", "other"));
         mismatchedLookup.BucketResult = mismatchedLookup.BucketResult with { BucketId = "bucket", Purpose = "other" };
         var purposeMismatch = await CreateReader(mismatchedLookup).GetBucketAsync(ReadBoundary.Actor, OperationalAdministrationScope.Global, new("bucket", "login"));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new[] { missingScope.Succeeded, invalidScope.Succeeded, deniedResult.Succeeded, deniedLookup.Succeeded, searchMismatch.Succeeded, idMismatch.Succeeded, purposeMismatch.Succeeded }, Is.All.False);
-            Assert.That(mismatchedSearch.SearchCalls, Is.EqualTo(1));
+            Assert.That(new[] { missingScope.Succeeded, invalidScope.Succeeded, deniedResult.Succeeded, deniedLookup.Succeeded, idMismatch.Succeeded, purposeMismatch.Succeeded }, Is.All.False);
+            Assert.That(mismatchedSearch.SearchCalls, Is.EqualTo(2));
             Assert.That(mismatchedSearch.GetCalls, Is.Zero);
+            Assert.That(hostileBoundary.Sink.Events.Select(item => item.Outcome), Is.All.EqualTo(SecurityEventOutcomes.Failure));
+            Assert.That(hostileBoundary.Sink.Events.Select(item => item.Properties!["operation"]),
+                Is.All.EqualTo(nameof(AccountSecurityOperation.SearchAuthenticationRateLimitBuckets)));
         }
+    }
+
+    [Test]
+    public void ReaderRepositoryFailuresAreAuditedAndRethrown()
+    {
+        var exception = new IOException("provider failed");
+        var repository = new Mock<IAuthenticationRateLimitAdministrationReaderRepository>();
+        repository.Setup(candidate => candidate.SearchBucketsAsync(It.IsAny<SearchAuthenticationRateLimitBucketsRequest>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ThrowsAsync(exception);
+        repository.Setup(candidate => candidate.GetBucketAsync(It.IsAny<AuthenticationRateLimitBucketLookupRequest>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ThrowsAsync(exception);
+        var boundary = new AdminReadTestBoundary(Now);
+        var reader = new AuthenticationRateLimitAdministrationReader(repository.Object, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider);
+
+        var search = Assert.ThrowsAsync<IOException>(() => reader.SearchBucketsAsync(boundary.Actor, OperationalAdministrationScope.Global, new()));
+        var lookup = Assert.ThrowsAsync<IOException>(() => reader.GetBucketAsync(boundary.Actor, OperationalAdministrationScope.Global, new("bucket", "login")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(search, Is.SameAs(exception));
+            Assert.That(lookup, Is.SameAs(exception));
+            Assert.That(boundary.Sink.Events, Has.Count.EqualTo(2));
+            Assert.That(boundary.Sink.Events.Select(item => item.Outcome), Is.All.EqualTo(SecurityEventOutcomes.Failure));
+            Assert.That(boundary.Sink.Events.Select(item => item.Properties!["operation"]),
+                Is.EqualTo(new[] { nameof(AccountSecurityOperation.SearchAuthenticationRateLimitBuckets), nameof(AccountSecurityOperation.ReadAuthenticationRateLimitBucket) }));
+        }
+
+        repository.Setup(candidate => candidate.SearchBucketsAsync(It.IsAny<SearchAuthenticationRateLimitBucketsRequest>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AuthenticationRateLimitBucketSummary>)null!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Assert.ThrowsAsync<InvalidOperationException>(() => reader.SearchBucketsAsync(boundary.Actor, OperationalAdministrationScope.Global, new())), Is.Not.Null);
+            Assert.That(boundary.Sink.Events.Last().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+        }
+
+        var results = new Mock<IReadOnlyList<AuthenticationRateLimitBucketSummary>>();
+        results.Setup(candidate => candidate.GetEnumerator()).Throws(exception);
+        repository.Setup(candidate => candidate.SearchBucketsAsync(It.IsAny<SearchAuthenticationRateLimitBucketsRequest>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(results.Object);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Assert.ThrowsAsync<IOException>(() => reader.SearchBucketsAsync(boundary.Actor, OperationalAdministrationScope.Global, new())), Is.SameAs(exception));
+            Assert.That(boundary.Sink.Events.Last().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+        }
+
+        var auditException = new IOException("audit failed");
+        var sink = new Mock<IPersistentSecurityEventSink>();
+        sink.Setup(candidate => candidate.RecordAsync(It.IsAny<AshlarSecurityEvent>(), It.IsAny<CancellationToken>())).ThrowsAsync(auditException);
+        var failClosedReader = new AuthenticationRateLimitAdministrationReader(repository.Object, boundary.Sessions, boundary.Authorizer, sink.Object, boundary.TimeProvider);
+        Assert.That(Assert.ThrowsAsync<IOException>(() => failClosedReader.SearchBucketsAsync(boundary.Actor, OperationalAdministrationScope.Global, new())), Is.SameAs(auditException));
     }
 
     [Test]
@@ -180,9 +238,11 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     public async Task GlobalOperationalRequestsStillWork()
     {
         var repository = new RecordingRepository { ResetResult = true };
+        var boundary = new AdminReadTestBoundary(Now);
+        var reader = new AuthenticationRateLimitAdministrationReader(repository, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider);
 
-        var search = await CreateReader(repository).SearchBucketsAsync(ReadBoundary.Actor, OperationalAdministrationScope.Global, new());
-        var lookup = await CreateReader(repository).GetBucketAsync(ReadBoundary.Actor, OperationalAdministrationScope.Global, new("bucket", "login"));
+        var search = await reader.SearchBucketsAsync(boundary.Actor, OperationalAdministrationScope.Global, new());
+        var lookup = await reader.GetBucketAsync(boundary.Actor, OperationalAdministrationScope.Global, new("bucket", "login"));
         var reset = await CreateMutation(repository).ResetBucketAsync(MutationBoundary.Actor, OperationalAdministrationScope.Global,
             new("bucket", "login"));
 
@@ -192,6 +252,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
             Assert.That(repository.SearchCalls, Is.EqualTo(1));
             Assert.That(repository.GetCalls, Is.EqualTo(2));
             Assert.That(repository.ResetCalls, Is.EqualTo(1));
+            Assert.That(boundary.Sink.Events.Select(item => item.Outcome), Is.All.EqualTo(SecurityEventOutcomes.Success));
         }
     }
 

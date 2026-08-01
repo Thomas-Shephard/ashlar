@@ -78,34 +78,88 @@ internal sealed class AccountLockoutAdministrationServiceTests
         var wrongTenant = CreateRecord(UserId, Guid.NewGuid(), provider);
         var wrongUser = CreateRecord(Guid.NewGuid(), TenantId, provider);
         var wrongProvider = CreateRecord(UserId, TenantId, new AuthenticationProviderKey(ProviderType.OAuth, "github"));
+        var boundary = new AdminReadTestBoundary(Now);
 
-        async Task<Result<AccountLockoutSearchResult>> Search(AccountLockoutRecord record)
+        Task Search(AccountLockoutRecord record)
         {
             var repository = new Mock<IAccountLockoutRepository>();
             repository.Setup(candidate => candidate.SearchAsync(It.IsAny<SearchAccountLockoutsRequest>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([record]);
-            return await CreateRawReader(repository.Object, _timeProvider).SearchLockoutsAsync(ReadBoundary.Actor, request);
+            return new AccountLockoutAdministrationReader(repository.Object, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider)
+                .SearchLockoutsAsync(boundary.Actor, request);
         }
 
-        var tenantResult = await Search(wrongTenant);
-        var userResult = await Search(wrongUser);
-        var providerResult = await Search(wrongProvider);
+        Assert.ThrowsAsync<InvalidOperationException>(() => Search(wrongTenant));
+        Assert.ThrowsAsync<InvalidOperationException>(() => Search(wrongUser));
+        Assert.ThrowsAsync<InvalidOperationException>(() => Search(wrongProvider));
+        Assert.ThrowsAsync<InvalidOperationException>(() => Search(null!));
 
         var lookupRepository = new Mock<IAccountLockoutRepository>();
         lookupRepository.Setup(repository => repository.GetAsync(UserId, TenantId, provider, It.IsAny<CancellationToken>())).ReturnsAsync(wrongUser);
-        var lookup = await CreateRawReader(lookupRepository.Object, _timeProvider).GetLockoutStatusAsync(
-            ReadBoundary.Actor, UserId, provider, new(new TenantContext(TenantId)));
+        var reader = new AccountLockoutAdministrationReader(lookupRepository.Object, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider);
+        var lookup = await reader.GetLockoutStatusAsync(boundary.Actor, UserId, provider, new(new TenantContext(TenantId)));
         lookupRepository.Setup(repository => repository.GetAsync(UserId, TenantId, provider, It.IsAny<CancellationToken>())).ReturnsAsync(wrongTenant);
-        var lookupTenant = await CreateRawReader(lookupRepository.Object, _timeProvider).GetLockoutStatusAsync(
-            ReadBoundary.Actor, UserId, provider, new(new TenantContext(TenantId)));
+        var lookupTenant = await reader.GetLockoutStatusAsync(boundary.Actor, UserId, provider, new(new TenantContext(TenantId)));
         lookupRepository.Setup(repository => repository.GetAsync(UserId, TenantId, provider, It.IsAny<CancellationToken>())).ReturnsAsync(wrongProvider);
-        var lookupProvider = await CreateRawReader(lookupRepository.Object, _timeProvider).GetLockoutStatusAsync(
-            ReadBoundary.Actor, UserId, provider, new(new TenantContext(TenantId)));
+        var lookupProvider = await reader.GetLockoutStatusAsync(boundary.Actor, UserId, provider, new(new TenantContext(TenantId)));
         lookupRepository.Setup(repository => repository.GetAsync(UserId, null, provider, It.IsAny<CancellationToken>())).ReturnsAsync(wrongTenant);
-        var globalLookupTenant = await CreateRawReader(lookupRepository.Object, _timeProvider).GetLockoutStatusAsync(
-            ReadBoundary.Actor, UserId, provider, new(TenantContext.Global));
+        var globalLookupTenant = await reader.GetLockoutStatusAsync(boundary.Actor, UserId, provider, new(TenantContext.Global));
 
-        Assert.That(new[] { tenantResult.Succeeded, userResult.Succeeded, providerResult.Succeeded, lookup.Succeeded, lookupTenant.Succeeded, lookupProvider.Succeeded, globalLookupTenant.Succeeded }, Is.All.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new[] { lookup.Succeeded, lookupTenant.Succeeded, lookupProvider.Succeeded, globalLookupTenant.Succeeded }, Is.All.False);
+            Assert.That(boundary.Sink.Events, Has.Count.EqualTo(8));
+            Assert.That(boundary.Sink.Events.Select(item => item.Outcome), Is.All.EqualTo(SecurityEventOutcomes.Failure));
+            Assert.That(boundary.Sink.Events.Take(4).Select(item => item.Properties!["operation"]),
+                Is.All.EqualTo(nameof(AccountSecurityOperation.SearchAccountLockouts)));
+        }
+    }
+
+    [Test]
+    public void ReaderRepositoryFailuresAreAuditedAndRethrown()
+    {
+        var exception = new IOException("provider failed");
+        var repository = new Mock<IAccountLockoutRepository>();
+        repository.Setup(candidate => candidate.SearchAsync(It.IsAny<SearchAccountLockoutsRequest>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ThrowsAsync(exception);
+        repository.Setup(candidate => candidate.GetAsync(UserId, TenantId, AuthenticationProviderKey.Local, It.IsAny<CancellationToken>())).ThrowsAsync(exception);
+        var boundary = new AdminReadTestBoundary(Now);
+        var reader = new AccountLockoutAdministrationReader(repository.Object, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider);
+
+        var search = Assert.ThrowsAsync<IOException>(() => reader.SearchLockoutsAsync(boundary.Actor, new() { Tenant = new(TenantId) }));
+        var lookup = Assert.ThrowsAsync<IOException>(() => reader.GetLockoutStatusAsync(boundary.Actor, UserId, AuthenticationProviderKey.Local, new(new(TenantId))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(search, Is.SameAs(exception));
+            Assert.That(lookup, Is.SameAs(exception));
+            Assert.That(boundary.Sink.Events, Has.Count.EqualTo(2));
+            Assert.That(boundary.Sink.Events.Select(item => item.Outcome), Is.All.EqualTo(SecurityEventOutcomes.Failure));
+            Assert.That(boundary.Sink.Events.Select(item => item.Properties!["operation"]),
+                Is.EqualTo(new[] { nameof(AccountSecurityOperation.SearchAccountLockouts), nameof(AccountSecurityOperation.ReadAccountLockout) }));
+        }
+
+        repository.Setup(candidate => candidate.SearchAsync(It.IsAny<SearchAccountLockoutsRequest>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AccountLockoutRecord>)null!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Assert.ThrowsAsync<InvalidOperationException>(() => reader.SearchLockoutsAsync(boundary.Actor, new() { Tenant = new(TenantId) })), Is.Not.Null);
+            Assert.That(boundary.Sink.Events.Last().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+        }
+
+        var results = new Mock<IReadOnlyList<AccountLockoutRecord>>();
+        results.Setup(candidate => candidate.GetEnumerator()).Throws(exception);
+        repository.Setup(candidate => candidate.SearchAsync(It.IsAny<SearchAccountLockoutsRequest>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(results.Object);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Assert.ThrowsAsync<IOException>(() => reader.SearchLockoutsAsync(boundary.Actor, new() { Tenant = new(TenantId) })), Is.SameAs(exception));
+            Assert.That(boundary.Sink.Events.Last().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+        }
+
+        var auditException = new IOException("audit failed");
+        var sink = new Mock<IPersistentSecurityEventSink>();
+        sink.Setup(candidate => candidate.RecordAsync(It.IsAny<AshlarSecurityEvent>(), It.IsAny<CancellationToken>())).ThrowsAsync(auditException);
+        var failClosedReader = new AccountLockoutAdministrationReader(repository.Object, boundary.Sessions, boundary.Authorizer, sink.Object, boundary.TimeProvider);
+        Assert.That(Assert.ThrowsAsync<IOException>(() => failClosedReader.SearchLockoutsAsync(boundary.Actor, new() { Tenant = new(TenantId) })), Is.SameAs(auditException));
     }
 
     [Test]
@@ -142,7 +196,8 @@ internal sealed class AccountLockoutAdministrationServiceTests
     public async Task ReadersAndResetRejectHostAuthorizationDenial()
     {
         var deniedRead = new AdminReadTestBoundary(Now, authorized: false);
-        var reader = new AccountLockoutAdministrationReader(_repository, deniedRead.Sessions, deniedRead.Authorizer, deniedRead.Sink, deniedRead.TimeProvider);
+        var readRepository = new Mock<IAccountLockoutRepository>();
+        var reader = new AccountLockoutAdministrationReader(readRepository.Object, deniedRead.Sessions, deniedRead.Authorizer, deniedRead.Sink, deniedRead.TimeProvider);
         var search = await reader.SearchLockoutsAsync(deniedRead.Actor, new() { IncludeAllTenants = true });
         var lookup = await reader.GetLockoutStatusAsync(deniedRead.Actor, UserId, AuthenticationProviderKey.Local, new(TenantContext.Global));
 
@@ -154,6 +209,26 @@ internal sealed class AccountLockoutAdministrationServiceTests
             new(TenantContext.Global));
 
         Assert.That(new[] { search.Succeeded, lookup.Succeeded, reset.Succeeded }, Is.All.False);
+        readRepository.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public async Task SuccessfulReadsEmitSuccessAudits()
+    {
+        var boundary = new AdminReadTestBoundary(Now);
+        var reader = new AccountLockoutAdministrationReader(_repository, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider);
+
+        await reader.SearchLockoutsAsync(boundary.Actor, new() { IncludeAllTenants = true });
+        await reader.GetLockoutStatusAsync(boundary.Actor, UserId, AuthenticationProviderKey.Local, new(TenantContext.Global));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(boundary.Sink.Events.Select(item => item.Outcome), Is.All.EqualTo(SecurityEventOutcomes.Success));
+            Assert.That(boundary.Sink.Events.Select(item => item.Properties!["operation"]), Is.EqualTo(new[]
+            {
+                nameof(AccountSecurityOperation.SearchAccountLockouts), nameof(AccountSecurityOperation.ReadAccountLockout)
+            }));
+        }
     }
 
     [Test]
