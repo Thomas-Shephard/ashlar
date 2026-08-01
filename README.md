@@ -869,9 +869,9 @@ app.MapDelete("/api/sessions/{id:guid}", RevokeSessionForCurrentUserAsync)
     .RequireFreshMfaIfAvailable();
 ```
 
-Use `.RequireFreshMfa()` for high-risk operations that must not proceed without recent additional verification. Use `.RequireFreshMfaIfAvailable()` for lower-risk sensitive operations where users with no usable eligible factor should not be locked out. Conditional mode loads `IAccountSecurityService.GetUserSecurityPostureAsync`, matches usable `AdditionalVerificationFactors` against the configured eligible factors, and requires the same fresh session verification only when at least one eligible factor is available. If posture cannot be loaded safely, authorization is denied. The default conditional policy treats `totp`, `recovery_code`, and `passkey` as eligible; applications can configure custom factor strings through `AshlarStepUpOptions.AllowedFactors`.
+Use `.RequireFreshMfa()` for high-risk operations that must not proceed without recent additional verification. Use `.RequireFreshMfaIfAvailable()` for lower-risk sensitive operations where users with no usable eligible factor should not be locked out. Conditional mode loads `IAccountSecurityService.GetSecurityPostureAsync`, matches usable `AdditionalVerificationFactors` against the configured eligible factors, and requires the same fresh session verification only when at least one eligible factor is available. If posture cannot be loaded safely, authorization is denied. The default conditional policy treats `totp`, `recovery_code`, and `passkey` as eligible; applications can configure custom factor strings through `AshlarStepUpOptions.AllowedFactors`.
 
-ASP.NET Core step-up authorization requires the Ashlar session authentication handler to have validated the request and populated the current `AuthenticationSession` in `HttpContext.Items`. Ashlar-shaped claims are used only to verify that the current principal matches that validated session; claims alone are not sufficient for `.RequireFreshMfa()` or `.RequireFreshMfaIfAvailable()`. Conditional posture checks use the validated session's tenant context, and malformed or conflicting session, user, tenant, provider, factor, or timestamp claims deny authorization.
+ASP.NET Core step-up authorization requires the Ashlar session authentication handler to validate the request and populate the core-issued `ValidatedAuthenticationSession` capability in `HttpContext.Items`. Ashlar stores and consumes that capability, not a raw `AuthenticationSession`. Ashlar-shaped claims are used only to verify that the current principal matches that validated session; claims alone are not sufficient for `.RequireFreshMfa()` or `.RequireFreshMfaIfAvailable()`. Conditional posture checks use the validated session's tenant context, and malformed or conflicting session, user, tenant, provider, factor, or timestamp claims deny authorization.
 
 Conditional fresh MFA is weaker than strict fresh MFA because a user with no usable eligible factor is allowed through. It is an adaptive policy for lower-risk scenarios, not a replacement for strict step-up on administrator, recovery, credential reset, or other dangerous operations.
 
@@ -1052,7 +1052,7 @@ var sessions = await accountSecurityAdministration.RevokeSessionsAsync(request);
 The host authorizer receives the complete operation details, including provider or requested account state, and must authorize tenant, global, and all-tenant scopes separately. Ashlar validates actor/audit identity and the actor/session-bound fresh proof before calling the authorizer. Raw target-user mutation executors are internal infrastructure and are not available for route or job wiring.
 
 ### Admin Account Recovery
-`IAccountSecurityService` is read-only and exposes `GetUserSecurityPostureAsync`. Destructive administrator operations are available only through `IAccountSecurityAdministrationService` and its actor-bound request models.
+`IAccountSecurityService.GetSecurityPostureAsync` is a validated-session self-service read. Administrator reads and destructive operations use actor-bound administration APIs and request models.
 
 Available operations:
 
@@ -1060,7 +1060,7 @@ Available operations:
 - `RevokeSessionsAsync`: revokes all active sessions for a user.
 - `RevokeCredentialsAsync`: revokes active credentials for a specific provider key.
 - `ResetMfaAsync`: revokes configured TOTP credentials, recovery-code credentials, and remembered MFA devices.
-- `IAccountSecurityService.GetUserSecurityPostureAsync`: returns a non-secret `AccountSecurityPosture` read model containing active state, email verification state, primary sign-in methods, additional verification factors, policy readiness, missing required factors, readable credential inventory, active session count, and recent security event count when the persistence provider supports it.
+- `IAccountSecurityService.GetSecurityPostureAsync`: returns the validated current session's non-secret `AccountSecurityPosture` read model containing active state, email verification state, primary sign-in methods, additional verification factors, policy readiness, missing required factors, readable credential inventory, active session count, and recent security event count when the persistence provider supports it.
 
 Transitions to non-active states revoke active sessions and remembered MFA devices by default, but they do not revoke credentials. Transitions back to `Active` do not restore sessions, credentials, or remembered MFA devices. No-op state transitions report `UserChanged = false` and do not revoke sessions or remembered MFA devices. `AccountSecurityOperationResult` includes the previous and current account states, whether the user row changed, session and credential revocation counts, and the remembered MFA device revocation count when a remembered-device service is registered.
 
