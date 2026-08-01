@@ -1,23 +1,32 @@
 using Ashlar.Identity.Abstractions.Services;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
-using Ashlar.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Ashlar.ProviderContractTests.Identity.RateLimiting;
 
-internal abstract class AuthenticationRateLimitAdministrationContractTests : ProviderContractFixture
+/// <summary>Tests safe bucket search, filtering, paging, lookup, and reset behavior.</summary>
+public abstract class AuthenticationRateLimitAdministrationContractTests : ProviderContractFixture
 {
+    /// <summary>Current provider time used by administration assertions.</summary>
     protected abstract DateTimeOffset Now { get; }
 
+    /// <summary>Whether the provider exposes rate-limit reset behavior.</summary>
     protected virtual bool SupportsReset => true;
 
+    /// <summary>Advances the provider clock used for expiry decisions.</summary>
+    /// <param name="duration">Amount by which to advance provider time.</param>
     protected abstract void AdvanceTime(TimeSpan duration);
 
+    /// <summary>Adjusts requested time travel for provider clock precision.</summary>
+    /// <param name="duration">Amount by which to advance provider time.</param>
+    /// <returns>The duration the fixture should use for time travel.</returns>
     protected virtual TimeSpan TimeTravelDuration(TimeSpan duration) => duration;
 
+    /// <summary>Allowed precision difference after provider time travel.</summary>
     protected virtual TimeSpan TimeTravelTolerance => TimeSpan.Zero;
 
+    /// <summary>Verifies that bucket search combines purpose and blocked-status filters.</summary>
     [Test]
     public async Task SearchBucketsAsyncFiltersByPurposeAndStatus()
     {
@@ -58,6 +67,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         }
     }
 
+    /// <summary>Verifies that omitting purpose includes buckets from every purpose.</summary>
     [Test]
     public async Task SearchBucketsAsyncAllowsUnscopedPurposeBrowse()
     {
@@ -79,6 +89,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         }
     }
 
+    /// <summary>Verifies that date filtering occurs before buckets are stably paged.</summary>
     [Test]
     public async Task SearchBucketsAsyncAppliesDateFiltersAndStablePaging()
     {
@@ -120,6 +131,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         }
     }
 
+    /// <summary>Verifies that expiry filtering uses the requested comparison time.</summary>
     [Test]
     public async Task SearchBucketsAsyncFiltersExpiredBuckets()
     {
@@ -146,6 +158,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         }
     }
 
+    /// <summary>Verifies that bucket lookup returns its policy state without raw key material.</summary>
     [Test]
     public async Task GetBucketAsyncReturnsSafeLookup()
     {
@@ -174,6 +187,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         }
     }
 
+    /// <summary>Verifies that reset deletes a stored bucket once and reports later absence.</summary>
     [Test]
     public async Task ResetBucketAsyncDeletesExistingBucketAndReportsMissingBucket()
     {
@@ -215,6 +229,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         }
     }
 
+    /// <summary>Verifies that bucket search exposes hashes instead of raw rate-limit keys.</summary>
     [Test]
     public async Task SearchBucketsAsyncDoesNotExposeRawSensitiveInputs()
     {
@@ -239,23 +254,25 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
         }
     }
 
-    protected async Task<AccountSecurityActorContext> CreateActorAsync(IServiceProvider services, string purpose)
+    private protected static async Task<AccountSecurityActorContext> CreateActorAsync(IServiceProvider services, string purpose)
     {
         var users = services.GetService<IUserRepository>();
         var user = users is null
             ? new AshlarUser { Id = Guid.NewGuid(), DisplayEmail = $"{Guid.NewGuid():N}@example.test", AccountState = UserAccountState.Active }
             : await CreateUserAsync(users);
+        var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var proofNow = services.GetRequiredService<TimeProvider>().GetUtcNow();
         var session = new AuthenticationSession
         {
             Id = Guid.NewGuid(),
             UserId = user.Id,
-            TokenHash = Guid.NewGuid().ToString("N"),
-            CreatedAt = Now,
-            ExpiresAt = Now.AddYears(1)
+            TokenHash = HashToken(services, token),
+            CreatedAt = proofNow,
+            AdditionalVerificationAt = proofNow - TimeSpan.FromSeconds(1),
+            ExpiresAt = proofNow.AddYears(1)
         };
-        await GetAuthenticationSessionRepository(services).CreateSessionAsync(session);
         return new AccountSecurityActorContext(user.Id, TenantContext.Global, session.Id,
-            FreshMfaVerificationProofFactory.Create(user.Id, null, session.Id, Now, Now.AddMinutes(5), purpose),
+            await CreateFreshMfaProofAsync(services, session, token, purpose),
             new AuditContext(user.Id));
     }
 

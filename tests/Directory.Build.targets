@@ -1,5 +1,7 @@
 <Project>
 
+  <Import Project="..\Directory.Build.targets" />
+
   <ItemGroup Condition="'$(IsTestProject)' == 'true'">
     <PackageReference Include="coverlet.MTP" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

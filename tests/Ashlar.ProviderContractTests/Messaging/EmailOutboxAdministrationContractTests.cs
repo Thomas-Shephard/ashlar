@@ -1,18 +1,26 @@
 using Ashlar.Messaging;
 using Microsoft.Extensions.DependencyInjection;
-using Ashlar.Testing;
 using Ashlar.Identity.Abstractions.Services;
 
 namespace Ashlar.ProviderContractTests.Messaging;
 
-internal abstract class EmailOutboxAdministrationContractTests : ProviderContractFixture
+/// <summary>Verifies safe browsing, sensitive-data redaction, and valid retry and discard transitions.</summary>
+public abstract class EmailOutboxAdministrationContractTests : ProviderContractFixture
 {
+    /// <summary>Fixed timestamp used to create deterministic provider rows.</summary>
     protected static readonly DateTimeOffset AdminNow = new(2026, 6, 14, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>Persists the supplied provider-neutral email state and returns its identifier.</summary>
+    /// <param name="row">Provider-neutral state to persist before the assertion.</param>
+    /// <returns>The identifier assigned to the seeded row.</returns>
     protected abstract Task<Guid> SeedEmailOutboxAdminRowAsync(SeedEmailOutboxAdminRow row);
 
+    /// <summary>Reads delivery timing, lock, discard, and safe error state for the requested email.</summary>
+    /// <param name="id">Identifier of the seeded row.</param>
+    /// <returns>The persisted state of the requested row.</returns>
     protected abstract Task<EmailOutboxAdminRowState> ReadEmailOutboxAdminRowStateAsync(Guid id);
 
+    /// <summary>Returns stable public statuses and sanitized failure details through both search and lookup.</summary>
     [Test]
     public async Task SearchAndGetExposeSafeProviderNeutralProjection()
     {
@@ -45,6 +53,7 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
         }
     }
 
+    /// <summary>Hides recipient, subject, and secret-bearing failure text for sensitive messages.</summary>
     [Test]
     public async Task SensitiveSearchAndGetSuppressFailureAndMessageFields()
     {
@@ -76,6 +85,7 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
         }
     }
 
+    /// <summary>Transitions only terminal failures, clears stale delivery state, and keeps sensitive details hidden.</summary>
     [Test]
     public async Task RetryAndDiscardOperateOnlyOnTerminalFailedRows()
     {
@@ -187,21 +197,40 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
         string purpose = AccountSecurityActorContext.AdministrationReadProofPurpose)
     {
         var user = await CreateUserAsync(GetUserRepository(services));
+        var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
         var session = new AuthenticationSession
         {
             Id = Guid.NewGuid(),
             UserId = user.Id,
-            TokenHash = Guid.NewGuid().ToString("N"),
+            TokenHash = HashToken(services, token),
             CreatedAt = AdminNow,
+            AdditionalVerificationAt = AdminNow,
             ExpiresAt = AdminNow.AddYears(1)
         };
-        await GetAuthenticationSessionRepository(services).CreateSessionAsync(session);
         return new AccountSecurityActorContext(user.Id, TenantContext.Global, session.Id,
-            FreshMfaVerificationProofFactory.Create(user.Id, null, session.Id, AdminNow, AdminNow.AddMinutes(5),
-                purpose),
+            await CreateFreshMfaProofAsync(services, session, token, purpose),
             new AuditContext(user.Id, "203.0.113.9", "agent", "corr"));
     }
 
+    /// <summary>Provider-neutral state used to seed an email outbox administration row.</summary>
+    /// <param name="ToAddress">Email recipient.</param>
+    /// <param name="Subject">Email subject.</param>
+    /// <param name="TextBody">Plain-text body, if present.</param>
+    /// <param name="HtmlBody">HTML body, if present.</param>
+    /// <param name="Sensitivity">Data sensitivity classification.</param>
+    /// <param name="BodyProtection">Protection applied to the stored bodies.</param>
+    /// <param name="CreatedAt">Time the email was created.</param>
+    /// <param name="AvailableAt">Time the email becomes eligible for dispatch.</param>
+    /// <param name="SentAt">Successful-delivery time, if sent.</param>
+    /// <param name="FailedAt">Terminal failure time, if failed.</param>
+    /// <param name="DiscardedAt">Time further delivery was abandoned, if discarded.</param>
+    /// <param name="LockedBy">Worker holding the dispatch lock, if locked.</param>
+    /// <param name="LockedUntil">Time the dispatch lock expires, if locked.</param>
+    /// <param name="AttemptCount">Number of delivery attempts.</param>
+    /// <param name="LastError">Safe delivery failure detail, if present.</param>
+    /// <param name="FromAddress">Sender address, if present.</param>
+    /// <param name="ReplyToAddress">Reply-to address, if present.</param>
+    /// <param name="CcAddress">Carbon-copy recipient, if present.</param>
     protected sealed record SeedEmailOutboxAdminRow(
         string ToAddress,
         string Subject,
@@ -222,8 +251,21 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
         string? ReplyToAddress = "reply@example.com",
         string? CcAddress = "cc@example.com")
     {
+        /// <summary>Unique email identifier persisted with this seeded row.</summary>
         public Guid Id { get; } = Guid.NewGuid();
 
+        /// <summary>Creates a seeded email row with the supplied delivery state.</summary>
+        /// <param name="toAddress">Recipient stored with the seeded email.</param>
+        /// <param name="subject">Subject stored with the seeded email.</param>
+        /// <param name="textBody">Plain-text message body to persist.</param>
+        /// <param name="htmlBody">HTML message body to persist.</param>
+        /// <param name="createdAt">Creation time to persist.</param>
+        /// <param name="availableAt">Time from which the row is eligible for dispatch.</param>
+        /// <param name="sensitivity">Data sensitivity classification to persist.</param>
+        /// <param name="bodyProtection">Protection scheme recorded for stored bodies.</param>
+        /// <param name="lockedBy">Worker identifier holding the dispatch lock.</param>
+        /// <param name="lockedUntil">Time until which a worker owns the row.</param>
+        /// <returns>A pending email row descriptor.</returns>
         public static SeedEmailOutboxAdminRow Pending(
             string toAddress,
             string subject = "Subject",
@@ -254,11 +296,28 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
                 null);
         }
 
+        /// <summary>Creates a locked row for provider-state assertions.</summary>
+        /// <param name="toAddress">Recipient stored with the seeded email.</param>
+        /// <param name="lockedUntil">Time until which a worker owns the row.</param>
+        /// <param name="createdAt">Creation time to persist.</param>
+        /// <returns>A locked email row descriptor.</returns>
         public static SeedEmailOutboxAdminRow Locked(string toAddress, DateTimeOffset lockedUntil, DateTimeOffset? createdAt = null)
         {
             return Pending(toAddress, createdAt: createdAt, lockedBy: "worker", lockedUntil: lockedUntil);
         }
 
+        /// <summary>Creates a seeded email row with the supplied delivery state.</summary>
+        /// <param name="toAddress">Recipient stored with the seeded email.</param>
+        /// <param name="subject">Subject stored with the seeded email.</param>
+        /// <param name="textBody">Plain-text message body to persist.</param>
+        /// <param name="htmlBody">HTML message body to persist.</param>
+        /// <param name="createdAt">Creation time to persist.</param>
+        /// <param name="availableAt">Time from which the row is eligible for dispatch.</param>
+        /// <param name="failedAt">Terminal failure time.</param>
+        /// <param name="sensitivity">Data sensitivity classification to persist.</param>
+        /// <param name="bodyProtection">Protection scheme recorded for stored bodies.</param>
+        /// <param name="lastError">Safe persisted delivery failure detail.</param>
+        /// <returns>A failed email row descriptor.</returns>
         public static SeedEmailOutboxAdminRow Failed(
             string toAddress,
             string subject = "Subject",
@@ -289,22 +348,38 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
                 lastError);
         }
 
+        /// <summary>Creates a sent row for provider-state assertions.</summary>
+        /// <param name="toAddress">Recipient stored with the seeded email.</param>
+        /// <returns>A sent email row descriptor.</returns>
         public static SeedEmailOutboxAdminRow Sent(string toAddress)
         {
             return new SeedEmailOutboxAdminRow(toAddress, "Subject", "Body", null, nameof(EmailMessageSensitivity.Normal), nameof(EmailOutboxBodyProtection.None), AdminNow, AdminNow, AdminNow, null, null, null, null, 1, null);
         }
 
+        /// <summary>Creates a retryable row for provider-state assertions.</summary>
+        /// <param name="toAddress">Recipient stored with the seeded email.</param>
+        /// <returns>A retryable email row descriptor.</returns>
         public static SeedEmailOutboxAdminRow Retryable(string toAddress)
         {
             return new SeedEmailOutboxAdminRow(toAddress, "Subject", "Body", null, nameof(EmailMessageSensitivity.Normal), nameof(EmailOutboxBodyProtection.None), AdminNow, AdminNow, null, null, null, null, null, 1, null);
         }
 
+        /// <summary>Creates a discarded row for provider-state assertions.</summary>
+        /// <param name="toAddress">Recipient stored with the seeded email.</param>
+        /// <returns>A discarded email row descriptor.</returns>
         public static SeedEmailOutboxAdminRow Discarded(string toAddress)
         {
             return new SeedEmailOutboxAdminRow(toAddress, "Subject", "Body", null, nameof(EmailMessageSensitivity.Normal), nameof(EmailOutboxBodyProtection.None), AdminNow, AdminNow, null, AdminNow.AddMinutes(-1), AdminNow, null, null, 3, "discarded");
         }
     }
 
+    /// <summary>Provider state read back for email outbox admin row state assertions.</summary>
+    /// <param name="AvailableAt">Time the email becomes eligible for dispatch.</param>
+    /// <param name="FailedAt">Terminal failure time, if failed.</param>
+    /// <param name="DiscardedAt">Time further delivery was abandoned, if discarded.</param>
+    /// <param name="LockedBy">Worker holding the dispatch lock, if locked.</param>
+    /// <param name="LockedUntil">Time the dispatch lock expires, if locked.</param>
+    /// <param name="LastError">Safe delivery failure detail, if present.</param>
     protected sealed record EmailOutboxAdminRowState(
         DateTimeOffset AvailableAt,
         DateTimeOffset? FailedAt,

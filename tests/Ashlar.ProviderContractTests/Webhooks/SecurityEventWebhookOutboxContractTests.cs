@@ -1,17 +1,20 @@
-using Ashlar.Testing;
+using Ashlar.ProviderContractTests.Testing;
 using Ashlar.Identity.Abstractions.Services;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Ashlar.ProviderContracts.DependencyInjection;
 
 namespace Ashlar.ProviderContractTests.Webhooks;
 
-internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContractFixture
+/// <summary>Verifies safe browsing, state transitions, diagnostics, and atomic security-event fan-out.</summary>
+public abstract class SecurityEventWebhookOutboxContractTests : ProviderContractFixture
 {
     private const string ValidSecret = "0123456789abcdef0123456789abcdef";
 
+    /// <summary>Fixed timestamp used to create deterministic provider rows.</summary>
     protected static readonly DateTimeOffset Now = new(2026, 5, 24, 12, 0, 0, TimeSpan.Zero);
-    protected static readonly AccountSecurityActorTestContext Security = new(Now, IAccountSecurityAdministrationService.ProofPurpose);
+    private static readonly AccountSecurityActorTestContext Security = new(Now, IAccountSecurityAdministrationService.ProofPurpose);
     private static readonly AccountSecurityActorTestContext ReadSecurity = new(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
     private static readonly AshlarSecurityEventWebhookOutboxStatus[] ExpectedPagedStatuses =
     [
@@ -27,18 +30,32 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
             ?? throw new InvalidOperationException("The read security context must have a session."));
     }
 
+    /// <summary>Persists the supplied provider-neutral webhook delivery and returns its identifier.</summary>
+    /// <param name="row">Provider-neutral state to persist before the assertion.</param>
+    /// <returns>The identifier assigned to the seeded row.</returns>
     protected abstract Task<Guid> SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow row);
 
+    /// <summary>Reads scheduling, terminal, lock, and failure state for the requested webhook delivery.</summary>
+    /// <param name="id">Identifier of the seeded row.</param>
+    /// <returns>The persisted state of the requested row.</returns>
     protected abstract Task<WebhookOutboxRowState> ReadWebhookOutboxRowStateAsync(Guid id);
 
+    /// <summary>Counts every webhook delivery currently stored by the provider.</summary>
+    /// <returns>The number of webhook outbox rows.</returns>
     protected abstract Task<int> CountWebhookOutboxRowsAsync();
 
+    /// <summary>Counts every persisted security event, including events awaiting durable fan-out.</summary>
+    /// <returns>The number of persisted security events.</returns>
     protected abstract Task<int> CountSecurityEventRowsAsync();
 
+    /// <summary>Makes webhook enqueue fail inside the active transaction by removing its storage table.</summary>
+    /// <param name="serviceProvider">Scoped services participating in the contract operation.</param>
     protected abstract Task DropWebhookOutboxTableInCurrentTransactionAsync(IServiceProvider serviceProvider);
 
+    /// <summary>Provider assertion that storage rejects mutually exclusive sent and discarded states.</summary>
     protected abstract Task AssertSentAndDiscardedTerminalStateIsRejectedAsync();
 
+    /// <summary>Paginates stable public statuses and exposes only sanitized delivery failure details.</summary>
     [Test]
     public async Task BrowserListsProviderNeutralStatusesWithPaging()
     {
@@ -66,6 +83,7 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         }
     }
 
+    /// <summary>Transitions only terminal failures and clears obsolete locks and error state without corrupting other statuses.</summary>
     [Test]
     public async Task RetryAndDiscardOperateOnlyOnTerminalFailedRows()
     {
@@ -134,12 +152,14 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         }
     }
 
+    /// <summary>Prevents a delivery from being stored as both sent and discarded.</summary>
     [Test]
     public async Task SchemaRejectsSentAndDiscardedTerminalState()
     {
         await AssertSentAndDiscardedTerminalStateIsRejectedAsync();
     }
 
+    /// <summary>Classifies every delivery state and reports the actual oldest pending and failed timestamps.</summary>
     [Test]
     public async Task DiagnosticsAggregateProviderNeutralBucketsAndOldestTimestamps()
     {
@@ -171,6 +191,8 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         }
     }
 
+    /// <summary>Commits or discards an enqueued delivery with its surrounding Ashlar transaction.</summary>
+    /// <exception cref="System.InvalidOperationException">The fixture did not register a transaction provider.</exception>
     [Test]
     public async Task EnqueueParticipatesInAshlarTransactions()
     {
@@ -196,6 +218,8 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         Assert.That(await CountWebhookOutboxRowsAsync(), Is.EqualTo(1));
     }
 
+    /// <summary>Commits the protected mutation, audit event, and webhook delivery as one transaction.</summary>
+    /// <exception cref="System.InvalidOperationException">The fixture did not register a transaction provider.</exception>
     [Test]
     public async Task SecurityEventFanOutCommitsProtectedMutationAuditAndWebhookOutboxAtomically()
     {
@@ -222,6 +246,7 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         }
     }
 
+    /// <summary>Persists both the audit event and webhook delivery when fan-out owns the transaction.</summary>
     [Test]
     public async Task SecurityEventFanOutCommitsAuditAndWebhookOutboxAtomicallyWithoutAmbientTransaction()
     {
@@ -238,6 +263,8 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         }
     }
 
+    /// <summary>Leaves no mutation, audit event, or delivery behind when webhook enqueue fails inside a transaction.</summary>
+    /// <exception cref="System.InvalidOperationException">The fixture did not register a transaction provider.</exception>
     [Test]
     public async Task SecurityEventFanOutRollsBackProtectedMutationAndAuditWhenWebhookOutboxEnqueueFails()
     {
@@ -265,6 +292,8 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         }
     }
 
+    /// <summary>Leaves neither audit nor delivery rows when a durable fan-out participant fails.</summary>
+    /// <exception cref="System.InvalidOperationException">The fixture did not register a transaction provider.</exception>
     [Test]
     public async Task SecurityEventFanOutRollsBackAuditAndWebhookOutboxWhenDurableFanOutFailsWithoutAmbientTransaction()
     {
@@ -272,16 +301,21 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         var rawTransactionProvider = GetTransactionProvider(scope.ServiceProvider)
             ?? throw new InvalidOperationException("Transaction provider is not registered.");
         var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
-        var persistentSink = GetPersistentSecurityEventSink(scope.ServiceProvider);
-        var durableHandlers = scope.ServiceProvider.GetServices<IDurableSecurityEventFanOutHandler>().ToList();
-        durableHandlers.Add(new ThrowingDurableSecurityEventFanOutHandler());
-        var transactionProvider = DurableTransactionComposition.Create(
-            rawTransactionProvider,
-            new object[] { persistentSink }.Concat(durableHandlers.Cast<object>()).ToArray());
+        var persistentSink = new DelegatingPersistentSecurityEventSink(GetPersistentSecurityEventSink(scope.ServiceProvider));
+        var durableHandler = new CompositeDurableSecurityEventFanOutHandler(
+            [.. scope.ServiceProvider.GetServices<IDurableSecurityEventFanOutHandler>(), new ThrowingDurableSecurityEventFanOutHandler()]);
+        var services = new ServiceCollection();
+        services.AddAshlarDurableTransactionProvider<IAshlarTransactionProvider>("Contract rollback", _ => rawTransactionProvider);
+        services.AddAshlarProviderScoped<IAshlarTransactionProvider, IPersistentSecurityEventSink>("Contract rollback", _ => persistentSink);
+        services.AddAshlarProviderScoped<IAshlarTransactionProvider, IDurableSecurityEventFanOutHandler>("Contract rollback", _ => durableHandler);
+        services.AddAshlarDurableTransactionParticipant<IPersistentSecurityEventSink>();
+        services.AddAshlarDurableTransactionParticipant<IDurableSecurityEventFanOutHandler>();
+        using var composition = services.BuildServiceProvider();
+        var transactionProvider = composition.GetRequiredService<AshlarDurableTransactionProvider>();
         var sink = new SecurityEventFanOutSink(
             persistentSink,
             transactionProvider: transactionProvider,
-            durableHandlers: durableHandlers);
+            durableHandlers: [durableHandler]);
 
         Assert.That(
             async () => await sink.RecordAsync(CreateTransactionalSecurityEvent(user.Id)),
@@ -294,6 +328,8 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         }
     }
 
+    /// <summary>Rolls back the mutation, audit event, and deferred webhook delivery before commit.</summary>
+    /// <exception cref="System.InvalidOperationException">The fixture did not register a transaction provider.</exception>
     [Test]
     public async Task SecurityEventFanOutRollbackBeforeCommitDoesNotEnqueueWebhookOutboxRows()
     {
@@ -398,6 +434,38 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         }
     }
 
+    /// <summary>In-memory sessions used to authorize protected webhook operations.</summary>
+    protected static IAuthenticationSessionRepository SecuritySessions => Security.Sessions;
+
+    /// <summary>Controllable authorizer used by protected webhook operation tests.</summary>
+    protected static IAccountSecurityOperationAuthorizer SecurityAuthorizer => Security.Authorizer;
+
+    private sealed class DelegatingPersistentSecurityEventSink(IPersistentSecurityEventSink inner) : IPersistentSecurityEventSink
+    {
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default) =>
+            inner.RecordAsync(securityEvent, cancellationToken);
+    }
+
+    private sealed class CompositeDurableSecurityEventFanOutHandler(IReadOnlyList<IDurableSecurityEventFanOutHandler> handlers)
+        : IDurableSecurityEventFanOutHandler
+    {
+        public async Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            foreach (var handler in handlers) await handler.HandleAsync(securityEvent, cancellationToken);
+        }
+    }
+
+    /// <summary>Provider-neutral state used to seed a webhook outbox row.</summary>
+    /// <param name="EndpointName">Webhook endpoint that owns the delivery.</param>
+    /// <param name="CreatedAt">Time the delivery was created.</param>
+    /// <param name="AvailableAt">Time the delivery becomes eligible for dispatch.</param>
+    /// <param name="SentAt">Successful-delivery time, if sent.</param>
+    /// <param name="FailedAt">Terminal failure time, if failed.</param>
+    /// <param name="DiscardedAt">Time further delivery was abandoned, if discarded.</param>
+    /// <param name="LockedBy">Worker holding the dispatch lock, if locked.</param>
+    /// <param name="LockedUntil">Time the dispatch lock expires, if locked.</param>
+    /// <param name="AttemptCount">Number of delivery attempts.</param>
+    /// <param name="LastError">Safe delivery failure detail, if present.</param>
     protected sealed record SeedWebhookOutboxRow(
         string EndpointName,
         DateTimeOffset CreatedAt,
@@ -410,42 +478,77 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         int AttemptCount,
         string? LastError)
     {
+        /// <summary>Unique event identifier persisted with this seeded row.</summary>
         public Guid EventId { get; } = Guid.NewGuid();
 
+        /// <summary>Serialized event body persisted with this seeded row.</summary>
         public byte[] Body { get; } = Encoding.UTF8.GetBytes("{}");
 
+        /// <summary>Creates a pending row for provider-state assertions.</summary>
+        /// <param name="endpointName">Webhook endpoint that owns the seeded delivery.</param>
+        /// <param name="createdAt">Creation time to persist.</param>
+        /// <param name="availableAt">Time from which the row is eligible for dispatch.</param>
+        /// <returns>A pending row descriptor.</returns>
         public static SeedWebhookOutboxRow Pending(string endpointName, DateTimeOffset? createdAt = null, DateTimeOffset? availableAt = null)
         {
             return new SeedWebhookOutboxRow(endpointName, createdAt ?? Now, availableAt ?? Now, null, null, null, null, null, 0, null);
         }
 
+        /// <summary>Creates a locked row for provider-state assertions.</summary>
+        /// <param name="endpointName">Webhook endpoint that owns the seeded delivery.</param>
+        /// <param name="lockedUntil">Time until which a worker owns the row.</param>
+        /// <param name="createdAt">Creation time to persist.</param>
+        /// <returns>A locked row descriptor.</returns>
         public static SeedWebhookOutboxRow Locked(string endpointName, DateTimeOffset lockedUntil, DateTimeOffset? createdAt = null)
         {
             return new SeedWebhookOutboxRow(endpointName, createdAt ?? Now, Now, null, null, null, "worker", lockedUntil, 0, null);
         }
 
+        /// <summary>Creates a failed row for provider-state assertions.</summary>
+        /// <param name="endpointName">Webhook endpoint that owns the seeded delivery.</param>
+        /// <param name="failedAt">Terminal failure time.</param>
+        /// <param name="createdAt">Creation time to persist.</param>
+        /// <param name="lastError">Safe persisted delivery failure detail.</param>
+        /// <returns>A terminally failed row descriptor.</returns>
         public static SeedWebhookOutboxRow Failed(string endpointName, DateTimeOffset? failedAt = null, DateTimeOffset? createdAt = null, string? lastError = "failure")
         {
             var failureTime = failedAt ?? Now.AddMinutes(-1);
             return new SeedWebhookOutboxRow(endpointName, createdAt ?? Now, Now, null, failureTime, null, null, null, 3, lastError);
         }
 
+        /// <summary>Creates a sent row for provider-state assertions.</summary>
+        /// <param name="endpointName">Webhook endpoint that owns the seeded delivery.</param>
+        /// <returns>A sent row descriptor.</returns>
         public static SeedWebhookOutboxRow Sent(string endpointName)
         {
             return new SeedWebhookOutboxRow(endpointName, Now, Now, Now, null, null, null, null, 1, null);
         }
 
+        /// <summary>Creates a retryable row for provider-state assertions.</summary>
+        /// <param name="endpointName">Webhook endpoint that owns the seeded delivery.</param>
+        /// <returns>A retryable row descriptor.</returns>
         public static SeedWebhookOutboxRow Retryable(string endpointName)
         {
             return new SeedWebhookOutboxRow(endpointName, Now, Now, null, null, null, null, null, 1, null);
         }
 
+        /// <summary>Creates a discarded row for provider-state assertions.</summary>
+        /// <param name="endpointName">Webhook endpoint that owns the seeded delivery.</param>
+        /// <returns>A discarded row descriptor.</returns>
         public static SeedWebhookOutboxRow Discarded(string endpointName)
         {
             return new SeedWebhookOutboxRow(endpointName, Now, Now, null, Now.AddMinutes(-1), Now, null, null, 3, "discarded");
         }
     }
 
+    /// <summary>Provider state read back for webhook outbox row state assertions.</summary>
+    /// <param name="AvailableAt">Time the delivery becomes eligible for dispatch.</param>
+    /// <param name="SentAt">Successful-delivery time, if sent.</param>
+    /// <param name="FailedAt">Terminal failure time, if failed.</param>
+    /// <param name="DiscardedAt">Time further delivery was abandoned, if discarded.</param>
+    /// <param name="LockedBy">Worker holding the dispatch lock, if locked.</param>
+    /// <param name="LockedUntil">Time the dispatch lock expires, if locked.</param>
+    /// <param name="LastError">Safe delivery failure detail, if present.</param>
     protected sealed record WebhookOutboxRowState(
         DateTimeOffset AvailableAt,
         DateTimeOffset? SentAt,

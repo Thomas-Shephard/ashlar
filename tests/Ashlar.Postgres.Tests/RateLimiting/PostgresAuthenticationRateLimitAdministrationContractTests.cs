@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using Ashlar.Testing;
+using Ashlar.Identity.Models.AccountSecurity;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 
@@ -54,7 +55,7 @@ internal sealed class PostgresAuthenticationRateLimitAdministrationContractTests
     [Test]
     public async Task ResetRollsBackWhenDurableAuditFailsAfterDelete()
     {
-        await using var scope = CreateAsyncScope();
+        await using var scope = _database!.ServiceProvider.CreateAsyncScope();
         var services = scope.ServiceProvider;
         var actor = await CreateActorAsync(services, IAccountSecurityAdministrationService.ProofPurpose);
         actor = new Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext(actor.ActorUserId, actor.ActorTenant, actor.CurrentSessionId,
@@ -76,6 +77,21 @@ internal sealed class PostgresAuthenticationRateLimitAdministrationContractTests
 
         Assert.That(await repository.GetBucketAsync(
             new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, bucket.Purpose), Now), Is.Not.Null);
+    }
+
+    private static async Task<AccountSecurityActorContext> CreateActorAsync(IServiceProvider services, string purpose)
+    {
+        var context = new AccountSecurityActorTestContext(
+            services.GetRequiredService<TimeProvider>().GetUtcNow(), purpose);
+        await services.GetRequiredService<IUserRepository>().CreateUserAsync(new AshlarUser
+        {
+            Id = context.Actor.ActorUserId,
+            DisplayEmail = $"{context.Actor.ActorUserId:N}@example.test",
+            AccountState = UserAccountState.Active
+        });
+        await services.GetRequiredService<IAuthenticationSessionRepository>()
+            .CreateSessionAsync(context.Sessions.Session!);
+        return context.Actor;
     }
 
     private sealed class FailingResetSecurityEventSink(IPersistentSecurityEventSink inner) : IPersistentSecurityEventSink

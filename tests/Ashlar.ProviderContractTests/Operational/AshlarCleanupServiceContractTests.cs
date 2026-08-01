@@ -2,32 +2,56 @@ using Ashlar.Operational;
 
 namespace Ashlar.ProviderContractTests.Operational;
 
-internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixture
+/// <summary>Verifies retention boundaries, deletion counts, batching, disabled categories, and transactional cleanup.</summary>
+public abstract class AshlarCleanupServiceContractTests : ProviderContractFixture
 {
+    /// <summary>Seeds expired terminal rows alongside recent or active rows in every cleanup category.</summary>
     protected abstract Task SeedMixedCleanupRowsAsync();
 
+    /// <summary>Seeds the requested number of sessions beyond their retention threshold.</summary>
+    /// <param name="count">Number of rows to seed.</param>
     protected abstract Task SeedExpiredSessionsAsync(int count);
 
+    /// <summary>Seeds one audit event beyond its retention threshold.</summary>
     protected abstract Task SeedOldAuditEventAsync();
 
+    /// <summary>Seeds expired and revoked remembered devices beyond their retention thresholds.</summary>
     protected abstract Task SeedOldRememberedMfaDevicesAsync();
 
+    /// <summary>Seeds sensitive and normal emails across old, recent, active, and terminal states.</summary>
     protected abstract Task SeedSensitiveEmailCleanupRowsAsync();
 
+    /// <summary>Counts every row currently stored in a provider table.</summary>
+    /// <param name="tableName">Provider table whose rows are counted.</param>
+    /// <returns>The number of rows in the table.</returns>
     protected abstract Task<int> CountRowsAsync(string tableName);
 
+    /// <summary>Counts stored email rows whose subject exactly matches the supplied value.</summary>
+    /// <param name="subject">Subject stored with the seeded email.</param>
+    /// <returns>The number of email rows with the subject.</returns>
     protected abstract Task<int> CountEmailRowsBySubjectAsync(string subject);
 
+    /// <summary>Runs cleanup with audit-event retention disabled.</summary>
+    /// <returns>The cleanup counts reported with audit retention disabled.</returns>
     protected abstract Task<AshlarCleanupResult> RunCleanupWithNullAuditRetentionAsync();
 
+    /// <summary>Runs cleanup with both remembered-device retention periods disabled.</summary>
+    /// <returns>The cleanup counts reported with remembered-device retention disabled.</returns>
     protected abstract Task<AshlarCleanupResult> RunCleanupWithNullRememberedMfaDeviceRetentionsAsync();
 
+    /// <summary>Runs cleanup with normal and sensitive discarded-email retention disabled.</summary>
+    /// <returns>The cleanup counts reported with email-discard retention disabled.</returns>
     protected abstract Task<AshlarCleanupResult> RunCleanupWithNullEmailDiscardRetentionAsync();
 
+    /// <summary>Runs one cleanup pass using the fixture's configured retention periods and batch size.</summary>
+    /// <param name="serviceProvider">Scoped services participating in the contract operation.</param>
+    /// <returns>The cleanup counts reported by the provider.</returns>
     protected abstract Task<AshlarCleanupResult> RunCleanupAsync(IServiceProvider serviceProvider);
 
+    /// <summary>Whether the provider can verify cleanup rollback.</summary>
     protected virtual bool SupportsCleanupTransactionRollback => false;
 
+    /// <summary>Reports an empty result when no retained data exists, without inventing deleted rows.</summary>
     [Test]
     public async Task CleanupAsyncOnEmptyDatabaseReturnsZeroCounts()
     {
@@ -36,6 +60,7 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
         Assert.That(result, Is.EqualTo(AshlarCleanupResult.Empty));
     }
 
+    /// <summary>Deletes expired terminal rows, preserves recent or active rows, and reports each deletion category accurately.</summary>
     [Test]
     public async Task CleanupAsyncRemovesOnlyRowsOlderThanRetentionThresholdsAndReturnsCategoryCounts()
     {
@@ -80,6 +105,7 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Limits each cleanup pass to its batch size while allowing later passes to drain the backlog.</summary>
     [Test]
     public async Task CleanupAsyncRespectsBatchSizeAndRepeatedCleanupCompletesRemainingRows()
     {
@@ -98,6 +124,7 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Preserves audit events when their retention period is disabled.</summary>
     [Test]
     public async Task CleanupAsyncSkipsCategoriesWithNullRetention()
     {
@@ -112,6 +139,7 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Preserves both expired and revoked remembered devices when their retention periods are disabled.</summary>
     [Test]
     public async Task CleanupAsyncSkipsRememberedMfaDeviceCategoriesWithNullRetention()
     {
@@ -127,6 +155,7 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Applies sensitive-email retention independently while preserving normal, recent, pending, and locked messages.</summary>
     [Test]
     public async Task CleanupAsyncUsesSeparateRetentionForSensitiveTerminalEmailRows()
     {
@@ -157,6 +186,7 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Preserves discarded normal and sensitive emails when discard retention is disabled.</summary>
     [Test]
     public async Task CleanupAsyncSkipsDiscardedEmailCategoriesWithNullRetention()
     {
@@ -174,6 +204,8 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
     }
 
 
+    /// <summary>Restores deleted rows when a transactional cleanup operation is rolled back.</summary>
+    /// <exception cref="System.InvalidOperationException">The fixture did not register a transaction provider.</exception>
     [Test]
     public async Task CleanupAsyncRollsBackWhenProviderImplementationParticipatesInAshlarTransactions()
     {

@@ -1,4 +1,9 @@
 <Project>
+  <ItemGroup Condition="'$(IsPackable)' == 'true'">
+    <PackageReference Include="CommentSense" PrivateAssets="all" />
+    <PackageReference Include="MinVer" PrivateAssets="all" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(AshlarOfficialBuild)' != 'true'">
     <InternalsVisibleTo Include="@(AshlarTestFriend)" />
   </ItemGroup>

@@ -1,6 +1,5 @@
 using System.Globalization;
 using Ashlar.Webhooks.SecurityEvents;
-using Ashlar.Identity.Abstractions.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 
@@ -28,8 +27,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxContractTests : SecurityEv
                 });
             });
             services.AddAshlarSqliteSecurityEventWebhookOutbox();
-            services.ReplaceAshlarProviderScoped<SqliteTransactionManager, IAuthenticationSessionRepository>("SQLite", _ => Security.Sessions);
-            services.AddSingleton<IAccountSecurityOperationAuthorizer>(Security.Authorizer);
+            services.ReplaceAshlarProviderScoped<SqliteTransactionManager, IAuthenticationSessionRepository>("SQLite", _ => SecuritySessions);
+            services.AddSingleton(SecurityAuthorizer);
             services.AddSqliteWebhookProviderContractTestService();
         });
         return _database.ServiceProvider;

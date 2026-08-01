@@ -3,10 +3,12 @@ using System.Text.Json.Nodes;
 
 namespace Ashlar.ProviderContractTests.Authorization;
 
-internal abstract class AuthorizationGrantRepositoryContractTests : ProviderContractFixture
+/// <summary>Tests grant persistence, tenant isolation, lifecycle filtering, revocation, and rollback.</summary>
+public abstract class AuthorizationGrantRepositoryContractTests : ProviderContractFixture
 {
     private static readonly DateTimeOffset Now = new(2026, 6, 2, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>Verifies that grant lookup by ID recovers every stored authorization field.</summary>
     [Test]
     public async Task CreateAndGetGrantByIdMapsAllFields()
     {
@@ -44,6 +46,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Leaves unknown grant identifiers distinguishable from stored grants.</summary>
     [Test]
     public async Task MissingGrantReturnsNull()
     {
@@ -53,6 +56,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         Assert.That(await repository.GetGrantAsync(Guid.NewGuid(), null), Is.Null);
     }
 
+    /// <summary>Verifies that ID lookup cannot reveal a grant from another tenant or global scope.</summary>
     [Test]
     public async Task TenantBoundedGetGrantMatchesOnlyRequestedTenantBoundary()
     {
@@ -83,6 +87,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Verifies that listing combines user, tenant, and resource scope without admitting near matches.</summary>
     [Test]
     public async Task ListGrantsFiltersByUserTenantAndScope()
     {
@@ -105,6 +110,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         Assert.That(grants.Select(grant => grant.Id), Is.EquivalentTo(new[] { matching.Id }));
     }
 
+    /// <summary>Returns global and tenant grants only for their matching scope filters.</summary>
     [Test]
     public async Task ScopeFilteringHandlesGlobalAndScopedGrantsDistinctly()
     {
@@ -130,6 +136,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Treats an absent tenant filter as a request for global grants only.</summary>
     [Test]
     public async Task NullTenantListReturnsOnlyGlobalGrants()
     {
@@ -153,6 +160,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Excludes global and unrelated tenant grants from a tenant-specific listing.</summary>
     [Test]
     public async Task TenantListReturnsOnlyRequestedTenantGrants()
     {
@@ -173,6 +181,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         Assert.That(grants.Select(grant => grant.Id), Is.EquivalentTo(new[] { matching.Id }));
     }
 
+    /// <summary>Confines broad permission matching to the requested tenant boundary.</summary>
     [Test]
     public async Task BroadScopeMatchingDoesNotBroadenTenantBoundary()
     {
@@ -198,6 +207,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Treats an invalid permission pattern as an empty match rather than broad access.</summary>
     [Test]
     public async Task MalformedScopeFilterReturnsNoGrants()
     {
@@ -218,6 +228,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Verifies that a grant cannot assign a tenant user to another tenant.</summary>
     [Test]
     public async Task CreateGrantRejectsTenantUserWithDifferentTenant()
     {
@@ -228,6 +239,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         Assert.That(async () => await repository.CreateGrantAsync(CreateGrant(user.Id, Guid.NewGuid(), permission: "read")), Throws.Exception);
     }
 
+    /// <summary>Verifies that a tenant user cannot receive a global grant.</summary>
     [Test]
     public async Task CreateGrantRejectsTenantUserWithNullTenant()
     {
@@ -238,6 +250,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         Assert.That(async () => await repository.CreateGrantAsync(CreateGrant(user.Id, permission: "read")), Throws.Exception);
     }
 
+    /// <summary>Verifies that a global user cannot receive a tenant grant.</summary>
     [Test]
     public async Task CreateGrantRejectsGlobalUserWithTenant()
     {
@@ -248,6 +261,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         Assert.That(async () => await repository.CreateGrantAsync(CreateGrant(user.Id, Guid.NewGuid(), permission: "read")), Throws.Exception);
     }
 
+    /// <summary>Verifies that valid tenant and global grants remain independently retrievable.</summary>
     [Test]
     public async Task CreateGrantPersistsMatchingTenantAndGlobalRows()
     {
@@ -270,6 +284,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Preserves the distinct role and permission payloads of stored grants.</summary>
     [Test]
     public async Task RoleGrantsAndPermissionGrantsBothRoundTrip()
     {
@@ -292,6 +307,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Limits active listings to usable grants while retaining terminal grants in full history.</summary>
     [Test]
     public async Task ActiveOnlyListingExcludesRevokedAndExpiredButAllListingIncludesThem()
     {
@@ -316,6 +332,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Verifies that revocation succeeds once and preserves its original timestamp.</summary>
     [Test]
     public async Task RevokeGrantSucceedsOncePersistsTimestampAndPreservesFirstRevocation()
     {
@@ -340,6 +357,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Verifies that only a global revocation request can match a global grant.</summary>
     [Test]
     public async Task RevokeGrantMatchesGlobalGrantOnlyWithNullTenant()
     {
@@ -363,6 +381,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Verifies that revocation cannot affect the same grant ID through another tenant.</summary>
     [Test]
     public async Task RevokeGrantDoesNotCrossTenantBoundary()
     {
@@ -385,6 +404,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Verifies that a tenant-scoped revocation updates its matching grant.</summary>
     [Test]
     public async Task RevokeGrantMatchesTenantScopedGrant()
     {
@@ -406,6 +426,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Verifies that revoking an absent grant reports no change.</summary>
     [Test]
     public async Task RevokeMissingGrantReturnsFalse()
     {
@@ -415,6 +436,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         Assert.That(await repository.RevokeGrantAsync(Guid.NewGuid(), Guid.NewGuid(), Now), Is.False);
     }
 
+    /// <summary>Leaves no persisted grant after its surrounding transaction is rolled back.</summary>
     [Test]
     public async Task GrantWritesRollBackWhenProviderSupportsTransactions()
     {

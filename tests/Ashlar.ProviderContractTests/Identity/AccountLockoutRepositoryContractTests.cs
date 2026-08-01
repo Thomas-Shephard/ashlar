@@ -1,9 +1,11 @@
 namespace Ashlar.ProviderContractTests.Identity;
 
-internal abstract class AccountLockoutRepositoryContractTests : ProviderContractFixture
+/// <summary>Tests lockout windows, thresholds, isolation, reset behavior, and concurrent failures.</summary>
+public abstract class AccountLockoutRepositoryContractTests : ProviderContractFixture
 {
     private static readonly DateTimeOffset FirstFailure = new(2026, 6, 1, 10, 0, 0, TimeSpan.Zero);
 
+    /// <summary>Verifies that lockout search combines tenant, user, and provider filters before paging.</summary>
     [Test]
     public async Task SearchShouldFilterByTenantUserAndProviderWithPaging()
     {
@@ -68,6 +70,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
         }
     }
 
+    /// <summary>Verifies that lockout status is filtered before offset and limit are applied.</summary>
     [Test]
     public async Task SearchShouldApplyLockedOutFilterBeforePaging()
     {
@@ -103,6 +106,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
         }
     }
 
+    /// <summary>Verifies that failures create state and increment its count within the active window.</summary>
     [Test]
     public async Task RecordFailureShouldCreateAndIncrementLockoutState()
     {
@@ -128,6 +132,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
         }
     }
 
+    /// <summary>Verifies that reaching the failure threshold activates the configured lockout.</summary>
     [Test]
     public async Task RecordFailureShouldLockWhenThresholdIsReached()
     {
@@ -147,6 +152,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
         }
     }
 
+    /// <summary>Verifies that a failure after temporary expiry starts a fresh lockout window.</summary>
     [Test]
     public async Task RecordFailureShouldStartNewWindowAfterTemporaryLockoutExpires()
     {
@@ -167,6 +173,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
         }
     }
 
+    /// <summary>Verifies that later failures cannot extend an active lockout.</summary>
     [Test]
     public async Task RecordFailureShouldPreserveActiveLockoutExpiry()
     {
@@ -187,6 +194,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
         }
     }
 
+    /// <summary>Verifies that policy changes cannot reactivate an already locked record.</summary>
     [Test]
     public async Task RecordFailureShouldNotActivateAlreadyLockedRecordWhenPolicyChanges()
     {
@@ -208,6 +216,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
         }
     }
 
+    /// <summary>Verifies that reset removes the stored failures and active lockout.</summary>
     [Test]
     public async Task ResetShouldClearStoredState()
     {
@@ -235,6 +244,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
         Assert.That(await lockouts.ResetAsync(tenantUser.Id, tenantUser.TenantId, AuthenticationProviderKey.Local), Is.True);
     }
 
+    /// <summary>Keeps failure counts independent across tenant and authentication-provider keys.</summary>
     [Test]
     public async Task LockoutStateShouldBeIsolatedByTenantAndProvider()
     {
@@ -259,6 +269,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
         }
     }
 
+    /// <summary>Verifies that recording a failure cannot create state for an unknown user.</summary>
     [Test]
     public async Task RecordFailureShouldRejectUnknownUsers()
     {
@@ -269,6 +280,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
             await lockouts.RecordFailureAsync(Guid.NewGuid(), null, AuthenticationProviderKey.Local, FirstFailure, 5, TimeSpan.FromMinutes(10)));
     }
 
+    /// <summary>Records every simultaneous authentication failure without lost updates.</summary>
     [Test]
     public async Task ConcurrentFailuresShouldNotLoseIncrements()
     {
@@ -285,6 +297,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
         Assert.That(fetched?.FailedAttemptCount, Is.EqualTo(8));
     }
 
+    /// <summary>Reports exactly one threshold crossing when simultaneous failures reach the limit.</summary>
     [Test]
     public async Task ConcurrentThresholdCrossingShouldProduceSingleThresholdCountRecord()
     {
@@ -304,6 +317,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
         }
     }
 
+    /// <summary>Verifies that lockout operations reject missing keys and invalid policies.</summary>
     [Test]
     public async Task OperationsShouldValidateArguments()
     {

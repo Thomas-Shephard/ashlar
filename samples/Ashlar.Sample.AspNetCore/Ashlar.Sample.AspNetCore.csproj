@@ -4,7 +4,6 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>false</IsTestProject>
     <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <UserSecretsId>ashlar-sample-aspnetcore</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>

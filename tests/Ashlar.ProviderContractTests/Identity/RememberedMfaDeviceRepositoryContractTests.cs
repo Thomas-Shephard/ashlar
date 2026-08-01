@@ -1,9 +1,11 @@
 namespace Ashlar.ProviderContractTests.Identity;
 
-internal abstract class RememberedMfaDeviceRepositoryContractTests : ProviderContractFixture
+/// <summary>Tests remembered-device persistence, isolation, activity, revocation, and rollback.</summary>
+public abstract class RememberedMfaDeviceRepositoryContractTests : ProviderContractFixture
 {
     private static readonly DateTimeOffset CreatedAt = new(2026, 6, 2, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>Verifies that selector and ID lookups recover the same complete device.</summary>
     [Test]
     public async Task CreateAndFetchBySelectorAndIdMapsFields()
     {
@@ -38,6 +40,7 @@ internal abstract class RememberedMfaDeviceRepositoryContractTests : ProviderCon
         }
     }
 
+    /// <summary>Leaves unknown device identifiers and selectors distinguishable from stored devices.</summary>
     [Test]
     public async Task MissingLookupsReturnNull()
     {
@@ -51,6 +54,7 @@ internal abstract class RememberedMfaDeviceRepositoryContractTests : ProviderCon
         }
     }
 
+    /// <summary>Rejects duplicate selectors and devices whose tenant differs from their user.</summary>
     [Test]
     public async Task SelectorUniquenessAndTenantInvariantAreEnforced()
     {
@@ -73,6 +77,7 @@ internal abstract class RememberedMfaDeviceRepositoryContractTests : ProviderCon
         }
     }
 
+    /// <summary>Verifies that creation rejects devices with inconsistent user or tenant identity.</summary>
     [Test]
     public async Task CreateRejectsInvalidDeviceShape()
     {
@@ -98,6 +103,7 @@ internal abstract class RememberedMfaDeviceRepositoryContractTests : ProviderCon
         }
     }
 
+    /// <summary>Updates usage, filters inactive devices, and preserves revocation state in full listings.</summary>
     [Test]
     public async Task ActiveFilteringLastUsedAndRevocationBehaveSafely()
     {
@@ -145,6 +151,7 @@ internal abstract class RememberedMfaDeviceRepositoryContractTests : ProviderCon
         }
     }
 
+    /// <summary>Advances last-used time only forward and leaves revoked devices unchanged.</summary>
     [Test]
     public async Task LastUsedUpdateIsMonotonicAndRejectedAfterRevocation()
     {
@@ -173,6 +180,7 @@ internal abstract class RememberedMfaDeviceRepositoryContractTests : ProviderCon
         }
     }
 
+    /// <summary>Records the first device revocation once and excludes it from active listings.</summary>
     [Test]
     public async Task SingleRevocationIsIdempotentAndRemovesDeviceFromActiveListings()
     {
@@ -202,6 +210,7 @@ internal abstract class RememberedMfaDeviceRepositoryContractTests : ProviderCon
         }
     }
 
+    /// <summary>Prevents tenant-scoped device reads and mutations from reaching global devices.</summary>
     [Test]
     public async Task TenantScopedOperationsDoNotCrossGlobalScope()
     {
@@ -246,6 +255,7 @@ internal abstract class RememberedMfaDeviceRepositoryContractTests : ProviderCon
         }
     }
 
+    /// <summary>Verifies that bulk revocation stays tenant-scoped and preserves original timestamps.</summary>
     [Test]
     public async Task RevokeAllHonorsTenantScopeAndPreservesFirstRevocation()
     {
@@ -279,6 +289,7 @@ internal abstract class RememberedMfaDeviceRepositoryContractTests : ProviderCon
         }
     }
 
+    /// <summary>Leaves no persisted remembered device after its transaction is rolled back.</summary>
     [Test]
     public async Task WritesRollBackWhenProviderSupportsTransactions()
     {

@@ -16,6 +16,20 @@ indent_size = 2
 indent_size = 2
 
 [*.{cs,vb}]
+# CommentSense
+comment_sense.visibility_level = protected
+comment_sense.exclude_constants = false
+comment_sense.exclude_enums = false
+comment_sense.low_quality_terms = TODO, TBD, FixMe, None, N/A
+comment_sense.min_summary_length = 10
+comment_sense.require_ending_punctuation = true
+comment_sense.similarity_threshold = 0.8
+comment_sense.langwords = true, false, null, void, async, await
+comment_sense.ghost_references.mode = safe
+comment_sense.allow_implicit_inheritdoc = true
+comment_sense.ignore_system_exceptions = true
+comment_sense.scan_called_methods_for_exceptions = true
+
 #### Naming styles ####
 
 # Diagnostic Severities

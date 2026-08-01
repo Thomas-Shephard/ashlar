@@ -1,58 +1,27 @@
 param(
     [string] $Configuration = "Release",
     [string] $PackageOutputPath = (Join-Path (Join-Path $PSScriptRoot "..") "nupkg"),
-    [string] $SmokeRoot = (Join-Path ([System.IO.Path]::GetTempPath()) "ashlar-package-consumption-smoke"),
     [switch] $SkipPack
 )
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$solutionPath = Join-Path $repoRoot "Ashlar.slnx"
-$packageOutputFullPath = if ([System.IO.Path]::IsPathRooted($PackageOutputPath)) {
-    [System.IO.Path]::GetFullPath($PackageOutputPath)
-} else {
-    [System.IO.Path]::GetFullPath((Join-Path $repoRoot $PackageOutputPath))
-}
-$smokeRootFullPath = if ([System.IO.Path]::IsPathRooted($SmokeRoot)) {
-    [System.IO.Path]::GetFullPath($SmokeRoot)
-} else {
-    [System.IO.Path]::GetFullPath((Join-Path $repoRoot $SmokeRoot))
-}
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$packageOutputPath = [IO.Path]::GetFullPath($PackageOutputPath, $repoRoot)
+$smokeRoot = Join-Path ([IO.Path]::GetTempPath()) "ashlar-package-consumption-smoke-$([Guid]::NewGuid().ToString('N'))"
+$packagesPath = Join-Path $smokeRoot ".packages"
+$nugetConfig = Join-Path $smokeRoot "nuget.config"
 
-$pathComparison = [System.StringComparison]::OrdinalIgnoreCase
-$normalizedSmokeRoot = $smokeRootFullPath.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
-$normalizedRepoRoot = ([string] $repoRoot).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
-$normalizedPackageOutput = $packageOutputFullPath.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
-$volumeRoot = [System.IO.Path]::GetPathRoot($smokeRootFullPath).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
-$smokeRootPrefix = $normalizedSmokeRoot + [System.IO.Path]::DirectorySeparatorChar
-$hasReparsePointAncestor = $false
-$candidate = $smokeRootFullPath
-while (-not [string]::IsNullOrWhiteSpace($candidate)) {
-    if ((Test-Path -LiteralPath $candidate) -and
-        ((Get-Item -LiteralPath $candidate -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
-        $hasReparsePointAncestor = $true
-        break
-    }
+function Invoke-DotNet {
+    param([Parameter(ValueFromRemainingArguments = $true)] [string[]] $Arguments)
 
-    $parent = [System.IO.Path]::GetDirectoryName($candidate.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar))
-    if ([string]::IsNullOrWhiteSpace($parent) -or $parent.Equals($candidate, $pathComparison)) { break }
-    $candidate = $parent
+    Write-Output "dotnet $($Arguments -join ' ')"
+    & dotnet @Arguments
+    if ($LASTEXITCODE -ne 0) { throw "dotnet command failed with exit code $LASTEXITCODE." }
 }
 
-$unsafeSmokeRoot = [string]::IsNullOrWhiteSpace($normalizedSmokeRoot) -or
-    $normalizedSmokeRoot.Equals($volumeRoot, $pathComparison) -or
-    $normalizedSmokeRoot.Equals($normalizedRepoRoot, $pathComparison) -or
-    $normalizedSmokeRoot.Equals($normalizedPackageOutput, $pathComparison) -or
-    $normalizedRepoRoot.StartsWith($smokeRootPrefix, $pathComparison) -or
-    $normalizedPackageOutput.StartsWith($smokeRootPrefix, $pathComparison) -or
-    $hasReparsePointAncestor
-if ($unsafeSmokeRoot) {
-    throw "Smoke root '$smokeRootFullPath' is not safe to delete recursively."
-}
-
-$applicationPackageIds = @(
+$applicationPackages = @(
     "Ashlar",
     "Ashlar.AspNetCore",
     "Ashlar.Sqlite",
@@ -63,181 +32,99 @@ $applicationPackageIds = @(
     "Ashlar.Webhooks",
     "Ashlar.Redis"
 )
-$packageIds = @($applicationPackageIds) + "Ashlar.ProviderContracts"
-
-function Invoke-DotNet {
-    param([Parameter(ValueFromRemainingArguments = $true)] [string[]] $Arguments)
-
-    Write-Output "dotnet $($Arguments -join ' ')"
-    & dotnet @Arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "dotnet command failed with exit code $LASTEXITCODE."
-    }
-}
-
-function Get-PackageVersion {
-    param([string] $PackageId)
-
-    $packageNamePattern = "^$([regex]::Escape($PackageId))\.(?<version>\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.nupkg$"
-    $packages = @(Get-ChildItem -Path $packageOutputFullPath -Filter "*.nupkg" |
-        Where-Object { $_.Name -match $packageNamePattern } |
-        Sort-Object LastWriteTimeUtc -Descending)
-
-    if ($packages.Count -eq 0) {
-        throw "Expected package '$PackageId' in '$packageOutputFullPath', but no .nupkg was found."
-    }
-
-    $fileName = $packages[0].Name
-    if ($fileName -notmatch $packageNamePattern) {
-        throw "Could not infer package version from '$fileName'."
-    }
-
-    return $Matches["version"]
-}
+$allPackages = $applicationPackages + "Ashlar.ProviderContracts" + "Ashlar.ProviderContractTests"
 
 if (-not $SkipPack) {
-    New-Item -ItemType Directory -Force -Path $packageOutputFullPath | Out-Null
-    Invoke-DotNet pack $solutionPath --configuration $Configuration --output $packageOutputFullPath
+    New-Item -ItemType Directory -Force -Path $packageOutputPath | Out-Null
+    Invoke-DotNet pack (Join-Path $repoRoot "Ashlar.slnx") --configuration $Configuration --output $packageOutputPath
 }
 
-if (-not (Test-Path $packageOutputFullPath)) {
-    throw "Package output path '$packageOutputFullPath' does not exist. Run dotnet pack first or omit -SkipPack."
+$contractPackage = Get-ChildItem $packageOutputPath -Filter "Ashlar.ProviderContractTests.*.nupkg" |
+    Sort-Object LastWriteTimeUtc -Descending |
+    Select-Object -First 1
+if ($null -eq $contractPackage -or
+    $contractPackage.Name -notmatch '^Ashlar\.ProviderContractTests\.(?<version>\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.nupkg$') {
+    throw "Could not find a versioned Ashlar.ProviderContractTests package in '$packageOutputPath'."
 }
-
-$packageVersions = @{}
-foreach ($packageId in $packageIds) {
-    $packageVersions[$packageId] = Get-PackageVersion $packageId
-    Write-Host "Using $packageId $($packageVersions[$packageId])"
+$version = $Matches.version
+foreach ($package in $allPackages) {
+    if (-not (Test-Path (Join-Path $packageOutputPath "$package.$version.nupkg"))) {
+        throw "Expected $package $version in '$packageOutputPath'."
+    }
 }
+Write-Host "Testing Ashlar packages $version"
 
-$distinctVersions = @($packageVersions.Values | Sort-Object -Unique)
-if ($distinctVersions.Count -ne 1) {
-    throw "Package output contains mixed latest versions: $($distinctVersions -join ', ')."
-}
-
-if (Test-Path $smokeRootFullPath) {
-    Remove-Item -LiteralPath $smokeRootFullPath -Recurse -Force
-}
-
-New-Item -ItemType Directory -Force -Path $smokeRootFullPath | Out-Null
-
-$smokeProjectPath = Join-Path $smokeRootFullPath "Ashlar.PackageSmoke"
-Invoke-DotNet new web --framework net10.0 --output $smokeProjectPath --no-restore
-
-$escapedPackageOutputPath = [System.Security.SecurityElement]::Escape($packageOutputFullPath)
-$nugetConfig = @"
+New-Item -ItemType Directory -Path $smokeRoot | Out-Null
+$escapedPackagePath = [Security.SecurityElement]::Escape($packageOutputPath)
+Set-Content $nugetConfig @"
 <?xml version="1.0" encoding="utf-8"?>
 <configuration>
   <packageSources>
     <clear />
-    <add key="local-ashlar" value="$escapedPackageOutputPath" />
+    <add key="local-ashlar" value="$escapedPackagePath" />
     <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
   </packageSources>
 </configuration>
 "@
-Set-Content -Path (Join-Path $smokeProjectPath "nuget.config") -Value $nugetConfig -Encoding utf8
 
-$projectFile = Join-Path $smokeProjectPath "Ashlar.PackageSmoke.csproj"
-[xml] $projectXml = Get-Content $projectFile
-$itemGroup = $projectXml.CreateElement("ItemGroup")
-foreach ($packageId in $applicationPackageIds) {
-    $packageReference = $projectXml.CreateElement("PackageReference")
-    $packageReference.SetAttribute("Include", $packageId)
-    $packageReference.SetAttribute("Version", $packageVersions[$packageId])
-    [void] $itemGroup.AppendChild($packageReference)
-}
-
-[void] $projectXml.Project.AppendChild($itemGroup)
-
-$boundaryTarget = $projectXml.CreateElement("Target")
-$boundaryTarget.SetAttribute("Name", "RejectProviderAuthoringCompileSurface")
-$boundaryTarget.SetAttribute("BeforeTargets", "CoreCompile")
-$boundaryError = $projectXml.CreateElement("Error")
-$boundaryError.SetAttribute("Condition", "'@(ReferencePath->WithMetadataValue('Filename', 'Ashlar.ProviderContracts'))' != ''")
-$boundaryError.SetAttribute("Text", "Ordinary package consumers must not receive Ashlar.ProviderContracts as a compile reference.")
-[void] $boundaryTarget.AppendChild($boundaryError)
-[void] $projectXml.Project.AppendChild($boundaryTarget)
-$projectXml.Save($projectFile)
-
-$program = @'
+try {
+    $appPath = Join-Path $smokeRoot "App"
+    New-Item -ItemType Directory -Path $appPath | Out-Null
+    $appReferences = ($applicationPackages | ForEach-Object { "    <PackageReference Include=`"$_`" Version=`"$version`" />" }) -join "`n"
+    Set-Content (Join-Path $appPath "App.csproj") @"
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup>
+$appReferences
+  </ItemGroup>
+  <Target Name="RejectProviderAuthoringCompileSurface" BeforeTargets="CoreCompile">
+    <Error Condition="'@(ReferencePath->WithMetadataValue('Filename', 'Ashlar.ProviderContracts'))' != ''"
+           Text="Ordinary consumers must not receive Ashlar.ProviderContracts as a compile reference." />
+  </Target>
+</Project>
+"@
+    Set-Content (Join-Path $appPath "Program.cs") @'
 using Ashlar.OAuth.Providers.Google;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Compile one representative registration per package to catch restore, asset, dependency, and public API breaks.
-// Ashlar
 builder.Services.AddDataProtection();
 builder.Services.AddAshlarIdentity();
-
-// Ashlar.AspNetCore
 builder.Services.AddAshlarAspNetCoreSessions();
-
-// Ashlar.Sqlite
 builder.Services.AddAshlarSqlite("Data Source=:memory:");
-
-// Ashlar.Postgres
 builder.Services.AddAshlarPostgres("Host=localhost;Database=ashlar_smoke;Username=ashlar;Password=ashlar");
-
-// Ashlar.Passkeys
 builder.Services.AddAshlarPasskeys();
-
-// Ashlar.Email.Smtp
-builder.Services.AddAshlarSmtpEmailSender(options =>
-{
-    options.Host = "localhost";
-});
-
-// Ashlar.Observability
+builder.Services.AddAshlarSmtpEmailSender(options => options.Host = "localhost");
 builder.Services.AddAshlarSecurityEventMetrics();
-
-// Ashlar.Webhooks
 builder.Services.AddAshlarSecurityEventWebhooks();
-
-// Ashlar OAuth/OIDC
 builder.Services.AddAshlarOAuth(options => options.AddGoogle(oidc =>
 {
     oidc.ClientId = "ashlar-smoke-client-id";
     oidc.ClientSecret = "ashlar-smoke-client-secret";
 }));
-
-// Ashlar.Redis
-builder.Services.AddAshlarRedisRateLimiting("localhost:6379", options =>
-{
-    options.KeyPrefix = "package-smoke:ashlar:rate-limits";
-});
+builder.Services.AddAshlarRedisRateLimiting("localhost:6379",
+    options => options.KeyPrefix = "package-smoke:ashlar:rate-limits");
 
 var app = builder.Build();
-
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapGet("/", () => Results.Ok("Ashlar package consumption smoke test"));
-
-return 0;
+app.MapGet("/", () => Results.Ok());
 '@
-Set-Content -Path (Join-Path $smokeProjectPath "Program.cs") -Value $program -Encoding utf8
+    Invoke-DotNet restore $appPath --configfile $nugetConfig --packages $packagesPath
+    Invoke-DotNet build $appPath --configuration $Configuration --no-restore
+    $depsFile = Join-Path $appPath "bin/$Configuration/net10.0/App.deps.json"
+    if (-not (Select-String $depsFile -Pattern 'Ashlar.ProviderContracts' -Quiet)) {
+        throw "Ordinary consumers must receive Ashlar.ProviderContracts as a runtime dependency."
+    }
 
-Invoke-DotNet restore $smokeProjectPath --configfile (Join-Path $smokeProjectPath "nuget.config")
-Invoke-DotNet build $smokeProjectPath --configuration $Configuration --no-restore
-
-$depsFile = Join-Path $smokeProjectPath "bin/$Configuration/net10.0/Ashlar.PackageSmoke.deps.json"
-if (-not (Select-String -LiteralPath $depsFile -Pattern 'Ashlar.ProviderContracts' -Quiet)) {
-    throw "Ordinary package consumers must receive Ashlar.ProviderContracts as a runtime dependency."
-}
-
-$providerProjectPath = Join-Path $smokeRootFullPath "Ashlar.ProviderPackageSmoke"
-Invoke-DotNet new classlib --framework net10.0 --output $providerProjectPath --no-restore
-
-$providerProjectFile = Join-Path $providerProjectPath "Ashlar.ProviderPackageSmoke.csproj"
-[xml] $providerProjectXml = Get-Content $providerProjectFile
-$providerItemGroup = $providerProjectXml.CreateElement("ItemGroup")
-$providerPackageReference = $providerProjectXml.CreateElement("PackageReference")
-$providerPackageReference.SetAttribute("Include", "Ashlar.ProviderContracts")
-$providerPackageReference.SetAttribute("Version", $packageVersions["Ashlar.ProviderContracts"])
-[void] $providerItemGroup.AppendChild($providerPackageReference)
-[void] $providerProjectXml.Project.AppendChild($providerItemGroup)
-$providerProjectXml.Save($providerProjectFile)
-
-$providerSource = @'
+    $providerPath = Join-Path $smokeRoot "Provider"
+    New-Item -ItemType Directory -Path $providerPath | Out-Null
+    Set-Content (Join-Path $providerPath "Provider.csproj") @"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup><PackageReference Include="Ashlar.ProviderContracts" Version="$version" /></ItemGroup>
+</Project>
+"@
+    Set-Content (Join-Path $providerPath "Provider.cs") @'
 using Ashlar.Identity.Abstractions.Transactions;
 using Ashlar.ProviderContracts.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
@@ -246,7 +133,7 @@ internal static class CompositionSmoke
 {
     public static void Compose(IServiceCollection services)
     {
-        services.AddAshlarProviderScoped<CustomTransactionProvider, object>("Custom", _ => new object());
+        services.AddAshlarProviderScoped<CustomTransactionProvider, object>("Custom", _ => new());
         services.AddAshlarDurableTransactionProvider<CustomTransactionProvider>("Custom");
         services.AddAshlarDurableTransactionParticipant<object>();
     }
@@ -258,9 +145,76 @@ internal sealed class CustomTransactionProvider : IAshlarTransactionProvider
         throw new NotSupportedException();
 }
 '@
-Set-Content -Path (Join-Path $providerProjectPath "Class1.cs") -Value $providerSource -Encoding utf8
+    Invoke-DotNet restore $providerPath --configfile $nugetConfig --packages $packagesPath
+    Invoke-DotNet build $providerPath --configuration $Configuration --no-restore
 
-Invoke-DotNet restore $providerProjectPath --configfile (Join-Path $smokeProjectPath "nuget.config")
-Invoke-DotNet build $providerProjectPath --configuration $Configuration --no-restore
+    $testsPath = Join-Path $smokeRoot "External.Provider.Tests"
+    New-Item -ItemType Directory -Path $testsPath | Out-Null
+    Set-Content (Join-Path $testsPath "External.Provider.Tests.csproj") @"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsTestProject>true</IsTestProject>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <EnableNUnitRunner>true</EnableNUnitRunner>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageReference Include="NUnit" Version="4.6.1" />
+    <PackageReference Include="NUnit3TestAdapter" Version="6.2.0" />
+    <PackageReference Include="Ashlar.ProviderContractTests" Version="$version" />
+  </ItemGroup>
+</Project>
+"@
+    Set-Content (Join-Path $testsPath "Contracts.cs") @'
+using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.Identity.Abstractions.Tenancy;
+using Ashlar.Identity.Models.Authentication;
+using Ashlar.Identity.Models.Bootstrap;
+using Ashlar.ProviderContractTests.Identity;
+using Microsoft.Extensions.DependencyInjection;
+using NUnit.Framework;
 
-Write-Host "Package consumption smoke test passed."
+[TestFixture]
+public sealed class ExternalBootstrapContracts : BootstrapStateRepositoryContractTests
+{
+    protected override Task<IServiceProvider> CreateInitializedServiceProviderAsync() =>
+        Task.FromResult<IServiceProvider>(new ServiceCollection()
+            .AddSingleton<IUserRepository, Users>()
+            .AddSingleton<IBootstrapStateRepository, BootstrapState>()
+            .BuildServiceProvider());
+}
+
+internal sealed class BootstrapState : IBootstrapStateRepository
+{
+    private bool _initialized;
+    public Task<BootstrapStatus> GetBootstrapStatusAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(_initialized ? BootstrapStatus.Initialized : BootstrapStatus.Uninitialized);
+    public Task<bool> MarkAsInitializedAsync(Guid userId, DateTimeOffset initializedAt, CancellationToken cancellationToken = default)
+    {
+        var changed = !_initialized;
+        _initialized = true;
+        return Task.FromResult(changed);
+    }
+}
+
+internal sealed class Users : IUserRepository
+{
+    public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(null);
+    public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(null);
+    public Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(null);
+}
+'@
+    Invoke-DotNet restore $testsPath --configfile $nugetConfig --packages $packagesPath
+    Invoke-DotNet test $testsPath --configuration $Configuration --no-restore -- --minimum-expected-tests 3
+
+    Write-Host "Package consumption smoke test passed."
+}
+finally {
+    if (Test-Path $smokeRoot) { Remove-Item -LiteralPath $smokeRoot -Recurse -Force }
+}

@@ -3,190 +3,245 @@ using Microsoft.Extensions.DependencyInjection;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
 using Ashlar.ProviderContractTests.Messaging;
+using Ashlar.Identity.Abstractions.Services;
+using Ashlar.Identity.Features.Mfa;
+using Ashlar.Security.Tokens;
+using System.Runtime.ExceptionServices;
 
 namespace Ashlar.ProviderContractTests;
 
-internal abstract class ProviderContractFixture
+/// <summary>
+/// Provides lifecycle management and shared infrastructure for provider contract suites.
+/// </summary>
+public abstract class ProviderContractFixture
 {
     private IServiceProvider? _serviceProvider;
 
+    /// <summary>
+    /// Creates the initialized provider services before each contract test.
+    /// </summary>
+    /// <exception cref="AggregateException">Provider setup and its compensating cleanup both fail.</exception>
+    /// <exception cref="Exception">Provider setup fails.</exception>
     [SetUp]
     public async Task SetUpProviderContractFixture()
     {
-        _serviceProvider = await CreateInitializedServiceProviderAsync();
+        try
+        {
+            _serviceProvider = await CreateInitializedServiceProviderAsync();
+        }
+        catch (Exception setupException)
+        {
+            try
+            {
+                await CleanupInitializedServiceProviderAsync();
+            }
+            catch (Exception cleanupException)
+            {
+                throw new AggregateException("Provider contract setup and cleanup both failed.", setupException, cleanupException);
+            }
+
+            throw;
+        }
     }
 
+    /// <summary>
+    /// Disposes the provider services and invokes provider cleanup after each contract test.
+    /// </summary>
+    /// <exception cref="AggregateException">Provider disposal and cleanup both fail.</exception>
     [TearDown]
     public async Task TearDownProviderContractFixture()
     {
         var serviceProvider = _serviceProvider;
         _serviceProvider = null;
+        Exception? disposalException = null;
 
-        if (serviceProvider is IAsyncDisposable asyncDisposable)
+        try
         {
-            await asyncDisposable.DisposeAsync();
+            if (serviceProvider is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync();
+            }
+            else if (serviceProvider is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
         }
-        else if (serviceProvider is IDisposable disposable)
+        catch (Exception exception)
         {
-            disposable.Dispose();
+            disposalException = exception;
         }
 
-        await CleanupInitializedServiceProviderAsync();
+        try
+        {
+            await CleanupInitializedServiceProviderAsync();
+        }
+        catch (Exception cleanupException) when (disposalException is not null)
+        {
+            throw new AggregateException("Provider contract disposal and cleanup both failed.", disposalException, cleanupException);
+        }
+
+        if (disposalException is not null)
+        {
+            ExceptionDispatchInfo.Capture(disposalException).Throw();
+        }
     }
 
+    /// <summary>
+    /// Creates and initializes the service provider used by one contract test.
+    /// </summary>
+    /// <returns>The initialized service provider.</returns>
     protected abstract Task<IServiceProvider> CreateInitializedServiceProviderAsync();
 
+    /// <summary>
+    /// Cleans up provider-owned resources created for one contract test.
+    /// </summary>
+    /// <returns>A task that completes when cleanup has finished.</returns>
     protected virtual Task CleanupInitializedServiceProviderAsync()
     {
         return Task.CompletedTask;
     }
 
-    protected AsyncServiceScope CreateAsyncScope()
+    private protected AsyncServiceScope CreateAsyncScope()
     {
         return Services.CreateAsyncScope();
     }
 
-    protected static IUserRepository GetUserRepository(IServiceProvider serviceProvider)
+    private protected static IUserRepository GetUserRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IUserRepository>();
     }
 
-    protected static ICredentialRepository GetCredentialRepository(IServiceProvider serviceProvider)
+    private protected static ICredentialRepository GetCredentialRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<ICredentialRepository>();
     }
 
-    protected static IAccountLockoutRepository GetAccountLockoutRepository(IServiceProvider serviceProvider)
+    private protected static IAccountLockoutRepository GetAccountLockoutRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IAccountLockoutRepository>();
     }
 
-    protected static IUserAdministrationRepository GetUserAdministrationRepository(IServiceProvider serviceProvider)
+    private protected static IUserAdministrationRepository GetUserAdministrationRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IUserAdministrationRepository>();
     }
 
-    protected static ICredentialAdministrationRepository GetCredentialAdministrationRepository(IServiceProvider serviceProvider)
+    private protected static ICredentialAdministrationRepository GetCredentialAdministrationRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<ICredentialAdministrationRepository>();
     }
 
-    protected static IBootstrapStateRepository GetBootstrapStateRepository(IServiceProvider serviceProvider)
+    private protected static IBootstrapStateRepository GetBootstrapStateRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IBootstrapStateRepository>();
     }
 
-    protected static IInvitationRepository GetInvitationRepository(IServiceProvider serviceProvider)
+    private protected static IInvitationRepository GetInvitationRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IInvitationRepository>();
     }
 
-    protected static IAuthenticationSessionRepository GetAuthenticationSessionRepository(IServiceProvider serviceProvider)
+    private protected static IAuthenticationSessionRepository GetAuthenticationSessionRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IAuthenticationSessionRepository>();
     }
 
-    protected static IRememberedMfaDeviceRepository GetRememberedMfaDeviceRepository(IServiceProvider serviceProvider)
+    private protected static IRememberedMfaDeviceRepository GetRememberedMfaDeviceRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IRememberedMfaDeviceRepository>();
     }
 
-    protected static IAuthenticationSessionAdministrationRepository GetAuthenticationSessionAdministrationRepository(IServiceProvider serviceProvider)
+    private protected static IAuthenticationSessionAdministrationRepository GetAuthenticationSessionAdministrationRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IAuthenticationSessionAdministrationRepository>();
     }
 
-    protected static IAuthenticationHandshakeRepository GetAuthenticationHandshakeRepository(IServiceProvider serviceProvider)
+    private protected static IAuthenticationHandshakeRepository GetAuthenticationHandshakeRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IAuthenticationHandshakeRepository>();
     }
 
-    protected static IAuthorizationGrantRepository GetAuthorizationGrantRepository(IServiceProvider serviceProvider)
+    private protected static IAuthorizationGrantRepository GetAuthorizationGrantRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IAuthorizationGrantRepository>();
     }
 
-    protected static IAuthorizationGrantAdministrationRepository GetAuthorizationGrantAdministrationRepository(IServiceProvider serviceProvider)
+    private protected static IAuthorizationGrantAdministrationRepository GetAuthorizationGrantAdministrationRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IAuthorizationGrantAdministrationRepository>();
     }
 
-    protected static ISecurityEventSink GetSecurityEventSink(IServiceProvider serviceProvider)
+    private protected static ISecurityEventSink GetSecurityEventSink(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<ISecurityEventSink>();
     }
 
-    protected static IPersistentSecurityEventSink GetPersistentSecurityEventSink(IServiceProvider serviceProvider)
+    private protected static IPersistentSecurityEventSink GetPersistentSecurityEventSink(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IPersistentSecurityEventSink>();
     }
 
-    protected static IUserSecurityEventSummaryRepository GetUserSecurityEventSummaryRepository(IServiceProvider serviceProvider)
+    private protected static IUserSecurityEventSummaryRepository GetUserSecurityEventSummaryRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IUserSecurityEventSummaryRepository>();
     }
 
-    protected static ISecurityEventAdministrationRepository GetSecurityEventAdministrationRepository(IServiceProvider serviceProvider)
+    private protected static ISecurityEventAdministrationRepository GetSecurityEventAdministrationRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<ISecurityEventAdministrationRepository>();
     }
 
-    protected static IPasskeyChallengeRepository GetPasskeyChallengeRepository(IServiceProvider serviceProvider)
+    private protected static IPasskeyChallengeRepository GetPasskeyChallengeRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IPasskeyChallengeRepository>();
     }
 
-    protected static IAuthenticationRateLimiter GetAuthenticationRateLimiter(IServiceProvider serviceProvider)
+    private protected static IAuthenticationRateLimiter GetAuthenticationRateLimiter(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IAuthenticationRateLimiter>();
     }
 
-    protected static IAshlarTransactionProvider? GetTransactionProvider(IServiceProvider serviceProvider)
+    private protected static IAshlarTransactionProvider? GetTransactionProvider(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetService<AshlarDurableTransactionProvider>();
     }
 
-    protected static IEmailSender GetEmailSender(IServiceProvider serviceProvider)
+    private protected static IEmailSender GetEmailSender(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IEmailSender>();
     }
 
-    protected static IEmailOutboxDiagnostics GetEmailOutboxDiagnostics(IServiceProvider serviceProvider)
+    private protected static IEmailOutboxDiagnostics GetEmailOutboxDiagnostics(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IEmailOutboxDiagnostics>();
     }
 
-    protected static IAshlarSecurityEventWebhookEnqueuer GetSecurityEventWebhookEnqueuer(IServiceProvider serviceProvider)
+    private protected static IAshlarSecurityEventWebhookEnqueuer GetSecurityEventWebhookEnqueuer(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>();
     }
 
-    protected static IAshlarSecurityEventWebhookOutboxBrowser GetSecurityEventWebhookOutboxBrowser(IServiceProvider serviceProvider)
+    private protected static IAshlarSecurityEventWebhookOutboxBrowser GetSecurityEventWebhookOutboxBrowser(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>();
     }
 
-    protected static IAshlarSecurityEventWebhookOutboxOperations GetSecurityEventWebhookOutboxOperations(IServiceProvider serviceProvider)
+    private protected static IAshlarSecurityEventWebhookOutboxOperations GetSecurityEventWebhookOutboxOperations(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookOutboxOperations>();
     }
 
-    protected static ISecurityEventWebhookOutboxDiagnostics GetSecurityEventWebhookOutboxDiagnostics(IServiceProvider serviceProvider)
+    private protected static ISecurityEventWebhookOutboxDiagnostics GetSecurityEventWebhookOutboxDiagnostics(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<ISecurityEventWebhookOutboxDiagnostics>();
     }
 
-    protected static RecordingEmailTransport GetRecordingEmailTransport(IServiceProvider serviceProvider)
+    private protected static RecordingEmailTransport GetRecordingEmailTransport(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<RecordingEmailTransport>();
     }
 
-    protected virtual Task AdvanceEmailOutboxTimeAsync(TimeSpan offset)
-    {
-        return Task.CompletedTask;
-    }
-
-    protected static async Task<AshlarUser> CreateUserAsync(
+    private protected static async Task<AshlarUser> CreateUserAsync(
         IUserRepository repository,
         string? email = null,
         Guid? tenantId = null,
@@ -205,7 +260,7 @@ internal abstract class ProviderContractFixture
         return user;
     }
 
-    protected static UserCredential CreateCredential(
+    private protected static UserCredential CreateCredential(
         Guid userId,
         ProviderType providerType,
         string providerName,
@@ -224,10 +279,23 @@ internal abstract class ProviderContractFixture
         };
     }
 
-    protected virtual Task<IReadOnlyList<SecurityEventStorageRecord>> ReadSecurityEventStorageRecordsAsync()
+    private protected static async Task<FreshMfaVerificationProof> CreateFreshMfaProofAsync(
+        IServiceProvider services,
+        AuthenticationSession session,
+        string token,
+        string purpose)
     {
-        throw new NotSupportedException("This provider contract fixture does not expose security event storage records.");
+        await GetAuthenticationSessionRepository(services).CreateSessionAsync(session);
+        var validation = await services.GetRequiredService<IAuthenticationSessionService>().ValidateSessionAsync(token);
+        var validatedSession = validation.ValidatedSession
+            ?? throw new InvalidOperationException("The contract actor session could not be validated.");
+        return services.GetRequiredService<StepUpAuthenticationService>()
+            .CreateFreshMfaProof(validatedSession, new StepUpRequirement(TimeSpan.FromMinutes(5)), purpose)
+            .Value ?? throw new InvalidOperationException("The contract actor MFA proof could not be created.");
     }
+
+    private protected static string HashToken(IServiceProvider services, string token) =>
+        services.GetRequiredService<ISecureTokenHasher>().HashToken(token);
 
     private IServiceProvider Services => _serviceProvider ?? throw new InvalidOperationException("Provider contract fixture has not been initialized.");
 }

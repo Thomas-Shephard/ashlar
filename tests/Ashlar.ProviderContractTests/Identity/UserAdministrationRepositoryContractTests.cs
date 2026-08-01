@@ -1,7 +1,9 @@
 namespace Ashlar.ProviderContractTests.Identity;
 
-internal abstract class UserAdministrationRepositoryContractTests : ProviderContractFixture
+/// <summary>Tests scoped user search, filtering, deterministic paging, and secret-free summaries.</summary>
+public abstract class UserAdministrationRepositoryContractTests : ProviderContractFixture
 {
+    /// <summary>Verifies that email search applies exact, partial, and case-insensitive matching consistently.</summary>
     [Test]
     public async Task SearchMatchesExactPartialAndCaseInsensitiveEmail()
     {
@@ -24,6 +26,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Verifies that administrative details preserve the display email instead of exposing its lookup form.</summary>
     [Test]
     public async Task DetailReturnsDisplayEmailRatherThanNormalizedLookupEmail()
     {
@@ -37,6 +40,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         Assert.That(detail?.DisplayEmail, Is.EqualTo("Admin.Detail@Example.COM"));
     }
 
+    /// <summary>Verifies that name search returns matching users and excludes unrelated names.</summary>
     [Test]
     public async Task SearchMatchesName()
     {
@@ -55,6 +59,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Returns users from the requested tenant without leaking users from other scopes.</summary>
     [Test]
     public async Task TenantScopeIsIsolated()
     {
@@ -71,6 +76,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         Assert.That(result.Select(user => user.UserId), Is.EqualTo(new[] { user1.Id }));
     }
 
+    /// <summary>Treats global scope as its own boundary rather than a search across all tenants.</summary>
     [Test]
     public async Task GlobalTenantScopeSearchesOnlyGlobalUsers()
     {
@@ -85,6 +91,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         Assert.That(result.Select(user => user.UserId), Is.EqualTo(new[] { global.Id }));
     }
 
+    /// <summary>Verifies that user search rejects an ambiguous tenant boundary.</summary>
     [Test]
     public async Task SearchRequiresExplicitTenantScopeOrAllTenantsMode()
     {
@@ -98,6 +105,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Returns only users whose account state matches the requested active filter.</summary>
     [Test]
     public async Task ActiveFilterIsApplied()
     {
@@ -112,6 +120,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         Assert.That(result.Select(user => user.UserId), Is.EqualTo(new[] { active.Id }));
     }
 
+    /// <summary>Returns only users with a recorded email-verification time when requested.</summary>
     [Test]
     public async Task EmailVerifiedFilterIsApplied()
     {
@@ -126,6 +135,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         Assert.That(result.Select(user => user.UserId), Is.EqualTo(new[] { verified.Id }));
     }
 
+    /// <summary>Returns only users without an email-verification time when requested.</summary>
     [Test]
     public async Task EmailUnverifiedFilterIsApplied()
     {
@@ -140,6 +150,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         Assert.That(result.Select(user => user.UserId), Is.EqualTo(new[] { unverified.Id }));
     }
 
+    /// <summary>Verifies that administrative summaries expose the timestamp of the latest user update.</summary>
     [Test]
     public async Task GetUserSummaryReturnsUpdatedAtAfterUserUpdate()
     {
@@ -158,6 +169,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Verifies that scoped user lookup hides rows outside the requested tenant.</summary>
     [Test]
     public async Task GetUserSummaryAppliesExplicitTenantScopeWithoutLeakingExistence()
     {
@@ -185,6 +197,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Verifies that user detail lookup rejects an ambiguous tenant boundary.</summary>
     [Test]
     public async Task GetUserSummaryRequiresExplicitTenantScopeOrAllTenantsMode()
     {
@@ -199,6 +212,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Uses user identifiers to stabilize ordering when normalized emails are equal.</summary>
     [Test]
     public async Task SearchOrderingIsDeterministicByEmailThenUserId()
     {
@@ -215,6 +229,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         Assert.That(result.Select(user => user.UserId), Is.EqualTo(expected));
     }
 
+    /// <summary>Verifies that offset and limit divide stable user results without overlap.</summary>
     [Test]
     public async Task LimitOffsetSupportPaging()
     {
@@ -233,6 +248,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         Assert.That(result.Select(user => user.UserId), Is.EqualTo(expected));
     }
 
+    /// <summary>Limits administrative user summaries to account data without credential material.</summary>
     [Test]
     public async Task UserSummariesDoNotExposeCredentialSecrets()
     {
@@ -255,6 +271,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         }
     }
 
+    /// <summary>Verifies that an absent user ID returns no fabricated administrative summary.</summary>
     [Test]
     public async Task GetUserSummaryReturnsNullForMissingUser()
     {

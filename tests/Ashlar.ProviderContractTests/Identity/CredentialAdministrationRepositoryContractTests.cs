@@ -1,10 +1,12 @@
 namespace Ashlar.ProviderContractTests.Identity;
 
-internal abstract class CredentialAdministrationRepositoryContractTests : ProviderContractFixture
+/// <summary>Tests scoped credential search, lifecycle filtering, ordering, and secret-free projections.</summary>
+public abstract class CredentialAdministrationRepositoryContractTests : ProviderContractFixture
 {
     private static readonly DateTimeOffset BaseTime = new(2026, 6, 2, 12, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset Now = BaseTime.AddHours(1);
 
+    /// <summary>Verifies that credential search spans users unless a specific user is requested.</summary>
     [Test]
     public async Task SearchCredentialsSearchesAcrossMultipleUsersAndFiltersByUser()
     {
@@ -30,6 +32,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         }
     }
 
+    /// <summary>Verifies that credential search keeps tenant, global, and all-tenant scopes distinct.</summary>
     [Test]
     public async Task SearchCredentialsFiltersTenantScopes()
     {
@@ -64,6 +67,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         }
     }
 
+    /// <summary>Verifies that credential search rejects an ambiguous tenant boundary.</summary>
     [Test]
     public async Task SearchCredentialsRequiresExplicitTenantScopeOrAllTenantsMode()
     {
@@ -77,6 +81,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         }
     }
 
+    /// <summary>Verifies that provider, purpose, and status filters exclude nonmatching credentials.</summary>
     [Test]
     public async Task SearchCredentialsFiltersByProviderPurposeAndStatus()
     {
@@ -114,6 +119,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         }
     }
 
+    /// <summary>Verifies that credential search distinguishes available, unavailable, and revoked lifecycle states.</summary>
     [Test]
     public async Task SearchCredentialsFiltersAvailableUnavailableAndRevokedCorrectly()
     {
@@ -148,6 +154,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         }
     }
 
+    /// <summary>Verifies that credential date filters exclude rows outside every requested bound.</summary>
     [Test]
     public async Task SearchCredentialsFiltersByDateRanges()
     {
@@ -189,6 +196,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         Assert.That(result.Select(static credential => credential.CredentialId), Is.EqualTo(new[] { matching.Id }));
     }
 
+    /// <summary>Verifies that credential search uses last-used, creation, and ID tie-breakers for stable paging.</summary>
     [Test]
     public async Task SearchCredentialsOrdersByLastUsedCreatedAndCredentialIdDescending()
     {
@@ -210,6 +218,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         Assert.That(result.Select(static credential => credential.CredentialId), Is.EqualTo(new[] { higherTie.Id, lowerTie.Id, olderLastUsed.Id, noLastUsed.Id }));
     }
 
+    /// <summary>Verifies that credential detail lookup distinguishes a stored credential from an absent ID.</summary>
     [Test]
     public async Task GetCredentialReturnsLookupByIdAndMissingReturnsNull()
     {
@@ -254,6 +263,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         }
     }
 
+    /// <summary>Verifies that scoped credential lookup hides rows outside the requested tenant.</summary>
     [Test]
     public async Task GetCredentialAppliesExplicitTenantScopeWithoutLeakingExistence()
     {
@@ -286,6 +296,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         }
     }
 
+    /// <summary>Verifies that credential detail lookup rejects an ambiguous tenant boundary.</summary>
     [Test]
     public async Task GetCredentialRequiresExplicitTenantScopeOrAllTenantsMode()
     {
@@ -300,6 +311,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         }
     }
 
+    /// <summary>Omits provider keys, versions, metadata, and secret values from administrative projections.</summary>
     [Test]
     public async Task CredentialAdministrationDoesNotReturnSensitiveStorageFields()
     {
