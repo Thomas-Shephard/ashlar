@@ -49,7 +49,7 @@ Ashlar.Postgres uses [DbUp](https://dbup.github.io/) for schema migrations. You 
 await serviceProvider.InitializeAshlarPostgresSchemaAsync();
 ```
 
-This will create the following tables:
+This will create tables including:
 - `ashlar_users`: Stores user identity and audit metadata.
 - `ashlar_credentials`: Stores credentials with optimistic concurrency support. Provider identity is globally unique by provider type, provider name, and provider key, and credential status/revocation state is enforced by the database.
 - `ashlar_sessions`: Stores durable authentication sessions using hashed session tokens only, plus safe authentication metadata for primary sign-in and recent additional verification.
