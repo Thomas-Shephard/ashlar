@@ -20,9 +20,6 @@ public enum AuthorizationGrantAdministrationStatus
 /// </summary>
 public sealed record SearchAuthorizationGrantsRequest
 {
-    /// <summary>Verified actor, active session, purpose-bound proof, and audit context.</summary>
-    public AccountSecurityActorContext? Actor { get; init; }
-
     /// <summary>Tenant scope to search. Use <see cref="TenantContext.Global" /> for global grants; leave <see langword="null" /> only when <see cref="IncludeAllTenants" /> is enabled.</summary>
     public TenantContext? Tenant { get; init; }
 
@@ -133,12 +130,10 @@ public sealed record AuthorizationGrantSearchResult(
 /// <param name="GrantId">Grant to load.</param>
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global grants; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
 /// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
-/// <param name="Actor">Verified actor, active session, purpose-bound proof, and security-event context.</param>
 public sealed record AuthorizationGrantAdministrationLookupRequest(
     Guid GrantId,
     TenantContext? Tenant = null,
-    bool IncludeAllTenants = false,
-    AccountSecurityActorContext? Actor = null)
+    bool IncludeAllTenants = false)
 {
     /// <summary>
     /// Throws when the authorization grant lookup request is not safe to execute.

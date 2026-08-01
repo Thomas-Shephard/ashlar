@@ -1,4 +1,7 @@
 using Ashlar.Auditing;
+using Ashlar.Authorization;
+using Ashlar.Authorization.Abstractions;
+using Ashlar.Authorization.Models;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 
@@ -7,6 +10,14 @@ namespace Ashlar.Tests.Identity.Features.Administration;
 internal sealed class AccountSecurityOperationBoundaryTests
 {
     private static readonly DateTimeOffset Now = new(2026, 7, 18, 12, 0, 0, TimeSpan.Zero);
+
+    public enum ActorExplicitRead
+    {
+        SecurityEventSearch,
+        SecurityEventLookup,
+        AuthorizationGrantSearch,
+        AuthorizationGrantLookup
+    }
 
     [Test]
     public void AllTenantResultValidationStillEnforcesExplicitUserFilter()
@@ -47,6 +58,16 @@ internal sealed class AccountSecurityOperationBoundaryTests
     }
 
     [Test]
+    public async Task BoundaryRejectsNullActor()
+    {
+        var boundary = new AdminReadTestBoundary(Now);
+
+        Assert.That(await new AccountSecurityOperationBoundary(boundary.Sessions, boundary.Authorizer,
+            boundary.Sink, boundary.TimeProvider).AuthorizeAsync(null, TenantContext.Global, false, Guid.Empty,
+                AccountSecurityOperation.SearchSecurityEvents, default), Is.EqualTo(AshlarFailureCodes.ValidationError));
+    }
+
+    [Test]
     public void SplitAdministrationReadersRejectNullActorBeforeProviderAccess()
     {
         var boundary = new AdminReadTestBoundary(Now);
@@ -72,6 +93,45 @@ internal sealed class AccountSecurityOperationBoundaryTests
         users.VerifyNoOtherCalls();
         credentials.VerifyNoOtherCalls();
         sessions.VerifyNoOtherCalls();
+    }
+
+    [TestCase(ActorExplicitRead.SecurityEventSearch)]
+    [TestCase(ActorExplicitRead.SecurityEventLookup)]
+    [TestCase(ActorExplicitRead.AuthorizationGrantSearch)]
+    [TestCase(ActorExplicitRead.AuthorizationGrantLookup)]
+    public void ActorExplicitAdministrationReadsRejectNullActorBeforeProviderAccess(ActorExplicitRead operation)
+    {
+        var boundary = new AdminReadTestBoundary(Now);
+        var events = new Mock<ISecurityEventAdministrationRepository>();
+        var grants = new Mock<IAuthorizationGrantAdministrationRepository>();
+        var eventReader = new SecurityEventAdministrationService(events.Object, boundary.Sessions,
+            boundary.Authorizer, boundary.Sink, boundary.TimeProvider);
+        var grantReader = new AuthorizationGrantAdministrationService(grants.Object, boundary.Sessions,
+            boundary.Authorizer, boundary.Sink, timeProvider: boundary.TimeProvider);
+
+        Task InvokeAsync() => operation switch
+        {
+            ActorExplicitRead.SecurityEventSearch => eventReader.SearchSecurityEventsAsync(null!, new() { IncludeAllTenants = true }),
+            ActorExplicitRead.SecurityEventLookup => eventReader.GetSecurityEventAsync(null!, new(Guid.NewGuid(), TenantContext.Global)),
+            ActorExplicitRead.AuthorizationGrantSearch => grantReader.SearchAuthorizationGrantsAsync(null!, new() { IncludeAllTenants = true }),
+            _ => grantReader.GetAuthorizationGrantAsync(null!, new(Guid.NewGuid(), TenantContext.Global))
+        };
+        var requestType = operation switch
+        {
+            ActorExplicitRead.SecurityEventSearch => typeof(SearchSecurityEventsRequest),
+            ActorExplicitRead.SecurityEventLookup => typeof(SecurityEventAdministrationLookupRequest),
+            ActorExplicitRead.AuthorizationGrantSearch => typeof(SearchAuthorizationGrantsRequest),
+            _ => typeof(AuthorizationGrantAdministrationLookupRequest)
+        };
+
+        Assert.ThrowsAsync<ArgumentNullException>(InvokeAsync);
+        events.VerifyNoOtherCalls();
+        grants.VerifyNoOtherCalls();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(boundary.Sink.Events, Is.Empty);
+            Assert.That(requestType.GetProperty("Actor"), Is.Null);
+        }
     }
 
     [Test]
@@ -241,7 +301,7 @@ internal sealed class AccountSecurityOperationBoundaryTests
         var session = await new AuthenticationSessionAdministrationReader(sessions.Object, boundary.Sessions, authorizer, boundary.Sink, boundary.TimeProvider)
             .GetAuthenticationSessionAsync(boundary.Actor, new AuthenticationSessionAdministrationLookupRequest(sessionId, TenantContext.Global));
         var securityEvent = await new SecurityEventAdministrationService(events.Object, boundary.Sessions, authorizer, boundary.Sink, boundary.TimeProvider)
-            .GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(eventId, TenantContext.Global, Actor: boundary.Actor));
+            .GetSecurityEventAsync(boundary.Actor, new SecurityEventAdministrationLookupRequest(eventId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -264,7 +324,7 @@ internal sealed class AccountSecurityOperationBoundaryTests
         var session = await new AuthenticationSessionAdministrationReader(Mock.Of<IAuthenticationSessionAdministrationRepository>(), boundary.Sessions, denied, boundary.Sink)
             .GetAuthenticationSessionAsync(boundary.Actor, new AuthenticationSessionAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
         var securityEvent = await new SecurityEventAdministrationService(Mock.Of<ISecurityEventAdministrationRepository>(), boundary.Sessions, denied, boundary.Sink)
-            .GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global, Actor: boundary.Actor));
+            .GetSecurityEventAsync(boundary.Actor, new SecurityEventAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
         var user = await new UserAdministrationReader(Mock.Of<IUserAdministrationRepository>(), new PostureReader(), boundary.Sessions, denied, boundary.Sink)
             .GetUserDetailAsync(boundary.Actor, new UserAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
 
@@ -305,7 +365,7 @@ internal sealed class AccountSecurityOperationBoundaryTests
             Assert.ThrowsAsync<InvalidOperationException>(async () => await new AuthenticationSessionAdministrationReader(sessions.Object, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider)
                 .GetAuthenticationSessionAsync(boundary.Actor, new AuthenticationSessionAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global)));
             Assert.ThrowsAsync<InvalidOperationException>(async () => await new SecurityEventAdministrationService(events.Object, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider)
-                .GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global, Actor: boundary.Actor)));
+                .GetSecurityEventAsync(boundary.Actor, new SecurityEventAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global)));
             Assert.ThrowsAsync<InvalidOperationException>(async () => await new UserAdministrationReader(postureUsers.Object, posture, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider)
                 .GetUserDetailAsync(boundary.Actor, new UserAdministrationLookupRequest(userId, TenantContext.Global)));
 
@@ -345,7 +405,7 @@ internal sealed class AccountSecurityOperationBoundaryTests
             (await users.SearchUsersAsync(actor!, new SearchUsersRequest { Tenant = tenant, IncludeAllTenants = includeAllTenants })).FailureCode,
             (await credentials.SearchCredentialsAsync(actor!, new SearchCredentialsRequest { Tenant = tenant, IncludeAllTenants = includeAllTenants })).FailureCode,
             (await authenticationSessions.SearchAuthenticationSessionsAsync(actor!, new SearchAuthenticationSessionsRequest { Tenant = tenant, IncludeAllTenants = includeAllTenants })).FailureCode,
-            (await events.SearchSecurityEventsAsync(new SearchSecurityEventsRequest { Actor = actor, Tenant = tenant, IncludeAllTenants = includeAllTenants })).FailureCode
+            (await events.SearchSecurityEventsAsync(actor!, new SearchSecurityEventsRequest { Tenant = tenant, IncludeAllTenants = includeAllTenants })).FailureCode
         ];
     }
 

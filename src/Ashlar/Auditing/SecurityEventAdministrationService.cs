@@ -21,8 +21,9 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
     private readonly AccountSecurityOperationBoundary _boundary = new(sessions, authorizer, auditSink, timeProvider ?? TimeProvider.System);
 
     /// <inheritdoc />
-    public async Task<Result<SecurityEventSearchResult>> SearchSecurityEventsAsync(SearchSecurityEventsRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<SecurityEventSearchResult>> SearchSecurityEventsAsync(AccountSecurityActorContext actor, SearchSecurityEventsRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
 
         if (!TryValidateSearchRequest(request, out var validationFailure))
@@ -40,12 +41,12 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
             return Result.Failure<SecurityEventSearchResult>(AshlarFailureCodes.ValidationError, "Limit must be greater than zero.");
         }
 
-        if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+        if (await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants,
                 request.UserId ?? Guid.Empty, AccountSecurityOperation.SearchSecurityEvents, cancellationToken) is { } authorizationFailure)
             return Result.Failure<SecurityEventSearchResult>(authorizationFailure);
 
         var limit = Math.Min(request.Limit, MaximumLimit);
-        var repositoryRequest = request with { Actor = null, Limit = limit + 1 };
+        var repositoryRequest = request with { Limit = limit + 1 };
         List<SecurityEventSummary> events;
         try
         {
@@ -53,16 +54,16 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
         }
         catch
         {
-            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchSecurityEvents);
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchSecurityEvents);
             throw;
         }
         if (events.Any(securityEvent => !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants,
                 securityEvent.TenantId, request.UserId, securityEvent.UserId)))
         {
-            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchSecurityEvents);
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchSecurityEvents);
             throw new InvalidOperationException("The security-event administration provider returned a result outside the authorized scope.");
         }
-        await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchSecurityEvents);
+        await _boundary.RecordSuccessAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchSecurityEvents);
         var hasMore = events.Count > limit;
         var page = events.Take(limit).ToList().AsReadOnly();
 
@@ -70,8 +71,9 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
     }
 
     /// <inheritdoc />
-    public async Task<Result<SecurityEventSummary>> GetSecurityEventAsync(SecurityEventAdministrationLookupRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<SecurityEventSummary>> GetSecurityEventAsync(AccountSecurityActorContext actor, SecurityEventAdministrationLookupRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
 
         if (!TryValidateLookupRequest(request, out var validationFailure))
@@ -79,31 +81,31 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
             return validationFailure;
         }
 
-        if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+        if (await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants,
                 Guid.Empty, AccountSecurityOperation.ReadSecurityEvent, cancellationToken) is { } authorizationFailure)
             return Result.Failure<SecurityEventSummary>(authorizationFailure);
 
         SecurityEventSummary? securityEvent;
         try
         {
-            securityEvent = await _repository.GetSecurityEventAsync(request with { Actor = null }, cancellationToken);
+            securityEvent = await _repository.GetSecurityEventAsync(request, cancellationToken);
         }
         catch
         {
-            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadSecurityEvent);
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadSecurityEvent);
             throw;
         }
         if (securityEvent is null || securityEvent.EventId != request.EventId
             || !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants, securityEvent.TenantId))
         {
-            await _boundary.RecordFailureAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadSecurityEvent);
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadSecurityEvent);
             securityEvent = null;
         }
-        else if (await _boundary.AuthorizeAsync(request.Actor, request.Tenant, request.IncludeAllTenants,
+        else if (await _boundary.AuthorizeAsync(actor, request.Tenant, request.IncludeAllTenants,
                 securityEvent.UserId ?? Guid.Empty, AccountSecurityOperation.ReadSecurityEvent, cancellationToken) is not null)
             securityEvent = null;
         if (securityEvent is not null)
-            await _boundary.RecordSuccessAsync(request.Actor!, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadSecurityEvent);
+            await _boundary.RecordSuccessAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.ReadSecurityEvent);
         return securityEvent == null
             ? Result.Failure<SecurityEventSummary>(AshlarFailureCodes.SecurityEventNotFound, "Security event was not found.")
             : Result.Success(securityEvent);

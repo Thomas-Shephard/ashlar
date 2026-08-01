@@ -17,16 +17,18 @@ public interface IAuthorizationGrantAdministrationService
     /// <summary>
     /// Searches authorization grants using provider-neutral display fields.
     /// </summary>
-    /// <param name="request">Actor-bound tenant scope, filters, and paging options for the search.</param>
+    /// <param name="actor">Verified actor, active session, purpose-bound proof, and audit context.</param>
+    /// <param name="request">Tenant scope, filters, and paging options for the search.</param>
     /// <param name="cancellationToken">A token that can cancel the search.</param>
     /// <returns>Provider-neutral grant summaries without raw metadata.</returns>
-    Task<Result<AuthorizationGrantSearchResult>> SearchAuthorizationGrantsAsync(SearchAuthorizationGrantsRequest request, CancellationToken cancellationToken = default);
+    Task<Result<AuthorizationGrantSearchResult>> SearchAuthorizationGrantsAsync(AccountSecurityActorContext actor, SearchAuthorizationGrantsRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets an authorization grant by id.
     /// </summary>
-    /// <param name="request">Actor-bound tenant scope and grant identifier for the lookup.</param>
+    /// <param name="actor">Verified actor, active session, purpose-bound proof, and audit context.</param>
+    /// <param name="request">Tenant scope and grant identifier for the lookup.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
     /// <returns>The same provider-neutral grant projection used by search when found, without raw metadata.</returns>
-    Task<Result<AuthorizationGrantAdministrationSummary>> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationLookupRequest request, CancellationToken cancellationToken = default);
+    Task<Result<AuthorizationGrantAdministrationSummary>> GetAuthorizationGrantAsync(AccountSecurityActorContext actor, AuthorizationGrantAdministrationLookupRequest request, CancellationToken cancellationToken = default);
 }

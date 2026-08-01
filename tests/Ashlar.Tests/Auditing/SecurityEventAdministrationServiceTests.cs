@@ -6,6 +6,13 @@ using Ashlar.Tests.Support;
 
 internal sealed class SecurityEventAdministrationServiceTests
 {
+    private AdminReadTestBoundary _boundary = null!;
+    private AccountSecurityActorContext Actor => _boundary.Actor;
+    private AdminReadTestBoundary.RecordingSink Sink => _boundary.Sink;
+
+    [SetUp]
+    public void SetUp() => _boundary = new AdminReadTestBoundary(DateTimeOffset.UtcNow);
+
     [Test]
     public void ConstructorRejectsNullRepository()
     {
@@ -17,14 +24,14 @@ internal sealed class SecurityEventAdministrationServiceTests
     {
         var service = CreateService();
 
-        Assert.ThrowsAsync<ArgumentNullException>(async () => await service.SearchSecurityEventsAsync(null!));
+        Assert.ThrowsAsync<ArgumentNullException>(async () => await service.SearchSecurityEventsAsync(Actor, null!));
     }
 
     [TestCase(0)]
     [TestCase(-1)]
     public async Task SearchSecurityEventsAsyncRejectsInvalidLimit(int limit)
     {
-        var result = await CreateService().SearchSecurityEventsAsync(new SearchSecurityEventsRequest { IncludeAllTenants = true, Limit = limit });
+        var result = await CreateService().SearchSecurityEventsAsync(Actor, new SearchSecurityEventsRequest { IncludeAllTenants = true, Limit = limit });
 
         using (Assert.EnterMultipleScope())
         {
@@ -36,7 +43,7 @@ internal sealed class SecurityEventAdministrationServiceTests
     [Test]
     public async Task SearchSecurityEventsAsyncRejectsNegativeOffset()
     {
-        var result = await CreateService().SearchSecurityEventsAsync(new SearchSecurityEventsRequest { IncludeAllTenants = true, Offset = -1 });
+        var result = await CreateService().SearchSecurityEventsAsync(Actor, new SearchSecurityEventsRequest { IncludeAllTenants = true, Offset = -1 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -50,8 +57,8 @@ internal sealed class SecurityEventAdministrationServiceTests
     {
         var service = CreateService();
 
-        var missing = await service.SearchSecurityEventsAsync(new SearchSecurityEventsRequest { Limit = 10 });
-        var conflicting = await service.SearchSecurityEventsAsync(new SearchSecurityEventsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true, Limit = 10 });
+        var missing = await service.SearchSecurityEventsAsync(Actor, new SearchSecurityEventsRequest { Limit = 10 });
+        var conflicting = await service.SearchSecurityEventsAsync(Actor, new SearchSecurityEventsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true, Limit = 10 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -69,7 +76,7 @@ internal sealed class SecurityEventAdministrationServiceTests
             repository.SearchResults.Add(CreateSummary());
         }
 
-        var result = await CreateService(repository).SearchSecurityEventsAsync(new SearchSecurityEventsRequest { IncludeAllTenants = true, Limit = 500, Offset = 7 });
+        var result = await CreateService(repository).SearchSecurityEventsAsync(Actor, new SearchSecurityEventsRequest { IncludeAllTenants = true, Limit = 500, Offset = 7 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -109,7 +116,7 @@ internal sealed class SecurityEventAdministrationServiceTests
             Offset = 5
         };
 
-        var result = await CreateService(repository).SearchSecurityEventsAsync(request);
+        var result = await CreateService(repository).SearchSecurityEventsAsync(Actor, request);
 
         using (Assert.EnterMultipleScope())
         {
@@ -132,7 +139,7 @@ internal sealed class SecurityEventAdministrationServiceTests
     [Test]
     public async Task GetSecurityEventAsyncRejectsEmptyEventId()
     {
-        var result = await CreateService().GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(Guid.Empty, TenantContext.Global));
+        var result = await CreateService().GetSecurityEventAsync(Actor, new SecurityEventAdministrationLookupRequest(Guid.Empty, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -145,13 +152,13 @@ internal sealed class SecurityEventAdministrationServiceTests
     public async Task GetSecurityEventAsyncMapsMissingEventSafely()
     {
         var service = CreateService();
-        var result = await service.GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
+        var result = await service.GetSecurityEventAsync(Actor, new SecurityEventAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.SecurityEventNotFound));
-            Assert.That(service.Sink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+            Assert.That(Sink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
         }
     }
 
@@ -162,7 +169,7 @@ internal sealed class SecurityEventAdministrationServiceTests
         var repository = new RecordingSecurityEventAdministrationRepository { GetResult = expected };
 
         var request = new SecurityEventAdministrationLookupRequest(expected.EventId, TenantContext.Global);
-        var result = await CreateService(repository).GetSecurityEventAsync(request);
+        var result = await CreateService(repository).GetSecurityEventAsync(Actor, request);
 
         using (Assert.EnterMultipleScope())
         {
@@ -178,9 +185,9 @@ internal sealed class SecurityEventAdministrationServiceTests
         var expected = CreateSummary() with { UserId = null };
         var service = CreateService(new RecordingSecurityEventAdministrationRepository { GetResult = expected });
 
-        var result = await service.GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(expected.EventId, TenantContext.Global));
+        var result = await service.GetSecurityEventAsync(Actor, new SecurityEventAdministrationLookupRequest(expected.EventId, TenantContext.Global));
 
-        var audit = service.Sink.Events.Single();
+        var audit = Sink.Events.Single();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
@@ -199,7 +206,7 @@ internal sealed class SecurityEventAdministrationServiceTests
             boundary.Authorizer, new ThrowingPersistentSink(), boundary.TimeProvider);
 
         Assert.ThrowsAsync<InvalidOperationException>(() => service.GetSecurityEventAsync(
-            new SecurityEventAdministrationLookupRequest(expected.EventId, TenantContext.Global, Actor: boundary.Actor)));
+            boundary.Actor, new SecurityEventAdministrationLookupRequest(expected.EventId, TenantContext.Global)));
     }
 
     [Test]
@@ -210,12 +217,12 @@ internal sealed class SecurityEventAdministrationServiceTests
         var repository = new RecordingSecurityEventAdministrationRepository { GetResult = expected };
 
         var service = CreateService(repository);
-        var result = await service.GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(expected.EventId, TenantContext.Global));
+        var result = await service.GetSecurityEventAsync(Actor, new SecurityEventAdministrationLookupRequest(expected.EventId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.SecurityEventNotFound));
-            Assert.That(service.Sink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+            Assert.That(Sink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
         }
     }
 
@@ -225,7 +232,7 @@ internal sealed class SecurityEventAdministrationServiceTests
         var expected = CreateSummary() with { TenantId = Guid.NewGuid() };
         var repository = new RecordingSecurityEventAdministrationRepository { GetResult = expected };
 
-        var result = await CreateService(repository).GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(expected.EventId, IncludeAllTenants: true));
+        var result = await CreateService(repository).GetSecurityEventAsync(Actor, new SecurityEventAdministrationLookupRequest(expected.EventId, IncludeAllTenants: true));
 
         Assert.That(result.Value, Is.EqualTo(expected));
     }
@@ -236,8 +243,8 @@ internal sealed class SecurityEventAdministrationServiceTests
         var service = CreateService();
         var eventId = Guid.NewGuid();
 
-        var missing = await service.GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(eventId));
-        var conflicting = await service.GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(eventId, TenantContext.Global, IncludeAllTenants: true));
+        var missing = await service.GetSecurityEventAsync(Actor, new SecurityEventAdministrationLookupRequest(eventId));
+        var conflicting = await service.GetSecurityEventAsync(Actor, new SecurityEventAdministrationLookupRequest(eventId, TenantContext.Global, IncludeAllTenants: true));
 
         using (Assert.EnterMultipleScope())
         {
@@ -250,7 +257,7 @@ internal sealed class SecurityEventAdministrationServiceTests
     public void SearchSecurityEventsAsyncAuditsProviderFailure()
     {
         var repository = new RecordingSecurityEventAdministrationRepository { SearchException = new InvalidOperationException() };
-        Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository).SearchSecurityEventsAsync(
+        Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository).SearchSecurityEventsAsync(Actor,
             new SearchSecurityEventsRequest { Tenant = TenantContext.Global }));
     }
 
@@ -263,26 +270,14 @@ internal sealed class SecurityEventAdministrationServiceTests
         repository.SearchResults.Add(CreateSummary() with { TenantId = tenant.TenantId, UserId = userId });
         repository.SearchResults.Add(CreateSummary() with { TenantId = tenant.TenantId, UserId = Guid.NewGuid() });
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository).SearchSecurityEventsAsync(
+        Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository).SearchSecurityEventsAsync(Actor,
             new SearchSecurityEventsRequest { Tenant = tenant, UserId = userId, Limit = 1 }));
     }
 
-    private static AuthorizedSecurityEventAdministrationService CreateService(RecordingSecurityEventAdministrationRepository? repository = null)
+    private SecurityEventAdministrationService CreateService(RecordingSecurityEventAdministrationRepository? repository = null)
     {
-        var boundary = new AdminReadTestBoundary(DateTimeOffset.UtcNow);
-        return new AuthorizedSecurityEventAdministrationService(new SecurityEventAdministrationService(
-            repository ?? new RecordingSecurityEventAdministrationRepository(), boundary.Sessions,
-            boundary.Authorizer, boundary.Sink, boundary.TimeProvider), boundary.Actor, boundary.Sink);
-    }
-
-    private sealed class AuthorizedSecurityEventAdministrationService(SecurityEventAdministrationService service, AccountSecurityActorContext actor,
-        AdminReadTestBoundary.RecordingSink sink)
-    {
-        public AdminReadTestBoundary.RecordingSink Sink { get; } = sink;
-        public Task<Result<SecurityEventSearchResult>> SearchSecurityEventsAsync(SearchSecurityEventsRequest request) =>
-            service.SearchSecurityEventsAsync(request is null ? null! : request with { Actor = actor });
-        public Task<Result<SecurityEventSummary>> GetSecurityEventAsync(SecurityEventAdministrationLookupRequest request) =>
-            service.GetSecurityEventAsync(request with { Actor = actor });
+        return new SecurityEventAdministrationService(repository ?? new RecordingSecurityEventAdministrationRepository(),
+            _boundary.Sessions, _boundary.Authorizer, _boundary.Sink, _boundary.TimeProvider);
     }
 
     private static SecurityEventSummary CreateSummary()
