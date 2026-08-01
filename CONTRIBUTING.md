@@ -39,6 +39,7 @@ To ensure that changes work as expected, follow these steps:
 - Write tests for all new features or bug fixes.
 - **Strict Coverage:** 100% line and branch coverage is enforced for all application code. Pull requests that lower coverage will be rejected.
 - Ensure all tests pass and coverage requirements are met before submitting a pull request.
+- Run `dotnet build Ashlar.slnx --configuration Release` to verify committed public API baselines, and `dotnet pack Ashlar.slnx --configuration Release --no-restore` to validate packages.
 
 ## Release Process
 This project uses [MinVer](https://github.com/adamralph/minver) for versioning.

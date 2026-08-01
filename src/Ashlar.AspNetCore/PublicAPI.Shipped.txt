@@ -1,0 +1,210 @@
+#nullable enable
+Ashlar.AspNetCore.Authentication.AshlarClaimTypes
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationDefaults
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationHandler
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationHandler.AshlarSessionAuthenticationHandler(Microsoft.Extensions.Options.IOptionsMonitor<Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions!>! options, Microsoft.Extensions.Logging.ILoggerFactory! logger, System.Text.Encodings.Web.UrlEncoder! encoder, Ashlar.Identity.Abstractions.Services.IAuthenticationSessionService! sessionService) -> void
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions.AccessDeniedPath.get -> Microsoft.AspNetCore.Http.PathString
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions.AccessDeniedPath.set -> void
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions.AshlarSessionAuthenticationOptions() -> void
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions.ClaimsIssuer.get -> string!
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions.ClaimsIssuer.set -> void
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions.Cookie.get -> Microsoft.AspNetCore.Http.CookieBuilder!
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions.CookieName.get -> string!
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions.CookieName.set -> void
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions.LoginPath.get -> Microsoft.AspNetCore.Http.PathString
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions.LoginPath.set -> void
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions.SchemeName.get -> string!
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions.SchemeName.set -> void
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions.SlidingCookieExpiration.get -> bool
+Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions.SlidingCookieExpiration.set -> void
+Ashlar.AspNetCore.Authorization.AshlarAuthorizationHandler
+Ashlar.AspNetCore.Authorization.AshlarAuthorizationHandler.AshlarAuthorizationHandler(Ashlar.Authorization.Abstractions.IAuthorizationEvaluator! evaluator, Microsoft.AspNetCore.Http.IHttpContextAccessor! httpContextAccessor, Microsoft.Extensions.Options.IOptions<Ashlar.AspNetCore.Authorization.AshlarAuthorizationOptions!>! options) -> void
+Ashlar.AspNetCore.Authorization.AshlarAuthorizationHandler.HandleAsync(Microsoft.AspNetCore.Authorization.AuthorizationHandlerContext! context) -> System.Threading.Tasks.Task!
+Ashlar.AspNetCore.Authorization.AshlarAuthorizationOptions
+Ashlar.AspNetCore.Authorization.AshlarAuthorizationOptions.AddAshlarStepUpIfAvailablePolicy(string! policyName, System.Action<Ashlar.AspNetCore.Authorization.AshlarStepUpOptions!>? configure = null) -> void
+Ashlar.AspNetCore.Authorization.AshlarAuthorizationOptions.AddAshlarStepUpPolicy(string! policyName, System.Action<Ashlar.AspNetCore.Authorization.AshlarStepUpOptions!>? configure = null) -> void
+Ashlar.AspNetCore.Authorization.AshlarAuthorizationOptions.AddPermissionPolicy(string! policyName, string! permission, System.Action<Ashlar.AspNetCore.Authorization.AshlarScopeOptions!>? configureScope = null) -> void
+Ashlar.AspNetCore.Authorization.AshlarAuthorizationOptions.AddRolePolicy(string! policyName, string! role, System.Action<Ashlar.AspNetCore.Authorization.AshlarScopeOptions!>? configureScope = null) -> void
+Ashlar.AspNetCore.Authorization.AshlarAuthorizationOptions.AshlarAuthorizationOptions() -> void
+Ashlar.AspNetCore.Authorization.AshlarAuthorizationOptions.PolicyScopes.get -> System.Collections.Generic.IReadOnlyDictionary<string!, Ashlar.AspNetCore.Authorization.AshlarScopeOptions!>!
+Ashlar.AspNetCore.Authorization.AshlarAuthorizationOptions.RequireFreshMfa(System.Action<Ashlar.AspNetCore.Authorization.AshlarStepUpOptions!>? configure = null) -> void
+Ashlar.AspNetCore.Authorization.AshlarAuthorizationOptions.RequireFreshMfaIfAvailable(System.Action<Ashlar.AspNetCore.Authorization.AshlarStepUpOptions!>? configure = null) -> void
+Ashlar.AspNetCore.Authorization.AshlarAuthorizationOptions.StepUp.get -> Ashlar.AspNetCore.Authorization.AshlarStepUpOptions!
+Ashlar.AspNetCore.Authorization.AshlarPermissionRequirement
+Ashlar.AspNetCore.Authorization.AshlarPermissionRequirement.AshlarPermissionRequirement(string! permission, string! policyName) -> void
+Ashlar.AspNetCore.Authorization.AshlarPermissionRequirement.Permission.get -> string!
+Ashlar.AspNetCore.Authorization.AshlarPermissionRequirement.PolicyName.get -> string!
+Ashlar.AspNetCore.Authorization.AshlarRoleRequirement
+Ashlar.AspNetCore.Authorization.AshlarRoleRequirement.AshlarRoleRequirement(string! role, string! policyName) -> void
+Ashlar.AspNetCore.Authorization.AshlarRoleRequirement.PolicyName.get -> string!
+Ashlar.AspNetCore.Authorization.AshlarRoleRequirement.Role.get -> string!
+Ashlar.AspNetCore.Authorization.AshlarScopeOptions
+Ashlar.AspNetCore.Authorization.AshlarScopeOptions.AshlarScopeOptions() -> void
+Ashlar.AspNetCore.Authorization.AshlarScopeOptions.FixedScopeId.get -> string?
+Ashlar.AspNetCore.Authorization.AshlarScopeOptions.FixedScopeId.set -> void
+Ashlar.AspNetCore.Authorization.AshlarScopeOptions.ScopeIdRouteValueName.get -> string?
+Ashlar.AspNetCore.Authorization.AshlarScopeOptions.ScopeIdRouteValueName.set -> void
+Ashlar.AspNetCore.Authorization.AshlarScopeOptions.ScopeType.get -> string?
+Ashlar.AspNetCore.Authorization.AshlarScopeOptions.ScopeType.set -> void
+Ashlar.AspNetCore.Authorization.AshlarScopeOptions.TenantIdSource.get -> string?
+Ashlar.AspNetCore.Authorization.AshlarScopeOptions.TenantIdSource.set -> void
+Ashlar.AspNetCore.Authorization.AshlarScopeOptions.UseClaimForTenantId.get -> bool
+Ashlar.AspNetCore.Authorization.AshlarScopeOptions.UseClaimForTenantId.set -> void
+Ashlar.AspNetCore.Authorization.AshlarStepUpAuthorizationHandler
+Ashlar.AspNetCore.Authorization.AshlarStepUpAuthorizationHandler.AshlarStepUpAuthorizationHandler(Ashlar.Identity.Abstractions.Services.IStepUpAuthenticationService! stepUpAuthentication, Microsoft.AspNetCore.Http.IHttpContextAccessor! httpContextAccessor, Ashlar.Identity.Abstractions.Services.IAccountSecurityService? accountSecurity = null) -> void
+Ashlar.AspNetCore.Authorization.AshlarStepUpMode
+Ashlar.AspNetCore.Authorization.AshlarStepUpMode.IfAvailable = 1 -> Ashlar.AspNetCore.Authorization.AshlarStepUpMode
+Ashlar.AspNetCore.Authorization.AshlarStepUpMode.Required = 0 -> Ashlar.AspNetCore.Authorization.AshlarStepUpMode
+Ashlar.AspNetCore.Authorization.AshlarStepUpOptions
+Ashlar.AspNetCore.Authorization.AshlarStepUpOptions.AllowedFactors.get -> System.Collections.Generic.HashSet<string!>!
+Ashlar.AspNetCore.Authorization.AshlarStepUpOptions.AllowedProviders.get -> System.Collections.Generic.HashSet<Ashlar.Identity.Models.Authentication.AuthenticationProviderKey>!
+Ashlar.AspNetCore.Authorization.AshlarStepUpOptions.AshlarStepUpOptions() -> void
+Ashlar.AspNetCore.Authorization.AshlarStepUpOptions.FreshnessWindow.get -> System.TimeSpan
+Ashlar.AspNetCore.Authorization.AshlarStepUpOptions.FreshnessWindow.set -> void
+Ashlar.AspNetCore.Authorization.AshlarStepUpPolicyNames
+Ashlar.AspNetCore.Authorization.AshlarStepUpRequirement
+Ashlar.AspNetCore.Authorization.AshlarStepUpRequirement.AllowedFactors.get -> System.Collections.Generic.IReadOnlyCollection<string!>!
+Ashlar.AspNetCore.Authorization.AshlarStepUpRequirement.AllowedProviders.get -> System.Collections.Generic.IReadOnlyCollection<Ashlar.Identity.Models.Authentication.AuthenticationProviderKey>!
+Ashlar.AspNetCore.Authorization.AshlarStepUpRequirement.AshlarStepUpRequirement(System.TimeSpan freshnessWindow, System.Collections.Generic.IEnumerable<Ashlar.Identity.Models.Authentication.AuthenticationProviderKey>? allowedProviders = null, System.Collections.Generic.IEnumerable<string!>? allowedFactors = null, Ashlar.AspNetCore.Authorization.AshlarStepUpMode mode = Ashlar.AspNetCore.Authorization.AshlarStepUpMode.Required) -> void
+Ashlar.AspNetCore.Authorization.AshlarStepUpRequirement.FreshnessWindow.get -> System.TimeSpan
+Ashlar.AspNetCore.Authorization.AshlarStepUpRequirement.Mode.get -> Ashlar.AspNetCore.Authorization.AshlarStepUpMode
+Ashlar.AspNetCore.Diagnostics.AshlarCleanupHealthCheck
+Ashlar.AspNetCore.Diagnostics.AshlarCleanupHealthCheck.AshlarCleanupHealthCheck(System.Collections.Generic.IEnumerable<Ashlar.Operational.Diagnostics.IAshlarCleanupDiagnostics!>! diagnostics, Microsoft.Extensions.Options.IOptions<Ashlar.AspNetCore.Diagnostics.AshlarCleanupHealthCheckOptions!>! options) -> void
+Ashlar.AspNetCore.Diagnostics.AshlarCleanupHealthCheck.CheckHealthAsync(Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult>!
+Ashlar.AspNetCore.Diagnostics.AshlarCleanupHealthCheckOptions
+Ashlar.AspNetCore.Diagnostics.AshlarCleanupHealthCheckOptions.AshlarCleanupHealthCheckOptions() -> void
+Ashlar.AspNetCore.Diagnostics.AshlarCleanupHealthCheckOptions.NotSupportedStatus.get -> Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus
+Ashlar.AspNetCore.Diagnostics.AshlarCleanupHealthCheckOptions.NotSupportedStatus.set -> void
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheck
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheck.AshlarEmailOutboxHealthCheck(System.Collections.Generic.IEnumerable<Ashlar.Operational.Diagnostics.IEmailOutboxDiagnostics!>! diagnostics, Microsoft.Extensions.Options.IOptions<Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions!>! options) -> void
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheck.CheckHealthAsync(Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult>!
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions.AshlarEmailOutboxHealthCheckOptions() -> void
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions.ExpiredLockCountThreshold.get -> long?
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions.ExpiredLockCountThreshold.set -> void
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions.FailedCountThreshold.get -> long?
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions.FailedCountThreshold.set -> void
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions.NotSupportedStatus.get -> Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions.NotSupportedStatus.set -> void
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions.OldestPendingAgeThreshold.get -> System.TimeSpan?
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions.OldestPendingAgeThreshold.set -> void
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions.PendingCountThreshold.get -> long?
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions.PendingCountThreshold.set -> void
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions.ThresholdExceededStatus.get -> Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus
+Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions.ThresholdExceededStatus.set -> void
+Ashlar.AspNetCore.Diagnostics.AshlarHealthCheckNames
+Ashlar.AspNetCore.Diagnostics.AshlarRateLimiterHealthCheck
+Ashlar.AspNetCore.Diagnostics.AshlarRateLimiterHealthCheck.AshlarRateLimiterHealthCheck(System.Collections.Generic.IEnumerable<Ashlar.Operational.Diagnostics.IAuthenticationRateLimiterDiagnostics!>! diagnostics, Microsoft.Extensions.Options.IOptions<Ashlar.AspNetCore.Diagnostics.AshlarRateLimiterHealthCheckOptions!>! options) -> void
+Ashlar.AspNetCore.Diagnostics.AshlarRateLimiterHealthCheck.CheckHealthAsync(Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult>!
+Ashlar.AspNetCore.Diagnostics.AshlarRateLimiterHealthCheckOptions
+Ashlar.AspNetCore.Diagnostics.AshlarRateLimiterHealthCheckOptions.AshlarRateLimiterHealthCheckOptions() -> void
+Ashlar.AspNetCore.Diagnostics.AshlarRateLimiterHealthCheckOptions.NotSupportedStatus.get -> Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus
+Ashlar.AspNetCore.Diagnostics.AshlarRateLimiterHealthCheckOptions.NotSupportedStatus.set -> void
+Ashlar.AspNetCore.Diagnostics.AshlarSchemaHealthCheck
+Ashlar.AspNetCore.Diagnostics.AshlarSchemaHealthCheck.AshlarSchemaHealthCheck(System.Collections.Generic.IEnumerable<Ashlar.Operational.Diagnostics.IAshlarSchemaDiagnostics!>! diagnostics, Microsoft.Extensions.Options.IOptions<Ashlar.AspNetCore.Diagnostics.AshlarSchemaHealthCheckOptions!>! options) -> void
+Ashlar.AspNetCore.Diagnostics.AshlarSchemaHealthCheck.CheckHealthAsync(Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult>!
+Ashlar.AspNetCore.Diagnostics.AshlarSchemaHealthCheckOptions
+Ashlar.AspNetCore.Diagnostics.AshlarSchemaHealthCheckOptions.AshlarSchemaHealthCheckOptions() -> void
+Ashlar.AspNetCore.Diagnostics.AshlarSchemaHealthCheckOptions.NotSupportedStatus.get -> Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus
+Ashlar.AspNetCore.Diagnostics.AshlarSchemaHealthCheckOptions.NotSupportedStatus.set -> void
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheck
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheck.AshlarSecurityEventWebhookOutboxHealthCheck(System.Collections.Generic.IEnumerable<Ashlar.Operational.Diagnostics.ISecurityEventWebhookOutboxDiagnostics!>! diagnostics, Microsoft.Extensions.Options.IOptions<Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions!>! options) -> void
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheck.CheckHealthAsync(Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult>!
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions.AshlarSecurityEventWebhookOutboxHealthCheckOptions() -> void
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions.ExpiredLockCountThreshold.get -> long?
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions.ExpiredLockCountThreshold.set -> void
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions.FailedCountThreshold.get -> long?
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions.FailedCountThreshold.set -> void
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions.NotSupportedStatus.get -> Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions.NotSupportedStatus.set -> void
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions.OldestPendingAgeThreshold.get -> System.TimeSpan?
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions.OldestPendingAgeThreshold.set -> void
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions.PendingCountThreshold.get -> long?
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions.PendingCountThreshold.set -> void
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions.ThresholdExceededStatus.get -> Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus
+Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions.ThresholdExceededStatus.set -> void
+Ashlar.AspNetCore.Mfa.AshlarFreshMfaProofHttpContextExtensions
+Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieDefaults
+Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieManager
+Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieManager.AshlarRememberedMfaDeviceCookieManager(Ashlar.Identity.Abstractions.Services.IRememberedMfaDeviceService! rememberedMfaDevices, Microsoft.Extensions.Options.IOptions<Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieOptions!>! options) -> void
+Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieManager.Clear(Microsoft.AspNetCore.Http.HttpContext! httpContext) -> void
+Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieManager.EnrichContext(Microsoft.AspNetCore.Http.HttpContext! httpContext, Ashlar.Identity.Models.Authentication.AuthenticationContext! context) -> Ashlar.Identity.Models.Authentication.AuthenticationContext!
+Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieManager.IssueAfterSuccessfulMfaAsync(Microsoft.AspNetCore.Http.HttpContext! httpContext, Ashlar.Identity.Models.Authentication.AuthenticationContext! context, Ashlar.Identity.Models.Mfa.MfaAuthenticationResult! mfaResult, Ashlar.Identity.Models.Mfa.CreateRememberedMfaDeviceRequest? request = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Identity.Models.Mfa.RememberedMfaDeviceSummary!>!
+Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieManager.RevokeCurrentAsync(Microsoft.AspNetCore.Http.HttpContext! httpContext, System.Guid userId, Ashlar.Identity.Models.Tenants.TenantContext? tenant = null, string? reason = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieOptions
+Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieOptions.AshlarRememberedMfaDeviceCookieOptions() -> void
+Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieOptions.Cookie.get -> Microsoft.AspNetCore.Http.CookieBuilder!
+Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieOptions.CookieName.get -> string!
+Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieOptions.CookieName.set -> void
+Ashlar.AspNetCore.Mfa.IAshlarRememberedMfaDeviceCookieManager
+Ashlar.AspNetCore.Mfa.IAshlarRememberedMfaDeviceCookieManager.Clear(Microsoft.AspNetCore.Http.HttpContext! httpContext) -> void
+Ashlar.AspNetCore.Mfa.IAshlarRememberedMfaDeviceCookieManager.EnrichContext(Microsoft.AspNetCore.Http.HttpContext! httpContext, Ashlar.Identity.Models.Authentication.AuthenticationContext! context) -> Ashlar.Identity.Models.Authentication.AuthenticationContext!
+Ashlar.AspNetCore.Mfa.IAshlarRememberedMfaDeviceCookieManager.IssueAfterSuccessfulMfaAsync(Microsoft.AspNetCore.Http.HttpContext! httpContext, Ashlar.Identity.Models.Authentication.AuthenticationContext! context, Ashlar.Identity.Models.Mfa.MfaAuthenticationResult! mfaResult, Ashlar.Identity.Models.Mfa.CreateRememberedMfaDeviceRequest? request = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Identity.Models.Mfa.RememberedMfaDeviceSummary!>!
+Ashlar.AspNetCore.Mfa.IAshlarRememberedMfaDeviceCookieManager.RevokeCurrentAsync(Microsoft.AspNetCore.Http.HttpContext! httpContext, System.Guid userId, Ashlar.Identity.Models.Tenants.TenantContext? tenant = null, string? reason = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Ashlar.AspNetCore.Middleware.RequireIpAddressMiddleware
+Ashlar.AspNetCore.Middleware.RequireIpAddressMiddleware.InvokeAsync(Microsoft.AspNetCore.Http.HttpContext! context) -> System.Threading.Tasks.Task!
+Ashlar.AspNetCore.Middleware.RequireIpAddressMiddleware.RequireIpAddressMiddleware(Microsoft.AspNetCore.Http.RequestDelegate! next) -> void
+Ashlar.AspNetCore.Security.Encryption.DataProtectionSecretProtector
+Ashlar.AspNetCore.Security.Encryption.DataProtectionSecretProtector.DataProtectionSecretProtector(Microsoft.AspNetCore.DataProtection.IDataProtectionProvider! provider) -> void
+Ashlar.AspNetCore.Security.Encryption.DataProtectionSecretProtector.Protect(byte[]! data) -> byte[]!
+Ashlar.AspNetCore.Security.Encryption.DataProtectionSecretProtector.Unprotect(byte[]! data) -> byte[]!
+Ashlar.AspNetCore.Sessions.AshlarSessionHttpContextExtensions
+Ashlar.AspNetCore.Sessions.AshlarSessionRegistration
+Ashlar.AspNetCore.Sessions.AshlarSessionRegistration.AshlarSessionRegistration() -> void
+Ashlar.AspNetCore.Sessions.AshlarSessionRegistration.SchemeName.get -> string!
+Ashlar.AspNetCore.Sessions.AshlarSessionRegistration.SchemeName.init -> void
+Ashlar.AspNetCore.Sessions.AshlarSignInManager
+Ashlar.AspNetCore.Sessions.AshlarSignInManager.AshlarSignInManager(Ashlar.Identity.Abstractions.Services.IAuthenticationSessionService! sessionService, Ashlar.Identity.Abstractions.Services.IAuthenticationSessionReader! sessionReader, Microsoft.Extensions.Options.IOptionsMonitor<Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions!>! options, Ashlar.AspNetCore.Sessions.AshlarSessionRegistration! registration) -> void
+Ashlar.AspNetCore.Sessions.AshlarSignInManager.ListSessionsForCurrentUserAsync(Microsoft.AspNetCore.Http.HttpContext! httpContext, bool activeOnly = true, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Ashlar.Identity.Models.Sessions.AuthenticationSessionSummary!>!>!
+Ashlar.AspNetCore.Sessions.AshlarSignInManager.RevokeOtherSessionsForCurrentUserAsync(Microsoft.AspNetCore.Http.HttpContext! httpContext, Ashlar.Identity.Models.Mfa.FreshMfaVerificationProof! freshMfaProof, string? reason = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
+Ashlar.AspNetCore.Sessions.AshlarSignInManager.RevokeSessionForCurrentUserAsync(Microsoft.AspNetCore.Http.HttpContext! httpContext, System.Guid sessionId, Ashlar.Identity.Models.Mfa.FreshMfaVerificationProof! freshMfaProof, string? reason = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Ashlar.AspNetCore.Sessions.AshlarSignInManager.SignInAsync(Microsoft.AspNetCore.Http.HttpContext! httpContext, Ashlar.Identity.Models.Mfa.MfaAuthenticationResult! authenticationResult, Ashlar.Identity.Models.Sessions.CreateAuthenticationSessionRequest? request = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Identity.Models.Sessions.CreatedAuthenticationSession!>!
+Ashlar.AspNetCore.Sessions.AshlarSignInManager.SignOutAsync(Microsoft.AspNetCore.Http.HttpContext! httpContext, string? reason = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Ashlar.AspNetCore.Sessions.IAshlarSignInManager
+Ashlar.AspNetCore.Sessions.IAshlarSignInManager.ListSessionsForCurrentUserAsync(Microsoft.AspNetCore.Http.HttpContext! httpContext, bool activeOnly = true, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Ashlar.Identity.Models.Sessions.AuthenticationSessionSummary!>!>!
+Ashlar.AspNetCore.Sessions.IAshlarSignInManager.RevokeOtherSessionsForCurrentUserAsync(Microsoft.AspNetCore.Http.HttpContext! httpContext, Ashlar.Identity.Models.Mfa.FreshMfaVerificationProof! freshMfaProof, string? reason = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
+Ashlar.AspNetCore.Sessions.IAshlarSignInManager.RevokeSessionForCurrentUserAsync(Microsoft.AspNetCore.Http.HttpContext! httpContext, System.Guid sessionId, Ashlar.Identity.Models.Mfa.FreshMfaVerificationProof! freshMfaProof, string? reason = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Ashlar.AspNetCore.Sessions.IAshlarSignInManager.SignInAsync(Microsoft.AspNetCore.Http.HttpContext! httpContext, Ashlar.Identity.Models.Mfa.MfaAuthenticationResult! authenticationResult, Ashlar.Identity.Models.Sessions.CreateAuthenticationSessionRequest? request = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Identity.Models.Sessions.CreatedAuthenticationSession!>!
+Ashlar.AspNetCore.Sessions.IAshlarSignInManager.SignOutAsync(Microsoft.AspNetCore.Http.HttpContext! httpContext, string? reason = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+const Ashlar.AspNetCore.Authentication.AshlarClaimTypes.AdditionalVerificationAt = "ashlar:additional_verification_time" -> string!
+const Ashlar.AspNetCore.Authentication.AshlarClaimTypes.AdditionalVerificationFactor = "ashlar:additional_verification_factor" -> string!
+const Ashlar.AspNetCore.Authentication.AshlarClaimTypes.AdditionalVerificationProviderName = "ashlar:additional_verification_provider_name" -> string!
+const Ashlar.AspNetCore.Authentication.AshlarClaimTypes.AdditionalVerificationProviderType = "ashlar:additional_verification_provider_type" -> string!
+const Ashlar.AspNetCore.Authentication.AshlarClaimTypes.AuthenticatedAt = "ashlar:auth_time" -> string!
+const Ashlar.AspNetCore.Authentication.AshlarClaimTypes.PrimaryProviderName = "ashlar:primary_provider_name" -> string!
+const Ashlar.AspNetCore.Authentication.AshlarClaimTypes.PrimaryProviderType = "ashlar:primary_provider_type" -> string!
+const Ashlar.AspNetCore.Authentication.AshlarClaimTypes.SessionId = "ashlar:session_id" -> string!
+const Ashlar.AspNetCore.Authentication.AshlarClaimTypes.TenantId = "ashlar:tenant_id" -> string!
+const Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationDefaults.AuthenticationScheme = "Ashlar" -> string!
+const Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationDefaults.ClaimsIssuer = "Ashlar" -> string!
+const Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationDefaults.CookieName = "__Host-Ashlar.Session" -> string!
+const Ashlar.AspNetCore.Authorization.AshlarStepUpPolicyNames.FreshMfa = "Ashlar.FreshMfa" -> string!
+const Ashlar.AspNetCore.Authorization.AshlarStepUpPolicyNames.FreshMfaIfAvailable = "Ashlar.FreshMfaIfAvailable" -> string!
+const Ashlar.AspNetCore.Diagnostics.AshlarHealthCheckNames.Cleanup = "ashlar_cleanup" -> string!
+const Ashlar.AspNetCore.Diagnostics.AshlarHealthCheckNames.EmailOutbox = "ashlar_email_outbox" -> string!
+const Ashlar.AspNetCore.Diagnostics.AshlarHealthCheckNames.RateLimiter = "ashlar_rate_limiter" -> string!
+const Ashlar.AspNetCore.Diagnostics.AshlarHealthCheckNames.Schema = "ashlar_schema" -> string!
+const Ashlar.AspNetCore.Diagnostics.AshlarHealthCheckNames.SecurityEventWebhookOutbox = "ashlar_security_event_webhook_outbox" -> string!
+const Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieDefaults.CookieName = "__Host-Ashlar.RememberedMfaDevice" -> string!
+Microsoft.AspNetCore.Builder.AshlarApplicationBuilderExtensions
+Microsoft.AspNetCore.Routing.AshlarEndpointConventionBuilderExtensions
+Microsoft.Extensions.DependencyInjection.AshlarAspNetCoreServiceCollectionExtensions
+Microsoft.Extensions.DependencyInjection.AshlarHealthChecksBuilderExtensions
+static Ashlar.AspNetCore.Mfa.AshlarFreshMfaProofHttpContextExtensions.CreateFreshMfaProof(this Microsoft.AspNetCore.Http.HttpContext! httpContext, Ashlar.Identity.Features.Mfa.StepUpAuthenticationService! stepUp, Ashlar.Identity.Models.Mfa.StepUpRequirement! requirement, string! purpose) -> Ashlar.Result<Ashlar.Identity.Models.Mfa.FreshMfaVerificationProof!>!
+static Ashlar.AspNetCore.Mfa.AshlarFreshMfaProofHttpContextExtensions.CreateFreshPrimaryAuthenticationProof(this Microsoft.AspNetCore.Http.HttpContext! httpContext, Ashlar.Identity.Features.Mfa.StepUpAuthenticationService! stepUp, System.TimeSpan freshnessWindow, string! purpose) -> Ashlar.Result<Ashlar.Identity.Models.Mfa.FreshPrimaryAuthenticationProof!>!
+static Ashlar.AspNetCore.Sessions.AshlarSessionHttpContextExtensions.GetValidatedAuthenticationSession(this Microsoft.AspNetCore.Http.HttpContext! httpContext) -> Ashlar.Identity.Models.Sessions.ValidatedAuthenticationSession?
+static Microsoft.AspNetCore.Builder.AshlarApplicationBuilderExtensions.UseAshlarRequireIpAddress(this Microsoft.AspNetCore.Builder.IApplicationBuilder! builder) -> Microsoft.AspNetCore.Builder.IApplicationBuilder!
+static Microsoft.AspNetCore.Routing.AshlarEndpointConventionBuilderExtensions.RequireFreshMfa<TBuilder>(this TBuilder builder) -> TBuilder
+static Microsoft.AspNetCore.Routing.AshlarEndpointConventionBuilderExtensions.RequireFreshMfaIfAvailable<TBuilder>(this TBuilder builder) -> TBuilder
+static Microsoft.Extensions.DependencyInjection.AshlarAspNetCoreServiceCollectionExtensions.AddAshlarAspNetCoreAuthorization(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.AspNetCore.Authorization.AshlarAuthorizationOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarAspNetCoreServiceCollectionExtensions.AddAshlarAspNetCoreRememberedMfaDeviceCookies(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.AspNetCore.Mfa.AshlarRememberedMfaDeviceCookieOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarAspNetCoreServiceCollectionExtensions.AddAshlarAspNetCoreSessions(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.AspNetCore.Authentication.AshlarSessionAuthenticationOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarAspNetCoreServiceCollectionExtensions.AddAshlarDataProtectionSecretProtector(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Microsoft.Extensions.DependencyInjection.ServiceLifetime lifetime = Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarHealthChecksBuilderExtensions.AddAshlarCleanup(this Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder! builder, System.Action<Ashlar.AspNetCore.Diagnostics.AshlarCleanupHealthCheckOptions!>? configure = null, string! name = "ashlar_cleanup", Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus? failureStatus = null, System.Collections.Generic.IEnumerable<string!>? tags = null) -> Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder!
+static Microsoft.Extensions.DependencyInjection.AshlarHealthChecksBuilderExtensions.AddAshlarEmailOutbox(this Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder! builder, System.Action<Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions!>? configure = null, string! name = "ashlar_email_outbox", Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus? failureStatus = null, System.Collections.Generic.IEnumerable<string!>? tags = null) -> Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder!
+static Microsoft.Extensions.DependencyInjection.AshlarHealthChecksBuilderExtensions.AddAshlarHealthChecks(this Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder! builder, System.Action<Ashlar.AspNetCore.Diagnostics.AshlarSchemaHealthCheckOptions!>? configureSchema = null, System.Action<Ashlar.AspNetCore.Diagnostics.AshlarEmailOutboxHealthCheckOptions!>? configureEmailOutbox = null, System.Action<Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions!>? configureSecurityEventWebhookOutbox = null, System.Action<Ashlar.AspNetCore.Diagnostics.AshlarCleanupHealthCheckOptions!>? configureCleanup = null, System.Action<Ashlar.AspNetCore.Diagnostics.AshlarRateLimiterHealthCheckOptions!>? configureRateLimiter = null) -> Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder!
+static Microsoft.Extensions.DependencyInjection.AshlarHealthChecksBuilderExtensions.AddAshlarRateLimiter(this Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder! builder, System.Action<Ashlar.AspNetCore.Diagnostics.AshlarRateLimiterHealthCheckOptions!>? configure = null, string! name = "ashlar_rate_limiter", Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus? failureStatus = null, System.Collections.Generic.IEnumerable<string!>? tags = null) -> Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder!
+static Microsoft.Extensions.DependencyInjection.AshlarHealthChecksBuilderExtensions.AddAshlarSchema(this Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder! builder, System.Action<Ashlar.AspNetCore.Diagnostics.AshlarSchemaHealthCheckOptions!>? configure = null, string! name = "ashlar_schema", Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus? failureStatus = null, System.Collections.Generic.IEnumerable<string!>? tags = null) -> Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder!
+static Microsoft.Extensions.DependencyInjection.AshlarHealthChecksBuilderExtensions.AddAshlarSecurityEventWebhookOutbox(this Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder! builder, System.Action<Ashlar.AspNetCore.Diagnostics.AshlarSecurityEventWebhookOutboxHealthCheckOptions!>? configure = null, string! name = "ashlar_security_event_webhook_outbox", Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus? failureStatus = null, System.Collections.Generic.IEnumerable<string!>? tags = null) -> Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder!

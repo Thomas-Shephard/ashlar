@@ -1,0 +1,544 @@
+#nullable enable
+abstract Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowserBase.LoadAsync(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary!>!>!
+abstract Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationsBase.DiscardFailedAsync(System.Guid deliveryId, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState?>!
+abstract Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationsBase.LoadAsync(System.Guid deliveryId, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState?>!
+abstract Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationsBase.RetryFailedAsync(System.Guid deliveryId, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState?>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery.AshlarSecurityEventWebhookDelivery(string! endpointName, System.Uri! uri, System.TimeSpan timeout, System.Collections.Generic.IReadOnlyDictionary<string!, string!>! headers, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload! payload) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery.Body.get -> System.ReadOnlyMemory<byte>
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery.EndpointName.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery.Headers.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery.Payload.get -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery.Timeout.get -> System.TimeSpan
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery.Uri.get -> System.Uri!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryFactory
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryFactory.AshlarSecurityEventWebhookDeliveryFactory(Microsoft.Extensions.Options.IOptions<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions!>! options, System.TimeProvider? timeProvider = null) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryFactory.CreateDeliveries(Ashlar.Auditing.AshlarSecurityEvent! securityEvent) -> System.Collections.Generic.IReadOnlyList<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.AshlarSecurityEventWebhookDeliveryTelemetry(string! DeliveryMode, string? EventType, string? EndpointName, string! Outcome, string? FailureKind, System.TimeSpan Duration) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.Deconstruct(out string! DeliveryMode, out string? EventType, out string? EndpointName, out string! Outcome, out string? FailureKind, out System.TimeSpan Duration) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.DeliveryMode.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.DeliveryMode.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.Duration.get -> System.TimeSpan
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.Duration.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.EndpointName.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.EndpointName.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.EventType.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.EventType.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.FailureKind.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.FailureKind.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.Outcome.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.Outcome.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationPolicy
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks = 1 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationPolicy
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationPolicy.PublicInternetOnly = 0 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationPolicy
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.AshlarSecurityEventWebhookDestinationValidationResult(bool IsValid, string! FailureReason) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.Deconstruct(out bool IsValid, out string! FailureReason) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.FailureReason.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.FailureReason.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.IsValid.get -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.IsValid.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidator
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidator.AshlarSecurityEventWebhookDestinationValidator(Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookDestinationResolver! resolver, Microsoft.Extensions.Options.IOptions<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions!>? options = null) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidator.ValidateAsync(System.Uri? uri, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult!>
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.AllowUnsigned.get -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.AllowUnsigned.set -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.AshlarSecurityEventWebhookEndpointOptions() -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.Enabled.get -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.Enabled.set -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.EventTypes.get -> System.Collections.Generic.ISet<string!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.Name.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.Name.set -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.Outcomes.get -> System.Collections.Generic.ISet<string!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.SharedSecret.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.SharedSecret.set -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.Timeout.get -> System.TimeSpan?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.Timeout.set -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.Uri.get -> System.Uri?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.Uri.set -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTester
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTester.AshlarSecurityEventWebhookEndpointTester(Microsoft.Extensions.Options.IOptions<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions!>! options, Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookSender! sender, Ashlar.Identity.Abstractions.Repositories.IAuthenticationSessionRepository! sessions, Ashlar.Identity.Abstractions.Services.IAccountSecurityOperationAuthorizer! authorizer, Ashlar.Auditing.IPersistentSecurityEventSink! auditSink, System.TimeProvider? timeProvider = null) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTester.TestAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Identity.Models.Administration.OperationalAdministrationScope scope, string! endpointName, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.AshlarSecurityEventWebhookEndpointTestResult(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus Status, System.Guid? EventId = null) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.Deconstruct(out Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus Status, out System.Guid? EventId) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.EventId.get -> System.Guid?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.EventId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.FailureReason.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.Status.get -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.Status.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.Succeeded.get -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus.Canceled = 7 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus.DeliveryFailed = 5 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus.DestinationRejected = 3 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus.EndpointDisabled = 2 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus.EndpointNotFound = 1 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus.InvalidSharedSecret = 4 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus.Sent = 0 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus.TimedOut = 6 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus.Unauthorized = 8 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookHandler
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookHandler.AshlarSecurityEventWebhookHandler(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryFactory! deliveryFactory, Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookSender! sender, Microsoft.Extensions.Logging.ILogger<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookHandler!>? logger = null) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookHandler.HandleAsync(Ashlar.Auditing.AshlarSecurityEvent! securityEvent, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookHttpMessageHandlerFactory
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions.AshlarSecurityEventWebhookOptions() -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions.DestinationPolicy.get -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationPolicy
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions.DestinationPolicy.set -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions.Endpoints.get -> System.Collections.Generic.IList<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions.Nat64Prefixes.get -> System.Collections.Generic.IList<System.Net.IPNetwork>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions.Timeout.get -> System.TimeSpan
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions.Timeout.set -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowser
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowserBase
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowserBase.AshlarSecurityEventWebhookOutboxBrowserBase(Ashlar.Operational.AshlarOperationalAdministrationContext! administration) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowserBase.BrowseAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Identity.Models.Administration.OperationalAdministrationScope scope, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.AshlarSecurityEventWebhookOutboxBrowseRequest() -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.Limit.get -> int
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.Limit.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.Offset.get -> int
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.Offset.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.Statuses.get -> System.Collections.Generic.IReadOnlySet<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus>?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.Statuses.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.AshlarSecurityEventWebhookOutboxBrowseResult(System.Collections.Generic.IReadOnlyList<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary!>! Deliveries, int Limit, int Offset, bool HasMore) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.Deconstruct(out System.Collections.Generic.IReadOnlyList<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary!>! Deliveries, out int Limit, out int Offset, out bool HasMore) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.Deliveries.get -> System.Collections.Generic.IReadOnlyList<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.Deliveries.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.HasMore.get -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.HasMore.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.Limit.get -> int
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.Limit.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.Offset.get -> int
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.Offset.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.AshlarSecurityEventWebhookOutboxDeliverySummary(System.Guid DeliveryId, string? EndpointName, System.Guid EventId, string? EventType, string? Outcome, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus Status, int AttemptCount, System.DateTimeOffset CreatedAt, System.DateTimeOffset AvailableAt, System.DateTimeOffset? LastAttemptAt, System.DateTimeOffset? FailedAt, string? LastErrorSummary) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.AttemptCount.get -> int
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.AttemptCount.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.AvailableAt.get -> System.DateTimeOffset
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.AvailableAt.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.CreatedAt.get -> System.DateTimeOffset
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.CreatedAt.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.Deconstruct(out System.Guid DeliveryId, out string? EndpointName, out System.Guid EventId, out string? EventType, out string? Outcome, out Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus Status, out int AttemptCount, out System.DateTimeOffset CreatedAt, out System.DateTimeOffset AvailableAt, out System.DateTimeOffset? LastAttemptAt, out System.DateTimeOffset? FailedAt, out string? LastErrorSummary) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.DeliveryId.get -> System.Guid
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.DeliveryId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.EndpointName.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.EndpointName.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.EventId.get -> System.Guid
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.EventId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.EventType.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.EventType.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.FailedAt.get -> System.DateTimeOffset?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.FailedAt.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.LastAttemptAt.get -> System.DateTimeOffset?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.LastAttemptAt.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.LastErrorSummary.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.LastErrorSummary.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.Outcome.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.Outcome.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.Status.get -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.Status.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatch
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.AshlarSecurityEventWebhookOutboxDispatchContext(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookTransport! Transport, int MaxAttempts, System.Func<System.Guid, System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>!>! MarkAsSentAsync, System.Func<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry!, System.Exception!, System.Threading.CancellationToken, System.Threading.Tasks.Task!>! MarkAsFailedAsync, System.Action<System.Guid, int, bool, System.Exception!>! LogDeliveryFailed, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidator! DestinationValidator, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions! WebhookOptions, System.TimeProvider! TimeProvider, Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookDeliveryObserver? DeliveryObserver, System.Func<System.Guid, System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>!>! RenewLockAsync) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.Deconstruct(out Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookTransport! Transport, out int MaxAttempts, out System.Func<System.Guid, System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>!>! MarkAsSentAsync, out System.Func<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry!, System.Exception!, System.Threading.CancellationToken, System.Threading.Tasks.Task!>! MarkAsFailedAsync, out System.Action<System.Guid, int, bool, System.Exception!>! LogDeliveryFailed, out Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidator! DestinationValidator, out Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions! WebhookOptions, out System.TimeProvider! TimeProvider, out Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookDeliveryObserver? DeliveryObserver, out System.Func<System.Guid, System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>!>! RenewLockAsync) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.DeliveryObserver.get -> Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookDeliveryObserver?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.DeliveryObserver.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.DestinationValidator.get -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidator!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.DestinationValidator.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.LogDeliveryFailed.get -> System.Action<System.Guid, int, bool, System.Exception!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.LogDeliveryFailed.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.MarkAsFailedAsync.get -> System.Func<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry!, System.Exception!, System.Threading.CancellationToken, System.Threading.Tasks.Task!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.MarkAsFailedAsync.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.MarkAsSentAsync.get -> System.Func<System.Guid, System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.MarkAsSentAsync.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.MaxAttempts.get -> int
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.MaxAttempts.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.RenewLockAsync.get -> System.Func<System.Guid, System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.RenewLockAsync.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.TimeProvider.get -> System.TimeProvider!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.TimeProvider.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.Transport.get -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookTransport!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.Transport.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.WebhookOptions.get -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.WebhookOptions.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.AshlarSecurityEventWebhookOutboxEntry() -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.AttemptCount.get -> int
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.AttemptCount.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.Body.get -> byte[]!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.Body.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.EndpointName.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.EndpointName.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.EventId.get -> System.Guid
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.EventId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.EventType.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.EventType.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.Headers.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.Headers.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.Id.get -> System.Guid
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.Id.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.OccurredAt.get -> System.DateTimeOffset
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.OccurredAt.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.Outcome.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.Outcome.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.TimeoutMs.get -> long
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.TimeoutMs.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.Uri.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry.Uri.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind.Canceled = 2 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind.HttpStatus = 0 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind.Timeout = 1 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind.TransportError = 3 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind.Unknown = 5 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind.UnsafeDestination = 4 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.AshlarSecurityEventWebhookOutboxFailureSummary(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind Kind, int? StatusCode, string! Reason) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.Deconstruct(out Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind Kind, out int? StatusCode, out string! Reason) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.Kind.get -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureKind
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.Kind.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.Reason.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.Reason.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.StatusCode.get -> int?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.StatusCode.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.ToPersistedString() -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.AshlarSecurityEventWebhookOutboxFailureUpdate(int AttemptCount, System.DateTimeOffset? FailedAt, System.DateTimeOffset AvailableAt, string! LastError) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.AttemptCount.get -> int
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.AttemptCount.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.AvailableAt.get -> System.DateTimeOffset
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.AvailableAt.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.Deconstruct(out int AttemptCount, out System.DateTimeOffset? FailedAt, out System.DateTimeOffset AvailableAt, out string! LastError) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.FailedAt.get -> System.DateTimeOffset?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.FailedAt.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.LastError.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.LastError.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxHandler
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxHandler.AshlarSecurityEventWebhookOutboxHandler(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryFactory! deliveryFactory, Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookEnqueuer! enqueuer) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxHandler.HandleAsync(Ashlar.Auditing.AshlarSecurityEvent! securityEvent, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest.AshlarSecurityEventWebhookOutboxOperationRequest(System.Guid DeliveryId) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest.Deconstruct(out System.Guid DeliveryId) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest.DeliveryId.get -> System.Guid
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest.DeliveryId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.AshlarSecurityEventWebhookOutboxOperationResult(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus Status, System.Guid DeliveryId, string? EndpointName = null, System.Guid? EventId = null, string? EventType = null, string? Outcome = null) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.Deconstruct(out Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus Status, out System.Guid DeliveryId, out string? EndpointName, out System.Guid? EventId, out string? EventType, out string? Outcome) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.DeliveryId.get -> System.Guid
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.DeliveryId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.EndpointName.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.EndpointName.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.EventId.get -> System.Guid?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.EventId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.EventType.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.EventType.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.Outcome.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.Outcome.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.Status.get -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.Status.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationsBase
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationsBase.AshlarSecurityEventWebhookOutboxOperationsBase(System.TimeProvider! timeProvider, Ashlar.Auditing.ISecurityEventSink! securityEventSink, Ashlar.Identity.Abstractions.Transactions.AshlarDurableTransactionProvider! transactionProvider, Ashlar.Operational.AshlarOperationalAdministrationContext! administration) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationsBase.DiscardAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Identity.Models.Administration.OperationalAdministrationScope scope, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationsBase.RetryAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Identity.Models.Administration.OperationalAdministrationScope scope, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationsBase.TimeProvider.get -> System.TimeProvider!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.AshlarSecurityEventWebhookOutboxOperationState(System.Guid DeliveryId, string? EndpointName, System.Guid EventId, string? EventType, string? Outcome, bool IsDiscarded) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.Deconstruct(out System.Guid DeliveryId, out string? EndpointName, out System.Guid EventId, out string? EventType, out string? Outcome, out bool IsDiscarded) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.DeliveryId.get -> System.Guid
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.DeliveryId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.EndpointName.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.EndpointName.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.EventId.get -> System.Guid
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.EventId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.EventType.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.EventType.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.IsDiscarded.get -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.IsDiscarded.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.Outcome.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.Outcome.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus.AlreadyDiscarded = 4 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus.Discarded = 1 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus.Failed = 5 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed = 3 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus.NotFound = 2 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus.Retried = 0 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus.ExpiredLock = 3 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus.Failed = 4 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus.Locked = 2 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus.Pending = 0 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus.Scheduled = 1 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.ActorUserId.get -> System.Guid?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.ActorUserId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.AshlarSecurityEventWebhookPayload() -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.CorrelationId.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.CorrelationId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.EventType.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.EventType.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.FailureReason.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.FailureReason.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.Id.get -> System.Guid
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.Id.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.OccurredAt.get -> System.DateTimeOffset
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.OccurredAt.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.Outcome.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.Outcome.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.ProviderName.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.ProviderName.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.ProviderType.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.ProviderType.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.SessionId.get -> System.Guid?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.SessionId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.TenantId.get -> System.Guid?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.TenantId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.UserId.get -> System.Guid?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload.UserId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.AshlarSecurityEventWebhookReplayKey(string! EndpointName, System.Guid EventId, System.DateTimeOffset SignatureTimestamp, string! SignatureVersion, string! DestinationPathAndQuery) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.Deconstruct(out string! EndpointName, out System.Guid EventId, out System.DateTimeOffset SignatureTimestamp, out string! SignatureVersion, out string! DestinationPathAndQuery) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.DestinationPathAndQuery.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.DestinationPathAndQuery.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.EndpointName.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.EndpointName.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.EventId.get -> System.Guid
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.EventId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.SignatureTimestamp.get -> System.DateTimeOffset
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.SignatureTimestamp.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.SignatureVersion.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.SignatureVersion.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSendResult
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSendResult.DeliveryFailed = 2 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSendResult
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSendResult.DestinationRejected = 1 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSendResult
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSendResult.Sent = 0 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSendResult
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSignature
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookTransport
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookTransport.Dispose() -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookUnsafeDestinationException
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookUnsafeDestinationException.AshlarSecurityEventWebhookUnsafeDestinationException(string! message) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationOptions
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationOptions.AshlarSecurityEventWebhookVerificationOptions() -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationOptions.ReplayStore.get -> Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookReplayStore?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationOptions.ReplayStore.set -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationOptions.TimestampTolerance.get -> System.TimeSpan
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationOptions.TimestampTolerance.set -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.AshlarSecurityEventWebhookVerificationRequest() -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.Body.get -> System.ReadOnlyMemory<byte>
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.Body.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.DestinationPathAndQuery.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.DestinationPathAndQuery.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.EndpointName.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.EndpointName.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.EventId.get -> System.Guid
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.EventId.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.Headers.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.Headers.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.Options.get -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationOptions?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.Options.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.SharedSecret.get -> string?
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.SharedSecret.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.TimeProvider.get -> System.TimeProvider!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest.TimeProvider.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult.<Clone>$() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult.AshlarSecurityEventWebhookVerificationResult(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus Status) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult.Deconstruct(out Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus Status) -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult.Equals(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult? other) -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult.FailureReason.get -> string!
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult.IsValid.get -> bool
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult.Status.get -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult.Status.init -> void
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus.InvalidSecret = 6 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus.InvalidSignature = 5 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus.MalformedEventTimestamp = 8 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus.MalformedSignature = 2 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus.MissingEventTimestamp = 7 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus.MissingSignature = 1 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus.MissingTimestamp = 3 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus.ReplayDetected = 9 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus.ReplayStoreRequired = 11 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus.ReplayStoreUnavailable = 10 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus.TimestampOutsideTolerance = 4 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus
+Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus.Valid = 0 -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationStatus
+Ashlar.Webhooks.SecurityEvents.DnsAshlarSecurityEventWebhookDestinationResolver
+Ashlar.Webhooks.SecurityEvents.DnsAshlarSecurityEventWebhookDestinationResolver.DnsAshlarSecurityEventWebhookDestinationResolver() -> void
+Ashlar.Webhooks.SecurityEvents.DnsAshlarSecurityEventWebhookDestinationResolver.ResolveAsync(string! host, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<System.Net.IPAddress!>!>
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookDeliveryObserver
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookDeliveryObserver.RecordDeliveryAttempt(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry! telemetry) -> void
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookDestinationResolver
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookDestinationResolver.ResolveAsync(string! host, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<System.Net.IPAddress!>!>
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookEndpointTester
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookEndpointTester.TestAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Identity.Models.Administration.OperationalAdministrationScope scope, string! endpointName, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult!>!
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookEnqueuer
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookEnqueuer.EnqueueAsync(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery! delivery, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookOutboxBrowser
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookOutboxBrowser.BrowseAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Identity.Models.Administration.OperationalAdministrationScope scope, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult!>!
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookOutboxOperations
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookOutboxOperations.DiscardAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Identity.Models.Administration.OperationalAdministrationScope scope, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult!>!
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookOutboxOperations.RetryAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Identity.Models.Administration.OperationalAdministrationScope scope, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult!>!
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookReplayStore
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookReplayStore.TryAccept(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey! key, System.DateTimeOffset expiresAt) -> bool
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookSender
+Ashlar.Webhooks.SecurityEvents.IAshlarSecurityEventWebhookSender.SendAsync(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery! delivery, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSendResult>!
+Ashlar.Webhooks.SecurityEvents.NoOpAshlarSecurityEventWebhookDeliveryObserver
+Ashlar.Webhooks.SecurityEvents.NoOpAshlarSecurityEventWebhookDeliveryObserver.RecordDeliveryAttempt(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry! telemetry) -> void
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.BestEffortDeliveryMode = "best_effort" -> string!
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.CanceledFailureKind = "canceled" -> string!
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.DurableOutboxDeliveryMode = "durable_outbox" -> string!
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.ExceptionFailureKind = "exception" -> string!
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.FailureOutcome = "failure" -> string!
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.HttpStatusFailureKind = "http_status" -> string!
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.SuccessOutcome = "success" -> string!
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.TimeoutFailureKind = "timeout" -> string!
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTester.TestEventType = "ashlar.webhook.test" -> string!
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowser.MaxLastErrorSummaryLength = 256 -> int
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.DefaultLimit = 50 -> int
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.MaximumLimit = 100 -> int
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatch.MaxPersistedFailureDetailLength = 128 -> int
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSignature.EventTimestampHeaderName = "X-Ashlar-Timestamp" -> string!
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSignature.MinimumSharedSecretByteLength = 32 -> int
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSignature.SignatureHeaderName = "X-Ashlar-Signature" -> string!
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName = "X-Ashlar-Signature-Timestamp" -> string!
+const Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSignature.SignatureVersion = "v1" -> string!
+Microsoft.Extensions.DependencyInjection.AshlarWebhooksServiceCollectionExtensions
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery.ToString() -> string!
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.ToString() -> string!
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.ToString() -> string!
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.ToString() -> string!
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.ToString() -> string!
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.ToString() -> string!
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.ToString() -> string!
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.ToString() -> string!
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.ToString() -> string!
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.ToString() -> string!
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest.ToString() -> string!
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.ToString() -> string!
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.ToString() -> string!
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.ToString() -> string!
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult.Equals(object? obj) -> bool
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult.GetHashCode() -> int
+override Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult.ToString() -> string!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDelivery? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryFactory.CreateHeaders(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions! endpoint, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload! payload, System.ReadOnlySpan<byte> body, System.DateTimeOffset signatureTimestamp) -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryFactory.CreatePayload(Ashlar.Auditing.AshlarSecurityEvent! securityEvent) -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookPayload!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.Rejected(string! failureReason) -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult.Valid.get -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidator.ValidateUri(System.Uri? uri, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationPolicy destinationPolicy) -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidator.ValidateUri(System.Uri? uri) -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidationResult!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions.Validate(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointOptions? endpoint) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookEndpointTestResult? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookHttpMessageHandlerFactory.Create(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDestinationValidator! destinationValidator) -> System.Net.Http.HttpMessageHandler!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions.Validate(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions? options) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary(string? lastError) -> string?
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowser.DefaultStatuses.get -> System.Collections.Generic.IReadOnlySet<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus>!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowser.GetStatuses(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest! request) -> System.Collections.Generic.IReadOnlySet<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus>!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowser.ParseStatus(string? status) -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxStatus
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowser.SanitizeSafeText(string? value) -> string?
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(Ashlar.Identity.Models.Administration.OperationalAdministrationScope scope, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest! request) -> void
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseRequest? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxBrowseResult? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDeliverySummary? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatch.CreateFailureUpdate(int attemptCount, int maxAttempts, System.TimeSpan initialRetryDelay, System.DateTimeOffset now, System.Exception! exception) -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry! entry, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext! context, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatch.MapToHttpRequest(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxEntry! entry) -> System.Net.Http.HttpRequestMessage!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxDispatchContext? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.Canceled() -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.FromException(System.Exception! exception) -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureSummary? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxFailureUpdate? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationRequest? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationResult? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOutboxOperationState? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookReplayKey? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSignature.CreateCanonicalDestination(System.Uri! uri) -> string!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSignature.CreateSignature(string! sharedSecret, System.ReadOnlySpan<byte> body, System.DateTimeOffset signatureTimestamp, System.DateTimeOffset occurredAt, System.Guid eventId, string! endpointName, string! destinationPathAndQuery) -> string!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSignature.FormatTimestamp(System.DateTimeOffset signatureTimestamp) -> string!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookSignature.Verify(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationRequest! request) -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult!
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult.operator !=(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult.operator ==(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult? left, Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult? right) -> bool
+static Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult.Valid.get -> Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookVerificationResult!
+static Ashlar.Webhooks.SecurityEvents.NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance.get -> Ashlar.Webhooks.SecurityEvents.NoOpAshlarSecurityEventWebhookDeliveryObserver!
+static Microsoft.Extensions.DependencyInjection.AshlarWebhooksServiceCollectionExtensions.AddAshlarSecurityEventWebhookDeliveryObserver<TObserver>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarWebhooksServiceCollectionExtensions.AddAshlarSecurityEventWebhookOutbox(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions!>? configure = null, System.Action<System.Net.Http.HttpClient!>? configureHttpClient = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarWebhooksServiceCollectionExtensions.AddAshlarSecurityEventWebhooks(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions!>? configure = null, System.Action<System.Net.Http.HttpClient!>? configureHttpClient = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static readonly Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions.DefaultTimeout -> System.TimeSpan

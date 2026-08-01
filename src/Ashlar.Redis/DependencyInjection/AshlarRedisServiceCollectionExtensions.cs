@@ -14,6 +14,16 @@ namespace Microsoft.Extensions.DependencyInjection;
 public static class AshlarRedisServiceCollectionExtensions
 {
     /// <summary>
+    /// Registers the Ashlar Redis-backed authentication rate limiter with default options.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configuration">Redis connection configuration used to create a managed multiplexer.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarRedisRateLimiting(
+        this IServiceCollection services,
+        string configuration) => services.AddAshlarRedisRateLimiting(configuration, null);
+
+    /// <summary>
     /// Registers the Ashlar Redis-backed authentication rate limiter, diagnostics, and safe administration operations.
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
@@ -23,7 +33,7 @@ public static class AshlarRedisServiceCollectionExtensions
     public static IServiceCollection AddAshlarRedisRateLimiting(
         this IServiceCollection services,
         string configuration,
-        Action<RedisAuthenticationRateLimiterOptions>? configure = null)
+        Action<RedisAuthenticationRateLimiterOptions>? configure)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
@@ -38,6 +48,16 @@ public static class AshlarRedisServiceCollectionExtensions
     }
 
     /// <summary>
+    /// Registers the Ashlar Redis-backed authentication rate limiter with default options.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="connection">Redis connection multiplexer owned by the host application.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarRedisRateLimiting(
+        this IServiceCollection services,
+        IConnectionMultiplexer connection) => services.AddAshlarRedisRateLimiting(connection, null);
+
+    /// <summary>
     /// Registers the Ashlar Redis-backed authentication rate limiter, diagnostics, and safe administration operations.
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
@@ -47,7 +67,7 @@ public static class AshlarRedisServiceCollectionExtensions
     public static IServiceCollection AddAshlarRedisRateLimiting(
         this IServiceCollection services,
         IConnectionMultiplexer connection,
-        Action<RedisAuthenticationRateLimiterOptions>? configure = null)
+        Action<RedisAuthenticationRateLimiterOptions>? configure)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(connection);

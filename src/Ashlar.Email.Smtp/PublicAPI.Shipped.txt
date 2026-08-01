@@ -1,0 +1,29 @@
+#nullable enable
+Ashlar.Email.Smtp.SmtpEmailOptions
+Ashlar.Email.Smtp.SmtpEmailOptions.AllowedCustomHeaders.get -> System.Collections.Generic.ISet<string!>!
+Ashlar.Email.Smtp.SmtpEmailOptions.DefaultFromAddress.get -> string?
+Ashlar.Email.Smtp.SmtpEmailOptions.DefaultFromAddress.set -> void
+Ashlar.Email.Smtp.SmtpEmailOptions.Host.get -> string!
+Ashlar.Email.Smtp.SmtpEmailOptions.Host.set -> void
+Ashlar.Email.Smtp.SmtpEmailOptions.Password.get -> string!
+Ashlar.Email.Smtp.SmtpEmailOptions.Password.set -> void
+Ashlar.Email.Smtp.SmtpEmailOptions.Port.get -> int
+Ashlar.Email.Smtp.SmtpEmailOptions.Port.set -> void
+Ashlar.Email.Smtp.SmtpEmailOptions.SecurityOptions.get -> MailKit.Security.SecureSocketOptions
+Ashlar.Email.Smtp.SmtpEmailOptions.SecurityOptions.set -> void
+Ashlar.Email.Smtp.SmtpEmailOptions.SmtpEmailOptions() -> void
+Ashlar.Email.Smtp.SmtpEmailOptions.Timeout.get -> System.TimeSpan
+Ashlar.Email.Smtp.SmtpEmailOptions.Timeout.set -> void
+Ashlar.Email.Smtp.SmtpEmailOptions.Username.get -> string?
+Ashlar.Email.Smtp.SmtpEmailOptions.Username.set -> void
+Ashlar.Email.Smtp.SmtpEmailSender
+Ashlar.Email.Smtp.SmtpEmailSender.SendAsync(Ashlar.Messaging.EmailMessage! message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Ashlar.Email.Smtp.SmtpEmailSender.SmtpEmailSender(Ashlar.Messaging.IEmailTransport! transport) -> void
+Ashlar.Email.Smtp.SmtpEmailTransport
+Ashlar.Email.Smtp.SmtpEmailTransport.DeliverAsync(Ashlar.Messaging.EmailMessage! message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Ashlar.Email.Smtp.SmtpEmailTransport.SmtpEmailTransport(Microsoft.Extensions.Options.IOptions<Ashlar.Email.Smtp.SmtpEmailOptions!>! options) -> void
+Microsoft.Extensions.DependencyInjection.AshlarSmtpServiceCollectionExtensions
+static Ashlar.Email.Smtp.SmtpEmailOptions.Validate(Ashlar.Email.Smtp.SmtpEmailOptions? options) -> bool
+static Microsoft.Extensions.DependencyInjection.AshlarSmtpServiceCollectionExtensions.AddAshlarSmtpEmailSender(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Email.Smtp.SmtpEmailOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarSmtpServiceCollectionExtensions.AddAshlarSmtpEmailTransport(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Email.Smtp.SmtpEmailOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+virtual Ashlar.Email.Smtp.SmtpEmailTransport.CreateSmtpClient() -> MailKit.Net.Smtp.ISmtpClient!
