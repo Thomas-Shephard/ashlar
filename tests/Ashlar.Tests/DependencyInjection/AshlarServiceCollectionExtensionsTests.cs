@@ -257,6 +257,26 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarIdentityValidatesCoreOptionsOnStart()
+    {
+        AssertStartupValidationFails<IdentityServiceOptions>(services =>
+            services.AddAshlarIdentity(options => options.LastUsedAtUpdateThreshold = TimeSpan.FromTicks(-1)));
+        AssertStartupValidationFails<AuthenticationSessionOptions>(services =>
+            services.AddAshlarIdentity(configureSessions: options => options.DefaultLifetime = TimeSpan.Zero));
+    }
+
+    [Test]
+    public void AddAshlarIdentityDefaultOptionsPassStartupValidation()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.DoesNotThrow(() => provider.GetRequiredService<IStartupValidator>().Validate());
+    }
+
+    [Test]
     public void AddAshlarIdentityResolvesPrimaryAndFactorPipelinesToSameScopedImplementation()
     {
         var services = new ServiceCollection();
