@@ -27,7 +27,7 @@ internal sealed class AccountRecoveryAdministrationService(
 
         var detailResult = await _userAdministrationReader.GetUserDetailAsync(
             request.Actor!,
-            new UserAdministrationDetailRequest(
+            new UserAdministrationLookupRequest(
                 request.UserId,
                 request.Tenant,
                 request.IncludeAllTenants,

@@ -49,9 +49,9 @@ internal sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvid
         }, ReadUserSummary, cancellationToken);
     }
 
-    public async Task<UserSummary?> GetUserSummaryAsync(UserAdministrationDetailRequest request, CancellationToken cancellationToken = default)
+    public async Task<UserSummary?> GetUserSummaryAsync(UserAdministrationLookupRequest request, CancellationToken cancellationToken = default)
     {
-        UserAdministrationDetailRequest.ThrowIfInvalid(request);
+        UserAdministrationLookupRequest.ThrowIfInvalid(request);
 
         return await SqliteQuery.QuerySingleAsync(_connectionProvider, command =>
         {

@@ -23,9 +23,9 @@ internal sealed class PostgresSecurityEventAdministrationRepository(IPostgresCon
         return rows.Select(static row => row.ToStorageRecord().ToSummary()).ToList().AsReadOnly();
     }
 
-    public async Task<SecurityEventSummary?> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request, CancellationToken cancellationToken = default)
+    public async Task<SecurityEventSummary?> GetSecurityEventAsync(SecurityEventAdministrationLookupRequest request, CancellationToken cancellationToken = default)
     {
-        SecurityEventAdministrationDetailRequest.ThrowIfInvalid(request);
+        SecurityEventAdministrationLookupRequest.ThrowIfInvalid(request);
 
         var sql = SelectSql + " WHERE id = @EventId";
         var parameters = new DynamicParameters();

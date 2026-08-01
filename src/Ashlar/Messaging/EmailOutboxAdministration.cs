@@ -37,7 +37,7 @@ public interface IEmailOutboxAdministrationService
     Task<EmailOutboxDetail?> GetAsync(
         AccountSecurityActorContext actor,
         OperationalAdministrationScope scope,
-        EmailOutboxDetailRequest request,
+        EmailOutboxLookupRequest request,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -148,11 +148,11 @@ public abstract class EmailOutboxAdministrationServiceBase(
     }
 
     /// <inheritdoc />
-    public async Task<EmailOutboxDetail?> GetAsync(AccountSecurityActorContext actor, OperationalAdministrationScope scope, EmailOutboxDetailRequest request, CancellationToken cancellationToken = default)
+    public async Task<EmailOutboxDetail?> GetAsync(AccountSecurityActorContext actor, OperationalAdministrationScope scope, EmailOutboxLookupRequest request, CancellationToken cancellationToken = default)
     {
         try
         {
-            EmailOutboxAdministrationProvider.ValidateDetailRequest(actor, scope, request);
+            EmailOutboxAdministrationProvider.ValidateLookupRequest(actor, scope, request);
         }
         catch (ArgumentException)
         {
@@ -360,7 +360,7 @@ public sealed record EmailOutboxSearchRequest
 
 /// <summary>Request for one global email outbox projection.</summary>
 /// <param name="Id">The durable email outbox entry id.</param>
-public sealed record EmailOutboxDetailRequest(Guid Id);
+public sealed record EmailOutboxLookupRequest(Guid Id);
 
 /// <summary>
 /// Safe email outbox status values exposed to administrators.
@@ -662,11 +662,11 @@ public static class EmailOutboxAdministrationProvider
         }
     }
 
-    /// <summary>Validates a detail request and its administration context.</summary>
+    /// <summary>Validates a lookup request and its administration context.</summary>
     /// <param name="actor">Authenticated operator context.</param>
     /// <param name="scope">Required global operational scope.</param>
-    /// <param name="request">Detail request to validate.</param>
-    public static void ValidateDetailRequest(AccountSecurityActorContext actor, OperationalAdministrationScope scope, EmailOutboxDetailRequest request)
+    /// <param name="request">Lookup request to validate.</param>
+    public static void ValidateLookupRequest(AccountSecurityActorContext actor, OperationalAdministrationScope scope, EmailOutboxLookupRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.Id == Guid.Empty)

@@ -111,7 +111,7 @@ public sealed record SecurityEventSearchResult(
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global events; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
 /// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
 /// <param name="Actor">Authenticated actor, active session, fresh proof, and audit metadata.</param>
-public sealed record SecurityEventAdministrationDetailRequest(
+public sealed record SecurityEventAdministrationLookupRequest(
     Guid EventId,
     TenantContext? Tenant = null,
     bool IncludeAllTenants = false,
@@ -121,7 +121,7 @@ public sealed record SecurityEventAdministrationDetailRequest(
     /// Throws when the security event lookup request is not safe to execute.
     /// </summary>
     /// <param name="request">Request to validate before repository access.</param>
-    public static void ThrowIfInvalid(SecurityEventAdministrationDetailRequest? request)
+    public static void ThrowIfInvalid(SecurityEventAdministrationLookupRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
         AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);

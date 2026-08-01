@@ -22,9 +22,9 @@ internal sealed class SqliteSecurityEventAdministrationRepository(ISqliteConnect
         }, static reader => ReadStorageRecord(reader).ToSummary(), cancellationToken);
     }
 
-    public async Task<SecurityEventSummary?> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request, CancellationToken cancellationToken = default)
+    public async Task<SecurityEventSummary?> GetSecurityEventAsync(SecurityEventAdministrationLookupRequest request, CancellationToken cancellationToken = default)
     {
-        SecurityEventAdministrationDetailRequest.ThrowIfInvalid(request);
+        SecurityEventAdministrationLookupRequest.ThrowIfInvalid(request);
 
         return await SqliteQuery.QuerySingleAsync(_connectionProvider, command =>
         {
