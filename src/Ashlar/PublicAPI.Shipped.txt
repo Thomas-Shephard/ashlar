@@ -4524,27 +4524,12 @@ Ashlar.Passkeys.IPasskeyService
 Ashlar.Passkeys.IPasskeyService.CompleteAuthenticationAsync(Ashlar.Passkeys.CompletePasskeyAuthenticationRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Passkeys.PasskeyAuthenticationResult!>!
 Ashlar.Passkeys.IPasskeyService.CompleteFactorAsync(Ashlar.Passkeys.CompletePasskeyFactorRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Passkeys.PasskeyAuthenticationResult!>!
 Ashlar.Passkeys.IPasskeyService.CompleteRegistrationAsync(Ashlar.Passkeys.CompletePasskeyRegistrationRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result!>!
-Ashlar.Passkeys.IPasskeyService.ListAsync(Ashlar.Passkeys.ListPasskeysRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<System.Collections.Generic.IReadOnlyList<Ashlar.Passkeys.PasskeyCredentialSummary!>!>!>!
-Ashlar.Passkeys.IPasskeyService.RenameAsync(Ashlar.Passkeys.RenamePasskeyRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result!>!
-Ashlar.Passkeys.IPasskeyService.RevokeAsync(Ashlar.Passkeys.RevokePasskeyRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result!>!
+Ashlar.Passkeys.IPasskeyService.ListAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<System.Collections.Generic.IReadOnlyList<Ashlar.Passkeys.PasskeyCredentialSummary!>!>!>!
+Ashlar.Passkeys.IPasskeyService.RenameAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Passkeys.RenamePasskeyRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result!>!
+Ashlar.Passkeys.IPasskeyService.RevokeAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Passkeys.RevokePasskeyRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result!>!
 Ashlar.Passkeys.IPasskeyService.StartAuthenticationAsync(Ashlar.Passkeys.StartPasskeyAuthenticationRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Passkeys.PasskeyCeremonyOptions!>!>!
 Ashlar.Passkeys.IPasskeyService.StartFactorAsync(Ashlar.Passkeys.StartPasskeyFactorRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Passkeys.PasskeyCeremonyOptions!>!>!
 Ashlar.Passkeys.IPasskeyService.StartRegistrationAsync(Ashlar.Passkeys.StartPasskeyRegistrationRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Passkeys.PasskeyCeremonyOptions!>!
-Ashlar.Passkeys.ListPasskeysRequest
-Ashlar.Passkeys.ListPasskeysRequest.<Clone>$() -> Ashlar.Passkeys.ListPasskeysRequest!
-Ashlar.Passkeys.ListPasskeysRequest.ActorUserId.get -> System.Guid
-Ashlar.Passkeys.ListPasskeysRequest.ActorUserId.init -> void
-Ashlar.Passkeys.ListPasskeysRequest.Audit.get -> Ashlar.Auditing.AuditContext!
-Ashlar.Passkeys.ListPasskeysRequest.Audit.init -> void
-Ashlar.Passkeys.ListPasskeysRequest.CurrentSessionId.get -> System.Guid
-Ashlar.Passkeys.ListPasskeysRequest.CurrentSessionId.init -> void
-Ashlar.Passkeys.ListPasskeysRequest.Deconstruct(out System.Guid ActorUserId, out Ashlar.Identity.Models.Tenants.TenantContext! Tenant, out System.Guid CurrentSessionId, out Ashlar.Identity.Models.Mfa.FreshMfaVerificationProof! FreshMfaProof, out Ashlar.Auditing.AuditContext! Audit) -> void
-Ashlar.Passkeys.ListPasskeysRequest.Equals(Ashlar.Passkeys.ListPasskeysRequest? other) -> bool
-Ashlar.Passkeys.ListPasskeysRequest.FreshMfaProof.get -> Ashlar.Identity.Models.Mfa.FreshMfaVerificationProof!
-Ashlar.Passkeys.ListPasskeysRequest.FreshMfaProof.init -> void
-Ashlar.Passkeys.ListPasskeysRequest.ListPasskeysRequest(System.Guid ActorUserId, Ashlar.Identity.Models.Tenants.TenantContext! Tenant, System.Guid CurrentSessionId, Ashlar.Identity.Models.Mfa.FreshMfaVerificationProof! FreshMfaProof, Ashlar.Auditing.AuditContext! Audit) -> void
-Ashlar.Passkeys.ListPasskeysRequest.Tenant.get -> Ashlar.Identity.Models.Tenants.TenantContext!
-Ashlar.Passkeys.ListPasskeysRequest.Tenant.init -> void
 Ashlar.Passkeys.PasskeyAuthenticationProvider
 Ashlar.Passkeys.PasskeyAuthenticationProvider.AuthenticateAsync(Ashlar.Identity.Abstractions.Authentication.IAuthenticationAssertion! assertion, Ashlar.Identity.Models.Credentials.UserCredential? credential, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Identity.Abstractions.Authentication.AuthenticationResult!>!
 Ashlar.Passkeys.PasskeyAuthenticationProvider.CanSatisfyFactor(string! factorType) -> bool
@@ -4684,40 +4669,20 @@ Ashlar.Passkeys.PasskeyRegistrationVerificationResult.UserVerified.init -> void
 Ashlar.Passkeys.PasskeyUserVerificationRequirement
 Ashlar.Passkeys.RenamePasskeyRequest
 Ashlar.Passkeys.RenamePasskeyRequest.<Clone>$() -> Ashlar.Passkeys.RenamePasskeyRequest!
-Ashlar.Passkeys.RenamePasskeyRequest.ActorUserId.get -> System.Guid
-Ashlar.Passkeys.RenamePasskeyRequest.ActorUserId.init -> void
-Ashlar.Passkeys.RenamePasskeyRequest.Audit.get -> Ashlar.Auditing.AuditContext!
-Ashlar.Passkeys.RenamePasskeyRequest.Audit.init -> void
 Ashlar.Passkeys.RenamePasskeyRequest.CredentialId.get -> System.Guid
 Ashlar.Passkeys.RenamePasskeyRequest.CredentialId.init -> void
-Ashlar.Passkeys.RenamePasskeyRequest.CurrentSessionId.get -> System.Guid
-Ashlar.Passkeys.RenamePasskeyRequest.CurrentSessionId.init -> void
-Ashlar.Passkeys.RenamePasskeyRequest.Deconstruct(out System.Guid ActorUserId, out Ashlar.Identity.Models.Tenants.TenantContext! Tenant, out System.Guid CurrentSessionId, out Ashlar.Identity.Models.Mfa.FreshMfaVerificationProof! FreshMfaProof, out System.Guid CredentialId, out string! DisplayName, out Ashlar.Auditing.AuditContext! Audit) -> void
+Ashlar.Passkeys.RenamePasskeyRequest.Deconstruct(out System.Guid CredentialId, out string! DisplayName) -> void
 Ashlar.Passkeys.RenamePasskeyRequest.DisplayName.get -> string!
 Ashlar.Passkeys.RenamePasskeyRequest.DisplayName.init -> void
 Ashlar.Passkeys.RenamePasskeyRequest.Equals(Ashlar.Passkeys.RenamePasskeyRequest? other) -> bool
-Ashlar.Passkeys.RenamePasskeyRequest.FreshMfaProof.get -> Ashlar.Identity.Models.Mfa.FreshMfaVerificationProof!
-Ashlar.Passkeys.RenamePasskeyRequest.FreshMfaProof.init -> void
-Ashlar.Passkeys.RenamePasskeyRequest.RenamePasskeyRequest(System.Guid ActorUserId, Ashlar.Identity.Models.Tenants.TenantContext! Tenant, System.Guid CurrentSessionId, Ashlar.Identity.Models.Mfa.FreshMfaVerificationProof! FreshMfaProof, System.Guid CredentialId, string! DisplayName, Ashlar.Auditing.AuditContext! Audit) -> void
-Ashlar.Passkeys.RenamePasskeyRequest.Tenant.get -> Ashlar.Identity.Models.Tenants.TenantContext!
-Ashlar.Passkeys.RenamePasskeyRequest.Tenant.init -> void
+Ashlar.Passkeys.RenamePasskeyRequest.RenamePasskeyRequest(System.Guid CredentialId, string! DisplayName) -> void
 Ashlar.Passkeys.RevokePasskeyRequest
 Ashlar.Passkeys.RevokePasskeyRequest.<Clone>$() -> Ashlar.Passkeys.RevokePasskeyRequest!
-Ashlar.Passkeys.RevokePasskeyRequest.ActorUserId.get -> System.Guid
-Ashlar.Passkeys.RevokePasskeyRequest.ActorUserId.init -> void
-Ashlar.Passkeys.RevokePasskeyRequest.Audit.get -> Ashlar.Auditing.AuditContext!
-Ashlar.Passkeys.RevokePasskeyRequest.Audit.init -> void
 Ashlar.Passkeys.RevokePasskeyRequest.CredentialId.get -> System.Guid
 Ashlar.Passkeys.RevokePasskeyRequest.CredentialId.init -> void
-Ashlar.Passkeys.RevokePasskeyRequest.CurrentSessionId.get -> System.Guid
-Ashlar.Passkeys.RevokePasskeyRequest.CurrentSessionId.init -> void
-Ashlar.Passkeys.RevokePasskeyRequest.Deconstruct(out System.Guid ActorUserId, out Ashlar.Identity.Models.Tenants.TenantContext! Tenant, out System.Guid CurrentSessionId, out Ashlar.Identity.Models.Mfa.FreshMfaVerificationProof! FreshMfaProof, out System.Guid CredentialId, out Ashlar.Auditing.AuditContext! Audit) -> void
+Ashlar.Passkeys.RevokePasskeyRequest.Deconstruct(out System.Guid CredentialId) -> void
 Ashlar.Passkeys.RevokePasskeyRequest.Equals(Ashlar.Passkeys.RevokePasskeyRequest? other) -> bool
-Ashlar.Passkeys.RevokePasskeyRequest.FreshMfaProof.get -> Ashlar.Identity.Models.Mfa.FreshMfaVerificationProof!
-Ashlar.Passkeys.RevokePasskeyRequest.FreshMfaProof.init -> void
-Ashlar.Passkeys.RevokePasskeyRequest.RevokePasskeyRequest(System.Guid ActorUserId, Ashlar.Identity.Models.Tenants.TenantContext! Tenant, System.Guid CurrentSessionId, Ashlar.Identity.Models.Mfa.FreshMfaVerificationProof! FreshMfaProof, System.Guid CredentialId, Ashlar.Auditing.AuditContext! Audit) -> void
-Ashlar.Passkeys.RevokePasskeyRequest.Tenant.get -> Ashlar.Identity.Models.Tenants.TenantContext!
-Ashlar.Passkeys.RevokePasskeyRequest.Tenant.init -> void
+Ashlar.Passkeys.RevokePasskeyRequest.RevokePasskeyRequest(System.Guid CredentialId) -> void
 Ashlar.Passkeys.StartPasskeyAuthenticationRequest
 Ashlar.Passkeys.StartPasskeyAuthenticationRequest.<Clone>$() -> Ashlar.Passkeys.StartPasskeyAuthenticationRequest!
 Ashlar.Passkeys.StartPasskeyAuthenticationRequest.Audit.get -> Ashlar.Auditing.AuditContext?
@@ -5642,9 +5607,6 @@ override Ashlar.Passkeys.CompletePasskeyFactorRequest.ToString() -> string!
 override Ashlar.Passkeys.CompletePasskeyRegistrationRequest.Equals(object? obj) -> bool
 override Ashlar.Passkeys.CompletePasskeyRegistrationRequest.GetHashCode() -> int
 override Ashlar.Passkeys.CompletePasskeyRegistrationRequest.ToString() -> string!
-override Ashlar.Passkeys.ListPasskeysRequest.Equals(object? obj) -> bool
-override Ashlar.Passkeys.ListPasskeysRequest.GetHashCode() -> int
-override Ashlar.Passkeys.ListPasskeysRequest.ToString() -> string!
 override Ashlar.Passkeys.PasskeyAuthenticationResult.Equals(object? obj) -> bool
 override Ashlar.Passkeys.PasskeyAuthenticationResult.GetHashCode() -> int
 override Ashlar.Passkeys.PasskeyAuthenticationResult.ToString() -> string!
@@ -6221,8 +6183,6 @@ static Ashlar.Passkeys.CompletePasskeyFactorRequest.operator !=(Ashlar.Passkeys.
 static Ashlar.Passkeys.CompletePasskeyFactorRequest.operator ==(Ashlar.Passkeys.CompletePasskeyFactorRequest? left, Ashlar.Passkeys.CompletePasskeyFactorRequest? right) -> bool
 static Ashlar.Passkeys.CompletePasskeyRegistrationRequest.operator !=(Ashlar.Passkeys.CompletePasskeyRegistrationRequest? left, Ashlar.Passkeys.CompletePasskeyRegistrationRequest? right) -> bool
 static Ashlar.Passkeys.CompletePasskeyRegistrationRequest.operator ==(Ashlar.Passkeys.CompletePasskeyRegistrationRequest? left, Ashlar.Passkeys.CompletePasskeyRegistrationRequest? right) -> bool
-static Ashlar.Passkeys.ListPasskeysRequest.operator !=(Ashlar.Passkeys.ListPasskeysRequest? left, Ashlar.Passkeys.ListPasskeysRequest? right) -> bool
-static Ashlar.Passkeys.ListPasskeysRequest.operator ==(Ashlar.Passkeys.ListPasskeysRequest? left, Ashlar.Passkeys.ListPasskeysRequest? right) -> bool
 static Ashlar.Passkeys.PasskeyAuthenticationResult.operator !=(Ashlar.Passkeys.PasskeyAuthenticationResult? left, Ashlar.Passkeys.PasskeyAuthenticationResult? right) -> bool
 static Ashlar.Passkeys.PasskeyAuthenticationResult.operator ==(Ashlar.Passkeys.PasskeyAuthenticationResult? left, Ashlar.Passkeys.PasskeyAuthenticationResult? right) -> bool
 static Ashlar.Passkeys.PasskeyAuthenticationVerificationResult.operator !=(Ashlar.Passkeys.PasskeyAuthenticationVerificationResult? left, Ashlar.Passkeys.PasskeyAuthenticationVerificationResult? right) -> bool

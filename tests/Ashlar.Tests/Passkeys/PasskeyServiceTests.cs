@@ -564,7 +564,7 @@ internal sealed class PasskeyServiceTests
             new Mock<IPasskeyCeremonyValidator>().Object,
             CreateDependencies(new FakeTimeProvider(now), events, sessionRepository: ActiveSessionRepository(userId), transactionProvider: transactionProvider));
 
-        var result = await service.RevokeAsync(CreateRevokeRequest(userId, credential.Id, now));
+        var result = await RevokeAsync(service, CreateRevokeRequest(userId, credential.Id, now));
 
         using (Assert.EnterMultipleScope())
         {
@@ -2925,7 +2925,7 @@ internal sealed class PasskeyServiceTests
         var events = new RecordingSecurityEventSink();
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), events, authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), sessionRepository: ActiveSessionRepository(userId)));
 
-        var result = await service.RenameAsync(CreateRenameRequest(userId, credentialId, "", now));
+        var result = await RenameAsync(service, CreateRenameRequest(userId, credentialId, "", now));
 
         using var _ = Assert.EnterMultipleScope();
         Assert.That(result.Succeeded, Is.True);
@@ -2959,7 +2959,7 @@ internal sealed class PasskeyServiceTests
         var now = DateTimeOffset.UtcNow;
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), sessionRepository: ActiveSessionRepository(userId)));
 
-        var result = await service.RenameAsync(CreateRenameRequest(userId, credentialId, "Name", now));
+        var result = await RenameAsync(service, CreateRenameRequest(userId, credentialId, "Name", now));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyValidationFailed));
         credentials.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -2998,13 +2998,13 @@ internal sealed class PasskeyServiceTests
             .ReturnsAsync(true);
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), sessionRepository: ActiveSessionRepository(userId)));
 
-        var list = await service.ListAsync(CreateListRequest(userId, now));
-        var renameMissing = await service.RenameAsync(CreateRenameRequest(userId, Guid.NewGuid(), "Name", now));
-        var renameConflict = await service.RenameAsync(CreateRenameRequest(userId, passkey.Id, "Name", now));
-        var renameSuccess = await service.RenameAsync(CreateRenameRequest(userId, passkey.Id, new string('x', 120), now));
-        var revokeMissing = await service.RevokeAsync(CreateRevokeRequest(userId, Guid.NewGuid(), now));
-        var revokeConflict = await service.RevokeAsync(CreateRevokeRequest(userId, passkey.Id, now));
-        var revokeSuccess = await service.RevokeAsync(CreateRevokeRequest(userId, passkey.Id, now));
+        var list = await service.ListAsync(CreateManagementActor(userId, now));
+        var renameMissing = await RenameAsync(service, CreateRenameRequest(userId, Guid.NewGuid(), "Name", now));
+        var renameConflict = await RenameAsync(service, CreateRenameRequest(userId, passkey.Id, "Name", now));
+        var renameSuccess = await RenameAsync(service, CreateRenameRequest(userId, passkey.Id, new string('x', 120), now));
+        var revokeMissing = await RevokeAsync(service, CreateRevokeRequest(userId, Guid.NewGuid(), now));
+        var revokeConflict = await RevokeAsync(service, CreateRevokeRequest(userId, passkey.Id, now));
+        var revokeSuccess = await RevokeAsync(service, CreateRevokeRequest(userId, passkey.Id, now));
 
         using (Assert.EnterMultipleScope())
         {
@@ -3033,26 +3033,22 @@ internal sealed class PasskeyServiceTests
         var events = new RecordingSecurityEventSink();
         var service = CreateVerifiedPasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), events, sessionRepository: ActiveSessionRepository(userId, tenantId)));
 
-        var wrongActor = await service.RenameAsync(CreateRenameRequest(Guid.NewGuid(), credential.Id, "Name", now, tenantId: tenantId));
-        var wrongTenant = await service.RenameAsync(CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: Guid.NewGuid()));
-        var wrongSession = await service.RenameAsync(CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, currentSessionId: Guid.NewGuid(), proof: CreateMfaProof(userId, tenantId, now, RegistrationSessionId, ManagementPurpose)));
-        var missingProof = await service.RenameAsync(CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, omitProof: true));
-        var expiredProof = await service.RenameAsync(CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, proof: CreateMfaProof(userId, tenantId, now.Subtract(RegistrationFreshnessWindow).AddTicks(-1), RegistrationSessionId, ManagementPurpose)));
-        var wrongPurpose = await service.RenameAsync(CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, proof: CreateMfaProof(userId, tenantId, now, RegistrationSessionId, RegistrationPurpose)));
-        var missingAudit = await service.RenameAsync(CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, omitAudit: true));
-        var renameAuditMismatch = await service.RenameAsync(CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, audit: new AuditContext(Guid.NewGuid())));
-        var revokeAuditMismatch = await service.RevokeAsync(CreateRevokeRequest(userId, credential.Id, now, tenantId: tenantId, audit: new AuditContext(Guid.NewGuid())));
-        var revoke = await service.RevokeAsync(CreateRevokeRequest(userId, credential.Id, now, tenantId: tenantId));
+        var wrongActor = await RenameAsync(service, CreateRenameRequest(Guid.NewGuid(), credential.Id, "Name", now, tenantId: tenantId));
+        var wrongTenant = await RenameAsync(service, CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: Guid.NewGuid()));
+        var wrongSession = await RenameAsync(service, CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, currentSessionId: Guid.NewGuid(), proof: CreateMfaProof(userId, tenantId, now, RegistrationSessionId, ManagementPurpose)));
+        var expiredProof = await RenameAsync(service, CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, proof: CreateMfaProof(userId, tenantId, now.Subtract(RegistrationFreshnessWindow).AddTicks(-1), RegistrationSessionId, ManagementPurpose)));
+        var wrongPurpose = await RenameAsync(service, CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, proof: CreateMfaProof(userId, tenantId, now, RegistrationSessionId, RegistrationPurpose)));
+        var renameAuditMismatch = await RenameAsync(service, CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, audit: new AuditContext(Guid.NewGuid())));
+        var revokeAuditMismatch = await RevokeAsync(service, CreateRevokeRequest(userId, credential.Id, now, tenantId: tenantId, audit: new AuditContext(Guid.NewGuid())));
+        var revoke = await RevokeAsync(service, CreateRevokeRequest(userId, credential.Id, now, tenantId: tenantId));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(wrongActor.Succeeded, Is.False);
             Assert.That(wrongTenant.Succeeded, Is.False);
             Assert.That(wrongSession.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
-            Assert.That(missingProof.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
             Assert.That(expiredProof.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
             Assert.That(wrongPurpose.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
-            Assert.That(missingAudit.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(renameAuditMismatch.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(revokeAuditMismatch.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(revoke.Succeeded, Is.True);
@@ -3082,26 +3078,20 @@ internal sealed class PasskeyServiceTests
         });
         var service = CreateVerifiedPasskeyService(new Mock<IUserRepository>().Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), events, sessionRepository: sessions.Object));
 
-        var missingSession = await service.ListAsync(CreateListRequest(userId, now) with { CurrentSessionId = Guid.Empty });
-        var missingProof = await service.ListAsync(CreateListRequest(userId, now) with { FreshMfaProof = null! });
-        var wrongProof = await service.ListAsync(CreateListRequest(userId, now) with { FreshMfaProof = CreateMfaProof(userId, null, now, RegistrationSessionId, RegistrationPurpose) });
-        var wrongSession = await service.ListAsync(CreateListRequest(userId, now) with { CurrentSessionId = Guid.NewGuid() });
-        var revokedSession = await service.ListAsync(CreateListRequest(userId, now));
-        var missingAudit = await service.ListAsync(CreateListRequest(userId, now) with { Audit = null! });
-        var missingAuditActor = await service.ListAsync(CreateListRequest(userId, now) with { Audit = new AuditContext() });
-        var auditMismatch = await service.ListAsync(CreateListRequest(userId, now) with { Audit = new AuditContext(Guid.NewGuid()) }, new CancellationToken(true));
+        var wrongProof = await service.ListAsync(CreateManagementActor(userId, now, proof: CreateMfaProof(userId, null, now, RegistrationSessionId, RegistrationPurpose)));
+        var wrongSession = await service.ListAsync(CreateManagementActor(userId, now, currentSessionId: Guid.NewGuid()));
+        var revokedSession = await service.ListAsync(CreateManagementActor(userId, now));
+        var missingAuditActor = await service.ListAsync(CreateManagementActor(userId, now, audit: new AuditContext()));
+        var auditMismatch = await service.ListAsync(CreateManagementActor(userId, now, audit: new AuditContext(Guid.NewGuid())), new CancellationToken(true));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(missingSession.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
-            Assert.That(missingProof.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
             Assert.That(wrongProof.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
             Assert.That(wrongSession.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
             Assert.That(revokedSession.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
-            Assert.That(missingAudit.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(missingAuditActor.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(auditMismatch.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That(events.Events, Has.Count.EqualTo(8));
+            Assert.That(events.Events, Has.Count.EqualTo(5));
             Assert.That(events.Events.All(e => e.EventType == AshlarSecurityEventTypes.PasskeyInventoryRead && e.Outcome == SecurityEventOutcomes.Failure), Is.True);
             Assert.That(events.Events.All(e => e.ActorUserId == null && e.UserId == null && e.TenantId == null && e.SessionId == null), Is.True);
             credentials.Verify(r => r.ListCredentialsForUserAsync(It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -3109,11 +3099,24 @@ internal sealed class PasskeyServiceTests
     }
 
     [Test]
-    public void ListAsyncShouldRejectNullTenant()
+    public void ManagementMethodsShouldRejectNullActorAndRequestBeforeRepositoryAccess()
     {
-        var service = CreateVerifiedPasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies());
+        var credentials = new Mock<ICredentialRepository>();
+        var service = CreateVerifiedPasskeyService(new Mock<IUserRepository>().Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies());
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var proof = CreateMfaProof(userId, null, DateTimeOffset.UtcNow, sessionId, ManagementPurpose);
+        var audit = new AuditContext(userId);
 
-        Assert.ThrowsAsync<ArgumentNullException>(() => service.ListAsync(new ListPasskeysRequest(Guid.NewGuid(), null!, Guid.Empty, null!, null!)));
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.ListAsync(null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.RenameAsync(null!, new RenamePasskeyRequest(Guid.NewGuid(), "Name")));
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.RevokeAsync(null!, new RevokePasskeyRequest(Guid.NewGuid())));
+        Assert.Throws<ArgumentNullException>(() => new AccountSecurityActorContext(userId, TenantContext.Global, sessionId, null!, audit));
+        Assert.Throws<ArgumentNullException>(() => new AccountSecurityActorContext(userId, TenantContext.Global, sessionId, proof, null!));
+        var actor = new AccountSecurityActorContext(userId, TenantContext.Global, sessionId, proof, audit);
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.RenameAsync(actor, null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.RevokeAsync(actor, null!));
+        credentials.VerifyNoOtherCalls();
     }
 
     [Test]
@@ -3125,7 +3128,7 @@ internal sealed class PasskeyServiceTests
         var events = new RecordingSecurityEventSink();
         var service = CreateVerifiedPasskeyService(new Mock<IUserRepository>().Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), events, sessionRepository: ActiveSessionRepository(userId)));
 
-        var result = await service.ListAsync(CreateListRequest(userId, now));
+        var result = await service.ListAsync(CreateManagementActor(userId, now));
 
         using var _ = Assert.EnterMultipleScope();
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
@@ -3137,18 +3140,22 @@ internal sealed class PasskeyServiceTests
     public void ManagementApiShouldRequireSessionProofAndAuditProvenance()
     {
         using var _ = Assert.EnterMultipleScope();
-        Assert.That(
-            typeof(ListPasskeysRequest).GetConstructors().Single().GetParameters().Select(p => p.ParameterType),
-            Is.EqualTo(new[] { typeof(Guid), typeof(TenantContext), typeof(Guid), typeof(FreshMfaVerificationProof), typeof(AuditContext) }));
+        Assert.That(typeof(IPasskeyService).Assembly.GetType("Ashlar.Passkeys.ListPasskeysRequest"), Is.Null);
         Assert.That(
             typeof(RenamePasskeyRequest).GetConstructors().Single().GetParameters().Select(p => p.ParameterType),
-            Is.EqualTo(new[] { typeof(Guid), typeof(TenantContext), typeof(Guid), typeof(FreshMfaVerificationProof), typeof(Guid), typeof(string), typeof(AuditContext) }));
+            Is.EqualTo(new[] { typeof(Guid), typeof(string) }));
         Assert.That(
             typeof(RevokePasskeyRequest).GetConstructors().Single().GetParameters().Select(p => p.ParameterType),
-            Is.EqualTo(new[] { typeof(Guid), typeof(TenantContext), typeof(Guid), typeof(FreshMfaVerificationProof), typeof(Guid), typeof(AuditContext) }));
+            Is.EqualTo(new[] { typeof(Guid) }));
         Assert.That(
-            typeof(IPasskeyService).GetMethod(nameof(IPasskeyService.ListAsync))!.ReturnType,
-            Is.EqualTo(typeof(Task<Result<IReadOnlyList<PasskeyCredentialSummary>>>)));
+            typeof(IPasskeyService).GetMethod(nameof(IPasskeyService.ListAsync))!.GetParameters().Select(p => p.ParameterType),
+            Is.EqualTo(new[] { typeof(AccountSecurityActorContext), typeof(CancellationToken) }));
+        Assert.That(
+            typeof(IPasskeyService).GetMethod(nameof(IPasskeyService.RenameAsync))!.GetParameters().Select(p => p.ParameterType),
+            Is.EqualTo(new[] { typeof(AccountSecurityActorContext), typeof(RenamePasskeyRequest), typeof(CancellationToken) }));
+        Assert.That(
+            typeof(IPasskeyService).GetMethod(nameof(IPasskeyService.RevokeAsync))!.GetParameters().Select(p => p.ParameterType),
+            Is.EqualTo(new[] { typeof(AccountSecurityActorContext), typeof(RevokePasskeyRequest), typeof(CancellationToken) }));
     }
 
     [Test]
@@ -3165,7 +3172,7 @@ internal sealed class PasskeyServiceTests
             .ThrowsAsync(new InvalidOperationException("provider failed"));
         var events = new RecordingSecurityEventSink();
         var service = CreateVerifiedPasskeyService(users.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), events, sessionRepository: ActiveSessionRepository(userId)));
-        var request = CreateListRequest(userId, now);
+        var request = CreateManagementActor(userId, now);
 
         var result = await service.ListAsync(request);
         Assert.ThrowsAsync<InvalidOperationException>(() => service.ListAsync(request));
@@ -3183,7 +3190,7 @@ internal sealed class PasskeyServiceTests
     {
         var userId = Guid.NewGuid();
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        var request = CreateListRequest(userId, now);
+        var request = CreateManagementActor(userId, now);
         var sessions = new Mock<IAuthenticationSessionRepository>();
         sessions.Setup(r => r.GetSessionAsync(RegistrationSessionId, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OperationCanceledException());
@@ -3209,7 +3216,7 @@ internal sealed class PasskeyServiceTests
         var credentials = new Mock<ICredentialRepository>();
         var service = CreateVerifiedPasskeyService(new Mock<IUserRepository>().Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now)));
 
-        var result = await service.RevokeAsync(CreateRevokeRequest(userId, Guid.NewGuid(), now, proof: CreateMfaProof(userId, null, now, RegistrationSessionId, RegistrationPurpose)));
+        var result = await RevokeAsync(service, CreateRevokeRequest(userId, Guid.NewGuid(), now, proof: CreateMfaProof(userId, null, now, RegistrationSessionId, RegistrationPurpose)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -3383,7 +3390,7 @@ internal sealed class PasskeyServiceTests
         (ValidatedAuthenticationSession)Activator.CreateInstance(typeof(ValidatedAuthenticationSession),
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [session], null)!;
 
-    private RenamePasskeyRequest CreateRenameRequest(
+    private (AccountSecurityActorContext Actor, RenamePasskeyRequest Request) CreateRenameRequest(
         Guid userId,
         Guid credentialId,
         string displayName,
@@ -3391,33 +3398,30 @@ internal sealed class PasskeyServiceTests
         Guid? tenantId = null,
         Guid? currentSessionId = null,
         FreshMfaVerificationProof? proof = null,
-        AuditContext? audit = null,
-        bool omitProof = false,
-        bool omitAudit = false)
+        AuditContext? audit = null)
     {
         var sessionId = currentSessionId ?? RegistrationSessionId;
-        return new RenamePasskeyRequest(
+        var actor = new AccountSecurityActorContext(
             userId,
             tenantId.HasValue ? new TenantContext(tenantId.Value) : TenantContext.Global,
             sessionId,
-            omitProof ? null! : proof ?? CreateMfaProof(userId, tenantId, now, sessionId, ManagementPurpose),
-            credentialId,
-            displayName,
-            omitAudit ? null! : audit ?? new AuditContext(userId, "127.0.0.1", "NUnit", "corr"));
+            proof ?? CreateMfaProof(userId, tenantId, now, sessionId, ManagementPurpose),
+            audit ?? new AuditContext(userId, "127.0.0.1", "NUnit", "corr"));
+        return new(actor, new RenamePasskeyRequest(credentialId, displayName));
     }
 
-    private ListPasskeysRequest CreateListRequest(Guid userId, DateTimeOffset now, Guid? tenantId = null)
+    private AccountSecurityActorContext CreateManagementActor(Guid userId, DateTimeOffset now, Guid? tenantId = null, Guid? currentSessionId = null, FreshMfaVerificationProof? proof = null, AuditContext? audit = null)
     {
-        var sessionId = RegistrationSessionId;
-        return new ListPasskeysRequest(
+        var sessionId = currentSessionId ?? RegistrationSessionId;
+        return new AccountSecurityActorContext(
             userId,
             tenantId.HasValue ? new TenantContext(tenantId.Value) : TenantContext.Global,
             sessionId,
-            CreateMfaProof(userId, tenantId, now, sessionId, ManagementPurpose),
-            new AuditContext(userId, "127.0.0.1", "NUnit", "corr"));
+            proof ?? CreateMfaProof(userId, tenantId, now, RegistrationSessionId, ManagementPurpose),
+            audit ?? new AuditContext(userId, "127.0.0.1", "NUnit", "corr"));
     }
 
-    private RevokePasskeyRequest CreateRevokeRequest(
+    private (AccountSecurityActorContext Actor, RevokePasskeyRequest Request) CreateRevokeRequest(
         Guid userId,
         Guid credentialId,
         DateTimeOffset now,
@@ -3427,14 +3431,20 @@ internal sealed class PasskeyServiceTests
         AuditContext? audit = null)
     {
         var sessionId = currentSessionId ?? RegistrationSessionId;
-        return new RevokePasskeyRequest(
+        var actor = new AccountSecurityActorContext(
             userId,
             tenantId.HasValue ? new TenantContext(tenantId.Value) : TenantContext.Global,
             sessionId,
             proof ?? CreateMfaProof(userId, tenantId, now, sessionId, ManagementPurpose),
-            credentialId,
             audit ?? new AuditContext(userId, "127.0.0.1", "NUnit", "corr"));
+        return new(actor, new RevokePasskeyRequest(credentialId));
     }
+
+    private static Task<Result> RenameAsync(PasskeyService service, (AccountSecurityActorContext Actor, RenamePasskeyRequest Request) call, CancellationToken cancellationToken = default) =>
+        service.RenameAsync(call.Actor, call.Request, cancellationToken);
+
+    private static Task<Result> RevokeAsync(PasskeyService service, (AccountSecurityActorContext Actor, RevokePasskeyRequest Request) call, CancellationToken cancellationToken = default) =>
+        service.RevokeAsync(call.Actor, call.Request, cancellationToken);
 
     private static PasskeyChallenge CreateAuthenticationChallenge(
         DateTimeOffset now,
@@ -3620,8 +3630,8 @@ internal sealed class PasskeyServiceTests
             new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object,
             CreateDependencies(new FakeTimeProvider(now), sessionRepository: sessions.Object));
 
-        var rename = await service.RenameAsync(CreateRenameRequest(userId, Guid.NewGuid(), "Name", now));
-        var revoke = await service.RevokeAsync(CreateRevokeRequest(userId, Guid.NewGuid(), now));
+        var rename = await RenameAsync(service, CreateRenameRequest(userId, Guid.NewGuid(), "Name", now));
+        var revoke = await RevokeAsync(service, CreateRevokeRequest(userId, Guid.NewGuid(), now));
 
         using (Assert.EnterMultipleScope())
         {
@@ -3641,7 +3651,7 @@ internal sealed class PasskeyServiceTests
             new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object,
             CreateDependencies(new FakeTimeProvider(now), sessionRepository: ActiveSessionRepository(Guid.NewGuid())));
 
-        var result = await service.RenameAsync(CreateRenameRequest(userId, Guid.NewGuid(), "Name", now));
+        var result = await RenameAsync(service, CreateRenameRequest(userId, Guid.NewGuid(), "Name", now));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
         credentials.VerifyNoOtherCalls();
@@ -3658,7 +3668,7 @@ internal sealed class PasskeyServiceTests
             new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object,
             CreateDependencies(new FakeTimeProvider(now), sessionRepository: ActiveSessionRepository(userId)));
 
-        var result = await service.RenameAsync(CreateRenameRequest(userId, Guid.NewGuid(), "Name", now, tenantId: tenantId));
+        var result = await RenameAsync(service, CreateRenameRequest(userId, Guid.NewGuid(), "Name", now, tenantId: tenantId));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
         credentials.VerifyNoOtherCalls();
@@ -3674,7 +3684,7 @@ internal sealed class PasskeyServiceTests
             new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object,
             CreateDependencies(new FakeTimeProvider(now), sessionRepository: ActiveSessionRepository(userId)));
 
-        var result = await service.RenameAsync(CreateRenameRequest(userId, Guid.NewGuid(), "Name", now));
+        var result = await RenameAsync(service, CreateRenameRequest(userId, Guid.NewGuid(), "Name", now));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
         credentials.VerifyNoOtherCalls();

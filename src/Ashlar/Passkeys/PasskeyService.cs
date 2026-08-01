@@ -540,45 +540,45 @@ internal sealed class PasskeyService : IPasskeyService
         }
     }
 
-    public async Task<Result<IReadOnlyList<PasskeyCredentialSummary>>> ListAsync(ListPasskeysRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<IReadOnlyList<PasskeyCredentialSummary>>> ListAsync(AccountSecurityActorContext actor, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        ArgumentNullException.ThrowIfNull(request.Tenant);
+        ArgumentNullException.ThrowIfNull(actor);
         AshlarFailureCode? boundaryFailure;
         try
         {
-            boundaryFailure = await ValidateManagementBoundaryAsync(request.ActorUserId, request.Tenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit, cancellationToken);
+            boundaryFailure = await ValidateManagementBoundaryAsync(actor, cancellationToken);
         }
         catch
         {
-            await RecordAsync(AshlarSecurityEventTypes.PasskeyInventoryRead, SecurityEventOutcomes.Failure, null, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit with { ActorUserId = null }, null, CancellationToken.None);
+            await RecordAsync(AshlarSecurityEventTypes.PasskeyInventoryRead, SecurityEventOutcomes.Failure, null, AshlarFailureCodes.PasskeyValidationFailed.Value, actor.Audit with { ActorUserId = null }, null, CancellationToken.None);
             throw;
         }
         if (boundaryFailure != null)
         {
-            await RecordAsync(AshlarSecurityEventTypes.PasskeyInventoryRead, SecurityEventOutcomes.Failure, null, boundaryFailure.Value.Value, request.Audit is null ? null : request.Audit with { ActorUserId = null }, null, CancellationToken.None);
+            await RecordAsync(AshlarSecurityEventTypes.PasskeyInventoryRead, SecurityEventOutcomes.Failure, null, boundaryFailure.Value.Value, actor.Audit with { ActorUserId = null }, null, CancellationToken.None);
             return Result.Failure<IReadOnlyList<PasskeyCredentialSummary>>(boundaryFailure.Value);
         }
 
         IReadOnlyList<UserCredential> credentials;
         try
         {
-            credentials = await _credentials.ListPasskeysAsync(request.ActorUserId, cancellationToken);
+            credentials = await _credentials.ListPasskeysAsync(actor.ActorUserId, cancellationToken);
         }
         catch
         {
-            await RecordManagementAsync(AshlarSecurityEventTypes.PasskeyInventoryRead, SecurityEventOutcomes.Failure, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, request.Tenant.TenantId, request.CurrentSessionId, CancellationToken.None);
+            await RecordManagementAsync(AshlarSecurityEventTypes.PasskeyInventoryRead, SecurityEventOutcomes.Failure, AshlarFailureCodes.PasskeyValidationFailed.Value, actor.Audit, actor.ActorTenant.TenantId, actor.CurrentSessionId, CancellationToken.None);
             throw;
         }
 
-        await RecordManagementAsync(AshlarSecurityEventTypes.PasskeyInventoryRead, SecurityEventOutcomes.Success, null, request.Audit, request.Tenant.TenantId, request.CurrentSessionId, CancellationToken.None);
+        await RecordManagementAsync(AshlarSecurityEventTypes.PasskeyInventoryRead, SecurityEventOutcomes.Success, null, actor.Audit, actor.ActorTenant.TenantId, actor.CurrentSessionId, CancellationToken.None);
         return Result.Success<IReadOnlyList<PasskeyCredentialSummary>>(credentials.Select(ToSummary).ToList().AsReadOnly());
     }
 
-    public async Task<Result> RenameAsync(RenamePasskeyRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result> RenameAsync(AccountSecurityActorContext actor, RenamePasskeyRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
-        var lookup = await FindManagedPasskeyAsync(request.ActorUserId, request.Tenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit, request.CredentialId, cancellationToken);
+        var lookup = await FindManagedPasskeyAsync(actor, request.CredentialId, cancellationToken);
         if (!lookup.TryGetValue(out var passkey))
         {
             return Result.Failure(lookup.GetFailure());
@@ -593,15 +593,16 @@ internal sealed class PasskeyService : IPasskeyService
         passkey.Metadata = JsonSerializer.Serialize(metadata, PasskeyJson.Options);
         await using var transaction = await BeginTransactionAsync(cancellationToken);
         var updated = await _credentials.UpdatePasskeyAsync(passkey, passkey.Version, cancellationToken);
-        await RecordManagementAsync(AshlarSecurityEventTypes.PasskeyRenamed, updated ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure, updated ? null : AshlarFailureCodes.ConcurrencyConflict.Value, request.Audit, request.Tenant.TenantId, request.CurrentSessionId, cancellationToken);
+        await RecordManagementAsync(AshlarSecurityEventTypes.PasskeyRenamed, updated ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure, updated ? null : AshlarFailureCodes.ConcurrencyConflict.Value, actor.Audit, actor.ActorTenant.TenantId, actor.CurrentSessionId, cancellationToken);
         await CommitAsync(transaction, cancellationToken);
         return updated ? Result.Success() : Result.Failure(AshlarFailureCodes.ConcurrencyConflict);
     }
 
-    public async Task<Result> RevokeAsync(RevokePasskeyRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result> RevokeAsync(AccountSecurityActorContext actor, RevokePasskeyRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
-        var lookup = await FindManagedPasskeyAsync(request.ActorUserId, request.Tenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit, request.CredentialId, cancellationToken);
+        var lookup = await FindManagedPasskeyAsync(actor, request.CredentialId, cancellationToken);
         if (!lookup.TryGetValue(out var passkey))
         {
             return Result.Failure(lookup.GetFailure());
@@ -611,23 +612,22 @@ internal sealed class PasskeyService : IPasskeyService
         passkey.RevokedAt = _timeProvider.GetUtcNow();
         await using var transaction = await BeginTransactionAsync(cancellationToken);
         var updated = await _credentials.UpdatePasskeyAsync(passkey, passkey.Version, cancellationToken);
-        await RecordManagementAsync(AshlarSecurityEventTypes.PasskeyRevoked, updated ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure, updated ? null : AshlarFailureCodes.ConcurrencyConflict.Value, request.Audit, request.Tenant.TenantId, request.CurrentSessionId, cancellationToken);
+        await RecordManagementAsync(AshlarSecurityEventTypes.PasskeyRevoked, updated ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure, updated ? null : AshlarFailureCodes.ConcurrencyConflict.Value, actor.Audit, actor.ActorTenant.TenantId, actor.CurrentSessionId, cancellationToken);
         await CommitAsync(transaction, cancellationToken);
         return updated ? Result.Success() : Result.Failure(AshlarFailureCodes.ConcurrencyConflict);
     }
 
-    private async Task<AshlarFailureCode?> ValidateManagementBoundaryAsync(Guid actorUserId, TenantContext tenant, Guid? currentSessionId, FreshMfaVerificationProof? proof, AuditContext? audit, CancellationToken cancellationToken)
+    private async Task<AshlarFailureCode?> ValidateManagementBoundaryAsync(AccountSecurityActorContext actor, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(tenant);
-        if (!AuditActorMatches(audit, actorUserId))
+        if (!AuditActorMatches(actor.Audit, actor.ActorUserId))
         {
             return AshlarFailureCodes.ValidationError;
         }
 
-        var proofFailure = await _proofValidator.ValidateAsync(actorUserId, tenant, proof, currentSessionId, ManagementPurpose, cancellationToken);
+        var proofFailure = await _proofValidator.ValidateAsync(actor.ActorUserId, actor.ActorTenant, actor.FreshMfaProof, actor.CurrentSessionId, ManagementPurpose, cancellationToken);
         if (proofFailure != null) return proofFailure;
 
-        return await ActorMatchesTenantAsync(actorUserId, tenant, cancellationToken)
+        return await ActorMatchesTenantAsync(actor.ActorUserId, actor.ActorTenant, cancellationToken)
             ? null
             : AshlarFailureCodes.UserNotFoundOrUnavailable;
     }
@@ -636,21 +636,17 @@ internal sealed class PasskeyService : IPasskeyService
         audit?.ActorUserId == actorUserId;
 
     private async Task<Result<UserCredential>> FindManagedPasskeyAsync(
-        Guid actorUserId,
-        TenantContext tenant,
-        Guid? currentSessionId,
-        FreshMfaVerificationProof? proof,
-        AuditContext? audit,
+        AccountSecurityActorContext actor,
         Guid credentialId,
         CancellationToken cancellationToken)
     {
-        var boundaryFailure = await ValidateManagementBoundaryAsync(actorUserId, tenant, currentSessionId, proof, audit, cancellationToken);
+        var boundaryFailure = await ValidateManagementBoundaryAsync(actor, cancellationToken);
         if (boundaryFailure != null)
         {
             return Result.Failure<UserCredential>(boundaryFailure.Value);
         }
 
-        var credential = await FindPasskeyAsync(actorUserId, credentialId, cancellationToken);
+        var credential = await FindPasskeyAsync(actor.ActorUserId, credentialId, cancellationToken);
         return credential == null
             ? Result.Failure<UserCredential>(AshlarFailureCodes.PasskeyCredentialNotFound)
             : Result.Success(credential);
