@@ -20,9 +20,9 @@ internal sealed class AshlarSecurityEventWebhookOutboxBrowserTests
         var security = new AccountSecurityActorTestContext(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
         var browser = new TestBrowser(security);
 
-        Assert.ThrowsAsync<ArgumentNullException>(() => browser.ListAsync(
+        Assert.ThrowsAsync<ArgumentNullException>(() => browser.BrowseAsync(
             null!, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest()));
-        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => browser.ListAsync(
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => browser.BrowseAsync(
             security.Actor, scope, new AshlarSecurityEventWebhookOutboxBrowseRequest()));
 
         using (Assert.EnterMultipleScope())
@@ -39,7 +39,7 @@ internal sealed class AshlarSecurityEventWebhookOutboxBrowserTests
         var security = new AccountSecurityActorTestContext(Now, AccountSecurityActorContext.AdministrationReadProofPurpose);
         var browser = new TestBrowser(security);
 
-        await browser.ListAsync(security.Actor, OperationalAdministrationScope.Global, new());
+        await browser.BrowseAsync(security.Actor, OperationalAdministrationScope.Global, new());
 
         using (Assert.EnterMultipleScope())
         {

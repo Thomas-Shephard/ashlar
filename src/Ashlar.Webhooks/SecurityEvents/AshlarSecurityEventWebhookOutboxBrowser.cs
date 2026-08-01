@@ -11,14 +11,14 @@ namespace Ashlar.Webhooks.SecurityEvents;
 public interface IAshlarSecurityEventWebhookOutboxBrowser
 {
     /// <summary>
-    /// Lists safe global security event webhook outbox delivery summaries.
+    /// Browses safe global security event webhook outbox delivery summaries.
     /// </summary>
     /// <param name="actor">The authenticated and proof-bound actor.</param>
     /// <param name="scope">The explicit global operational scope.</param>
     /// <param name="request">Paging and status filters for the read-only browse operation.</param>
     /// <param name="cancellationToken">A token that can cancel the browse operation before results are returned.</param>
     /// <returns>Matching outbox delivery summaries with destination URI, body, headers, and lock-owner values omitted.</returns>
-    Task<AshlarSecurityEventWebhookOutboxBrowseResult> ListAsync(
+    Task<AshlarSecurityEventWebhookOutboxBrowseResult> BrowseAsync(
         AccountSecurityActorContext actor,
         OperationalAdministrationScope scope,
         AshlarSecurityEventWebhookOutboxBrowseRequest request,
@@ -34,7 +34,7 @@ public abstract class AshlarSecurityEventWebhookOutboxBrowserBase(
         (administration ?? throw new ArgumentNullException(nameof(administration))).ReadBoundary;
 
     /// <inheritdoc />
-    public async Task<AshlarSecurityEventWebhookOutboxBrowseResult> ListAsync(
+    public async Task<AshlarSecurityEventWebhookOutboxBrowseResult> BrowseAsync(
         AccountSecurityActorContext actor,
         OperationalAdministrationScope scope,
         AshlarSecurityEventWebhookOutboxBrowseRequest request,
