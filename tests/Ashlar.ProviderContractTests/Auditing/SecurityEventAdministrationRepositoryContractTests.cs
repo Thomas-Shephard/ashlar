@@ -1,9 +1,11 @@
 namespace Ashlar.ProviderContractTests.Auditing;
 
-internal abstract class SecurityEventAdministrationRepositoryContractTests : ProviderContractFixture
+/// <summary>Defines safe audit browsing, tenant isolation, filtering, ordering, paging, and detail requirements.</summary>
+public abstract class SecurityEventAdministrationRepositoryContractTests : ProviderContractFixture
 {
     private static readonly DateTimeOffset BaseTime = new(2026, 1, 2, 3, 4, 5, TimeSpan.Zero);
 
+    /// <summary>Verifies descending occurrence order, using descending event identifiers to make equal timestamps stable.</summary>
     [Test]
     public async Task SecurityEventAdministrationSearchReturnsNewestFirstWithDeterministicIdTieBreaker()
     {
@@ -17,6 +19,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         Assert.That(result.Select(static securityEvent => securityEvent.EventId), Is.EqualTo(new[] { higherTie.Id, lowerTie.Id, older.Id }));
     }
 
+    /// <summary>Verifies that tenant and global searches cannot see each other while all-tenant searches see both.</summary>
     [Test]
     public async Task SecurityEventAdministrationSearchFiltersTenantScopes()
     {
@@ -41,6 +44,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         }
     }
 
+    /// <summary>Verifies that searches reject both missing scope and contradictory scoped/all-tenant requests.</summary>
     [Test]
     public async Task SecurityEventAdministrationSearchRequiresExplicitTenantScopeOrAllTenantsMode()
     {
@@ -54,6 +58,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         }
     }
 
+    /// <summary>Verifies that user, actor, and session filters are combined rather than matched independently.</summary>
     [Test]
     public async Task SecurityEventAdministrationSearchFiltersIdentityFields()
     {
@@ -78,6 +83,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         Assert.That(result.Select(static securityEvent => securityEvent.EventId), Is.EqualTo(new[] { matching.Id }));
     }
 
+    /// <summary>Verifies that event type, outcome, failure reason, and provider filters must all match one event.</summary>
     [Test]
     public async Task SecurityEventAdministrationSearchFiltersEventTypeOutcomeFailureAndProvider()
     {
@@ -102,6 +108,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         Assert.That(result.Select(static securityEvent => securityEvent.EventId), Is.EqualTo(new[] { matching.Id }));
     }
 
+    /// <summary>Verifies that whitespace-only event types do not accidentally exclude stored events.</summary>
     [Test]
     public async Task SecurityEventAdministrationSearchIgnoresBlankEventTypeFilters()
     {
@@ -118,6 +125,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         Assert.That(result.Select(static securityEvent => securityEvent.EventId), Does.Contain(stored.Id));
     }
 
+    /// <summary>Verifies that both occurrence-time boundaries are included and adjacent events are excluded.</summary>
     [Test]
     public async Task SecurityEventAdministrationSearchUsesInclusiveOccurredDateRange()
     {
@@ -139,6 +147,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         Assert.That(result.Select(static securityEvent => securityEvent.EventId), Is.EqualTo(new[] { to.Id, inside.Id, from.Id }));
     }
 
+    /// <summary>Verifies that offset is applied before limit without reintroducing skipped events.</summary>
     [Test]
     public async Task SecurityEventAdministrationSearchSupportsLimitOffsetForHasMore()
     {
@@ -156,6 +165,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         }
     }
 
+    /// <summary>Verifies that detail lookup returns provider and property data while an unknown identifier returns <see langword="null" />.</summary>
     [Test]
     public async Task SecurityEventAdministrationGetEventByIdReturnsEventAndMissingReturnsNull()
     {
@@ -175,6 +185,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         }
     }
 
+    /// <summary>Verifies that out-of-scope detail lookup is indistinguishable from a missing event.</summary>
     [Test]
     public async Task SecurityEventAdministrationGetEventByIdAppliesExplicitTenantScopeWithoutLeakingExistence()
     {
@@ -201,6 +212,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         }
     }
 
+    /// <summary>Verifies that detail lookup rejects both missing scope and contradictory scoped/all-tenant requests.</summary>
     [Test]
     public async Task SecurityEventAdministrationGetEventByIdRequiresExplicitTenantScopeOrAllTenantsMode()
     {
@@ -215,6 +227,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         }
     }
 
+    /// <summary>Verifies that stored property values round trip, including empty strings, while absent properties remain <see langword="null" />.</summary>
     [Test]
     public async Task SecurityEventAdministrationPropertiesDeserializeSafely()
     {

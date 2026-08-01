@@ -1,10 +1,12 @@
 namespace Ashlar.ProviderContractTests.Identity;
 
-internal abstract class AuthenticationSessionAdministrationRepositoryContractTests : ProviderContractFixture
+/// <summary>Tests scoped session search, lifecycle filtering, ordering, and token-free projections.</summary>
+public abstract class AuthenticationSessionAdministrationRepositoryContractTests : ProviderContractFixture
 {
     private static readonly DateTimeOffset BaseTime = new(2026, 6, 2, 12, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset Now = BaseTime.AddHours(1);
 
+    /// <summary>Verifies that session search spans users unless a specific user is requested.</summary>
     [Test]
     public async Task SearchAuthenticationSessionsSearchesAcrossMultipleUsersAndFiltersByUser()
     {
@@ -30,6 +32,7 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         }
     }
 
+    /// <summary>Verifies that session search keeps tenant, global, and all-tenant scopes distinct.</summary>
     [Test]
     public async Task SearchAuthenticationSessionsFiltersTenantScopes()
     {
@@ -62,6 +65,7 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         }
     }
 
+    /// <summary>Verifies that session search rejects an ambiguous tenant boundary.</summary>
     [Test]
     public async Task SearchAuthenticationSessionsRequiresExplicitTenantScopeOrAllTenantsMode()
     {
@@ -75,6 +79,7 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         }
     }
 
+    /// <summary>Verifies that session search derives active, revoked, and expired membership at the requested time.</summary>
     [Test]
     public async Task SearchAuthenticationSessionsFiltersActiveRevokedAndExpiredCorrectly()
     {
@@ -107,6 +112,7 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         }
     }
 
+    /// <summary>Verifies that provider and date filters exclude sessions outside every requested bound.</summary>
     [Test]
     public async Task SearchAuthenticationSessionsFiltersByPrimaryProviderAndDateRanges()
     {
@@ -151,6 +157,7 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         Assert.That(result.Select(static session => session.Id), Is.EqualTo(new[] { matching.Id }));
     }
 
+    /// <summary>Verifies that session search uses last-seen, creation, and ID tie-breakers for stable paging.</summary>
     [Test]
     public async Task SearchAuthenticationSessionsOrdersByLastSeenCreatedAndIdDescending()
     {
@@ -175,6 +182,7 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         Assert.That(result.Select(static session => session.Id), Is.EqualTo(new[] { higherTie.Id, lowerTie.Id, olderLastSeen.Id, noLastSeen.Id }));
     }
 
+    /// <summary>Verifies that session detail lookup distinguishes a stored session from an absent ID.</summary>
     [Test]
     public async Task GetAuthenticationSessionReturnsLookupByIdAndMissingReturnsNull()
     {
@@ -213,6 +221,7 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         }
     }
 
+    /// <summary>Verifies that scoped session lookup hides rows outside the requested tenant.</summary>
     [Test]
     public async Task GetAuthenticationSessionAppliesExplicitTenantScopeWithoutLeakingExistence()
     {
@@ -245,6 +254,7 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         }
     }
 
+    /// <summary>Verifies that session detail lookup rejects an ambiguous tenant boundary.</summary>
     [Test]
     public async Task GetAuthenticationSessionRequiresExplicitTenantScopeOrAllTenantsMode()
     {
@@ -259,6 +269,7 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         }
     }
 
+    /// <summary>Omits authentication token hashes from administrative session projections.</summary>
     [Test]
     public async Task AuthenticationSessionAdministrationDoesNotReturnTokenHash()
     {

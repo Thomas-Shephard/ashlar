@@ -1,9 +1,11 @@
 namespace Ashlar.ProviderContractTests.Identity;
 
-internal abstract class UserRepositoryContractTests : ProviderContractFixture
+/// <summary>Tests user persistence, normalized lookup, tenant isolation, credentials, and rollback.</summary>
+public abstract class UserRepositoryContractTests : ProviderContractFixture
 {
     private const string PasswordResetProviderName = "password-reset";
 
+    /// <summary>Verifies that a created user can be recovered by its assigned ID.</summary>
     [Test]
     public async Task CreateAndFetchUserById()
     {
@@ -21,6 +23,7 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Verifies that normalized email lookup remains case-insensitive without crossing tenants.</summary>
     [Test]
     public async Task EmailLookupIsCaseInsensitiveAndTenantIsolated()
     {
@@ -48,6 +51,7 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Verifies that writes preserve display email while lookup uses its normalized form.</summary>
     [Test]
     public async Task CreateAndUpdatePreserveDisplayEmailWhileLookupUsesNormalizedEmail()
     {
@@ -68,6 +72,7 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Leaves unknown identifiers, emails, and provider keys distinguishable from stored users.</summary>
     [Test]
     public async Task MissingLookupsReturnNull()
     {
@@ -82,6 +87,7 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Verifies that user updates persist all mutable profile fields.</summary>
     [Test]
     public async Task UpdateUserChangesMutableFields()
     {
@@ -100,6 +106,8 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Verifies that user lookup preserves active and verification state.</summary>
+    /// <param name="accountState">Account state that must survive persistence.</param>
     [TestCase(UserAccountState.Active)]
     [TestCase(UserAccountState.Disabled)]
     [TestCase(UserAccountState.Locked)]
@@ -115,6 +123,7 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         Assert.That(fetched?.AccountState, Is.EqualTo(accountState));
     }
 
+    /// <summary>Rejects duplicate normalized email addresses within a tenant while allowing other tenants.</summary>
     [Test]
     public async Task DuplicateNormalizedEmailUniquenessIsEnforcedPerTenant()
     {
@@ -129,6 +138,7 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         Assert.That(async () => await CreateUserAsync(users, "DUPE@example.com", tenantId), Throws.Exception);
     }
 
+    /// <summary>Verifies that an external provider key resolves its owning user.</summary>
     [Test]
     public async Task ProviderKeyLookupReturnsLinkedUser()
     {
@@ -145,6 +155,7 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         Assert.That(fetchedUser?.Id, Is.EqualTo(user.Id));
     }
 
+    /// <summary>Refuses to resolve a user through a credential after that credential is revoked.</summary>
     [Test]
     public async Task ProviderKeyLookupIgnoresRevokedCredential()
     {
@@ -166,6 +177,7 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Refuses to resolve a user through a one-time credential after it is consumed.</summary>
     [Test]
     public async Task ProviderKeyLookupIgnoresConsumedCredential()
     {
@@ -187,6 +199,7 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Leaves no persisted user after its surrounding transaction is rolled back.</summary>
     [Test]
     public async Task UserWritesRollBackWhenProviderSupportsTransactions()
     {

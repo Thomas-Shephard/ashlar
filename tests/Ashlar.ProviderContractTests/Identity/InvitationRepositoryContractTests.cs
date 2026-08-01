@@ -2,12 +2,15 @@ using System.Text.Json.Nodes;
 
 namespace Ashlar.ProviderContractTests.Identity;
 
-internal abstract class InvitationRepositoryContractTests : ProviderContractFixture
+/// <summary>Tests invitation persistence, tenant isolation, acceptance, revocation, search, and rollback.</summary>
+public abstract class InvitationRepositoryContractTests : ProviderContractFixture
 {
+    /// <summary>Fixed timestamp used to create deterministic provider rows.</summary>
     protected static readonly DateTimeOffset RepositoryNow = new(2026, 6, 3, 12, 0, 0, TimeSpan.Zero);
 
     private static readonly DateTimeOffset CreatedAt = new(2026, 6, 2, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>Verifies that token lookup recovers every stored invitation field.</summary>
     [Test]
     public async Task CreateAndFetchInvitationByTokenHashMapsFields()
     {
@@ -35,6 +38,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Leaves unknown invitation tokens distinguishable from stored invitations.</summary>
     [Test]
     public async Task MissingTokenReturnsNull()
     {
@@ -44,6 +48,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         Assert.That(await repository.GetInvitationByTokenHashAsync("missing-token"), Is.Null);
     }
 
+    /// <summary>Accepts the current invitation version once and rejects the replaced version.</summary>
     [Test]
     public async Task VersionedUpdateSucceedsWithCorrectVersionAndFailsWithStaleVersion()
     {
@@ -72,6 +77,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Keeps acceptance terminal so a consumed invitation cannot be reused.</summary>
     [Test]
     public async Task AcceptedInvitationCannotBeAcceptedAgain()
     {
@@ -94,6 +100,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Prevents a revoked invitation from creating an acceptance transition.</summary>
     [Test]
     public async Task RevokedInvitationCannotBeAccepted()
     {
@@ -110,6 +117,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         Assert.That(accepted, Is.False);
     }
 
+    /// <summary>Prevents an expired invitation from creating an acceptance transition.</summary>
     [Test]
     public async Task ExpiredInvitationCannotBeAccepted()
     {
@@ -128,6 +136,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         Assert.That(accepted, Is.False);
     }
 
+    /// <summary>Verifies that normalized email revocation cannot affect another tenant.</summary>
     [Test]
     public async Task RevokeByEmailIsCaseInsensitiveTenantScopedAndDoesNotAffectOtherTenants()
     {
@@ -156,6 +165,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Leaves no persisted invitation after its surrounding transaction is rolled back.</summary>
     [Test]
     public async Task InvitationWritesRollBackWhenProviderSupportsTransactions()
     {
@@ -179,6 +189,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         Assert.That(await verificationRepository.GetInvitationByTokenHashAsync(invitation.TokenHash), Is.Null);
     }
 
+    /// <summary>Returns invitations from the requested tenant reach and excludes outside scopes.</summary>
     [Test]
     public async Task AdministrationSearchFiltersByTenantGlobalAndAllTenants()
     {
@@ -202,6 +213,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Combines recipient, lifecycle status, and time bounds when selecting invitations.</summary>
     [Test]
     public async Task AdministrationSearchFiltersByEmailStatusAndTimeRanges()
     {
@@ -240,6 +252,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Returns stable non-overlapping invitation pages with the correct total count.</summary>
     [Test]
     public async Task AdministrationSearchSupportsPaging()
     {
@@ -259,6 +272,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         Assert.That(result.Select(invitation => invitation.Id), Is.EqualTo(expected));
     }
 
+    /// <summary>Hides invitation tokens and refuses lookup from an unrelated tenant scope.</summary>
     [Test]
     public async Task AdministrationLookupAppliesTenantIsolationAndDoesNotExposeSecrets()
     {
@@ -286,6 +300,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Revokes only within the requested tenant and distinguishes already-terminal invitations.</summary>
     [Test]
     public async Task AdministrationRevokeByIdIsTenantScopedAndReportsTerminalStates()
     {
@@ -326,6 +341,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Rejects non-positive page numbers and page sizes before querying invitations.</summary>
     [Test]
     public async Task AdministrationSearchRejectsInvalidPaging()
     {

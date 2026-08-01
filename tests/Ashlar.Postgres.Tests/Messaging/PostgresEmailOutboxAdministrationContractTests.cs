@@ -18,6 +18,7 @@ internal sealed class PostgresEmailOutboxAdministrationContractTests : EmailOutb
     {
         _database = await PostgresContractDatabase.CreateInitializedServiceProviderAsync(services =>
         {
+            services.AddAshlarIdentity();
             services.AddSingleton<TimeProvider>(new FakeTimeProvider(AdminNow));
             services.AddSingleton<IAccountSecurityOperationAuthorizer>(
                 new StubAccountSecurityOperationAuthorizer { Authorized = true });
@@ -254,9 +255,16 @@ internal sealed class PostgresEmailOutboxAdministrationContractTests : EmailOutb
         string purpose = AccountSecurityActorContext.AdministrationReadProofPurpose)
     {
         var services = _database!.ServiceProvider;
-        var user = await CreateUserAsync(GetUserRepository(services));
+        var user = new AshlarUser
+        {
+            Id = Guid.NewGuid(),
+            DisplayEmail = $"{Guid.NewGuid():N}@example.com",
+            Name = "Test User",
+            AccountState = UserAccountState.Active
+        };
+        await services.GetRequiredService<IUserRepository>().CreateUserAsync(user);
         var session = new AuthenticationSession { Id = Guid.NewGuid(), UserId = user.Id, TokenHash = Guid.NewGuid().ToString("N"), CreatedAt = AdminNow, ExpiresAt = AdminNow.AddYears(1) };
-        await GetAuthenticationSessionRepository(services).CreateSessionAsync(session);
+        await services.GetRequiredService<IAuthenticationSessionRepository>().CreateSessionAsync(session);
         var actorAudit = audit is null
             ? new AuditContext(user.Id)
             : audit with { ActorUserId = user.Id };

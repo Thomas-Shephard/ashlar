@@ -3,10 +3,12 @@ using System.Text.Json.Nodes;
 
 namespace Ashlar.ProviderContractTests.Identity;
 
-internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContractFixture
+/// <summary>Tests challenge persistence, tenant binding, uniqueness, single consumption, expiry, and rollback.</summary>
+public abstract class PasskeyChallengeRepositoryContractTests : ProviderContractFixture
 {
     private static readonly TimeSpan ChallengeLifetime = TimeSpan.FromMinutes(5);
 
+    /// <summary>Verifies that challenge lookup by ID recovers every stored core field.</summary>
     [Test]
     public async Task CreateAndFetchChallengeByIdMapsCoreFields()
     {
@@ -24,6 +26,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         AssertChallenge(fetched!, challenge);
     }
 
+    /// <summary>Verifies that an absent challenge ID returns no fabricated state.</summary>
     [Test]
     public async Task FetchMissingChallengeReturnsNull()
     {
@@ -33,6 +36,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         Assert.That(await repository.GetAsync(Guid.NewGuid()), Is.Null);
     }
 
+    /// <summary>Verifies that a global registration challenge preserves its user binding and payload.</summary>
     [Test]
     public async Task RegistrationChallengeRoundTrips()
     {
@@ -49,6 +53,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         AssertChallenge(fetched!, challenge);
     }
 
+    /// <summary>Verifies that a tenant registration challenge preserves its tenant and user binding.</summary>
     [Test]
     public async Task TenantRegistrationChallengeRoundTrips()
     {
@@ -66,6 +71,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         AssertChallenge(fetched!, challenge);
     }
 
+    /// <summary>Verifies that registration cannot bind a challenge to a user's other tenant.</summary>
     [Test]
     public async Task RegistrationChallengeRejectsTenantMismatch()
     {
@@ -78,6 +84,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         Assert.That(async () => await repository.CreateAsync(challenge), Throws.Exception);
     }
 
+    /// <summary>Verifies that authentication challenges preserve factor and handshake bindings.</summary>
     [Test]
     public async Task AuthenticationChallengeWithHandshakeBindingRoundTrips()
     {
@@ -99,6 +106,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         }
     }
 
+    /// <summary>Verifies that a tenant authentication challenge preserves its tenant and user binding.</summary>
     [Test]
     public async Task TenantAuthenticationChallengeRoundTrips()
     {
@@ -116,6 +124,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         AssertChallenge(fetched!, challenge);
     }
 
+    /// <summary>Verifies that one challenge value cannot identify multiple challenge rows.</summary>
     [Test]
     public async Task ChallengeValueUniquenessIsEnforced()
     {
@@ -130,6 +139,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         Assert.That(async () => await repository.CreateAsync(duplicate), Throws.Exception);
     }
 
+    /// <summary>Verifies that the current version permits exactly one successful consumption.</summary>
     [Test]
     public async Task ConsumeAsyncSucceedsOnceWithCorrectVersion()
     {
@@ -151,6 +161,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         }
     }
 
+    /// <summary>Verifies that a stale version cannot consume or mutate a challenge.</summary>
     [Test]
     public async Task ConsumeAsyncRejectsStaleOrWrongVersion()
     {
@@ -166,6 +177,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         Assert.That(consumed, Is.False);
     }
 
+    /// <summary>Verifies that a consumed challenge remains unavailable even at its latest version.</summary>
     [Test]
     public async Task ConsumeAsyncRejectsAlreadyConsumedChallenge()
     {
@@ -183,6 +195,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         Assert.That(consumedAgain, Is.False);
     }
 
+    /// <summary>Verifies that expiry prevents challenge consumption without mutating it.</summary>
     [Test]
     public async Task ConsumeAsyncRejectsExpiredChallenge()
     {
@@ -199,6 +212,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         Assert.That(consumed, Is.False);
     }
 
+    /// <summary>Verifies that successful consumption stores its completion timestamp.</summary>
     [Test]
     public async Task SuccessfulConsumePersistsConsumedAt()
     {
@@ -216,6 +230,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         Assert.That(fetched!.ConsumedAt, Is.Not.Null);
     }
 
+    /// <summary>Verifies that a rolled-back challenge write remains absent.</summary>
     [Test]
     public async Task PasskeyChallengeWritesRollBackWhenProviderSupportsTransactions()
     {

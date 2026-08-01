@@ -1,6 +1,7 @@
 namespace Ashlar.ProviderContractTests.Identity;
 
-internal abstract class AuthenticationHandshakeRepositoryContractTests : ProviderContractFixture
+/// <summary>Tests handshake persistence, tenant binding, terminal transitions, concurrency, and rollback.</summary>
+public abstract class AuthenticationHandshakeRepositoryContractTests : ProviderContractFixture
 {
     private static readonly DateTimeOffset CreatedAt = new(2026, 6, 3, 12, 0, 0, TimeSpan.Zero);
     private static readonly string[] TotpFactor = ["totp"];
@@ -9,6 +10,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
     private static readonly string[] TotpAndPasskeyFactors = ["totp", "passkey"];
     private static readonly Dictionary<string, string> UpdatedMetadata = new() { ["updated"] = "true" };
 
+    /// <summary>Verifies that token lookup recovers every stored handshake field.</summary>
     [Test]
     public async Task CreateAndFetchByTokenHashMapsAllFields()
     {
@@ -27,6 +29,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         AssertHandshake(fetched!, handshake);
     }
 
+    /// <summary>Preserves the global or tenant ownership assigned to each stored handshake.</summary>
     [Test]
     public async Task GlobalAndTenantHandshakesRoundTripDistinctTenantScopes()
     {
@@ -54,6 +57,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         }
     }
 
+    /// <summary>Verifies that creation rejects a handshake outside its user's tenant.</summary>
     [Test]
     public async Task CreateRejectsHandshakeTenantThatDoesNotMatchUserTenant()
     {
@@ -66,6 +70,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         Assert.That(async () => await repository.CreateAsync(handshake), Throws.InstanceOf<Exception>());
     }
 
+    /// <summary>Verifies that an unknown token hash returns no fabricated handshake.</summary>
     [Test]
     public async Task FetchMissingTokenReturnsNull()
     {
@@ -75,6 +80,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         Assert.That(await repository.FindByTokenHashAsync("missing-token"), Is.Null);
     }
 
+    /// <summary>Verifies that update lookup returns a mutable handle for the matching handshake.</summary>
     [Test]
     public async Task FindByTokenHashForUpdateReturnsExpectedHandshakeAndCanBeUpdated()
     {
@@ -97,6 +103,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         }
     }
 
+    /// <summary>Preserves the required and completed authentication-factor sets.</summary>
     [Test]
     public async Task RequiredAndVerifiedFactorsRoundTrip()
     {
@@ -117,6 +124,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         }
     }
 
+    /// <summary>Preserves both populated metadata and the absence of metadata.</summary>
     [Test]
     public async Task MetadataRoundTripsIncludingNullMetadata()
     {
@@ -139,6 +147,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         }
     }
 
+    /// <summary>Verifies that completion updates both terminal state and its timestamp.</summary>
     [Test]
     public async Task UpdatePersistsCompletionStateAndTimestamp()
     {
@@ -161,6 +170,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         }
     }
 
+    /// <summary>Verifies that completion supplies a timestamp when the caller omits one.</summary>
     [Test]
     public async Task UpdateComputesCompletionTimestampWhenMissing()
     {
@@ -182,6 +192,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         }
     }
 
+    /// <summary>Verifies that revocation updates both terminal state and its timestamp.</summary>
     [Test]
     public async Task UpdatePersistsRevocationStateAndTimestamp()
     {
@@ -204,6 +215,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         }
     }
 
+    /// <summary>Verifies that revocation supplies a timestamp when the caller omits one.</summary>
     [Test]
     public async Task UpdateComputesRevocationTimestampWhenMissing()
     {
@@ -225,6 +237,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         }
     }
 
+    /// <summary>Verifies that updates can replace or clear optional factor and metadata state.</summary>
     [Test]
     public async Task UpdateCanStoreAndResetVerifiedFactorsAndMetadata()
     {
@@ -255,6 +268,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         }
     }
 
+    /// <summary>Verifies that completion makes a handshake immutable to later updates.</summary>
     [Test]
     public async Task UpdateReturnsFalseAndDoesNotModifyCompletedHandshake()
     {
@@ -293,6 +307,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         }
     }
 
+    /// <summary>Verifies that revocation makes a handshake immutable to later updates.</summary>
     [Test]
     public async Task UpdateReturnsFalseAndDoesNotModifyRevokedHandshake()
     {
@@ -330,6 +345,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         }
     }
 
+    /// <summary>Verifies that updating an absent handshake reports no change.</summary>
     [Test]
     public async Task UpdateMissingHandshakeReturnsFalse()
     {
@@ -342,6 +358,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         Assert.That(updateApplied, Is.False);
     }
 
+    /// <summary>Verifies that creation rejects a missing handshake value before persistence.</summary>
     [Test]
     public async Task CreateRejectsNullHandshake()
     {
@@ -351,6 +368,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         Assert.ThrowsAsync<ArgumentNullException>(async () => await repository.CreateAsync(null!));
     }
 
+    /// <summary>Verifies that update rejects a missing handshake value before persistence.</summary>
     [Test]
     public async Task UpdateRejectsNullHandshake()
     {
@@ -360,6 +378,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         Assert.ThrowsAsync<ArgumentNullException>(async () => await repository.UpdateAsync(null!));
     }
 
+    /// <summary>Leaves no persisted handshake after its surrounding transaction is rolled back.</summary>
     [Test]
     public async Task HandshakeWritesRollBackWhenProviderSupportsTransactions()
     {

@@ -1,10 +1,12 @@
 namespace Ashlar.ProviderContractTests.Identity;
 
-internal abstract class CredentialRepositoryContractTests : ProviderContractFixture
+/// <summary>Tests credential persistence, ownership, lifecycle transitions, concurrency, secrecy, and rollback.</summary>
+public abstract class CredentialRepositoryContractTests : ProviderContractFixture
 {
     private const string PasswordResetProviderName = "password-reset";
     private const string PasswordResetPurpose = "password-reset";
 
+    /// <summary>Acquires a user mutation lock only inside a transaction for a stored user.</summary>
     [Test]
     public async Task UserMutationLockRequiresTransactionAndExistingUser()
     {
@@ -21,6 +23,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
         Assert.ThrowsAsync<UserMutationLockNotFoundException>(async () => await credentials.AcquireUserMutationLockAsync(Guid.NewGuid()));
     }
 
+    /// <summary>Blocks a second credential decision until the first user mutation lock is released.</summary>
     [Test]
     public async Task UserMutationLockSerializesConcurrentCredentialDecisions()
     {
@@ -43,6 +46,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
         await secondLock.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
+    /// <summary>Preserves a created credential and resolves ownership by its provider key.</summary>
     [Test]
     public async Task CredentialCreateReadAndProviderKeyOwnershipWork()
     {
@@ -65,6 +69,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Verifies that replacement updates an identity without transferring its user ownership.</summary>
     [Test]
     public async Task CreateOrReplaceCredentialUpdatesExistingIdentityWithoutMovingUsers()
     {
@@ -98,6 +103,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Accepts the current credential version once and rejects reuse of the replaced version.</summary>
     [Test]
     public async Task VersionedCredentialUpdateSucceedsOnceAndFailsWithStaleVersion()
     {
@@ -126,6 +132,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Marks a credential consumed atomically so the same value cannot be replayed.</summary>
     [Test]
     public async Task CredentialConsumeSucceedsOnceAndPreventsReplay()
     {
@@ -144,6 +151,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Verifies that revocation affects only active credentials matching the requested provider and purpose.</summary>
     [Test]
     public async Task RevokeCredentialsAffectsMatchingActiveCredentialsOnly()
     {
@@ -173,6 +181,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Preserves password-reset lifecycle fields and revokes only credentials for the selected provider.</summary>
     [Test]
     public async Task PasswordResetInternalCredentialPersistsLifecycleMetadataAndRevocationIsProviderScoped()
     {
@@ -213,6 +222,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Verifies that replacing a revoked local password creates an active current credential.</summary>
     [Test]
     public async Task CreateOrReplaceCredentialReactivatesRevokedLocalPasswordCredential()
     {
@@ -242,6 +252,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Classifies stored credentials into active, revoked, and expired listing states.</summary>
     [Test]
     public async Task CredentialListingSeparatesActiveRevokedAndExpiredLifecycleStates()
     {
@@ -276,6 +287,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Verifies that credential creation cannot leave an orphaned user reference.</summary>
     [Test]
     public async Task CreateCredentialPathsRequireExistingUser()
     {
@@ -288,6 +300,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
         Assert.CatchAsync(async () => await credentials.CreateOrReplaceCredentialAsync(replacement));
     }
 
+    /// <summary>Excludes secret credential values from every listed credential projection.</summary>
     [Test]
     public async Task CredentialListingOmitsSecretCredentialValues()
     {
@@ -314,6 +327,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
         }
     }
 
+    /// <summary>Includes every credential belonging to the requested user in the inventory.</summary>
     [Test]
     public async Task CredentialListingReturnsCompleteInventory()
     {
@@ -329,6 +343,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
         Assert.That(await credentials.ListCredentialsForUserAsync(user.Id), Has.Count.EqualTo(101));
     }
 
+    /// <summary>Leaves neither the user nor credential persisted after their transaction is rolled back.</summary>
     [Test]
     public async Task UserAndCredentialWritesRollBackWhenProviderSupportsTransactions()
     {

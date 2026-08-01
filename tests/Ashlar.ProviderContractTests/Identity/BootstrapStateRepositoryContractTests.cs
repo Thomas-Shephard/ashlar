@@ -1,7 +1,9 @@
 namespace Ashlar.ProviderContractTests.Identity;
 
-internal abstract class BootstrapStateRepositoryContractTests : ProviderContractFixture
+/// <summary>Tests one-time bootstrap initialization, preserved state, and transactional rollback.</summary>
+public abstract class BootstrapStateRepositoryContractTests : ProviderContractFixture
 {
+    /// <summary>Verifies that an empty store reports no prior bootstrap initialization.</summary>
     [Test]
     public async Task InitialStatusIsUninitialized()
     {
@@ -11,6 +13,7 @@ internal abstract class BootstrapStateRepositoryContractTests : ProviderContract
         Assert.That(await repository.GetBootstrapStatusAsync(), Is.EqualTo(BootstrapStatus.Uninitialized));
     }
 
+    /// <summary>Verifies that initialization succeeds once and later calls preserve its original state.</summary>
     [Test]
     public async Task MarkInitializedSucceedsOnceAndPreservesFirstState()
     {
@@ -33,6 +36,7 @@ internal abstract class BootstrapStateRepositoryContractTests : ProviderContract
         }
     }
 
+    /// <summary>Verifies that rolling back initialization leaves the store uninitialized.</summary>
     [Test]
     public async Task BootstrapInitializationRollsBackWhenProviderSupportsTransactions()
     {

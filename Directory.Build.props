@@ -4,6 +4,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <IsPackable Condition="'$(IsPackable)' == ''">true</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
 
     <!-- Unified Artifacts Output -->
@@ -16,5 +18,14 @@
 
     <!-- Tests may use friend access; official package builds must not emit it. -->
     <AshlarOfficialBuild Condition="'$(AshlarOfficialBuild)' == ''">false</AshlarOfficialBuild>
+
+    <!-- Shared NuGet package metadata -->
+    <Authors>Thomas Shephard</Authors>
+    <Copyright>Copyright (c) $([System.DateTime]::Now.ToString("yyyy")) $(Authors)</Copyright>
+    <PackageProjectUrl>https://github.com/Thomas-Shephard/ashlar</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Thomas-Shephard/ashlar.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 </Project>

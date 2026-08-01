@@ -1,14 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <IsPackable>false</IsPackable>
+    <IsPackable>true</IsPackable>
     <IsTestProject>false</IsTestProject>
+    <Description>Reusable provider contract tests for Ashlar persistence implementations.</Description>
+    <PackageTags>ashlar;provider;contracts;testing</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Ashlar.Postgres.Tests" />
-    <InternalsVisibleTo Include="Ashlar.Redis.Tests" />
-    <InternalsVisibleTo Include="Ashlar.Sqlite.Tests" />
     <PackageReference Include="NUnit" />
     <Using Include="NUnit.Framework" />
   </ItemGroup>
@@ -21,7 +20,10 @@
     <ProjectReference Include="..\..\src\Ashlar\Ashlar.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.ProviderContracts\Ashlar.ProviderContracts.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.Webhooks\Ashlar.Webhooks.csproj" />
-    <ProjectReference Include="..\Ashlar.Testing\Ashlar.Testing.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\src\Ashlar.ProviderContracts\README.md" Pack="true" PackagePath="\" Link="README.md" />
   </ItemGroup>
 
 </Project>

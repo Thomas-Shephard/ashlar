@@ -2,10 +2,18 @@ using System.Text.Json;
 
 namespace Ashlar.ProviderContractTests.Auditing;
 
-internal abstract class SecurityEventPersistenceContractTests : ProviderContractFixture
+/// <summary>Defines audit append, field-mapping, optional-data, and user-counting requirements.</summary>
+public abstract class SecurityEventPersistenceContractTests : ProviderContractFixture
 {
+    /// <summary>Reads raw rows so the suite can verify storage mapping independently of administration projections.</summary>
+    /// <returns>The persisted security-event records.</returns>
+    /// <exception cref="System.NotSupportedException">The provider fixture does not support direct storage inspection.</exception>
+    protected virtual Task<IReadOnlyList<SecurityEventStorageRecord>> ReadSecurityEventStorageRecordsAsync() =>
+        throw new NotSupportedException("This provider contract fixture does not expose security event storage records.");
+
     private static readonly DateTimeOffset OccurredAt = new(2026, 6, 2, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>Verifies that storage preserves every audit field and the complete property dictionary.</summary>
     [Test]
     public async Task RecordAsyncPersistsEventWithCoreFieldsAndProperties()
     {
@@ -43,6 +51,7 @@ internal abstract class SecurityEventPersistenceContractTests : ProviderContract
         }
     }
 
+    /// <summary>Verifies that absent identity, provider, request, outcome, and property data remains absent in storage.</summary>
     [Test]
     public async Task RecordAsyncHandlesOptionalNullFields()
     {
@@ -75,6 +84,7 @@ internal abstract class SecurityEventPersistenceContractTests : ProviderContract
         }
     }
 
+    /// <summary>Verifies that an explicit default provider key is stored as its fallback type and empty name.</summary>
     [Test]
     public async Task RecordAsyncPersistsDefaultProviderShapeWhenSupplied()
     {
@@ -98,6 +108,7 @@ internal abstract class SecurityEventPersistenceContractTests : ProviderContract
         }
     }
 
+    /// <summary>Verifies that recording a later event does not replace an existing audit row.</summary>
     [Test]
     public async Task MultipleEventsAreAppended()
     {
@@ -113,6 +124,7 @@ internal abstract class SecurityEventPersistenceContractTests : ProviderContract
         Assert.That(rows.Select(record => record.Id), Is.SupersetOf(new[] { first.Id, second.Id }));
     }
 
+    /// <summary>Verifies that user event counts include the time boundary but exclude older, anonymous, and other-user events.</summary>
     [Test]
     public async Task CountSecurityEventsForUserUsesInclusiveSinceAndIgnoresOtherUsers()
     {

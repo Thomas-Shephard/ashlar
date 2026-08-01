@@ -3,7 +3,8 @@ using Ashlar.Security.Encryption;
 
 namespace Ashlar.ProviderContractTests.Messaging;
 
-internal sealed class RecordingSecretProtector : ISecretProtector
+/// <summary>Records secret-protection calls while returning deterministic protected values.</summary>
+public sealed class RecordingSecretProtector : ISecretProtector
 {
     private static readonly byte[] Prefix = "protected:"u8.ToArray();
 

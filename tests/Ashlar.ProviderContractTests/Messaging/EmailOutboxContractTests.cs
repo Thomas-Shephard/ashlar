@@ -2,22 +2,38 @@ using Ashlar.Messaging;
 
 namespace Ashlar.ProviderContractTests.Messaging;
 
-internal abstract class EmailOutboxContractTests : ProviderContractFixture
+/// <summary>Verifies durable enqueue, protected storage, dispatch, retry, diagnostics, and transaction behavior.</summary>
+public abstract class EmailOutboxContractTests : ProviderContractFixture
 {
+    /// <summary>Fixed timestamp used to create deterministic provider rows.</summary>
     protected static readonly DateTimeOffset ContractNow = new(2026, 5, 8, 12, 0, 0, TimeSpan.Zero);
     private static readonly TimeSpan RetryDelay = TimeSpan.FromMinutes(1);
     private static readonly string[] RetryableRecipients = ["retryable@example.com", "retryable@example.com"];
     private const string SensitiveTextBody = "Reset token: live-token-text";
     private const string SensitiveHtmlBody = "<p>Reset token: live-token-html</p>";
 
+    /// <summary>Reads the only stored email row, including bodies, sensitivity, protection, and failure state.</summary>
+    /// <returns>The persisted state of the email outbox row.</returns>
     protected abstract Task<EmailOutboxRowState> ReadSingleEmailOutboxRowAsync();
 
+    /// <summary>Persists an email row with the supplied body, protection, sensitivity, and availability state.</summary>
+    /// <param name="row">Provider-neutral state to persist before the assertion.</param>
     protected abstract Task SeedEmailOutboxRowAsync(SeedEmailOutboxRow row);
 
+    /// <summary>Persists an email whose body-protection value is deliberately unsupported.</summary>
+    /// <param name="row">Provider-neutral state to persist before the assertion.</param>
     protected abstract Task SeedUnknownBodyProtectionEmailOutboxRowAsync(SeedEmailOutboxRow row);
 
+    /// <summary>Runs one dispatcher batch and returns the number of rows it attempted.</summary>
+    /// <param name="serviceProvider">Scoped services participating in the contract operation.</param>
+    /// <returns>The number of rows processed.</returns>
     protected abstract Task<int> ProcessEmailOutboxBatchAsync(IServiceProvider serviceProvider);
 
+    /// <summary>Advances the provider clock that controls retry eligibility.</summary>
+    /// <param name="offset">Amount by which to advance the fixture clock.</param>
+    protected virtual Task AdvanceEmailOutboxTimeAsync(TimeSpan offset) => Task.CompletedTask;
+
+    /// <summary>Round-trips the complete email envelope through durable storage before dispatch.</summary>
     [Test]
     public async Task SendAsyncEnqueuesMessageThatDispatcherDeliversWithEnvelopeBodyHeadersAndMetadata()
     {
@@ -37,6 +53,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         AssertEmailMessage(transport.Messages.Single(), message);
     }
 
+    /// <summary>Stores ordinary email bodies unchanged and marks them as unprotected normal data.</summary>
     [Test]
     public async Task NormalEmailPersistsWithNormalSensitivityAndNoBodyProtection()
     {
@@ -55,6 +72,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Never stores sensitive bodies as plaintext but restores their original content for delivery.</summary>
     [Test]
     public async Task SensitiveEmailPersistsProtectedBodiesAndDispatcherRestoresThem()
     {
@@ -85,6 +103,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Exposes the transactional sender contract needed to commit email enqueue with other provider writes.</summary>
     [Test]
     public async Task EmailOutboxSenderAdvertisesTransactionalDurableOutbox()
     {
@@ -93,6 +112,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         Assert.That(GetEmailSender(scope.ServiceProvider), Is.InstanceOf<ITransactionalEmailOutboxSender>());
     }
 
+    /// <summary>Reports no processed messages when the outbox is empty and leaves the transport untouched.</summary>
     [Test]
     public async Task ProcessBatchAsyncReturnsZeroWhenThereIsNoWork()
     {
@@ -107,6 +127,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Marks a delivered message terminal so subsequent batches cannot send it twice.</summary>
     [Test]
     public async Task SuccessfulDispatchDoesNotResendMessageOnLaterBatch()
     {
@@ -128,6 +149,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Dispatches no more messages than the configured batch limit in one pass.</summary>
     [Test]
     public async Task ProcessBatchAsyncRespectsConfiguredBatchSize()
     {
@@ -149,6 +171,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Defers a failed message until its retry time, then permits exactly another delivery attempt.</summary>
     [Test]
     public async Task FailedDeliveryRemainsRetryableAfterRetryDelay()
     {
@@ -185,6 +208,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Withholds a sensitive message when decryption fails and records no secret-bearing error detail.</summary>
     [Test]
     public async Task SensitiveProtectedMessageFailsSafeWhenBodyCannotBeRestored()
     {
@@ -207,6 +231,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Rejects unknown body protection without passing stored content to the transport.</summary>
     [Test]
     public async Task UnknownBodyProtectionFailsSafeWithoutDispatchingPlaintext()
     {
@@ -228,6 +253,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Records a safe failure classification without persisting exception text for sensitive email.</summary>
     [Test]
     public async Task SensitiveDispatchFailureSuppressesStoredExceptionDetail()
     {
@@ -253,6 +279,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Reports sensitive email health as aggregate counts without exposing message content or recipients.</summary>
     [Test]
     public async Task DiagnosticsExposeOnlyAggregateSensitiveCounts()
     {
@@ -299,6 +326,8 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Commits or discards an enqueued email with its surrounding Ashlar transaction.</summary>
+    /// <exception cref="System.InvalidOperationException">The fixture did not register a transaction provider.</exception>
     [Test]
     public async Task EnqueueParticipatesInAshlarTransactions()
     {
@@ -380,6 +409,20 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"unprotected:{body}"));
     }
 
+    /// <summary>Provider-neutral state used to seed an email outbox row.</summary>
+    /// <param name="ToAddress">Email recipient.</param>
+    /// <param name="Subject">Email subject.</param>
+    /// <param name="TextBody">Plain-text body, if present.</param>
+    /// <param name="HtmlBody">HTML body, if present.</param>
+    /// <param name="Sensitivity">Data sensitivity classification.</param>
+    /// <param name="BodyProtection">Protection applied to the stored bodies.</param>
+    /// <param name="CreatedAt">Time the email was created.</param>
+    /// <param name="AvailableAt">Time the email becomes eligible for dispatch.</param>
+    /// <param name="FailedAt">Terminal failure time, if failed.</param>
+    /// <param name="LockedBy">Worker holding the dispatch lock, if locked.</param>
+    /// <param name="LockedUntil">Time the dispatch lock expires, if locked.</param>
+    /// <param name="AttemptCount">Number of delivery attempts.</param>
+    /// <param name="LastError">Safe delivery failure detail, if present.</param>
     protected sealed record SeedEmailOutboxRow(
         string ToAddress,
         string Subject,
@@ -395,8 +438,21 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         int AttemptCount,
         string? LastError)
     {
+        /// <summary>Unique email identifier persisted with this seeded row.</summary>
         public Guid Id { get; } = Guid.NewGuid();
 
+        /// <summary>Creates a seeded email row with the supplied delivery state.</summary>
+        /// <param name="toAddress">Recipient stored with the seeded email.</param>
+        /// <param name="subject">Subject stored with the seeded email.</param>
+        /// <param name="textBody">Plain-text message body to persist.</param>
+        /// <param name="htmlBody">HTML message body to persist.</param>
+        /// <param name="createdAt">Creation time to persist.</param>
+        /// <param name="availableAt">Time from which the row is eligible for dispatch.</param>
+        /// <param name="sensitivity">Data sensitivity classification to persist.</param>
+        /// <param name="bodyProtection">Protection scheme recorded for stored bodies.</param>
+        /// <param name="lockedBy">Worker identifier holding the dispatch lock.</param>
+        /// <param name="lockedUntil">Time until which a worker owns the row.</param>
+        /// <returns>A pending email row descriptor.</returns>
         public static SeedEmailOutboxRow Pending(
             string toAddress = "seeded@example.com",
             string subject = "Subject",
@@ -425,6 +481,18 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
                 null);
         }
 
+        /// <summary>Creates a seeded email row with the supplied delivery state.</summary>
+        /// <param name="toAddress">Recipient stored with the seeded email.</param>
+        /// <param name="subject">Subject stored with the seeded email.</param>
+        /// <param name="textBody">Plain-text message body to persist.</param>
+        /// <param name="htmlBody">HTML message body to persist.</param>
+        /// <param name="createdAt">Creation time to persist.</param>
+        /// <param name="availableAt">Time from which the row is eligible for dispatch.</param>
+        /// <param name="failedAt">Terminal failure time.</param>
+        /// <param name="sensitivity">Data sensitivity classification to persist.</param>
+        /// <param name="bodyProtection">Protection scheme recorded for stored bodies.</param>
+        /// <param name="lastError">Safe persisted delivery failure detail.</param>
+        /// <returns>A failed email row descriptor.</returns>
         public static SeedEmailOutboxRow Failed(
             string toAddress = "failed@example.com",
             string subject = "Subject",
@@ -454,6 +522,13 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
         }
     }
 
+    /// <summary>Provider state read back for email outbox row state assertions.</summary>
+    /// <param name="TextBody">Stored plain-text body, if present.</param>
+    /// <param name="HtmlBody">Stored HTML body, if present.</param>
+    /// <param name="Sensitivity">Stored data sensitivity classification.</param>
+    /// <param name="BodyProtection">Protection applied to the stored bodies.</param>
+    /// <param name="AttemptCount">Number of delivery attempts.</param>
+    /// <param name="LastError">Safe delivery failure detail, if present.</param>
     protected sealed record EmailOutboxRowState(
         string? TextBody,
         string? HtmlBody,

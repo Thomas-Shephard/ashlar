@@ -2,10 +2,12 @@ using System.Text.Json.Nodes;
 
 namespace Ashlar.ProviderContractTests.Identity;
 
-internal abstract class AuthenticationSessionRepositoryContractTests : ProviderContractFixture
+/// <summary>Tests session persistence, tenant isolation, lifecycle transitions, revocation, and rollback.</summary>
+public abstract class AuthenticationSessionRepositoryContractTests : ProviderContractFixture
 {
     private static readonly DateTimeOffset CreatedAt = new(2026, 6, 2, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>Verifies that both session keys recover the same complete stored session.</summary>
     [Test]
     public async Task CreateAndFetchSessionByTokenHashAndIdMapsFields()
     {
@@ -58,6 +60,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         }
     }
 
+    /// <summary>Leaves unknown session identifiers distinguishable from stored sessions.</summary>
     [Test]
     public async Task MissingSessionReturnsNull()
     {
@@ -71,6 +74,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         }
     }
 
+    /// <summary>Verifies that a token hash cannot identify more than one session.</summary>
     [Test]
     public async Task TokenHashUniquenessIsEnforced()
     {
@@ -86,6 +90,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         Assert.That(async () => await repository.CreateSessionAsync(second), Throws.Exception);
     }
 
+    /// <summary>Verifies that a session cannot assign a tenant user to another tenant.</summary>
     [Test]
     public async Task CreateSessionRejectsTenantUserWithDifferentTenant()
     {
@@ -97,6 +102,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         Assert.That(async () => await repository.CreateSessionAsync(CreateSession(user.Id, tenantId: Guid.NewGuid())), Throws.Exception);
     }
 
+    /// <summary>Verifies that a tenant user cannot receive a global session.</summary>
     [Test]
     public async Task CreateSessionRejectsTenantUserWithNullTenant()
     {
@@ -108,6 +114,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         Assert.That(async () => await repository.CreateSessionAsync(CreateSession(user.Id, tenantId: null)), Throws.Exception);
     }
 
+    /// <summary>Verifies that a global user cannot receive a tenant session.</summary>
     [Test]
     public async Task CreateSessionRejectsGlobalUserWithTenant()
     {
@@ -119,6 +126,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         Assert.That(async () => await repository.CreateSessionAsync(CreateSession(user.Id, tenantId: Guid.NewGuid())), Throws.Exception);
     }
 
+    /// <summary>Verifies that valid tenant and global sessions remain independently retrievable.</summary>
     [Test]
     public async Task CreateSessionPersistsMatchingTenantAndGlobalRows()
     {
@@ -141,6 +149,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         }
     }
 
+    /// <summary>Verifies that last-seen time moves only forward on active sessions.</summary>
     [Test]
     public async Task UpdateLastSeenOnlyMovesForwardAndRejectsRevokedAndExpiredSessions()
     {
@@ -178,6 +187,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         }
     }
 
+    /// <summary>Verifies that step-up verification updates only an active session owned by the user.</summary>
     [Test]
     public async Task MarkStepUpVerifiedUpdatesOnlyActiveOwnedSessions()
     {
@@ -211,6 +221,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         }
     }
 
+    /// <summary>Verifies that another user or a terminal session cannot receive step-up verification.</summary>
     [Test]
     public async Task MarkStepUpVerifiedRejectsWrongUserRevokedAndExpiredSessions()
     {
@@ -242,6 +253,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         }
     }
 
+    /// <summary>Preserves the original revocation details and refuses revocation by another user.</summary>
     [Test]
     public async Task RevocationOperationsPreserveFirstRevocationAndOwnership()
     {
@@ -290,6 +302,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         }
     }
 
+    /// <summary>Verifies that active-only listing excludes revoked and expired sessions.</summary>
     [Test]
     public async Task ListSessionsSupportsActiveOnlyFiltering()
     {
@@ -315,6 +328,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         }
     }
 
+    /// <summary>Verifies that bulk revocation preserves the explicitly excluded session.</summary>
     [Test]
     public async Task RevokeOtherSessionsPreservesExcludedSession()
     {
@@ -344,6 +358,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         }
     }
 
+    /// <summary>Rejects bulk revocation unless its tenant reach is stated explicitly.</summary>
     [Test]
     public async Task BulkRevocationRequiresExplicitScope()
     {
@@ -362,6 +377,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
             repository.RevokeOtherSessionsForUserAsync(user.Id, Guid.NewGuid(), CreatedAt, "ambiguous", tenant: null, includeAllTenants: false));
     }
 
+    /// <summary>Prevents tenant-scoped revocation from changing sessions in another scope.</summary>
     [Test]
     public async Task RevocationOperationsHonorTenantScope()
     {
@@ -420,6 +436,7 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         }
     }
 
+    /// <summary>Leaves no persisted session after its surrounding transaction is rolled back.</summary>
     [Test]
     public async Task SessionWritesRollBackWhenProviderSupportsTransactions()
     {

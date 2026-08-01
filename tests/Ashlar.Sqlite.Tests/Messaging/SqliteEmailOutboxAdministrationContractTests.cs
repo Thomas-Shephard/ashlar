@@ -17,6 +17,7 @@ internal sealed class SqliteEmailOutboxAdministrationContractTests : EmailOutbox
     {
         _database = await SqliteContractDatabase.CreateAsync(services =>
         {
+            services.AddAshlarIdentity();
             services.AddSingleton<TimeProvider>(new FakeTimeProvider(AdminNow));
             services.AddSingleton<ISecurityEventSink, NullSecurityEventSink>();
             services.AddSingleton<IAccountSecurityOperationAuthorizer>(
@@ -273,9 +274,16 @@ internal sealed class SqliteEmailOutboxAdministrationContractTests : EmailOutbox
         string purpose = AccountSecurityActorContext.AdministrationReadProofPurpose)
     {
         var services = _database!.ServiceProvider;
-        var user = await CreateUserAsync(GetUserRepository(services));
+        var user = new AshlarUser
+        {
+            Id = Guid.NewGuid(),
+            DisplayEmail = $"{Guid.NewGuid():N}@example.com",
+            Name = "Test User",
+            AccountState = UserAccountState.Active
+        };
+        await services.GetRequiredService<IUserRepository>().CreateUserAsync(user);
         var session = new AuthenticationSession { Id = Guid.NewGuid(), UserId = user.Id, TokenHash = Guid.NewGuid().ToString("N"), CreatedAt = AdminNow, ExpiresAt = AdminNow.AddYears(1) };
-        await GetAuthenticationSessionRepository(services).CreateSessionAsync(session);
+        await services.GetRequiredService<IAuthenticationSessionRepository>().CreateSessionAsync(session);
         var actorAudit = audit is null ? new AuditContext(user.Id) : audit with { ActorUserId = user.Id };
         return new(user.Id, TenantContext.Global, session.Id,
             FreshMfaVerificationProofFactory.Create(user.Id, null, session.Id, AdminNow, AdminNow.AddMinutes(5), purpose),

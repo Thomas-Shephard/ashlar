@@ -33,4 +33,38 @@ services.ReplaceAshlarOperationalAdministrationScoped<CustomTransactionProvider,
     "Custom", AshlarOperationalAdministrationKind.EmailOutbox);
 ```
 
-For now, provider authors should add their test assembly to `InternalsVisibleTo` in the in-repo `tests/Ashlar.ProviderContractTests` project, reference that project, inherit the relevant contract bases, and run their provider test project. Test-only aliases belong there; distributing those contract tests separately remains an open issue.
+## Provider contract tests
+
+Add `Ashlar.ProviderContractTests` to the provider's NUnit test project, then inherit each applicable contract suite. The provider test project owns its database lifecycle and any aliases that expose provider implementations only to the tests:
+
+```csharp
+using Ashlar.ProviderContractTests.Identity;
+using Ashlar.Identity.Abstractions.Repositories;
+using Microsoft.Extensions.DependencyInjection;
+using NUnit.Framework;
+
+[TestFixture]
+public sealed class CustomUserRepositoryContractTests : UserRepositoryContractTests
+{
+    private string? _databasePath;
+
+    protected override async Task<IServiceProvider> CreateInitializedServiceProviderAsync()
+    {
+        _databasePath = Path.Combine(Path.GetTempPath(), $"custom-{Guid.NewGuid():N}.db");
+        var services = new ServiceCollection();
+        services.AddCustomAshlarProvider(_databasePath);
+        services.AddScoped<IUserRepository, CustomUserRepository>(); // test-only alias
+        var provider = services.BuildServiceProvider();
+        await provider.InitializeCustomProviderAsync();
+        return provider;
+    }
+
+    protected override Task CleanupInitializedServiceProviderAsync()
+    {
+        if (_databasePath is not null) File.Delete(_databasePath);
+        return Task.CompletedTask;
+    }
+}
+```
+
+Run the inherited tests normally with `dotnet test`. Opt into only the suites the provider supports; for example, a rate-limiting-only provider can inherit the rate-limiter contracts without implementing relational repository or outbox fixtures.

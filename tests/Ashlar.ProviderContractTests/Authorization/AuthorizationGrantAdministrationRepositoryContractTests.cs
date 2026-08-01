@@ -2,10 +2,12 @@ using Ashlar.Authorization.Models;
 
 namespace Ashlar.ProviderContractTests.Authorization;
 
-internal abstract class AuthorizationGrantAdministrationRepositoryContractTests : ProviderContractFixture
+/// <summary>Tests scoped grant search, filtering, paging, and safe administrative projections.</summary>
+public abstract class AuthorizationGrantAdministrationRepositoryContractTests : ProviderContractFixture
 {
     private static readonly DateTimeOffset Now = new(2026, 6, 2, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>Verifies that administrative search distinguishes one tenant, global grants, and all tenants.</summary>
     [Test]
     public async Task SearchAuthorizationGrantsAsyncFiltersTenantGlobalAndAllTenantScopes()
     {
@@ -37,6 +39,7 @@ internal abstract class AuthorizationGrantAdministrationRepositoryContractTests 
         }
     }
 
+    /// <summary>Verifies that administrative search rejects an ambiguous tenant boundary.</summary>
     [Test]
     public async Task SearchAuthorizationGrantsAsyncRequiresExplicitTenantScope()
     {
@@ -52,6 +55,7 @@ internal abstract class AuthorizationGrantAdministrationRepositoryContractTests 
         }
     }
 
+    /// <summary>Verifies that administrative search combines grant value filters without admitting near matches.</summary>
     [Test]
     public async Task SearchAuthorizationGrantsAsyncAppliesValueFilters()
     {
@@ -82,6 +86,7 @@ internal abstract class AuthorizationGrantAdministrationRepositoryContractTests 
         }
     }
 
+    /// <summary>Verifies that administrative search derives active, revoked, and expired membership at the requested time.</summary>
     [Test]
     public async Task SearchAuthorizationGrantsAsyncFiltersStatusAndTimeWindows()
     {
@@ -119,6 +124,7 @@ internal abstract class AuthorizationGrantAdministrationRepositoryContractTests 
         }
     }
 
+    /// <summary>Verifies that grant search pages a stable order without duplicate or missing rows.</summary>
     [Test]
     public async Task SearchAuthorizationGrantsAsyncAppliesPagingAndStableOrdering()
     {
@@ -138,6 +144,7 @@ internal abstract class AuthorizationGrantAdministrationRepositoryContractTests 
         Assert.That(page.Select(grant => grant.Id), Is.EqualTo(new[] { middle.Id }));
     }
 
+    /// <summary>Verifies that grant details expose only the requested tenant's safe projection.</summary>
     [Test]
     public async Task GetAuthorizationGrantAsyncReturnsSafeProjectionAndHonorsTenantScope()
     {
@@ -166,6 +173,7 @@ internal abstract class AuthorizationGrantAdministrationRepositoryContractTests 
         }
     }
 
+    /// <summary>Verifies that grant detail lookup rejects an ambiguous tenant boundary.</summary>
     [Test]
     public async Task GetAuthorizationGrantAsyncRequiresExplicitTenantScope()
     {
