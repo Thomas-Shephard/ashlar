@@ -15,9 +15,11 @@ internal sealed class AccountRecoveryAdministrationService(
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
     public async Task<Result<AccountRecoveryOptions>> GetAccountRecoveryOptionsAsync(
+        AccountSecurityActorContext actor,
         AccountRecoveryOptionsRequest request,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
 
         if (!TryValidateRequest(request, out var validationFailure))
@@ -26,7 +28,7 @@ internal sealed class AccountRecoveryAdministrationService(
         }
 
         var detailResult = await _userAdministrationReader.GetUserDetailAsync(
-            request.Actor!,
+            actor,
             new UserAdministrationLookupRequest(
                 request.UserId,
                 request.Tenant,
