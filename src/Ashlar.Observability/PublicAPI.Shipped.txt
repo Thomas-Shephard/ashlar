@@ -1,0 +1,37 @@
+#nullable enable
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsHandler
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsHandler.AshlarSecurityEventMetricsHandler(Microsoft.Extensions.Options.IOptions<Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsOptions!>! options) -> void
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsHandler.Dispose() -> void
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsHandler.HandleAsync(Ashlar.Auditing.AshlarSecurityEvent! securityEvent, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsOptions
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsOptions.AshlarSecurityEventMetricsOptions() -> void
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsOptions.EmitOutcomeCounters.get -> bool
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsOptions.EmitOutcomeCounters.set -> void
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsOptions.IncludeProviderName.get -> bool
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsOptions.IncludeProviderName.set -> void
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsOptions.MeterName.get -> string!
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsOptions.MeterName.set -> void
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsObserver
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsObserver.AshlarSecurityEventWebhookMetricsObserver(Microsoft.Extensions.Options.IOptions<Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsOptions!>! options) -> void
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsObserver.Dispose() -> void
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsObserver.RecordDeliveryAttempt(Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookDeliveryTelemetry! telemetry) -> void
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsOptions
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsOptions.AshlarSecurityEventWebhookMetricsOptions() -> void
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsOptions.EmitDurationHistogram.get -> bool
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsOptions.EmitDurationHistogram.set -> void
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsOptions.IncludeEndpointName.get -> bool
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsOptions.IncludeEndpointName.set -> void
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsOptions.MeterName.get -> string!
+Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsOptions.MeterName.set -> void
+const Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsHandler.FailureEventsCounterName = "ashlar.security.events.failures" -> string!
+const Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsHandler.SuccessEventsCounterName = "ashlar.security.events.successes" -> string!
+const Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsHandler.TotalEventsCounterName = "ashlar.security.events" -> string!
+const Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsOptions.DefaultMeterName = "Ashlar.SecurityEvents" -> string!
+const Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsObserver.DeliveryAttemptsCounterName = "ashlar.security_event_webhooks.delivery_attempts" -> string!
+const Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsObserver.DeliveryDurationHistogramName = "ashlar.security_event_webhooks.delivery_duration" -> string!
+const Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsObserver.DeliveryFailuresCounterName = "ashlar.security_event_webhooks.delivery_failures" -> string!
+const Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsObserver.DeliverySuccessesCounterName = "ashlar.security_event_webhooks.delivery_successes" -> string!
+const Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsOptions.DefaultMeterName = "Ashlar.Webhooks" -> string!
+Microsoft.Extensions.DependencyInjection.AshlarObservabilityServiceCollectionExtensions
+static Microsoft.Extensions.DependencyInjection.AshlarObservabilityServiceCollectionExtensions.AddAshlarSecurityEventMetrics(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Observability.SecurityEvents.AshlarSecurityEventMetricsOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarObservabilityServiceCollectionExtensions.AddAshlarSecurityEventWebhookMetrics(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Observability.SecurityEvents.AshlarSecurityEventWebhookMetricsOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!

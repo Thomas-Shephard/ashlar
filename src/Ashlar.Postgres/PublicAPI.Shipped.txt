@@ -1,0 +1,91 @@
+#nullable enable
+Ashlar.Postgres.Messaging.PostgresEmailOutboxHostedService
+Ashlar.Postgres.Messaging.PostgresEmailOutboxHostedService.PostgresEmailOutboxHostedService(System.IServiceProvider! serviceProvider, Microsoft.Extensions.Options.IOptions<Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions!>! options, Microsoft.Extensions.Logging.ILogger<Ashlar.Postgres.Messaging.PostgresEmailOutboxHostedService!>? logger = null) -> void
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.<Clone>$() -> Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions!
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.BatchSize.get -> int
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.BatchSize.set -> void
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.DeliveryTimeout.get -> System.TimeSpan
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.DeliveryTimeout.set -> void
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.Equals(Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions? other) -> bool
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.InitialRetryDelay.get -> System.TimeSpan
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.InitialRetryDelay.set -> void
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.LockDuration.get -> System.TimeSpan
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.LockDuration.set -> void
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.MaxAttempts.get -> int
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.MaxAttempts.set -> void
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.PollingInterval.get -> System.TimeSpan
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.PollingInterval.set -> void
+Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.PostgresEmailOutboxOptions() -> void
+Ashlar.Postgres.Models.AshlarPostgresUser
+Ashlar.Postgres.Models.AshlarPostgresUser.AccountState.get -> Ashlar.Identity.Models.Authentication.UserAccountState
+Ashlar.Postgres.Models.AshlarPostgresUser.AccountState.set -> void
+Ashlar.Postgres.Models.AshlarPostgresUser.AshlarPostgresUser() -> void
+Ashlar.Postgres.Models.AshlarPostgresUser.CreatedAt.get -> System.DateTimeOffset
+Ashlar.Postgres.Models.AshlarPostgresUser.CreatedAt.init -> void
+Ashlar.Postgres.Models.AshlarPostgresUser.DisplayEmail.get -> string!
+Ashlar.Postgres.Models.AshlarPostgresUser.DisplayEmail.set -> void
+Ashlar.Postgres.Models.AshlarPostgresUser.EmailVerifiedAt.get -> System.DateTimeOffset?
+Ashlar.Postgres.Models.AshlarPostgresUser.EmailVerifiedAt.set -> void
+Ashlar.Postgres.Models.AshlarPostgresUser.Id.get -> System.Guid
+Ashlar.Postgres.Models.AshlarPostgresUser.Id.init -> void
+Ashlar.Postgres.Models.AshlarPostgresUser.Name.get -> string?
+Ashlar.Postgres.Models.AshlarPostgresUser.Name.set -> void
+Ashlar.Postgres.Models.AshlarPostgresUser.TenantId.get -> System.Guid?
+Ashlar.Postgres.Models.AshlarPostgresUser.TenantId.init -> void
+Ashlar.Postgres.Models.AshlarPostgresUser.UpdatedAt.get -> System.DateTimeOffset?
+Ashlar.Postgres.Models.AshlarPostgresUser.UpdatedAt.set -> void
+Ashlar.Postgres.RateLimiting.PostgresAuthenticationRateLimiter
+Ashlar.Postgres.RateLimiting.PostgresAuthenticationRateLimiter.CheckAsync(Ashlar.Identity.RateLimiting.Models.RateLimitAttempt! attempt, Ashlar.Identity.RateLimiting.Models.RateLimitRule! rule, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Identity.RateLimiting.Models.RateLimitDecision!>!
+Ashlar.Postgres.RateLimiting.PostgresAuthenticationRateLimiter.CleanupExpiredRowsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
+Ashlar.Postgres.RateLimiting.PostgresAuthenticationRateLimiter.PostgresAuthenticationRateLimiter(Npgsql.NpgsqlDataSource! dataSource, System.TimeProvider! timeProvider, Microsoft.Extensions.Options.IOptions<Ashlar.Postgres.RateLimiting.PostgresAuthenticationRateLimiterOptions!>! options, Microsoft.Extensions.Logging.ILogger<Ashlar.Postgres.RateLimiting.PostgresAuthenticationRateLimiter!>? logger = null) -> void
+Ashlar.Postgres.RateLimiting.PostgresAuthenticationRateLimiterOptions
+Ashlar.Postgres.RateLimiting.PostgresAuthenticationRateLimiterOptions.CleanupInterval.get -> System.TimeSpan
+Ashlar.Postgres.RateLimiting.PostgresAuthenticationRateLimiterOptions.CleanupInterval.set -> void
+Ashlar.Postgres.RateLimiting.PostgresAuthenticationRateLimiterOptions.MaxCleanupRows.get -> int
+Ashlar.Postgres.RateLimiting.PostgresAuthenticationRateLimiterOptions.MaxCleanupRows.set -> void
+Ashlar.Postgres.RateLimiting.PostgresAuthenticationRateLimiterOptions.PostgresAuthenticationRateLimiterOptions() -> void
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxHostedService
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxHostedService.PostgresSecurityEventWebhookOutboxHostedService(System.IServiceProvider! serviceProvider, Microsoft.Extensions.Options.IOptions<Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions!>! options, Microsoft.Extensions.Logging.ILogger<Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxHostedService!>? logger = null) -> void
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.<Clone>$() -> Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions!
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.BatchSize.get -> int
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.BatchSize.set -> void
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.Equals(Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions? other) -> bool
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.InitialRetryDelay.get -> System.TimeSpan
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.InitialRetryDelay.set -> void
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.LockDuration.get -> System.TimeSpan
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.LockDuration.set -> void
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.MaxAttempts.get -> int
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.MaxAttempts.set -> void
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.PollingInterval.get -> System.TimeSpan
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.PollingInterval.set -> void
+Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.PostgresSecurityEventWebhookOutboxOptions() -> void
+Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions
+override Ashlar.Postgres.Messaging.PostgresEmailOutboxHostedService.StartAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+override Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.Equals(object? obj) -> bool
+override Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.GetHashCode() -> int
+override Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.ToString() -> string!
+override Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxHostedService.StartAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+override Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.Equals(object? obj) -> bool
+override Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.GetHashCode() -> int
+override Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.ToString() -> string!
+static Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.operator !=(Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions? left, Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions? right) -> bool
+static Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions.operator ==(Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions? left, Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions? right) -> bool
+static Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.operator !=(Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions? left, Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions? right) -> bool
+static Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions.operator ==(Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions? left, Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions? right) -> bool
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.AddAshlarPostgres(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Npgsql.NpgsqlDataSource! dataSource) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.AddAshlarPostgres(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! connectionString) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresAuditSink(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresAuthorization(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Npgsql.NpgsqlDataSource! dataSource) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresAuthorization(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! connectionString) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresBootstrap(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Npgsql.NpgsqlDataSource! dataSource, System.Action<Ashlar.Identity.Models.Bootstrap.BootstrapOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresBootstrap(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! connectionString, System.Action<Ashlar.Identity.Models.Bootstrap.BootstrapOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresCleanupHostedService(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Operational.AshlarCleanupOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresEmailOutboxHostedService<TTransport>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresEmailOutboxSender(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Postgres.Messaging.PostgresEmailOutboxOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresRateLimiting(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Postgres.RateLimiting.PostgresAuthenticationRateLimiterOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresSecurityEventWebhookDispatcher(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions!>? configure = null, System.Action<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions!>? configureWebhooks = null, System.Action<System.Net.Http.HttpClient!>? configureHttpClient = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresSecurityEventWebhookHostedService(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions!>? configure = null, System.Action<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions!>? configureWebhooks = null, System.Action<System.Net.Http.HttpClient!>? configureHttpClient = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresSecurityEventWebhookOutbox(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Postgres.Webhooks.PostgresSecurityEventWebhookOutboxOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarPostgresServiceCollectionExtensions.InitializeAshlarPostgresSchemaAsync(this System.IServiceProvider! serviceProvider, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!

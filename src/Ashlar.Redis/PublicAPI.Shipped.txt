@@ -1,0 +1,19 @@
+#nullable enable
+Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiter
+Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiter.CheckAsync(Ashlar.Identity.RateLimiting.Models.RateLimitAttempt! attempt, Ashlar.Identity.RateLimiting.Models.RateLimitRule! rule, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Identity.RateLimiting.Models.RateLimitDecision!>!
+Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiter.RedisAuthenticationRateLimiter(StackExchange.Redis.IConnectionMultiplexer! connection, Microsoft.Extensions.Options.IOptions<Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiterOptions!>! options) -> void
+Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiterOptions
+Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiterOptions.Database.get -> int?
+Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiterOptions.Database.set -> void
+Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiterOptions.ExpirationSkew.get -> System.TimeSpan
+Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiterOptions.ExpirationSkew.set -> void
+Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiterOptions.KeyPrefix.get -> string!
+Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiterOptions.KeyPrefix.set -> void
+Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiterOptions.Persistent.get -> bool
+Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiterOptions.Persistent.set -> void
+Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiterOptions.RedisAuthenticationRateLimiterOptions() -> void
+Microsoft.Extensions.DependencyInjection.AshlarRedisServiceCollectionExtensions
+static Microsoft.Extensions.DependencyInjection.AshlarRedisServiceCollectionExtensions.AddAshlarRedisRateLimiting(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, StackExchange.Redis.IConnectionMultiplexer! connection) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarRedisServiceCollectionExtensions.AddAshlarRedisRateLimiting(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, StackExchange.Redis.IConnectionMultiplexer! connection, System.Action<Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiterOptions!>? configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarRedisServiceCollectionExtensions.AddAshlarRedisRateLimiting(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! configuration) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarRedisServiceCollectionExtensions.AddAshlarRedisRateLimiting(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! configuration, System.Action<Ashlar.Redis.RateLimiting.RedisAuthenticationRateLimiterOptions!>? configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!

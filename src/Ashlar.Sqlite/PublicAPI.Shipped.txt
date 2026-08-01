@@ -1,0 +1,76 @@
+#nullable enable
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxHostedService
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxHostedService.SqliteEmailOutboxHostedService(System.IServiceProvider! serviceProvider, Microsoft.Extensions.Options.IOptions<Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions!>! options, Microsoft.Extensions.Logging.ILogger<Ashlar.Sqlite.Messaging.SqliteEmailOutboxHostedService!>? logger = null) -> void
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.<Clone>$() -> Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions!
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.BatchSize.get -> int
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.BatchSize.set -> void
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.DeliveryTimeout.get -> System.TimeSpan
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.DeliveryTimeout.set -> void
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.Equals(Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions? other) -> bool
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.InitialRetryDelay.get -> System.TimeSpan
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.InitialRetryDelay.set -> void
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.LockDuration.get -> System.TimeSpan
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.LockDuration.set -> void
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.MaxAttempts.get -> int
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.MaxAttempts.set -> void
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.PollingInterval.get -> System.TimeSpan
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.PollingInterval.set -> void
+Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.SqliteEmailOutboxOptions() -> void
+Ashlar.Sqlite.Models.AshlarSqliteUser
+Ashlar.Sqlite.Models.AshlarSqliteUser.AccountState.get -> Ashlar.Identity.Models.Authentication.UserAccountState
+Ashlar.Sqlite.Models.AshlarSqliteUser.AccountState.set -> void
+Ashlar.Sqlite.Models.AshlarSqliteUser.AshlarSqliteUser() -> void
+Ashlar.Sqlite.Models.AshlarSqliteUser.CreatedAt.get -> System.DateTimeOffset
+Ashlar.Sqlite.Models.AshlarSqliteUser.CreatedAt.init -> void
+Ashlar.Sqlite.Models.AshlarSqliteUser.DisplayEmail.get -> string!
+Ashlar.Sqlite.Models.AshlarSqliteUser.DisplayEmail.set -> void
+Ashlar.Sqlite.Models.AshlarSqliteUser.EmailVerifiedAt.get -> System.DateTimeOffset?
+Ashlar.Sqlite.Models.AshlarSqliteUser.EmailVerifiedAt.set -> void
+Ashlar.Sqlite.Models.AshlarSqliteUser.Id.get -> System.Guid
+Ashlar.Sqlite.Models.AshlarSqliteUser.Id.init -> void
+Ashlar.Sqlite.Models.AshlarSqliteUser.Name.get -> string?
+Ashlar.Sqlite.Models.AshlarSqliteUser.Name.set -> void
+Ashlar.Sqlite.Models.AshlarSqliteUser.TenantId.get -> System.Guid?
+Ashlar.Sqlite.Models.AshlarSqliteUser.TenantId.init -> void
+Ashlar.Sqlite.Models.AshlarSqliteUser.UpdatedAt.get -> System.DateTimeOffset?
+Ashlar.Sqlite.Models.AshlarSqliteUser.UpdatedAt.set -> void
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxHostedService
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxHostedService.SqliteSecurityEventWebhookOutboxHostedService(System.IServiceProvider! serviceProvider, Microsoft.Extensions.Options.IOptions<Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions!>! options, Microsoft.Extensions.Logging.ILogger<Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxHostedService!>? logger = null) -> void
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.<Clone>$() -> Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions!
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.BatchSize.get -> int
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.BatchSize.set -> void
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.Equals(Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions? other) -> bool
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.InitialRetryDelay.get -> System.TimeSpan
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.InitialRetryDelay.set -> void
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.LockDuration.get -> System.TimeSpan
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.LockDuration.set -> void
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.MaxAttempts.get -> int
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.MaxAttempts.set -> void
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.PollingInterval.get -> System.TimeSpan
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.PollingInterval.set -> void
+Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.SqliteSecurityEventWebhookOutboxOptions() -> void
+Microsoft.Extensions.DependencyInjection.AshlarSqliteServiceCollectionExtensions
+override Ashlar.Sqlite.Messaging.SqliteEmailOutboxHostedService.StartAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+override Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.Equals(object? obj) -> bool
+override Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.GetHashCode() -> int
+override Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.ToString() -> string!
+override Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxHostedService.StartAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+override Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.Equals(object? obj) -> bool
+override Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.GetHashCode() -> int
+override Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.ToString() -> string!
+static Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.operator !=(Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions? left, Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions? right) -> bool
+static Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions.operator ==(Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions? left, Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions? right) -> bool
+static Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.operator !=(Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions? left, Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions? right) -> bool
+static Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions.operator ==(Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions? left, Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions? right) -> bool
+static Microsoft.Extensions.DependencyInjection.AshlarSqliteServiceCollectionExtensions.AddAshlarSqlite(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! connectionString) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteAuditSink(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteCleanupHostedService(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Operational.AshlarCleanupOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteEmailOutboxHostedService<TTransport>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteEmailOutboxSender(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Sqlite.Messaging.SqliteEmailOutboxOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteRateLimiting(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteSecurityEventWebhookDispatcher(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions!>? configure = null, System.Action<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions!>? configureWebhooks = null, System.Action<System.Net.Http.HttpClient!>? configureHttpClient = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteSecurityEventWebhookHostedService(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions!>? configure = null, System.Action<Ashlar.Webhooks.SecurityEvents.AshlarSecurityEventWebhookOptions!>? configureWebhooks = null, System.Action<System.Net.Http.HttpClient!>? configureHttpClient = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteSecurityEventWebhookOutbox(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Ashlar.Sqlite.Webhooks.SqliteSecurityEventWebhookOutboxOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.AshlarSqliteServiceCollectionExtensions.InitializeAshlarSqliteSchemaAsync(this System.IServiceProvider! serviceProvider, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!

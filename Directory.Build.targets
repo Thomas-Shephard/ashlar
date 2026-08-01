@@ -1,7 +1,10 @@
 <Project>
   <ItemGroup Condition="'$(IsPackable)' == 'true'">
     <PackageReference Include="CommentSense" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
     <PackageReference Include="MinVer" PrivateAssets="all" />
+    <AdditionalFiles Include="$(MSBuildProjectDirectory)/PublicAPI.Shipped.txt" />
+    <AdditionalFiles Include="$(MSBuildProjectDirectory)/PublicAPI.Unshipped.txt" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(AshlarOfficialBuild)' != 'true'">
