@@ -207,7 +207,7 @@ internal sealed class SecurityMutationAuditAtomicityTests
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await provider.GetRequiredService<IAccountLockoutAdministrationService>()
-                .ResetLockoutAsync(actor, userId, authProvider, new ResetAccountLockoutRequest(tenant)));
+                .ResetLockoutAsync(actor, new ResetAccountLockoutRequest(userId, authProvider, tenant)));
 
         var stored = await repository.GetAsync(userId, tenant.TenantId, authProvider);
         Assert.That(stored, Is.Not.Null);

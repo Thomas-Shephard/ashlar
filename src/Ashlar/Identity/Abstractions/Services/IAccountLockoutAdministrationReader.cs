@@ -12,10 +12,8 @@ public interface IAccountLockoutAdministrationReader
 
     /// <summary>Gets automatic lockout status for a user and provider.</summary>
     /// <param name="actor">Authenticated administrator context.</param>
-    /// <param name="userId">User whose lockout status should be returned.</param>
-    /// <param name="provider">Authentication provider key.</param>
-    /// <param name="request">Explicit tenant scope for the lookup.</param>
+    /// <param name="request">Target user, authentication provider, and explicit tenant scope.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
     /// <returns>Current lockout status.</returns>
-    Task<Result<AccountLockoutStatus>> GetLockoutStatusAsync(AccountSecurityActorContext actor, Guid userId, AuthenticationProviderKey provider, AccountLockoutStatusRequest request, CancellationToken cancellationToken = default);
+    Task<Result<AccountLockoutStatus>> GetLockoutStatusAsync(AccountSecurityActorContext actor, AccountLockoutStatusRequest request, CancellationToken cancellationToken = default);
 }
