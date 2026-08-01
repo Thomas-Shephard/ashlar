@@ -1025,7 +1025,8 @@ Use `IAccountRecoveryAdministrationService` when admin tooling needs a display-s
 
 ```csharp
 var options = await accountRecoveryAdministration.GetAccountRecoveryOptionsAsync(
-    new AccountRecoveryOptionsRequest(userId, new TenantContext(tenantId), Actor: adminReadActor));
+    adminReadActor,
+    new AccountRecoveryOptionsRequest(userId, new TenantContext(tenantId)));
 ```
 
 Requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`; missing or conflicting scope returns a validation failure, and missing or out-of-scope users return `UserNotFound`. The result carries the existing user detail and account-security posture in `Detail`, plus action previews in `Actions`: whether MFA reset or session revocation would currently do anything, provider-grouped credential revocation options, and warnings such as removing the last active primary sign-in method.

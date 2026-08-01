@@ -8,10 +8,12 @@ public interface IAccountRecoveryAdministrationService
     /// <summary>
     /// Gets display-safe recovery and destructive-operation options for a user account.
     /// </summary>
+    /// <param name="actor">Authenticated actor, active session, fresh proof, and audit metadata.</param>
     /// <param name="request">The target user and tenant scope for the recovery option lookup.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
     /// <returns>Display-safe recovery options for the requested user.</returns>
     Task<Result<AccountRecoveryOptions>> GetAccountRecoveryOptionsAsync(
+        AccountSecurityActorContext actor,
         AccountRecoveryOptionsRequest request,
         CancellationToken cancellationToken = default);
 }

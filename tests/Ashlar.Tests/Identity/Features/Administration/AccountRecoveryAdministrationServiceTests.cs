@@ -25,7 +25,26 @@ internal sealed class AccountRecoveryAdministrationServiceTests
     {
         var service = CreateService();
 
-        Assert.ThrowsAsync<ArgumentNullException>(async () => await service.GetAccountRecoveryOptionsAsync(null!));
+        Assert.ThrowsAsync<ArgumentNullException>(async () => await service.GetAccountRecoveryOptionsAsync(CreateActor(), null!));
+    }
+
+    [Test]
+    public void GetAccountRecoveryOptionsAsyncRejectsNullActorBeforeRepositoryAccess()
+    {
+        var users = new Mock<IUserAdministrationReader>();
+        var devices = new Mock<IRememberedMfaDeviceRepository>();
+        var service = new AccountRecoveryAdministrationService(users.Object, devices.Object);
+
+        Assert.ThrowsAsync<ArgumentNullException>(async () => await service.GetAccountRecoveryOptionsAsync(
+            null!, new AccountRecoveryOptionsRequest(Guid.NewGuid(), TenantContext.Global)));
+        users.VerifyNoOtherCalls();
+        devices.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public void AccountRecoveryOptionsRequestHasNoActorProperty()
+    {
+        Assert.That(typeof(AccountRecoveryOptionsRequest).GetProperty("Actor"), Is.Null);
     }
 
     [Test]
@@ -33,9 +52,10 @@ internal sealed class AccountRecoveryAdministrationServiceTests
     {
         var service = CreateService();
 
-        var missingScope = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(Guid.NewGuid()));
-        var conflictingScope = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(Guid.NewGuid(), TenantContext.Global, IncludeAllTenants: true));
-        var emptyUserId = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(Guid.Empty, TenantContext.Global));
+        var actor = CreateActor();
+        var missingScope = await service.GetAccountRecoveryOptionsAsync(actor, new AccountRecoveryOptionsRequest(Guid.NewGuid()));
+        var conflictingScope = await service.GetAccountRecoveryOptionsAsync(actor, new AccountRecoveryOptionsRequest(Guid.NewGuid(), TenantContext.Global, IncludeAllTenants: true));
+        var emptyUserId = await service.GetAccountRecoveryOptionsAsync(actor, new AccountRecoveryOptionsRequest(Guid.Empty, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -53,7 +73,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.UserNotFound),
             rememberedMfaDeviceRepository: rememberedMfaDevices.Object);
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(Guid.NewGuid(), TenantContext.Global));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(Guid.NewGuid(), TenantContext.Global));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
         rememberedMfaDevices.Verify(repository => repository.CountForUserAsync(
@@ -66,7 +86,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
     {
         var service = CreateService(Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.UserNotFound, "User was not found in the requested tenant scope."));
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(Guid.NewGuid(), new TenantContext(Guid.NewGuid())));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(Guid.NewGuid(), new TenantContext(Guid.NewGuid())));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
     }
@@ -76,7 +96,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
     {
         var service = CreateService(Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.UserNotFound));
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(Guid.NewGuid(), TenantContext.Global));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(Guid.NewGuid(), TenantContext.Global));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
     }
@@ -90,7 +110,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
         var detail = CreateDetail(userId, posture: CreatePosture(userId, accountState: state, canSignIn: canSignIn));
         var service = CreateService(Result.Success(detail));
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -110,10 +130,11 @@ internal sealed class AccountRecoveryAdministrationServiceTests
         var eventWindow = TimeSpan.FromDays(3);
         var actor = CreateActor();
 
-        await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, TenantContext.Global, RecentSecurityEventWindow: eventWindow, Actor: actor));
+        await service.GetAccountRecoveryOptionsAsync(actor, new AccountRecoveryOptionsRequest(userId, TenantContext.Global, RecentSecurityEventWindow: eventWindow));
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(userAdministration.LastRequest?.UserId, Is.EqualTo(userId));
             Assert.That(userAdministration.LastRequest?.Tenant, Is.EqualTo(TenantContext.Global));
             Assert.That(userAdministration.LastRequest?.IncludeAllTenants, Is.False);
             Assert.That(userAdministration.LastRequest?.RecentSecurityEventWindow, Is.EqualTo(eventWindow));
@@ -138,7 +159,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
         var userAdministration = new RecordingUserAdministrationReader(Result.Success(CreateDetail(userId, Guid.NewGuid())));
         var service = CreateService(userAdministration: userAdministration);
 
-        await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, IncludeAllTenants: true));
+        await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(userId, IncludeAllTenants: true));
 
         using (Assert.EnterMultipleScope())
         {
@@ -153,7 +174,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
         var userId = Guid.NewGuid();
         var service = CreateService(Result.Success(CreateDetail(userId, posture: CreatePosture(userId))));
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -184,7 +205,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             ]);
         var service = CreateService(Result.Success(CreateDetail(userId, posture: posture)));
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -211,7 +232,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             ]);
         var service = CreateService(Result.Success(CreateDetail(userId, posture: posture)));
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -233,7 +254,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             Result.Success(CreateDetail(userId, tenant.TenantId, CreatePosture(userId))),
             rememberedMfaDeviceRepository: rememberedMfaDevices.Object);
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, tenant));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(userId, tenant));
 
         using (Assert.EnterMultipleScope())
         {
@@ -253,6 +274,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             rememberedMfaDeviceRepository: rememberedMfaDevices.Object);
 
         await service.GetAccountRecoveryOptionsAsync(
+            CreateActor(),
             new AccountRecoveryOptionsRequest(userId, IncludeAllTenants: true));
 
         rememberedMfaDevices.Verify(repository =>
@@ -275,7 +297,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             ]);
         var service = CreateService(Result.Success(CreateDetail(userId, posture: posture)));
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -301,7 +323,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             ]);
         var service = CreateService(Result.Success(CreateDetail(userId, posture: posture)));
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -327,7 +349,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             ]);
         var service = CreateService(Result.Success(CreateDetail(userId, posture: posture)));
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -348,7 +370,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             ]);
         var service = CreateService(Result.Success(CreateDetail(userId, posture: posture)));
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -372,7 +394,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             ]);
         var service = CreateService(Result.Success(CreateDetail(userId, posture: posture)));
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
 
         Assert.That(result.Value?.Actions.Warnings, Is.Empty);
     }
@@ -389,7 +411,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             ]);
         var service = CreateService(Result.Success(CreateDetail(userId, posture: posture)));
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -410,7 +432,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
             ]);
         var service = CreateService(Result.Success(CreateDetail(userId, posture: posture)));
 
-        var result = await service.GetAccountRecoveryOptionsAsync(new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
+        var result = await service.GetAccountRecoveryOptionsAsync(CreateActor(), new AccountRecoveryOptionsRequest(userId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
