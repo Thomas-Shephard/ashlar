@@ -72,6 +72,7 @@ public sealed class PostgresAuthenticationRateLimiter : IAuthenticationRateLimit
     {
         ArgumentNullException.ThrowIfNull(attempt);
         ArgumentNullException.ThrowIfNull(rule);
+        ArgumentException.ThrowIfNullOrWhiteSpace(attempt.Key);
 
         ValidateRule(rule);
 

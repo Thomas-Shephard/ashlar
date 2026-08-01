@@ -208,6 +208,22 @@ public abstract class AuthenticationRateLimiterContractTests : ProviderContractF
         }
     }
 
+    /// <summary>Verifies that checks reject <see langword="null" />, empty, and whitespace keys.</summary>
+    [Test]
+    public async Task CheckAsyncRejectsInvalidKeysConsistently()
+    {
+        await using var scope = CreateAsyncScope();
+        var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
+        var rule = new RateLimitRule { PermitLimit = 1, Window = RateLimitWindow };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentNullException>(async () => await limiter.CheckAsync(new RateLimitAttempt { Key = null! }, rule));
+            Assert.ThrowsAsync<ArgumentException>(async () => await limiter.CheckAsync(new RateLimitAttempt { Key = string.Empty }, rule));
+            Assert.ThrowsAsync<ArgumentException>(async () => await limiter.CheckAsync(new RateLimitAttempt { Key = " " }, rule));
+        }
+    }
+
     /// <summary>Verifies that a rolled-back check does not consume a permit.</summary>
     /// <exception cref="System.InvalidOperationException">The fixture did not register a transaction provider.</exception>
     [Test]
