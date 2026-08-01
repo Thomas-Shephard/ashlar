@@ -30,26 +30,26 @@ internal sealed class AdministrationRequestModelTests
     }
 
     [Test]
-    public void DetailRequestValidationRejectsNullRequests()
+    public void LookupRequestValidationRejectsNullRequests()
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => UserAdministrationDetailRequest.ThrowIfInvalid(null));
+            Assert.Throws<ArgumentNullException>(() => UserAdministrationLookupRequest.ThrowIfInvalid(null));
             Assert.Throws<ArgumentNullException>(() => CredentialAdministrationLookupRequest.ThrowIfInvalid(null));
             Assert.Throws<ArgumentNullException>(() => AuthenticationSessionAdministrationLookupRequest.ThrowIfInvalid(null));
-            Assert.Throws<ArgumentNullException>(() => SecurityEventAdministrationDetailRequest.ThrowIfInvalid(null));
+            Assert.Throws<ArgumentNullException>(() => SecurityEventAdministrationLookupRequest.ThrowIfInvalid(null));
         }
     }
 
     [Test]
-    public void DetailRequestValidationRejectsEmptyIds()
+    public void LookupRequestValidationRejectsEmptyIds()
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentException>(() => UserAdministrationDetailRequest.ThrowIfInvalid(new UserAdministrationDetailRequest(Guid.Empty, TenantContext.Global)));
+            Assert.Throws<ArgumentException>(() => UserAdministrationLookupRequest.ThrowIfInvalid(new UserAdministrationLookupRequest(Guid.Empty, TenantContext.Global)));
             Assert.Throws<ArgumentException>(() => CredentialAdministrationLookupRequest.ThrowIfInvalid(new CredentialAdministrationLookupRequest(Guid.Empty, TenantContext.Global)));
             Assert.Throws<ArgumentException>(() => AuthenticationSessionAdministrationLookupRequest.ThrowIfInvalid(new AuthenticationSessionAdministrationLookupRequest(Guid.Empty, TenantContext.Global)));
-            Assert.Throws<ArgumentException>(() => SecurityEventAdministrationDetailRequest.ThrowIfInvalid(new SecurityEventAdministrationDetailRequest(Guid.Empty, TenantContext.Global)));
+            Assert.Throws<ArgumentException>(() => SecurityEventAdministrationLookupRequest.ThrowIfInvalid(new SecurityEventAdministrationLookupRequest(Guid.Empty, TenantContext.Global)));
         }
     }
 }

@@ -49,9 +49,9 @@ internal sealed class PostgresUserAdministrationRepository(IPostgresConnectionPr
         return rows.Select(ToUserSummary).ToList().AsReadOnly();
     }
 
-    public async Task<UserSummary?> GetUserSummaryAsync(UserAdministrationDetailRequest request, CancellationToken cancellationToken = default)
+    public async Task<UserSummary?> GetUserSummaryAsync(UserAdministrationLookupRequest request, CancellationToken cancellationToken = default)
     {
-        UserAdministrationDetailRequest.ThrowIfInvalid(request);
+        UserAdministrationLookupRequest.ThrowIfInvalid(request);
 
         var sql = """
             SELECT id AS UserId, display_email AS DisplayEmail, name, tenant_id AS TenantId, account_state AS AccountState,

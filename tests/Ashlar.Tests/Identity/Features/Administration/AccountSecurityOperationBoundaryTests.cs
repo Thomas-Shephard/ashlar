@@ -232,7 +232,7 @@ internal sealed class AccountSecurityOperationBoundaryTests
             .ReturnsAsync(new AuthenticationSessionAdministrationSummary(sessionId, otherUser, null, Now, Now,
                 AuthenticationProviderKey.Local, null, null, null, Now.AddMinutes(5), null, null, null, null, null, true));
         var events = new Mock<ISecurityEventAdministrationRepository>();
-        events.Setup(repository => repository.GetSecurityEventAsync(It.IsAny<SecurityEventAdministrationDetailRequest>(), It.IsAny<CancellationToken>()))
+        events.Setup(repository => repository.GetSecurityEventAsync(It.IsAny<SecurityEventAdministrationLookupRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SecurityEventSummary(eventId, "test", Now, otherUser, null, null, null, null, null, null, null,
                 SecurityEventOutcomes.Success, null, null));
 
@@ -241,7 +241,7 @@ internal sealed class AccountSecurityOperationBoundaryTests
         var session = await new AuthenticationSessionAdministrationReader(sessions.Object, boundary.Sessions, authorizer, boundary.Sink, boundary.TimeProvider)
             .GetAuthenticationSessionAsync(boundary.Actor, new AuthenticationSessionAdministrationLookupRequest(sessionId, TenantContext.Global));
         var securityEvent = await new SecurityEventAdministrationService(events.Object, boundary.Sessions, authorizer, boundary.Sink, boundary.TimeProvider)
-            .GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(eventId, TenantContext.Global, Actor: boundary.Actor));
+            .GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(eventId, TenantContext.Global, Actor: boundary.Actor));
 
         using (Assert.EnterMultipleScope())
         {
@@ -264,9 +264,9 @@ internal sealed class AccountSecurityOperationBoundaryTests
         var session = await new AuthenticationSessionAdministrationReader(Mock.Of<IAuthenticationSessionAdministrationRepository>(), boundary.Sessions, denied, boundary.Sink)
             .GetAuthenticationSessionAsync(boundary.Actor, new AuthenticationSessionAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
         var securityEvent = await new SecurityEventAdministrationService(Mock.Of<ISecurityEventAdministrationRepository>(), boundary.Sessions, denied, boundary.Sink)
-            .GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(Guid.NewGuid(), TenantContext.Global, Actor: boundary.Actor));
+            .GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global, Actor: boundary.Actor));
         var user = await new UserAdministrationReader(Mock.Of<IUserAdministrationRepository>(), new PostureReader(), boundary.Sessions, denied, boundary.Sink)
-            .GetUserDetailAsync(boundary.Actor, new UserAdministrationDetailRequest(Guid.NewGuid(), TenantContext.Global));
+            .GetUserDetailAsync(boundary.Actor, new UserAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -283,31 +283,31 @@ internal sealed class AccountSecurityOperationBoundaryTests
         var boundary = new AdminReadTestBoundary(Now);
         var failure = new InvalidOperationException("provider failed");
         var users = new Mock<IUserAdministrationRepository>();
-        users.Setup(repository => repository.GetUserSummaryAsync(It.IsAny<UserAdministrationDetailRequest>(), It.IsAny<CancellationToken>())).ThrowsAsync(failure);
+        users.Setup(repository => repository.GetUserSummaryAsync(It.IsAny<UserAdministrationLookupRequest>(), It.IsAny<CancellationToken>())).ThrowsAsync(failure);
         var credentials = new Mock<ICredentialAdministrationRepository>();
         credentials.Setup(repository => repository.GetCredentialAsync(It.IsAny<CredentialAdministrationLookupRequest>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ThrowsAsync(failure);
         var sessions = new Mock<IAuthenticationSessionAdministrationRepository>();
         sessions.Setup(repository => repository.GetAuthenticationSessionAsync(It.IsAny<AuthenticationSessionAdministrationLookupRequest>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ThrowsAsync(failure);
         var events = new Mock<ISecurityEventAdministrationRepository>();
-        events.Setup(repository => repository.GetSecurityEventAsync(It.IsAny<SecurityEventAdministrationDetailRequest>(), It.IsAny<CancellationToken>())).ThrowsAsync(failure);
+        events.Setup(repository => repository.GetSecurityEventAsync(It.IsAny<SecurityEventAdministrationLookupRequest>(), It.IsAny<CancellationToken>())).ThrowsAsync(failure);
         var userId = Guid.NewGuid();
         var postureUsers = new Mock<IUserAdministrationRepository>();
-        postureUsers.Setup(repository => repository.GetUserSummaryAsync(It.IsAny<UserAdministrationDetailRequest>(), It.IsAny<CancellationToken>()))
+        postureUsers.Setup(repository => repository.GetUserSummaryAsync(It.IsAny<UserAdministrationLookupRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new UserSummary(userId, "user@example.com", null, null, UserAccountState.Active, true, true, Now, null));
         var posture = new PostureReader(failure);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.ThrowsAsync<InvalidOperationException>(async () => await new UserAdministrationReader(users.Object, new PostureReader(), boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider)
-                .GetUserDetailAsync(boundary.Actor, new UserAdministrationDetailRequest(Guid.NewGuid(), TenantContext.Global)));
+                .GetUserDetailAsync(boundary.Actor, new UserAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global)));
             Assert.ThrowsAsync<InvalidOperationException>(async () => await new CredentialAdministrationReader(credentials.Object, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider)
                 .GetCredentialAsync(boundary.Actor, new CredentialAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global)));
             Assert.ThrowsAsync<InvalidOperationException>(async () => await new AuthenticationSessionAdministrationReader(sessions.Object, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider)
                 .GetAuthenticationSessionAsync(boundary.Actor, new AuthenticationSessionAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global)));
             Assert.ThrowsAsync<InvalidOperationException>(async () => await new SecurityEventAdministrationService(events.Object, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider)
-                .GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(Guid.NewGuid(), TenantContext.Global, Actor: boundary.Actor)));
+                .GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global, Actor: boundary.Actor)));
             Assert.ThrowsAsync<InvalidOperationException>(async () => await new UserAdministrationReader(postureUsers.Object, posture, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider)
-                .GetUserDetailAsync(boundary.Actor, new UserAdministrationDetailRequest(userId, TenantContext.Global)));
+                .GetUserDetailAsync(boundary.Actor, new UserAdministrationLookupRequest(userId, TenantContext.Global)));
 
             Assert.That(boundary.Sink.Events, Has.Count.EqualTo(5));
             Assert.That(boundary.Sink.Events, Is.All.Matches<AshlarSecurityEvent>(audit => audit.Outcome == SecurityEventOutcomes.Failure));

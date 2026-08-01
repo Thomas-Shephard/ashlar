@@ -132,7 +132,7 @@ internal sealed class SecurityEventAdministrationServiceTests
     [Test]
     public async Task GetSecurityEventAsyncRejectsEmptyEventId()
     {
-        var result = await CreateService().GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(Guid.Empty, TenantContext.Global));
+        var result = await CreateService().GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(Guid.Empty, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -145,7 +145,7 @@ internal sealed class SecurityEventAdministrationServiceTests
     public async Task GetSecurityEventAsyncMapsMissingEventSafely()
     {
         var service = CreateService();
-        var result = await service.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(Guid.NewGuid(), TenantContext.Global));
+        var result = await service.GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -161,7 +161,7 @@ internal sealed class SecurityEventAdministrationServiceTests
         var expected = CreateSummary() with { UserId = null };
         var repository = new RecordingSecurityEventAdministrationRepository { GetResult = expected };
 
-        var request = new SecurityEventAdministrationDetailRequest(expected.EventId, TenantContext.Global);
+        var request = new SecurityEventAdministrationLookupRequest(expected.EventId, TenantContext.Global);
         var result = await CreateService(repository).GetSecurityEventAsync(request);
 
         using (Assert.EnterMultipleScope())
@@ -178,7 +178,7 @@ internal sealed class SecurityEventAdministrationServiceTests
         var expected = CreateSummary() with { UserId = null };
         var service = CreateService(new RecordingSecurityEventAdministrationRepository { GetResult = expected });
 
-        var result = await service.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(expected.EventId, TenantContext.Global));
+        var result = await service.GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(expected.EventId, TenantContext.Global));
 
         var audit = service.Sink.Events.Single();
         using (Assert.EnterMultipleScope())
@@ -199,7 +199,7 @@ internal sealed class SecurityEventAdministrationServiceTests
             boundary.Authorizer, new ThrowingPersistentSink(), boundary.TimeProvider);
 
         Assert.ThrowsAsync<InvalidOperationException>(() => service.GetSecurityEventAsync(
-            new SecurityEventAdministrationDetailRequest(expected.EventId, TenantContext.Global, Actor: boundary.Actor)));
+            new SecurityEventAdministrationLookupRequest(expected.EventId, TenantContext.Global, Actor: boundary.Actor)));
     }
 
     [Test]
@@ -210,7 +210,7 @@ internal sealed class SecurityEventAdministrationServiceTests
         var repository = new RecordingSecurityEventAdministrationRepository { GetResult = expected };
 
         var service = CreateService(repository);
-        var result = await service.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(expected.EventId, TenantContext.Global));
+        var result = await service.GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(expected.EventId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -225,7 +225,7 @@ internal sealed class SecurityEventAdministrationServiceTests
         var expected = CreateSummary() with { TenantId = Guid.NewGuid() };
         var repository = new RecordingSecurityEventAdministrationRepository { GetResult = expected };
 
-        var result = await CreateService(repository).GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(expected.EventId, IncludeAllTenants: true));
+        var result = await CreateService(repository).GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(expected.EventId, IncludeAllTenants: true));
 
         Assert.That(result.Value, Is.EqualTo(expected));
     }
@@ -236,8 +236,8 @@ internal sealed class SecurityEventAdministrationServiceTests
         var service = CreateService();
         var eventId = Guid.NewGuid();
 
-        var missing = await service.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(eventId));
-        var conflicting = await service.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(eventId, TenantContext.Global, IncludeAllTenants: true));
+        var missing = await service.GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(eventId));
+        var conflicting = await service.GetSecurityEventAsync(new SecurityEventAdministrationLookupRequest(eventId, TenantContext.Global, IncludeAllTenants: true));
 
         using (Assert.EnterMultipleScope())
         {
@@ -281,7 +281,7 @@ internal sealed class SecurityEventAdministrationServiceTests
         public AdminReadTestBoundary.RecordingSink Sink { get; } = sink;
         public Task<Result<SecurityEventSearchResult>> SearchSecurityEventsAsync(SearchSecurityEventsRequest request) =>
             service.SearchSecurityEventsAsync(request is null ? null! : request with { Actor = actor });
-        public Task<Result<SecurityEventSummary>> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request) =>
+        public Task<Result<SecurityEventSummary>> GetSecurityEventAsync(SecurityEventAdministrationLookupRequest request) =>
             service.GetSecurityEventAsync(request with { Actor = actor });
     }
 
@@ -308,7 +308,7 @@ internal sealed class SecurityEventAdministrationServiceTests
     {
         public List<SecurityEventSummary> SearchResults { get; } = [];
         public SearchSecurityEventsRequest? LastSearchRequest { get; private set; }
-        public SecurityEventAdministrationDetailRequest? LastGetRequest { get; private set; }
+        public SecurityEventAdministrationLookupRequest? LastGetRequest { get; private set; }
         public SecurityEventSummary? GetResult { get; init; }
 
         public Exception? SearchException { get; init; }
@@ -320,7 +320,7 @@ internal sealed class SecurityEventAdministrationServiceTests
             return Task.FromResult<IReadOnlyList<SecurityEventSummary>>(SearchResults.AsReadOnly());
         }
 
-        public Task<SecurityEventSummary?> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request, CancellationToken cancellationToken = default)
+        public Task<SecurityEventSummary?> GetSecurityEventAsync(SecurityEventAdministrationLookupRequest request, CancellationToken cancellationToken = default)
         {
             LastGetRequest = request;
             return Task.FromResult(GetResult);

@@ -89,7 +89,7 @@ public sealed record UserAdministrationDetail(
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
 /// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
 /// <param name="RecentSecurityEventWindow">Optional positive recent security event window for the embedded account-security posture; it must fit within the UTC timestamp range.</param>
-public sealed record UserAdministrationDetailRequest(
+public sealed record UserAdministrationLookupRequest(
     Guid UserId,
     TenantContext? Tenant = null,
     bool IncludeAllTenants = false,
@@ -99,7 +99,7 @@ public sealed record UserAdministrationDetailRequest(
     /// Throws when the user lookup request is not safe to execute.
     /// </summary>
     /// <param name="request">Lookup request to validate before loading administrator data.</param>
-    public static void ThrowIfInvalid(UserAdministrationDetailRequest? request)
+    public static void ThrowIfInvalid(UserAdministrationLookupRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
         AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);

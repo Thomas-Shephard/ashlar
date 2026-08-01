@@ -163,7 +163,7 @@ internal static partial class AdminEndpoints
         if (!proof.TryGetValue(out var freshProof)) return Results.Forbid();
         var actor = new AccountSecurityActorContext(actorUserId, actorTenant, sessionId, freshProof, httpContext.ToAuditContext());
         var result = await users.GetUserDetailAsync(actor,
-            new UserAdministrationDetailRequest(userId, tenant, RecentSecurityEventWindow: TimeSpan.FromDays(30)), cancellationToken);
+            new UserAdministrationLookupRequest(userId, tenant, RecentSecurityEventWindow: TimeSpan.FromDays(30)), cancellationToken);
         return ToAccountSecurityPostureResult(result);
     }
 

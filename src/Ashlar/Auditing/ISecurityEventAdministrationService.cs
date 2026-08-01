@@ -22,5 +22,5 @@ public interface ISecurityEventAdministrationService
     /// <param name="request">Security event identifier and tenant scope supplied by an authorized administrator flow.</param>
     /// <param name="cancellationToken">A token that can cancel lookup.</param>
     /// <returns>A result containing the safe event summary, or a failure status.</returns>
-    Task<Result<SecurityEventSummary>> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request, CancellationToken cancellationToken = default);
+    Task<Result<SecurityEventSummary>> GetSecurityEventAsync(SecurityEventAdministrationLookupRequest request, CancellationToken cancellationToken = default);
 }

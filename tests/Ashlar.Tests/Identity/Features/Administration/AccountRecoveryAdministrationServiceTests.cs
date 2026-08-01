@@ -491,14 +491,14 @@ internal sealed class AccountRecoveryAdministrationServiceTests
     private sealed class RecordingUserAdministrationReader(Result<UserAdministrationDetail> detailResult) : IUserAdministrationReader
     {
         public AccountSecurityActorContext? LastActor { get; private set; }
-        public UserAdministrationDetailRequest? LastRequest { get; private set; }
+        public UserAdministrationLookupRequest? LastRequest { get; private set; }
 
         public Task<Result<UserSearchResult>> SearchUsersAsync(AccountSecurityActorContext actor, SearchUsersRequest request, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<Result<UserAdministrationDetail>> GetUserDetailAsync(AccountSecurityActorContext actor, UserAdministrationDetailRequest request, CancellationToken cancellationToken = default)
+        public Task<Result<UserAdministrationDetail>> GetUserDetailAsync(AccountSecurityActorContext actor, UserAdministrationLookupRequest request, CancellationToken cancellationToken = default)
         {
             LastActor = actor;
             LastRequest = request;

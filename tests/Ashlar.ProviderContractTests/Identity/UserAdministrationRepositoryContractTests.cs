@@ -35,7 +35,7 @@ public abstract class UserAdministrationRepositoryContractTests : ProviderContra
         var repository = GetUserAdministrationRepository(scope.ServiceProvider);
         var user = await CreateUserAsync(identity, "Admin.Detail@Example.COM");
 
-        var detail = await repository.GetUserSummaryAsync(new UserAdministrationDetailRequest(user.Id, IncludeAllTenants: true));
+        var detail = await repository.GetUserSummaryAsync(new UserAdministrationLookupRequest(user.Id, IncludeAllTenants: true));
 
         Assert.That(detail?.DisplayEmail, Is.EqualTo("Admin.Detail@Example.COM"));
     }
@@ -160,7 +160,7 @@ public abstract class UserAdministrationRepositoryContractTests : ProviderContra
         var user = await CreateUserAsync(identity, "updated-at@example.com");
         await identity.UpdateUserAsync(user with { Name = "Updated" });
 
-        var result = await repository.GetUserSummaryAsync(new UserAdministrationDetailRequest(user.Id, IncludeAllTenants: true));
+        var result = await repository.GetUserSummaryAsync(new UserAdministrationLookupRequest(user.Id, IncludeAllTenants: true));
 
         using (Assert.EnterMultipleScope())
         {
@@ -181,11 +181,11 @@ public abstract class UserAdministrationRepositoryContractTests : ProviderContra
         var user = await CreateUserAsync(identity, "scoped-detail@example.com", tenantId);
         var globalUser = await CreateUserAsync(identity, "global-detail@example.com");
 
-        var inScope = await repository.GetUserSummaryAsync(new UserAdministrationDetailRequest(user.Id, new TenantContext(tenantId)));
-        var outOfScope = await repository.GetUserSummaryAsync(new UserAdministrationDetailRequest(user.Id, new TenantContext(otherTenantId)));
-        var globalScope = await repository.GetUserSummaryAsync(new UserAdministrationDetailRequest(user.Id, TenantContext.Global));
-        var globalInScope = await repository.GetUserSummaryAsync(new UserAdministrationDetailRequest(globalUser.Id, TenantContext.Global));
-        var allTenants = await repository.GetUserSummaryAsync(new UserAdministrationDetailRequest(user.Id, IncludeAllTenants: true));
+        var inScope = await repository.GetUserSummaryAsync(new UserAdministrationLookupRequest(user.Id, new TenantContext(tenantId)));
+        var outOfScope = await repository.GetUserSummaryAsync(new UserAdministrationLookupRequest(user.Id, new TenantContext(otherTenantId)));
+        var globalScope = await repository.GetUserSummaryAsync(new UserAdministrationLookupRequest(user.Id, TenantContext.Global));
+        var globalInScope = await repository.GetUserSummaryAsync(new UserAdministrationLookupRequest(globalUser.Id, TenantContext.Global));
+        var allTenants = await repository.GetUserSummaryAsync(new UserAdministrationLookupRequest(user.Id, IncludeAllTenants: true));
 
         using (Assert.EnterMultipleScope())
         {
@@ -207,8 +207,8 @@ public abstract class UserAdministrationRepositoryContractTests : ProviderContra
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.ThrowsAsync<ArgumentException>(() => repository.GetUserSummaryAsync(new UserAdministrationDetailRequest(userId)));
-            Assert.ThrowsAsync<ArgumentException>(() => repository.GetUserSummaryAsync(new UserAdministrationDetailRequest(userId, TenantContext.Global, IncludeAllTenants: true)));
+            Assert.ThrowsAsync<ArgumentException>(() => repository.GetUserSummaryAsync(new UserAdministrationLookupRequest(userId)));
+            Assert.ThrowsAsync<ArgumentException>(() => repository.GetUserSummaryAsync(new UserAdministrationLookupRequest(userId, TenantContext.Global, IncludeAllTenants: true)));
         }
     }
 
@@ -262,7 +262,7 @@ public abstract class UserAdministrationRepositoryContractTests : ProviderContra
         await credentials.CreateCredentialAsync(credential);
 
         var search = await repository.SearchUsersAsync(new SearchUsersRequest { IncludeAllTenants = true, Query = "secret-search", Limit = 10 });
-        var detail = await repository.GetUserSummaryAsync(new UserAdministrationDetailRequest(user.Id, IncludeAllTenants: true));
+        var detail = await repository.GetUserSummaryAsync(new UserAdministrationLookupRequest(user.Id, IncludeAllTenants: true));
 
         using (Assert.EnterMultipleScope())
         {
@@ -278,7 +278,7 @@ public abstract class UserAdministrationRepositoryContractTests : ProviderContra
         await using var scope = CreateAsyncScope();
         var repository = GetUserAdministrationRepository(scope.ServiceProvider);
 
-        Assert.That(await repository.GetUserSummaryAsync(new UserAdministrationDetailRequest(Guid.NewGuid(), IncludeAllTenants: true)), Is.Null);
+        Assert.That(await repository.GetUserSummaryAsync(new UserAdministrationLookupRequest(Guid.NewGuid(), IncludeAllTenants: true)), Is.Null);
     }
 
     private static async Task<AshlarUser> CreateNamedUserAsync(

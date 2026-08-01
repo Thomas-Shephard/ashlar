@@ -960,7 +960,7 @@ var users = await userAdministration.SearchUsersAsync(
 
 var detail = await userAdministration.GetUserDetailAsync(
     adminReadActor,
-    new UserAdministrationDetailRequest(userId, new TenantContext(tenantId)));
+    new UserAdministrationLookupRequest(userId, new TenantContext(tenantId)));
 ```
 
 Search and detail calls require a separate `AccountSecurityActorContext` with the authenticated actor, actor tenant, current active session, matching `AuditContext`, and an Ashlar-issued fresh MFA proof for the `administration-read` purpose. Requests require an explicit tenant/global/all-tenant scope, and calls require host `IAccountSecurityOperationAuthorizer` approval; all-tenant requests carry a distinct authorization decision. Successes and failures are durably audited and fail closed when audit persistence fails. User admin detail includes safe projections only.
@@ -1436,12 +1436,12 @@ var result = await securityEventAdministration.SearchSecurityEventsAsync(new Sea
 });
 
 var detail = await securityEventAdministration.GetSecurityEventAsync(
-    new SecurityEventAdministrationDetailRequest(eventId, new TenantContext(tenantId), Actor: adminReadActor));
+    new SecurityEventAdministrationLookupRequest(eventId, new TenantContext(tenantId), Actor: adminReadActor));
 ```
 
 Use `ISecurityEventAdministrationService` from application code and install a persistence provider with security-event administration support. `Ashlar.Postgres` and `Ashlar.Sqlite` provide read-only repository implementations that query `ashlar_security_events` without exposing provider-specific row ids or JSON storage details; custom provider integrations may supply the same safe read contract.
 
-Search, lookup, and detail requests require the shared actor-bound admin-read context and an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. Event properties are intended only for operational diagnostics and must never contain secrets.
+Search and lookup requests require the shared actor-bound admin-read context and an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. Event properties are intended only for operational diagnostics and must never contain secrets.
 
 ## Security Notifications
 Ashlar includes generic opt-in security notifications to notify users about important account and security events, such as new sign-ins, session revocations, and MFA changes.

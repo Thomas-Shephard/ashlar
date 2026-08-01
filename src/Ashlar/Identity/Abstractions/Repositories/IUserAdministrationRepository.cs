@@ -19,5 +19,5 @@ public interface IUserAdministrationRepository
     /// <param name="request">User identifier and tenant scope supplied by an authorized administrator flow.</param>
     /// <param name="cancellationToken">A token that can cancel lookup.</param>
     /// <returns>The safe user summary, or <see langword="null" /> when no user matches.</returns>
-    Task<UserSummary?> GetUserSummaryAsync(UserAdministrationDetailRequest request, CancellationToken cancellationToken = default);
+    Task<UserSummary?> GetUserSummaryAsync(UserAdministrationLookupRequest request, CancellationToken cancellationToken = default);
 }

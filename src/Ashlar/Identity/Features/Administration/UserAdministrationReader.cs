@@ -67,7 +67,7 @@ internal sealed class UserAdministrationReader(IUserAdministrationRepository rep
         return Result.Success(new UserSearchResult(page, limit, request.Offset, hasMore));
     }
 
-    public async Task<Result<UserAdministrationDetail>> GetUserDetailAsync(AccountSecurityActorContext actor, UserAdministrationDetailRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<UserAdministrationDetail>> GetUserDetailAsync(AccountSecurityActorContext actor, UserAdministrationLookupRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
@@ -145,11 +145,11 @@ internal sealed class UserAdministrationReader(IUserAdministrationRepository rep
         await _boundary.RecordValidatedFailureAsync(actor, tenant, includeAllTenants, operation, cancellationToken);
     }
 
-    private static bool TryValidateLookupRequest(UserAdministrationDetailRequest request, out Result<UserAdministrationDetail> failure)
+    private static bool TryValidateLookupRequest(UserAdministrationLookupRequest request, out Result<UserAdministrationDetail> failure)
     {
         try
         {
-            UserAdministrationDetailRequest.ThrowIfInvalid(request);
+            UserAdministrationLookupRequest.ThrowIfInvalid(request);
             failure = null!;
             return true;
         }

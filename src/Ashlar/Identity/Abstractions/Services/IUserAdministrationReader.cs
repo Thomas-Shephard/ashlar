@@ -24,5 +24,5 @@ public interface IUserAdministrationReader
     /// <param name="request">Tenant scope and user identifier for the lookup.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
     /// <returns>Safe user detail and security posture information.</returns>
-    Task<Result<UserAdministrationDetail>> GetUserDetailAsync(AccountSecurityActorContext actor, UserAdministrationDetailRequest request, CancellationToken cancellationToken = default);
+    Task<Result<UserAdministrationDetail>> GetUserDetailAsync(AccountSecurityActorContext actor, UserAdministrationLookupRequest request, CancellationToken cancellationToken = default);
 }

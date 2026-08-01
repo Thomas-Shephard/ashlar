@@ -70,7 +70,7 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
     }
 
     /// <inheritdoc />
-    public async Task<Result<SecurityEventSummary>> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<SecurityEventSummary>> GetSecurityEventAsync(SecurityEventAdministrationLookupRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -124,11 +124,11 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
         }
     }
 
-    private static bool TryValidateLookupRequest(SecurityEventAdministrationDetailRequest request, out Result<SecurityEventSummary> failure)
+    private static bool TryValidateLookupRequest(SecurityEventAdministrationLookupRequest request, out Result<SecurityEventSummary> failure)
     {
         try
         {
-            SecurityEventAdministrationDetailRequest.ThrowIfInvalid(request);
+            SecurityEventAdministrationLookupRequest.ThrowIfInvalid(request);
             failure = null!;
             return true;
         }
