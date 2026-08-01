@@ -936,14 +936,24 @@ Use `IAshlarSignInManager` for simplified management of the currently authentica
 // List sessions for the current user
 var sessions = await signInManager.ListSessionsForCurrentUserAsync(httpContext);
 
+// Application-provided placeholder for an Ashlar-issued proof from the completed fresh-MFA flow
+FreshMfaVerificationProof freshMfaProof = applicationProvidedFreshMfaProof;
+
 // Revoke a specific session for the current user
-await signInManager.RevokeSessionForCurrentUserAsync(httpContext, targetSessionId);
+await signInManager.RevokeSessionForCurrentUserAsync(
+    httpContext,
+    targetSessionId,
+    freshMfaProof,
+    reason: "user-initiated");
 
 // Revoke all other sessions for the current user
-await signInManager.RevokeOtherSessionsForCurrentUserAsync(httpContext);
+await signInManager.RevokeOtherSessionsForCurrentUserAsync(
+    httpContext,
+    freshMfaProof,
+    reason: "security-sweep");
 ```
 
-Session listing is ordered by `CreatedAt` descending (newest first). Sensitive fields like IP address and user agent are only populated if they were enabled during session creation. Token hashes are never exposed through these APIs. In the PostgreSQL store, last-seen writes are ignored once a session is revoked or expired, so a concurrent sign-out or expiry cannot be undone by validation telemetry.
+`freshMfaProof` must be an Ashlar-issued proof bound to the authenticated actor and current session; the placeholder above represents a proof supplied by the application, not a separate Ashlar helper API. Session listing is ordered by `CreatedAt` descending (newest first). Sensitive fields like IP address and user agent are only populated if they were enabled during session creation. Token hashes are never exposed through these APIs. In the PostgreSQL store, last-seen writes are ignored once a session is revoked or expired, so a concurrent sign-out or expiry cannot be undone by validation telemetry.
 
 #### Admin User Browsing
 Use `IUserAdministrationReader` for read-only admin and operations tooling that needs to browse users without querying provider tables directly:
@@ -1094,7 +1104,7 @@ services.AddAshlarIdentity();
 
 Unknown users, disabled/suspended/manually locked users, non-local providers, token flows, passwordless email flows, passkeys, OAuth/OIDC, invitations, and MFA factor verification do not create or reset automatic lockout state. Locked-out local password attempts fail with the same generic public authentication failure shape as invalid credentials; they do not create sessions or MFA handshakes.
 
-Provider authors customize durable lockout storage through `IAccountLockoutRepository`; raw automatic-lockout mutations are owned by the authentication pipeline and are not an application service. Operators should use `IAccountLockoutAdministrationReader` and `IAccountLockoutAdministrationService`, which enforce actor-bound sessions, fresh proof, authorization, audit, and durable transactions.
+Provider authors customize durable lockout storage through `IAccountLockoutRepository`; raw automatic-lockout mutations are owned by the authentication pipeline and are not an application service. Operators should use `IAccountLockoutAdministrationReader` and `IAccountLockoutAdministrationService`, which enforce actor-bound sessions, fresh proof, authorization, and durable audit; resets additionally use durable transactions.
 
 Automatic lockout does not change `UserAccountState`. Manual states such as `Disabled`, `Locked`, and `Suspended` remain durable user state controlled through `IAccountSecurityAdministrationService.SetUserAccountStateAsync`; temporary automatic lockout is provider-scoped failure state with a `LockedUntil` timestamp. Clearing automatic lockout counters must not be treated as reactivating a disabled, suspended, or manually locked user.
 
@@ -1111,24 +1121,28 @@ await serviceProvider.InitializeAshlarSqliteSchemaAsync();
 
 Lockout state stores only operational metadata: user id, tenant id, provider key, failed attempt count, first and last failure timestamps, temporary lock expiry, and repository concurrency data. It must not store passwords, attempted passwords, raw IP addresses, user agents, tokens, assertions, or credential values. A new automatic lockout activation emits a safe tenant-aware security event.
 
-Administrative and operations tooling can use `IAccountLockoutAdministrationService` for safe lockout visibility and reset by user id, tenant scope, and provider. Host applications must protect this service with admin authorization and step-up policy. Search requests require an explicit tenant scope, use `TenantContext.Global` for global users, or set `IncludeAllTenants = true` for an intentional cross-tenant operations view.
+Administrative and operations tooling can use `IAccountLockoutAdministrationReader` for safe lockout visibility and `IAccountLockoutAdministrationService` for reset by user id, tenant scope, and provider. Ashlar validates actor identity, active session, fresh proof, authorization, and durable audit. The host application must still apply its own endpoint and admin policy; host authorization complements Ashlar's boundary and does not replace it. Search requests require an explicit tenant scope: use `TenantContext.Global` for global users, or set `IncludeAllTenants = true` for an intentional cross-tenant operations view. Read and mutation actors may have different proof and policy requirements.
 
 ```csharp
 var tenant = new TenantContext(tenantId);
-var search = await lockoutAdministration.SearchLockoutsAsync(new SearchAccountLockoutsRequest
-{
-    Tenant = tenant,
-    Provider = AuthenticationProviderKey.Local,
-    LockedOut = true,
-    Limit = 50
-});
+var search = await lockoutReader.SearchLockoutsAsync(
+    adminReadActor,
+    new SearchAccountLockoutsRequest
+    {
+        Tenant = tenant,
+        Provider = AuthenticationProviderKey.Local,
+        LockedOut = true,
+        Limit = 50
+    });
 
-var status = await lockoutAdministration.GetLockoutStatusAsync(
+var status = await lockoutReader.GetLockoutStatusAsync(
+    adminReadActor,
     userId,
     AuthenticationProviderKey.Local,
     new AccountLockoutStatusRequest(tenant));
 
-await lockoutAdministration.ResetLockoutAsync(
+await lockoutService.ResetLockoutAsync(
+    adminMutationActor,
     userId,
     AuthenticationProviderKey.Local,
     new ResetAccountLockoutRequest(
