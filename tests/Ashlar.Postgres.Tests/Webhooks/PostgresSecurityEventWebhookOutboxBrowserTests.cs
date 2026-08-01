@@ -59,13 +59,13 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
     }
 
     [Test]
-    public async Task ListAsyncReturnsSafeStatusesAndOmitsSentRows()
+    public async Task BrowseAsyncReturnsSafeStatusesAndOmitsSentRows()
     {
         await InsertRowsAsync();
         await InsertDiscardedRowAsync();
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 10 });
+            .BrowseAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 10 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -86,7 +86,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
     }
 
     [Test]
-    public async Task ListAsyncReturnsNoDataWhenAuthorizationFails()
+    public async Task BrowseAsyncReturnsNoDataWhenAuthorizationFails()
     {
         var security = new AccountSecurityActorTestContext(
             Now,
@@ -97,7 +97,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
             _timeProvider,
             Administration(security));
 
-        var result = await browser.ListAsync(
+        var result = await browser.BrowseAsync(
             security.Actor,
             OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 10 });
 
@@ -111,13 +111,13 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
             IAccountSecurityAdministrationService.ProofPurpose, AshlarSecurityEventTypes.SecurityEventWebhookOutboxOperation));
 
     [Test]
-    public async Task ListAsyncExcludesDiscardedRowsFromFailedFilter()
+    public async Task BrowseAsyncExcludesDiscardedRowsFromFailedFilter()
     {
         await InsertRowsAsync();
         await InsertDiscardedRowAsync();
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .BrowseAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
@@ -127,18 +127,18 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
     }
 
     [Test]
-    public async Task ListAsyncFiltersStatusAndPagesWithHasMore()
+    public async Task BrowseAsyncFiltersStatusAndPagesWithHasMore()
     {
         await InsertRowsAsync();
 
         var failed = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .BrowseAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
             });
         var page = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 2, Offset = 1 });
+            .BrowseAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 2, Offset = 1 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -153,13 +153,13 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
     }
 
     [Test]
-    public async Task ListAsyncSuppressesMalformedSafeFieldsAndUnsafeLastError()
+    public async Task BrowseAsyncSuppressesMalformedSafeFieldsAndUnsafeLastError()
     {
         var longError = "first line\r\n" + new string('x', AshlarSecurityEventWebhookOutboxBrowser.MaxLastErrorSummaryLength + 20);
         await InsertRowsAsync(eventType: "bad\nevent", outcome: "bad\routcome", lastError: longError);
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .BrowseAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
@@ -175,12 +175,12 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
     }
 
     [Test]
-    public async Task ListAsyncReturnsSafeStoredFailureSummary()
+    public async Task BrowseAsyncReturnsSafeStoredFailureSummary()
     {
         await InsertRowsAsync(lastError: "kind=http_status;status=502;reason=non_success_status");
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .BrowseAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10
@@ -190,12 +190,12 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
     }
 
     [Test]
-    public async Task ListAsyncKeepsNullLastErrorNull()
+    public async Task BrowseAsyncKeepsNullLastErrorNull()
     {
         await InsertRowsAsync(lastError: null);
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
-            .ListAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
+            .BrowseAsync(Security.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
             {
                 Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
                 Limit = 10

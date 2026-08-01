@@ -57,14 +57,14 @@ public abstract class SecurityEventWebhookOutboxContractTests : ProviderContract
 
     /// <summary>Paginates stable public statuses and exposes only sanitized delivery failure details.</summary>
     [Test]
-    public async Task BrowserListsProviderNeutralStatusesWithPaging()
+    public async Task BrowserBrowsesProviderNeutralStatusesWithPaging()
     {
         await SeedWebhookOutboxRowsAsync();
         await using var scope = CreateAsyncScope();
         var browser = GetSecurityEventWebhookOutboxBrowser(scope.ServiceProvider);
 
-        var page = await browser.ListAsync(ReadSecurity.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 2, Offset = 1 });
-        var failed = await browser.ListAsync(ReadSecurity.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
+        var page = await browser.BrowseAsync(ReadSecurity.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 2, Offset = 1 });
+        var failed = await browser.BrowseAsync(ReadSecurity.Actor, OperationalAdministrationScope.Global, new AshlarSecurityEventWebhookOutboxBrowseRequest
         {
             Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
             Limit = 10
