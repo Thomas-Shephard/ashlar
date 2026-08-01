@@ -26,12 +26,22 @@ internal sealed class AccountLockoutAdministrationReader(IAccountLockoutReposito
 
         var limit = Math.Min(request.Limit, AccountLockoutAdministrationService.MaximumLimit);
         var now = _timeProvider.GetUtcNow();
-        var records = await _repository.SearchAsync(request with { Limit = limit + 1 }, now, cancellationToken);
-        if (records.Any(record => !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants,
+        List<AccountLockoutRecord> records;
+        try
+        {
+            records = (await _repository.SearchAsync(request with { Limit = limit + 1 }, now, cancellationToken)
+                ?? throw new InvalidOperationException("The account-lockout administration provider returned a null result.")).ToList();
+        }
+        catch
+        {
+            await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchAccountLockouts);
+            throw;
+        }
+        if (records.Any(record => record is null || !AdministrationScopeValidation.IncludesResult(request.Tenant, request.IncludeAllTenants,
                 record.TenantId, request.UserId, record.UserId) || request.Provider is { } provider && record.Provider != provider))
         {
             await _boundary.RecordFailureAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchAccountLockouts);
-            return Result.Failure<AccountLockoutSearchResult>(AshlarFailureCodes.ValidationError);
+            throw new InvalidOperationException("The account-lockout administration provider returned a result outside the authorized scope.");
         }
         await _boundary.RecordSuccessAsync(actor, request.Tenant, request.IncludeAllTenants, AccountSecurityOperation.SearchAccountLockouts);
         var items = records.Select(record => AccountLockoutAdministrationService.ToSummary(record, now)).ToList();
@@ -46,7 +56,16 @@ internal sealed class AccountLockoutAdministrationReader(IAccountLockoutReposito
                 AccountSecurityOperation.ReadAccountLockout, cancellationToken, provider) is { } authorizationFailure)
             return Result.Failure<AccountLockoutStatus>(authorizationFailure);
 
-        var record = await _repository.GetAsync(userId, tenantId, provider, cancellationToken);
+        AccountLockoutRecord? record;
+        try
+        {
+            record = await _repository.GetAsync(userId, tenantId, provider, cancellationToken);
+        }
+        catch
+        {
+            await _boundary.RecordFailureAsync(actor, request.Tenant, false, AccountSecurityOperation.ReadAccountLockout);
+            throw;
+        }
         if (record is not null && (record.UserId != userId || record.TenantId != tenantId || record.Provider != provider))
         {
             await _boundary.RecordFailureAsync(actor, request.Tenant, false, AccountSecurityOperation.ReadAccountLockout);
