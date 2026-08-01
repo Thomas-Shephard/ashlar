@@ -93,7 +93,12 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.AddAshlarMessaging();
         services.AddAshlarConfigurationValidation();
-        services.AddOptions();
+        services.AddOptions<IdentityServiceOptions>()
+            .Validate(IdentityServiceOptions.Validate, "Identity service options are invalid.")
+            .ValidateOnStart();
+        services.AddOptions<AuthenticationSessionOptions>()
+            .Validate(AuthenticationSessionOptions.Validate, "Authentication session options are invalid.")
+            .ValidateOnStart();
         if (configure != null)
         {
             services.Configure(configure);
