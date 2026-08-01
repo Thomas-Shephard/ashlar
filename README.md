@@ -1425,23 +1425,25 @@ The **Ashlar.Postgres** and **Ashlar.Sqlite** packages include provider-backed p
 Ashlar also exposes provider-neutral read APIs for admin and operations tooling:
 
 ```csharp
-var result = await securityEventAdministration.SearchSecurityEventsAsync(new SearchSecurityEventsRequest
-{
-    Actor = adminReadActor,
-    Tenant = new TenantContext(tenantId), // or TenantContext.Global, or IncludeAllTenants = true
-    UserId = userId,
-    EventTypes = new HashSet<string> { AshlarSecurityEventTypes.SessionCreated },
-    OccurredFrom = DateTimeOffset.UtcNow.AddDays(-7),
-    Limit = 50
-});
+var result = await securityEventAdministration.SearchSecurityEventsAsync(
+    adminReadActor,
+    new SearchSecurityEventsRequest
+    {
+        Tenant = new TenantContext(tenantId),
+        UserId = userId,
+        Limit = 50
+    });
 
 var detail = await securityEventAdministration.GetSecurityEventAsync(
-    new SecurityEventAdministrationLookupRequest(eventId, new TenantContext(tenantId), Actor: adminReadActor));
+    adminReadActor,
+    new SecurityEventAdministrationLookupRequest(
+        eventId,
+        new TenantContext(tenantId)));
 ```
 
 Use `ISecurityEventAdministrationService` from application code and install a persistence provider with security-event administration support. `Ashlar.Postgres` and `Ashlar.Sqlite` provide read-only repository implementations that query `ashlar_security_events` without exposing provider-specific row ids or JSON storage details; custom provider integrations may supply the same safe read contract.
 
-Search and lookup requests require the shared actor-bound admin-read context and an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. Event properties are intended only for operational diagnostics and must never contain secrets.
+Search and lookup operations require the shared actor-bound admin-read context. Requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. Event properties are intended only for operational diagnostics and must never contain secrets.
 
 ## Security Notifications
 Ashlar includes generic opt-in security notifications to notify users about important account and security events, such as new sign-ins, session revocations, and MFA changes.

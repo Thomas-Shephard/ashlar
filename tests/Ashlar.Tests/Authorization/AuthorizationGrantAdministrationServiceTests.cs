@@ -28,23 +28,20 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
         _context = new AuthorizationGrantMutationContext(new AllowAuthorizer(), sessions.Object);
     }
 
-    private SearchAuthorizationGrantsRequest Authorized(SearchAuthorizationGrantsRequest request) => request with { Actor = _actor };
-    private AuthorizationGrantAdministrationLookupRequest Authorized(AuthorizationGrantAdministrationLookupRequest request) => request with { Actor = _actor };
-
     [Test]
     public async Task SearchAuthorizationGrantsAsyncValidatesScopePagingAndFilters()
     {
         var service = CreateService(new FakeRepository());
         var strictService = CreateService(new FakeRepository(), new AuthorizationGrantOptions { MaxRoleLength = 1 });
 
-        var missingScope = await service.SearchAuthorizationGrantsAsync(new SearchAuthorizationGrantsRequest());
-        var mixedScope = await service.SearchAuthorizationGrantsAsync(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true });
-        var missingScopeId = await service.SearchAuthorizationGrantsAsync(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, ScopeType = "project" });
-        var emptyUser = await service.SearchAuthorizationGrantsAsync(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, UserId = Guid.Empty });
-        var roleAndPermission = await service.SearchAuthorizationGrantsAsync(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, Role = "admin", Permission = "read" });
-        var negativeOffset = await service.SearchAuthorizationGrantsAsync(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, Offset = -1 });
-        var zeroLimit = await service.SearchAuthorizationGrantsAsync(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, Limit = 0 });
-        var oversizedRole = await strictService.SearchAuthorizationGrantsAsync(Authorized(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, Role = "admin" }));
+        var missingScope = await service.SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest());
+        var mixedScope = await service.SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true });
+        var missingScopeId = await service.SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, ScopeType = "project" });
+        var emptyUser = await service.SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, UserId = Guid.Empty });
+        var roleAndPermission = await service.SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, Role = "admin", Permission = "read" });
+        var negativeOffset = await service.SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, Offset = -1 });
+        var zeroLimit = await service.SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, Limit = 0 });
+        var oversizedRole = await strictService.SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, Role = "admin" });
 
         using (Assert.EnterMultipleScope())
         {
@@ -73,7 +70,7 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
         };
         var service = CreateService(repository);
 
-        var result = await service.SearchAuthorizationGrantsAsync(Authorized(new SearchAuthorizationGrantsRequest
+        var result = await service.SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest
         {
             Tenant = TenantContext.Global,
             UserId = userId,
@@ -82,7 +79,7 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
             ScopeId = " Alpha ",
             Limit = 500,
             Offset = 3
-        }));
+        });
 
         using (Assert.EnterMultipleScope())
         {
@@ -92,7 +89,6 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
             Assert.That(repository.LastSearchRequest!.Role, Is.EqualTo("admin"));
             Assert.That(repository.LastSearchRequest.ScopeType, Is.EqualTo("project"));
             Assert.That(repository.LastSearchRequest.ScopeId, Is.EqualTo("alpha"));
-            Assert.That(repository.LastSearchRequest.Actor, Is.Null);
             Assert.That(repository.LastSearchRequest.Limit, Is.EqualTo(AuthorizationGrantAdministrationService.MaximumLimit + 1));
             Assert.That(repository.LastSearchRequest.Offset, Is.EqualTo(3));
         }
@@ -104,18 +100,18 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
         var repository = new FakeRepository { SearchResults = [CreateSummary(Guid.NewGuid())] };
         var service = CreateService(repository);
 
-        var whitespaceRole = await service.SearchAuthorizationGrantsAsync(Authorized(new SearchAuthorizationGrantsRequest
+        var whitespaceRole = await service.SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest
         {
             Tenant = TenantContext.Global,
             Role = " ",
             Permission = " Read "
-        }));
-        var combined = await service.SearchAuthorizationGrantsAsync(Authorized(new SearchAuthorizationGrantsRequest
+        });
+        var combined = await service.SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest
         {
             Tenant = TenantContext.Global,
             Role = "admin",
             Permission = "read"
-        }));
+        });
 
         using (Assert.EnterMultipleScope())
         {
@@ -139,7 +135,7 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
         };
         var service = CreateService(repository);
 
-        var result = await service.SearchAuthorizationGrantsAsync(Authorized(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, Limit = 1 }));
+        var result = await service.SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, Limit = 1 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -166,7 +162,7 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
         var repository = new FakeRepository { SearchResults = [CreateSummary(Guid.NewGuid())] };
         var service = CreateService(repository);
 
-        var result = await service.SearchAuthorizationGrantsAsync(Authorized(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global }));
+        var result = await service.SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global });
 
         using (Assert.EnterMultipleScope())
         {
@@ -186,8 +182,8 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
             SearchResults = [CreateSingleResult(Guid.NewGuid(), Guid.NewGuid())]
         });
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => service.SearchAuthorizationGrantsAsync(Authorized(
-            new SearchAuthorizationGrantsRequest { Tenant = new TenantContext(tenantId), UserId = userId, Limit = 1 })));
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.SearchAuthorizationGrantsAsync(_actor,
+            new SearchAuthorizationGrantsRequest { Tenant = new TenantContext(tenantId), UserId = userId, Limit = 1 }));
     }
 
     [Test]
@@ -199,8 +195,8 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
             SingleResult = CreateSingleResult(Guid.NewGuid(), null)
         });
 
-        var result = await service.GetAuthorizationGrantAsync(Authorized(
-            new AuthorizationGrantAdministrationLookupRequest(requestedId, TenantContext.Global)));
+        var result = await service.GetAuthorizationGrantAsync(_actor,
+            new AuthorizationGrantAdministrationLookupRequest(requestedId, TenantContext.Global));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationGrantNotFound));
     }
@@ -213,12 +209,12 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
         var authorizer = new CapturingAuthorizer();
         var service = CreateService(repository, authorizer: authorizer);
 
-        var invalidGrant = await service.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationLookupRequest(Guid.Empty, TenantContext.Global));
-        var missingScope = await service.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationLookupRequest(Guid.NewGuid()));
-        var mismatch = await service.GetAuthorizationGrantAsync(Authorized(new AuthorizationGrantAdministrationLookupRequest(repository.SingleResult.Id, new TenantContext(Guid.NewGuid()))));
-        var match = await service.GetAuthorizationGrantAsync(Authorized(new AuthorizationGrantAdministrationLookupRequest(repository.SingleResult.Id, new TenantContext(tenantId))));
+        var invalidGrant = await service.GetAuthorizationGrantAsync(_actor, new AuthorizationGrantAdministrationLookupRequest(Guid.Empty, TenantContext.Global));
+        var missingScope = await service.GetAuthorizationGrantAsync(_actor, new AuthorizationGrantAdministrationLookupRequest(Guid.NewGuid()));
+        var mismatch = await service.GetAuthorizationGrantAsync(_actor, new AuthorizationGrantAdministrationLookupRequest(repository.SingleResult.Id, new TenantContext(Guid.NewGuid())));
+        var match = await service.GetAuthorizationGrantAsync(_actor, new AuthorizationGrantAdministrationLookupRequest(repository.SingleResult.Id, new TenantContext(tenantId)));
         var targetDenied = await CreateService(repository, authorizer: new TargetDenyAuthorizer())
-            .GetAuthorizationGrantAsync(Authorized(new AuthorizationGrantAdministrationLookupRequest(repository.SingleResult.Id, new TenantContext(tenantId))));
+            .GetAuthorizationGrantAsync(_actor, new AuthorizationGrantAdministrationLookupRequest(repository.SingleResult.Id, new TenantContext(tenantId)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -228,7 +224,6 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
             Assert.That(match.Succeeded, Is.True);
             Assert.That(targetDenied.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationGrantNotFound));
             Assert.That(authorizer.LastContext!.TargetUserId, Is.EqualTo(repository.SingleResult.UserId));
-            Assert.That(repository.LastLookupRequest!.Actor, Is.Null);
         }
     }
 
@@ -269,7 +264,7 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
         Assert.Throws<ArgumentException>(() => _ = CreateService(repository, new AuthorizationGrantOptions { MaxRoleLength = 0 }));
 
         var service = CreateService(repository);
-        var result = await service.SearchAuthorizationGrantsAsync(Authorized(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global }));
+        var result = await service.SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global });
 
         Assert.That(result.Succeeded, Is.True);
     }
@@ -318,9 +313,9 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(new FakeRepository { ThrowOnSearch = true }, sink: sink)
-                .SearchAuthorizationGrantsAsync(Authorized(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global })));
+                .SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global }));
             Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(new FakeRepository { ThrowOnLookup = true }, sink: sink)
-                .GetAuthorizationGrantAsync(Authorized(new AuthorizationGrantAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global))));
+                .GetAuthorizationGrantAsync(_actor, new AuthorizationGrantAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global)));
             Assert.That(sink.Events, Has.Count.EqualTo(2));
             Assert.That(sink.Events, Is.All.Matches<AshlarSecurityEvent>(audit => audit.Outcome == SecurityEventOutcomes.Failure));
         }
@@ -331,31 +326,25 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
     {
         var repository = new FakeRepository { SearchResults = [CreateSummary(Guid.NewGuid())] };
         var request = new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global };
-        var missingActor = await CreateService(repository)
-            .SearchAuthorizationGrantsAsync(request);
         var mismatchedActor = new AccountSecurityActorContext(_actor.ActorUserId, _actor.ActorTenant, _actor.CurrentSessionId,
             _actor.FreshMfaProof, new AuditContext(Guid.NewGuid()));
         var missingAuditActor = new AccountSecurityActorContext(_actor.ActorUserId, _actor.ActorTenant, _actor.CurrentSessionId,
             _actor.FreshMfaProof, new AuditContext());
         var mismatch = await CreateService(repository)
-            .SearchAuthorizationGrantsAsync(request with { Actor = mismatchedActor });
+            .SearchAuthorizationGrantsAsync(mismatchedActor, request);
         var missingAudit = await CreateService(repository)
-            .SearchAuthorizationGrantsAsync(request with { Actor = missingAuditActor });
+            .SearchAuthorizationGrantsAsync(missingAuditActor, request);
         var denied = await CreateService(repository, authorizer: new DenyAuthorizer())
-            .SearchAuthorizationGrantsAsync(Authorized(request));
-        var missingLookupActor = await CreateService(repository)
-            .GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
-        Assert.That(repository.LookupCalls, Is.Zero);
+            .SearchAuthorizationGrantsAsync(_actor, request);
         var deniedLookup = await CreateService(repository, authorizer: new DenyAuthorizer())
-            .GetAuthorizationGrantAsync(Authorized(new AuthorizationGrantAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global)));
+            .GetAuthorizationGrantAsync(_actor, new AuthorizationGrantAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
         Assert.That(repository.LookupCalls, Is.Zero);
         var missingGrant = await CreateService(repository)
-            .GetAuthorizationGrantAsync(Authorized(new AuthorizationGrantAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global)));
+            .GetAuthorizationGrantAsync(_actor, new AuthorizationGrantAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new[] { missingActor.FailureCode, missingAudit.FailureCode, mismatch.FailureCode,
-                missingLookupActor.FailureCode }
+            Assert.That(new[] { missingAudit.FailureCode, mismatch.FailureCode }
                 .All(code => code == AshlarFailureCodes.ValidationError), Is.True);
             Assert.That(denied.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
             Assert.That(deniedLookup.FailureCode, Is.EqualTo(AshlarFailureCodes.AuthorizationDenied));
@@ -377,11 +366,11 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
                 _actor.CurrentSessionId, _actor.FreshMfaProof.VerifiedAt, _actor.FreshMfaProof.ExpiresAt,
                 AuthorizationGrantService.AdministrationProofPurpose), _actor.Audit);
         var wrongPurpose = await CreateService(new FakeRepository())
-            .SearchAuthorizationGrantsAsync(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, Actor = mutationProofActor });
+            .SearchAuthorizationGrantsAsync(mutationProofActor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global });
 
         var repository = new FakeRepository();
         var selfOnly = await CreateService(repository, authorizer: new SelfOnlyAuthorizer())
-            .SearchAuthorizationGrantsAsync(Authorized(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global }));
+            .SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global });
 
         using (Assert.EnterMultipleScope())
         {
@@ -396,7 +385,7 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
     {
         var sink = new AdminReadTestBoundary.RecordingSink();
         var result = await CreateService(new FakeRepository(), sink: sink)
-            .SearchAuthorizationGrantsAsync(Authorized(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global }));
+            .SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global });
 
         using (Assert.EnterMultipleScope())
         {
@@ -405,7 +394,7 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
             Assert.That(sink.Events.Single().Outcome, Is.EqualTo(SecurityEventOutcomes.Success));
         }
         Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(new FakeRepository(), sink: new ThrowingSink())
-            .SearchAuthorizationGrantsAsync(Authorized(new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global })));
+            .SearchAuthorizationGrantsAsync(_actor, new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global }));
     }
 
     private sealed class AllowAuthorizer : IAccountSecurityOperationAuthorizer

@@ -94,8 +94,8 @@ Ashlar.Auditing.ISecurityEventAdministrationRepository
 Ashlar.Auditing.ISecurityEventAdministrationRepository.GetSecurityEventAsync(Ashlar.Auditing.SecurityEventAdministrationLookupRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Auditing.SecurityEventSummary?>!
 Ashlar.Auditing.ISecurityEventAdministrationRepository.SearchSecurityEventsAsync(Ashlar.Auditing.SearchSecurityEventsRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Ashlar.Auditing.SecurityEventSummary!>!>!
 Ashlar.Auditing.ISecurityEventAdministrationService
-Ashlar.Auditing.ISecurityEventAdministrationService.GetSecurityEventAsync(Ashlar.Auditing.SecurityEventAdministrationLookupRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Auditing.SecurityEventSummary!>!>!
-Ashlar.Auditing.ISecurityEventAdministrationService.SearchSecurityEventsAsync(Ashlar.Auditing.SearchSecurityEventsRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Auditing.SecurityEventSearchResult!>!>!
+Ashlar.Auditing.ISecurityEventAdministrationService.GetSecurityEventAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Auditing.SecurityEventAdministrationLookupRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Auditing.SecurityEventSummary!>!>!
+Ashlar.Auditing.ISecurityEventAdministrationService.SearchSecurityEventsAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Auditing.SearchSecurityEventsRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Auditing.SecurityEventSearchResult!>!>!
 Ashlar.Auditing.ISecurityEventHandler
 Ashlar.Auditing.ISecurityEventHandler.HandleAsync(Ashlar.Auditing.AshlarSecurityEvent! securityEvent, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Ashlar.Auditing.ISecurityEventSink
@@ -108,8 +108,6 @@ Ashlar.Auditing.PersistentSecurityEventSink.PersistentSecurityEventSink(Microsof
 Ashlar.Auditing.PersistentSecurityEventSink.RecordAsync(Ashlar.Auditing.AshlarSecurityEvent! securityEvent, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Ashlar.Auditing.SearchSecurityEventsRequest
 Ashlar.Auditing.SearchSecurityEventsRequest.<Clone>$() -> Ashlar.Auditing.SearchSecurityEventsRequest!
-Ashlar.Auditing.SearchSecurityEventsRequest.Actor.get -> Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext?
-Ashlar.Auditing.SearchSecurityEventsRequest.Actor.init -> void
 Ashlar.Auditing.SearchSecurityEventsRequest.ActorUserId.get -> System.Guid?
 Ashlar.Auditing.SearchSecurityEventsRequest.ActorUserId.init -> void
 Ashlar.Auditing.SearchSecurityEventsRequest.Equals(Ashlar.Auditing.SearchSecurityEventsRequest? other) -> bool
@@ -140,20 +138,18 @@ Ashlar.Auditing.SearchSecurityEventsRequest.UserId.get -> System.Guid?
 Ashlar.Auditing.SearchSecurityEventsRequest.UserId.init -> void
 Ashlar.Auditing.SecurityEventAdministrationLookupRequest
 Ashlar.Auditing.SecurityEventAdministrationLookupRequest.<Clone>$() -> Ashlar.Auditing.SecurityEventAdministrationLookupRequest!
-Ashlar.Auditing.SecurityEventAdministrationLookupRequest.Actor.get -> Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext?
-Ashlar.Auditing.SecurityEventAdministrationLookupRequest.Actor.init -> void
-Ashlar.Auditing.SecurityEventAdministrationLookupRequest.Deconstruct(out System.Guid EventId, out Ashlar.Identity.Models.Tenants.TenantContext? Tenant, out bool IncludeAllTenants, out Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext? Actor) -> void
+Ashlar.Auditing.SecurityEventAdministrationLookupRequest.Deconstruct(out System.Guid EventId, out Ashlar.Identity.Models.Tenants.TenantContext? Tenant, out bool IncludeAllTenants) -> void
 Ashlar.Auditing.SecurityEventAdministrationLookupRequest.Equals(Ashlar.Auditing.SecurityEventAdministrationLookupRequest? other) -> bool
 Ashlar.Auditing.SecurityEventAdministrationLookupRequest.EventId.get -> System.Guid
 Ashlar.Auditing.SecurityEventAdministrationLookupRequest.EventId.init -> void
 Ashlar.Auditing.SecurityEventAdministrationLookupRequest.IncludeAllTenants.get -> bool
 Ashlar.Auditing.SecurityEventAdministrationLookupRequest.IncludeAllTenants.init -> void
-Ashlar.Auditing.SecurityEventAdministrationLookupRequest.SecurityEventAdministrationLookupRequest(System.Guid EventId, Ashlar.Identity.Models.Tenants.TenantContext? Tenant = null, bool IncludeAllTenants = false, Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext? Actor = null) -> void
+Ashlar.Auditing.SecurityEventAdministrationLookupRequest.SecurityEventAdministrationLookupRequest(System.Guid EventId, Ashlar.Identity.Models.Tenants.TenantContext? Tenant = null, bool IncludeAllTenants = false) -> void
 Ashlar.Auditing.SecurityEventAdministrationLookupRequest.Tenant.get -> Ashlar.Identity.Models.Tenants.TenantContext?
 Ashlar.Auditing.SecurityEventAdministrationLookupRequest.Tenant.init -> void
 Ashlar.Auditing.SecurityEventAdministrationService
-Ashlar.Auditing.SecurityEventAdministrationService.GetSecurityEventAsync(Ashlar.Auditing.SecurityEventAdministrationLookupRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Auditing.SecurityEventSummary!>!>!
-Ashlar.Auditing.SecurityEventAdministrationService.SearchSecurityEventsAsync(Ashlar.Auditing.SearchSecurityEventsRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Auditing.SecurityEventSearchResult!>!>!
+Ashlar.Auditing.SecurityEventAdministrationService.GetSecurityEventAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Auditing.SecurityEventAdministrationLookupRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Auditing.SecurityEventSummary!>!>!
+Ashlar.Auditing.SecurityEventAdministrationService.SearchSecurityEventsAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Auditing.SearchSecurityEventsRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Auditing.SecurityEventSearchResult!>!>!
 Ashlar.Auditing.SecurityEventAdministrationService.SecurityEventAdministrationService(Ashlar.Auditing.ISecurityEventAdministrationRepository! repository, Ashlar.Identity.Abstractions.Repositories.IAuthenticationSessionRepository! sessions, Ashlar.Identity.Abstractions.Services.IAccountSecurityOperationAuthorizer! authorizer, Ashlar.Auditing.IPersistentSecurityEventSink! auditSink, System.TimeProvider? timeProvider = null) -> void
 Ashlar.Auditing.SecurityEventAuditEmission
 Ashlar.Auditing.SecurityEventFailureReasons
@@ -251,8 +247,8 @@ Ashlar.Authorization.Abstractions.IAuthorizationGrantAdministrationRepository
 Ashlar.Authorization.Abstractions.IAuthorizationGrantAdministrationRepository.GetAuthorizationGrantAsync(Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest! request, System.DateTimeOffset now, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Authorization.Models.AuthorizationGrantAdministrationSummary?>!
 Ashlar.Authorization.Abstractions.IAuthorizationGrantAdministrationRepository.SearchAuthorizationGrantsAsync(Ashlar.Authorization.Models.SearchAuthorizationGrantsRequest! request, System.DateTimeOffset now, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Ashlar.Authorization.Models.AuthorizationGrantAdministrationSummary!>!>!
 Ashlar.Authorization.Abstractions.IAuthorizationGrantAdministrationService
-Ashlar.Authorization.Abstractions.IAuthorizationGrantAdministrationService.GetAuthorizationGrantAsync(Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Authorization.Models.AuthorizationGrantAdministrationSummary!>!>!
-Ashlar.Authorization.Abstractions.IAuthorizationGrantAdministrationService.SearchAuthorizationGrantsAsync(Ashlar.Authorization.Models.SearchAuthorizationGrantsRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Authorization.Models.AuthorizationGrantSearchResult!>!>!
+Ashlar.Authorization.Abstractions.IAuthorizationGrantAdministrationService.GetAuthorizationGrantAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Authorization.Models.AuthorizationGrantAdministrationSummary!>!>!
+Ashlar.Authorization.Abstractions.IAuthorizationGrantAdministrationService.SearchAuthorizationGrantsAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Authorization.Models.SearchAuthorizationGrantsRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Authorization.Models.AuthorizationGrantSearchResult!>!>!
 Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository
 Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository.CreateGrantAsync(Ashlar.Authorization.Models.AuthorizationGrant! grant, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository.GetGrantAsync(System.Guid grantId, System.Guid? tenantId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Authorization.Models.AuthorizationGrant?>!
@@ -314,10 +310,8 @@ Ashlar.Authorization.Models.AuthorizationGrant.UserId.get -> System.Guid
 Ashlar.Authorization.Models.AuthorizationGrant.UserId.init -> void
 Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest
 Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest.<Clone>$() -> Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest!
-Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest.Actor.get -> Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext?
-Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest.Actor.init -> void
-Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest.AuthorizationGrantAdministrationLookupRequest(System.Guid GrantId, Ashlar.Identity.Models.Tenants.TenantContext? Tenant = null, bool IncludeAllTenants = false, Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext? Actor = null) -> void
-Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest.Deconstruct(out System.Guid GrantId, out Ashlar.Identity.Models.Tenants.TenantContext? Tenant, out bool IncludeAllTenants, out Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext? Actor) -> void
+Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest.AuthorizationGrantAdministrationLookupRequest(System.Guid GrantId, Ashlar.Identity.Models.Tenants.TenantContext? Tenant = null, bool IncludeAllTenants = false) -> void
+Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest.Deconstruct(out System.Guid GrantId, out Ashlar.Identity.Models.Tenants.TenantContext? Tenant, out bool IncludeAllTenants) -> void
 Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest.Equals(Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest? other) -> bool
 Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest.GrantId.get -> System.Guid
 Ashlar.Authorization.Models.AuthorizationGrantAdministrationLookupRequest.GrantId.init -> void
@@ -478,8 +472,6 @@ Ashlar.Authorization.Models.RevokeAuthorizationGrantResult.UserId.get -> System.
 Ashlar.Authorization.Models.RevokeAuthorizationGrantResult.UserId.init -> void
 Ashlar.Authorization.Models.SearchAuthorizationGrantsRequest
 Ashlar.Authorization.Models.SearchAuthorizationGrantsRequest.<Clone>$() -> Ashlar.Authorization.Models.SearchAuthorizationGrantsRequest!
-Ashlar.Authorization.Models.SearchAuthorizationGrantsRequest.Actor.get -> Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext?
-Ashlar.Authorization.Models.SearchAuthorizationGrantsRequest.Actor.init -> void
 Ashlar.Authorization.Models.SearchAuthorizationGrantsRequest.CreatedFrom.get -> System.DateTimeOffset?
 Ashlar.Authorization.Models.SearchAuthorizationGrantsRequest.CreatedFrom.init -> void
 Ashlar.Authorization.Models.SearchAuthorizationGrantsRequest.CreatedTo.get -> System.DateTimeOffset?
