@@ -682,9 +682,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             boundary.Actor.CurrentSessionId, boundary.Actor.FreshMfaProof, boundary.Actor.Audit with { CorrelationId = "di-corr" });
         var result = await service.ResetLockoutAsync(
             actor,
-            userId,
-            AuthenticationProviderKey.Local,
-            new ResetAccountLockoutRequest(new TenantContext(tenantId)));
+            new ResetAccountLockoutRequest(userId, AuthenticationProviderKey.Local, new TenantContext(tenantId)));
 
         using (Assert.EnterMultipleScope())
         {

@@ -31,13 +31,11 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
 
     public async Task<Result<ResetAccountLockoutResult>> ResetLockoutAsync(
         AccountSecurityActorContext actor,
-        Guid userId,
-        AuthenticationProviderKey provider,
         ResetAccountLockoutRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(actor);
-        if (ValidateScopedOperation(userId, provider, request, out var tenantId) is { } failure)
+        if (ValidateScopedOperation(request, out var tenantId) is { } failure)
         {
             return Result.Failure<ResetAccountLockoutResult>(failure);
         }
@@ -46,24 +44,24 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
         {
             return Result.Failure<ResetAccountLockoutResult>(reasonFailure);
         }
-        if (await _boundary.AuthorizeAsync(actor, request.Tenant, false, userId,
-                AccountSecurityOperation.ResetAccountLockout, cancellationToken, provider) is { } authorizationFailure)
+        if (await _boundary.AuthorizeAsync(actor, request.Tenant, false, request.UserId,
+                AccountSecurityOperation.ResetAccountLockout, cancellationToken, request.Provider) is { } authorizationFailure)
             return Result.Failure<ResetAccountLockoutResult>(authorizationFailure);
 
-        var existing = await _repository.GetAsync(userId, tenantId, provider, cancellationToken);
-        if (existing is not null && (existing.UserId != userId || existing.TenantId != tenantId || existing.Provider != provider))
+        var existing = await _repository.GetAsync(request.UserId, tenantId, request.Provider, cancellationToken);
+        if (existing is not null && (existing.UserId != request.UserId || existing.TenantId != tenantId || existing.Provider != request.Provider))
         {
             await _boundary.RecordFailureAsync(actor, request.Tenant, false, AccountSecurityOperation.ResetAccountLockout);
             return Result.Failure<ResetAccountLockoutResult>(AshlarFailureCodes.ValidationError);
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-        var reset = existing is not null && await _repository.ResetAsync(userId, tenantId, provider, cancellationToken);
-        await RecordResetAsync(userId, tenantId, provider, reset, request, actor.Audit, cancellationToken);
+        var reset = existing is not null && await _repository.ResetAsync(request.UserId, tenantId, request.Provider, cancellationToken);
+        await RecordResetAsync(request.UserId, tenantId, request.Provider, reset, request, actor.Audit, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         var status = reset ? AccountLockoutResetStatus.Reset : AccountLockoutResetStatus.NotFound;
-        return Result.Success(new ResetAccountLockoutResult(status, userId, tenantId, provider));
+        return Result.Success(new ResetAccountLockoutResult(status, request.UserId, tenantId, request.Provider));
     }
 
     internal static AccountLockoutAdministrationSummary ToSummary(AccountLockoutRecord record, DateTimeOffset now)
@@ -105,23 +103,19 @@ internal sealed class AccountLockoutAdministrationService : IAccountLockoutAdmin
     }
 
     internal static AshlarFailure? ValidateScopedOperation(
-        Guid userId,
-        AuthenticationProviderKey provider,
         AccountLockoutStatusRequest request,
         out Guid? tenantId)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return ValidateScopedOperation(userId, provider, request.Tenant, out tenantId);
+        return ValidateScopedOperation(request.UserId, request.Provider, request.Tenant, out tenantId);
     }
 
     private static AshlarFailure? ValidateScopedOperation(
-        Guid userId,
-        AuthenticationProviderKey provider,
         ResetAccountLockoutRequest request,
         out Guid? tenantId)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return ValidateScopedOperation(userId, provider, request.Tenant, out tenantId);
+        return ValidateScopedOperation(request.UserId, request.Provider, request.Tenant, out tenantId);
     }
 
     private static AshlarFailure? ValidateScopedOperation(

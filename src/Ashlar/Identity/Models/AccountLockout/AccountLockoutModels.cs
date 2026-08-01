@@ -244,33 +244,23 @@ public sealed record AccountLockoutSearchResult(
 /// <summary>
 /// Request for administrator account lockout status.
 /// </summary>
+/// <param name="UserId">User whose lockout status should be returned.</param>
+/// <param name="Provider">Authentication provider key.</param>
 /// <param name="Tenant">Explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
-public sealed record AccountLockoutStatusRequest(TenantContext Tenant);
+public sealed record AccountLockoutStatusRequest(Guid UserId, AuthenticationProviderKey Provider, TenantContext Tenant);
 
 /// <summary>
 /// Request for administrator account lockout reset.
 /// </summary>
+/// <param name="UserId">User whose automatic lockout state should be cleared.</param>
+/// <param name="Provider">Authentication provider key.</param>
 /// <param name="Tenant">Explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
-/// <param name="Reason">Optional provider-neutral, display-safe reason recorded with the reset event. Do not include secrets, tokens, or credentials. Cannot exceed 512 characters.</param>
-public sealed record ResetAccountLockoutRequest
-{
-    /// <summary>
-    /// Initializes administrator account lockout reset metadata.
-    /// </summary>
-    /// <param name="Tenant">Explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
-    /// <param name="Reason">Optional provider-neutral, display-safe reason recorded with the reset event. Do not include secrets, tokens, or credentials. Cannot exceed 512 characters.</param>
-    public ResetAccountLockoutRequest(TenantContext Tenant, string? Reason = null)
-    {
-        this.Tenant = Tenant;
-        this.Reason = Reason;
-    }
-
-    /// <summary>Explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</summary>
-    public TenantContext Tenant { get; init; }
-
-    /// <summary>Optional provider-neutral, display-safe reason recorded with the reset event. Do not include secrets, tokens, or credentials.</summary>
-    public string? Reason { get; init; }
-}
+/// <param name="Reason">Optional <paramref name="Provider" />-neutral, display-safe reason recorded with the reset event. Do not include secrets, tokens, or credentials. Cannot exceed 512 characters.</param>
+public sealed record ResetAccountLockoutRequest(
+    Guid UserId,
+    AuthenticationProviderKey Provider,
+    TenantContext Tenant,
+    string? Reason = null);
 
 /// <summary>
 /// Outcome for an administrator account lockout reset.

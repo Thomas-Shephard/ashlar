@@ -97,13 +97,13 @@ internal sealed class AccountLockoutAdministrationServiceTests
         var lookupRepository = new Mock<IAccountLockoutRepository>();
         lookupRepository.Setup(repository => repository.GetAsync(UserId, TenantId, provider, It.IsAny<CancellationToken>())).ReturnsAsync(wrongUser);
         var reader = new AccountLockoutAdministrationReader(lookupRepository.Object, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider);
-        var lookup = await reader.GetLockoutStatusAsync(boundary.Actor, UserId, provider, new(new TenantContext(TenantId)));
+        var lookup = await reader.GetLockoutStatusAsync(boundary.Actor, new(UserId, provider, new TenantContext(TenantId)));
         lookupRepository.Setup(repository => repository.GetAsync(UserId, TenantId, provider, It.IsAny<CancellationToken>())).ReturnsAsync(wrongTenant);
-        var lookupTenant = await reader.GetLockoutStatusAsync(boundary.Actor, UserId, provider, new(new TenantContext(TenantId)));
+        var lookupTenant = await reader.GetLockoutStatusAsync(boundary.Actor, new(UserId, provider, new TenantContext(TenantId)));
         lookupRepository.Setup(repository => repository.GetAsync(UserId, TenantId, provider, It.IsAny<CancellationToken>())).ReturnsAsync(wrongProvider);
-        var lookupProvider = await reader.GetLockoutStatusAsync(boundary.Actor, UserId, provider, new(new TenantContext(TenantId)));
+        var lookupProvider = await reader.GetLockoutStatusAsync(boundary.Actor, new(UserId, provider, new TenantContext(TenantId)));
         lookupRepository.Setup(repository => repository.GetAsync(UserId, null, provider, It.IsAny<CancellationToken>())).ReturnsAsync(wrongTenant);
-        var globalLookupTenant = await reader.GetLockoutStatusAsync(boundary.Actor, UserId, provider, new(TenantContext.Global));
+        var globalLookupTenant = await reader.GetLockoutStatusAsync(boundary.Actor, new(UserId, provider, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -126,7 +126,7 @@ internal sealed class AccountLockoutAdministrationServiceTests
         var reader = new AccountLockoutAdministrationReader(repository.Object, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider);
 
         var search = Assert.ThrowsAsync<IOException>(() => reader.SearchLockoutsAsync(boundary.Actor, new() { Tenant = new(TenantId) }));
-        var lookup = Assert.ThrowsAsync<IOException>(() => reader.GetLockoutStatusAsync(boundary.Actor, UserId, AuthenticationProviderKey.Local, new(new(TenantId))));
+        var lookup = Assert.ThrowsAsync<IOException>(() => reader.GetLockoutStatusAsync(boundary.Actor, new(UserId, AuthenticationProviderKey.Local, new(TenantId))));
 
         using (Assert.EnterMultipleScope())
         {
@@ -173,16 +173,13 @@ internal sealed class AccountLockoutAdministrationServiceTests
         var service = CreateRawService(repository.Object,
             new AccountLockoutAdministrationServiceDependencies(_timeProvider, composition.Events, composition.Transactions));
 
-        var hostile = await service.ResetLockoutAsync(MutationBoundary.Actor, UserId, provider,
-            new(new TenantContext(TenantId)));
+        var hostile = await service.ResetLockoutAsync(MutationBoundary.Actor, new(UserId, provider, new TenantContext(TenantId)));
         repository.Setup(candidate => candidate.GetAsync(UserId, null, provider, It.IsAny<CancellationToken>()))
             .ReturnsAsync(CreateRecord(UserId, TenantId, provider));
-        var hostileGlobal = await service.ResetLockoutAsync(MutationBoundary.Actor, UserId, provider,
-            new(TenantContext.Global));
+        var hostileGlobal = await service.ResetLockoutAsync(MutationBoundary.Actor, new(UserId, provider, TenantContext.Global));
         repository.Setup(candidate => candidate.GetAsync(UserId, TenantId, provider, It.IsAny<CancellationToken>()))
             .ReturnsAsync((AccountLockoutRecord?)null);
-        var missing = await service.ResetLockoutAsync(MutationBoundary.Actor, UserId, provider,
-            new(new TenantContext(TenantId)));
+        var missing = await service.ResetLockoutAsync(MutationBoundary.Actor, new(UserId, provider, new TenantContext(TenantId)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -199,14 +196,13 @@ internal sealed class AccountLockoutAdministrationServiceTests
         var readRepository = new Mock<IAccountLockoutRepository>();
         var reader = new AccountLockoutAdministrationReader(readRepository.Object, deniedRead.Sessions, deniedRead.Authorizer, deniedRead.Sink, deniedRead.TimeProvider);
         var search = await reader.SearchLockoutsAsync(deniedRead.Actor, new() { IncludeAllTenants = true });
-        var lookup = await reader.GetLockoutStatusAsync(deniedRead.Actor, UserId, AuthenticationProviderKey.Local, new(TenantContext.Global));
+        var lookup = await reader.GetLockoutStatusAsync(deniedRead.Actor, new(UserId, AuthenticationProviderKey.Local, TenantContext.Global));
 
         var deniedMutation = new AdminReadTestBoundary(Now, authorized: false,
             proofPurpose: IAccountSecurityAdministrationService.ProofPurpose);
         var service = new AccountLockoutAdministrationService(_repository,
             new(_timeProvider, _composition.Events, _composition.Transactions), deniedMutation.Sessions, deniedMutation.Authorizer, deniedMutation.Sink);
-        var reset = await service.ResetLockoutAsync(deniedMutation.Actor, UserId, AuthenticationProviderKey.Local,
-            new(TenantContext.Global));
+        var reset = await service.ResetLockoutAsync(deniedMutation.Actor, new(UserId, AuthenticationProviderKey.Local, TenantContext.Global));
 
         Assert.That(new[] { search.Succeeded, lookup.Succeeded, reset.Succeeded }, Is.All.False);
         readRepository.VerifyNoOtherCalls();
@@ -219,7 +215,7 @@ internal sealed class AccountLockoutAdministrationServiceTests
         var reader = new AccountLockoutAdministrationReader(_repository, boundary.Sessions, boundary.Authorizer, boundary.Sink, boundary.TimeProvider);
 
         await reader.SearchLockoutsAsync(boundary.Actor, new() { IncludeAllTenants = true });
-        await reader.GetLockoutStatusAsync(boundary.Actor, UserId, AuthenticationProviderKey.Local, new(TenantContext.Global));
+        await reader.GetLockoutStatusAsync(boundary.Actor, new(UserId, AuthenticationProviderKey.Local, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -241,7 +237,7 @@ internal sealed class AccountLockoutAdministrationServiceTests
             .ReturnsAsync(true);
         var reader = new AccountLockoutAdministrationReader(_repository, ReadBoundary.Sessions, authorizer.Object, ReadBoundary.Sink, _timeProvider);
 
-        await reader.GetLockoutStatusAsync(ReadBoundary.Actor, UserId, AuthenticationProviderKey.Local, new(TenantContext.Global));
+        await reader.GetLockoutStatusAsync(ReadBoundary.Actor, new(UserId, AuthenticationProviderKey.Local, TenantContext.Global));
 
         Assert.That(captured?.Provider, Is.EqualTo(AuthenticationProviderKey.Local));
     }
@@ -290,10 +286,10 @@ internal sealed class AccountLockoutAdministrationServiceTests
     {
         _repository.Seed(CreateRecord(UserId, TenantId, AuthenticationProviderKey.Local, lockedUntil: Now.AddMinutes(5)));
 
-        var existing = await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, UserId, AuthenticationProviderKey.Local, new AccountLockoutStatusRequest(new TenantContext(TenantId)));
-        var result = await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, UserId, AuthenticationProviderKey.Local, new AccountLockoutStatusRequest(new TenantContext(TenantId)));
-        await _service.ResetLockoutAsync(MutationBoundary.Actor, UserId, AuthenticationProviderKey.Local, new ResetAccountLockoutRequest(new TenantContext(TenantId)));
-        var missing = await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, UserId, AuthenticationProviderKey.Local, new AccountLockoutStatusRequest(new TenantContext(TenantId)));
+        var existing = await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, new AccountLockoutStatusRequest(UserId, AuthenticationProviderKey.Local, new TenantContext(TenantId)));
+        var result = await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, new AccountLockoutStatusRequest(UserId, AuthenticationProviderKey.Local, new TenantContext(TenantId)));
+        await _service.ResetLockoutAsync(MutationBoundary.Actor, new ResetAccountLockoutRequest(UserId, AuthenticationProviderKey.Local, new TenantContext(TenantId)));
+        var missing = await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, new AccountLockoutStatusRequest(UserId, AuthenticationProviderKey.Local, new TenantContext(TenantId)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -313,8 +309,8 @@ internal sealed class AccountLockoutAdministrationServiceTests
     {
         _repository.Seed(CreateRecord(UserId, TenantId, AuthenticationProviderKey.Local, lockedUntil: Now.AddMinutes(5)));
 
-        var reset = await _service.ResetLockoutAsync(MutationBoundary.Actor, UserId, AuthenticationProviderKey.Local, new ResetAccountLockoutRequest(new TenantContext(TenantId)));
-        var secondReset = await _service.ResetLockoutAsync(MutationBoundary.Actor, UserId, AuthenticationProviderKey.Local, new ResetAccountLockoutRequest(new TenantContext(TenantId)));
+        var reset = await _service.ResetLockoutAsync(MutationBoundary.Actor, new ResetAccountLockoutRequest(UserId, AuthenticationProviderKey.Local, new TenantContext(TenantId)));
+        var secondReset = await _service.ResetLockoutAsync(MutationBoundary.Actor, new ResetAccountLockoutRequest(UserId, AuthenticationProviderKey.Local, new TenantContext(TenantId)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -342,9 +338,7 @@ internal sealed class AccountLockoutAdministrationServiceTests
             new AccountLockoutAdministrationServiceDependencies(_timeProvider, composition.Events, composition.Transactions));
 
         var result = await service.ResetLockoutAsync(MutationBoundary.Actor,
-            UserId,
-            AuthenticationProviderKey.Local,
-            new ResetAccountLockoutRequest(new TenantContext(TenantId)));
+            new ResetAccountLockoutRequest(UserId, AuthenticationProviderKey.Local, new TenantContext(TenantId)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -369,9 +363,7 @@ internal sealed class AccountLockoutAdministrationServiceTests
         _repository.Seed(CreateRecord(UserId, TenantId, provider, lockedUntil: Now.AddMinutes(5), version: "secret-version"));
 
         var result = await _service.ResetLockoutAsync(actor,
-            UserId,
-            provider,
-            new ResetAccountLockoutRequest(new TenantContext(TenantId), "support reset"));
+            new ResetAccountLockoutRequest(UserId, provider, new TenantContext(TenantId), "support reset"));
 
         var securityEvent = _events.Events.Single();
         using (Assert.EnterMultipleScope())
@@ -403,9 +395,7 @@ internal sealed class AccountLockoutAdministrationServiceTests
     public async Task ResetLockoutAsyncShouldEmitNoOpAuditEventWhenStateIsMissing()
     {
         var result = await _service.ResetLockoutAsync(MutationBoundary.Actor,
-            UserId,
-            AuthenticationProviderKey.Local,
-            new ResetAccountLockoutRequest(new TenantContext(TenantId)));
+            new ResetAccountLockoutRequest(UserId, AuthenticationProviderKey.Local, new TenantContext(TenantId)));
 
         var securityEvent = _events.Events.Single();
         using (Assert.EnterMultipleScope())
@@ -450,21 +440,37 @@ internal sealed class AccountLockoutAdministrationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.ThrowsAsync<ArgumentNullException>(() => _reader.SearchLockoutsAsync(ReadBoundary.Actor, null!));
-            Assert.ThrowsAsync<ArgumentNullException>(() => _reader.GetLockoutStatusAsync(ReadBoundary.Actor, UserId, AuthenticationProviderKey.Local, null!));
-            Assert.ThrowsAsync<ArgumentNullException>(() => _service.ResetLockoutAsync(MutationBoundary.Actor, UserId, AuthenticationProviderKey.Local, null!));
-            Assert.That((await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, Guid.Empty, AuthenticationProviderKey.Local, new AccountLockoutStatusRequest(TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That((await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, UserId, default, new AccountLockoutStatusRequest(TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That((await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, UserId, unknownProvider, new AccountLockoutStatusRequest(TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That((await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, UserId, AuthenticationProviderKey.Local, new AccountLockoutStatusRequest(null!))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That((await _service.ResetLockoutAsync(MutationBoundary.Actor, Guid.Empty, AuthenticationProviderKey.Local, new ResetAccountLockoutRequest(TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That((await _service.ResetLockoutAsync(MutationBoundary.Actor, UserId, default, new ResetAccountLockoutRequest(TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That((await _service.ResetLockoutAsync(MutationBoundary.Actor, UserId, unknownProvider, new ResetAccountLockoutRequest(TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That((await _service.ResetLockoutAsync(MutationBoundary.Actor, UserId, AuthenticationProviderKey.Local, new ResetAccountLockoutRequest(null!))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
-            Assert.That((await _service.ResetLockoutAsync(MutationBoundary.Actor, UserId, AuthenticationProviderKey.Local, new ResetAccountLockoutRequest(TenantContext.Global, new string('x', 513)))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That((await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, new AccountLockoutStatusRequest(Guid.Empty, AuthenticationProviderKey.Local, TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That((await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, new AccountLockoutStatusRequest(UserId, default, TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That((await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, new AccountLockoutStatusRequest(UserId, unknownProvider, TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That((await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, new AccountLockoutStatusRequest(UserId, AuthenticationProviderKey.Local, null!))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That((await _service.ResetLockoutAsync(MutationBoundary.Actor, new ResetAccountLockoutRequest(Guid.Empty, AuthenticationProviderKey.Local, TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That((await _service.ResetLockoutAsync(MutationBoundary.Actor, new ResetAccountLockoutRequest(UserId, default, TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That((await _service.ResetLockoutAsync(MutationBoundary.Actor, new ResetAccountLockoutRequest(UserId, unknownProvider, TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That((await _service.ResetLockoutAsync(MutationBoundary.Actor, new ResetAccountLockoutRequest(UserId, AuthenticationProviderKey.Local, null!))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That((await _service.ResetLockoutAsync(MutationBoundary.Actor, new ResetAccountLockoutRequest(UserId, AuthenticationProviderKey.Local, TenantContext.Global, new string('x', 513)))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.Throws<ArgumentNullException>(() => _ = CreateRawService(null!, null!));
             Assert.Throws<ArgumentNullException>(() => _ = CreateRawService(_repository, null!));
             Assert.That(_events.Events, Is.Empty);
         }
+    }
+
+    [Test]
+    public void LookupAndResetRejectNullInputsBeforeRepositoryAccess()
+    {
+        var repository = new Mock<IAccountLockoutRepository>();
+        var reader = CreateRawReader(repository.Object);
+        var composition = new DurableSecurityMutationTestComposition(new RecordingSecurityEventSink(), repository.Object);
+        var service = CreateRawService(repository.Object,
+            new AccountLockoutAdministrationServiceDependencies(_timeProvider, composition.Events, composition.Transactions));
+        var lookup = new AccountLockoutStatusRequest(UserId, AuthenticationProviderKey.Local, TenantContext.Global);
+        var reset = new ResetAccountLockoutRequest(UserId, AuthenticationProviderKey.Local, TenantContext.Global);
+
+        Assert.ThrowsAsync<ArgumentNullException>(() => reader.GetLockoutStatusAsync(null!, lookup));
+        Assert.ThrowsAsync<ArgumentNullException>(() => reader.GetLockoutStatusAsync(ReadBoundary.Actor, null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.ResetLockoutAsync(null!, reset));
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.ResetLockoutAsync(MutationBoundary.Actor, null!));
+        repository.VerifyNoOtherCalls();
     }
 
     [Test]
@@ -489,8 +495,17 @@ internal sealed class AccountLockoutAdministrationServiceTests
     }
 
     [Test]
-    public void ResetRequestDoesNotExposeDuplicateAuditContext() =>
-        Assert.That(typeof(ResetAccountLockoutRequest).GetProperty("Audit"), Is.Null);
+    public void LockoutRequestsDoNotEmbedActorContext()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(typeof(AccountLockoutStatusRequest).GetProperties().Select(property => property.PropertyType),
+                Does.Not.Contain(typeof(AccountSecurityActorContext)));
+            Assert.That(typeof(ResetAccountLockoutRequest).GetProperties().Select(property => property.PropertyType),
+                Does.Not.Contain(typeof(AccountSecurityActorContext)));
+            Assert.That(typeof(ResetAccountLockoutRequest).GetProperty("Audit"), Is.Null);
+        }
+    }
 
     [Test]
     public void ReaderConstructorValidatesRepositoryAndDefaultsClock()
@@ -506,9 +521,9 @@ internal sealed class AccountLockoutAdministrationServiceTests
         var secondUserId = Guid.NewGuid();
         _repository.Seed(CreateRecord(secondUserId, null, AuthenticationProviderKey.Local, lockedUntil: Now.AddMinutes(5)));
 
-        var status = await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, UserId, AuthenticationProviderKey.Local, new AccountLockoutStatusRequest(TenantContext.Global));
-        var secondStatus = await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, secondUserId, AuthenticationProviderKey.Local, new AccountLockoutStatusRequest(TenantContext.Global));
-        var reset = await _service.ResetLockoutAsync(MutationBoundary.Actor, UserId, AuthenticationProviderKey.Local, new ResetAccountLockoutRequest(TenantContext.Global));
+        var status = await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, new AccountLockoutStatusRequest(UserId, AuthenticationProviderKey.Local, TenantContext.Global));
+        var secondStatus = await _reader.GetLockoutStatusAsync(ReadBoundary.Actor, new AccountLockoutStatusRequest(secondUserId, AuthenticationProviderKey.Local, TenantContext.Global));
+        var reset = await _service.ResetLockoutAsync(MutationBoundary.Actor, new ResetAccountLockoutRequest(UserId, AuthenticationProviderKey.Local, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {

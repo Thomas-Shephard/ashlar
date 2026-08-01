@@ -666,10 +666,10 @@ Ashlar.Identity.Abstractions.Services.CredentialUsageUpdateResult.Equals(Ashlar.
 Ashlar.Identity.Abstractions.Services.CredentialUsageUpdateResult.UpdatePersisted.get -> bool
 Ashlar.Identity.Abstractions.Services.CredentialUsageUpdateResult.UpdatePersisted.init -> void
 Ashlar.Identity.Abstractions.Services.IAccountLockoutAdministrationReader
-Ashlar.Identity.Abstractions.Services.IAccountLockoutAdministrationReader.GetLockoutStatusAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, System.Guid userId, Ashlar.Identity.Models.Authentication.AuthenticationProviderKey provider, Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Identity.Models.AccountLockout.AccountLockoutStatus!>!>!
+Ashlar.Identity.Abstractions.Services.IAccountLockoutAdministrationReader.GetLockoutStatusAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Identity.Models.AccountLockout.AccountLockoutStatus!>!>!
 Ashlar.Identity.Abstractions.Services.IAccountLockoutAdministrationReader.SearchLockoutsAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Identity.Models.AccountLockout.SearchAccountLockoutsRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Identity.Models.AccountLockout.AccountLockoutSearchResult!>!>!
 Ashlar.Identity.Abstractions.Services.IAccountLockoutAdministrationService
-Ashlar.Identity.Abstractions.Services.IAccountLockoutAdministrationService.ResetLockoutAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, System.Guid userId, Ashlar.Identity.Models.Authentication.AuthenticationProviderKey provider, Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutResult!>!>!
+Ashlar.Identity.Abstractions.Services.IAccountLockoutAdministrationService.ResetLockoutAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutResult!>!>!
 Ashlar.Identity.Abstractions.Services.IAccountRecoveryAdministrationService
 Ashlar.Identity.Abstractions.Services.IAccountRecoveryAdministrationService.GetAccountRecoveryOptionsAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Identity.Models.Administration.AccountRecoveryOptionsRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Identity.Models.Administration.AccountRecoveryOptions!>!>!
 Ashlar.Identity.Abstractions.Services.IAccountSecurityAdministrationService
@@ -962,19 +962,28 @@ Ashlar.Identity.Models.AccountLockout.AccountLockoutStatus.UserId.get -> System.
 Ashlar.Identity.Models.AccountLockout.AccountLockoutStatus.UserId.init -> void
 Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest
 Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest.<Clone>$() -> Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest!
-Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest.AccountLockoutStatusRequest(Ashlar.Identity.Models.Tenants.TenantContext! Tenant) -> void
-Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest.Deconstruct(out Ashlar.Identity.Models.Tenants.TenantContext! Tenant) -> void
+Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest.AccountLockoutStatusRequest(System.Guid UserId, Ashlar.Identity.Models.Authentication.AuthenticationProviderKey Provider, Ashlar.Identity.Models.Tenants.TenantContext! Tenant) -> void
+Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest.Deconstruct(out System.Guid UserId, out Ashlar.Identity.Models.Authentication.AuthenticationProviderKey Provider, out Ashlar.Identity.Models.Tenants.TenantContext! Tenant) -> void
 Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest.Equals(Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest? other) -> bool
+Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest.Provider.get -> Ashlar.Identity.Models.Authentication.AuthenticationProviderKey
+Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest.Provider.init -> void
 Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest.Tenant.get -> Ashlar.Identity.Models.Tenants.TenantContext!
 Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest.Tenant.init -> void
+Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest.UserId.get -> System.Guid
+Ashlar.Identity.Models.AccountLockout.AccountLockoutStatusRequest.UserId.init -> void
 Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest
 Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest.<Clone>$() -> Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest!
+Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest.Deconstruct(out System.Guid UserId, out Ashlar.Identity.Models.Authentication.AuthenticationProviderKey Provider, out Ashlar.Identity.Models.Tenants.TenantContext! Tenant, out string? Reason) -> void
 Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest.Equals(Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest? other) -> bool
+Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest.Provider.get -> Ashlar.Identity.Models.Authentication.AuthenticationProviderKey
+Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest.Provider.init -> void
 Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest.Reason.get -> string?
 Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest.Reason.init -> void
-Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest.ResetAccountLockoutRequest(Ashlar.Identity.Models.Tenants.TenantContext! Tenant, string? Reason = null) -> void
+Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest.ResetAccountLockoutRequest(System.Guid UserId, Ashlar.Identity.Models.Authentication.AuthenticationProviderKey Provider, Ashlar.Identity.Models.Tenants.TenantContext! Tenant, string? Reason = null) -> void
 Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest.Tenant.get -> Ashlar.Identity.Models.Tenants.TenantContext!
 Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest.Tenant.init -> void
+Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest.UserId.get -> System.Guid
+Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutRequest.UserId.init -> void
 Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutResult
 Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutResult.<Clone>$() -> Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutResult!
 Ashlar.Identity.Models.AccountLockout.ResetAccountLockoutResult.Deconstruct(out Ashlar.Identity.Models.AccountLockout.AccountLockoutResetStatus Status, out System.Guid UserId, out System.Guid? TenantId, out Ashlar.Identity.Models.Authentication.AuthenticationProviderKey Provider) -> void

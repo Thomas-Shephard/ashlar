@@ -1137,15 +1137,13 @@ var search = await lockoutReader.SearchLockoutsAsync(
 
 var status = await lockoutReader.GetLockoutStatusAsync(
     adminReadActor,
-    userId,
-    AuthenticationProviderKey.Local,
-    new AccountLockoutStatusRequest(tenant));
+    new AccountLockoutStatusRequest(userId, AuthenticationProviderKey.Local, tenant));
 
 await lockoutService.ResetLockoutAsync(
     adminMutationActor,
-    userId,
-    AuthenticationProviderKey.Local,
     new ResetAccountLockoutRequest(
+        userId,
+        AuthenticationProviderKey.Local,
         tenant,
         Reason: "support reset"));
 ```

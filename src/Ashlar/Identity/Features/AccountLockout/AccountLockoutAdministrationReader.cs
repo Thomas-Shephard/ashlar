@@ -48,30 +48,31 @@ internal sealed class AccountLockoutAdministrationReader(IAccountLockoutReposito
         return Result.Success(new AccountLockoutSearchResult(items.Take(limit).ToList().AsReadOnly(), limit, request.Offset, items.Count > limit));
     }
 
-    public async Task<Result<AccountLockoutStatus>> GetLockoutStatusAsync(AccountSecurityActorContext actor, Guid userId, AuthenticationProviderKey provider, AccountLockoutStatusRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<AccountLockoutStatus>> GetLockoutStatusAsync(AccountSecurityActorContext actor, AccountLockoutStatusRequest request, CancellationToken cancellationToken = default)
     {
-        if (AccountLockoutAdministrationService.ValidateScopedOperation(userId, provider, request, out var tenantId) is { } failure)
+        ArgumentNullException.ThrowIfNull(actor);
+        if (AccountLockoutAdministrationService.ValidateScopedOperation(request, out var tenantId) is { } failure)
             return Result.Failure<AccountLockoutStatus>(failure);
-        if (await _boundary.AuthorizeAsync(actor, request.Tenant, false, userId,
-                AccountSecurityOperation.ReadAccountLockout, cancellationToken, provider) is { } authorizationFailure)
+        if (await _boundary.AuthorizeAsync(actor, request.Tenant, false, request.UserId,
+                AccountSecurityOperation.ReadAccountLockout, cancellationToken, request.Provider) is { } authorizationFailure)
             return Result.Failure<AccountLockoutStatus>(authorizationFailure);
 
         AccountLockoutRecord? record;
         try
         {
-            record = await _repository.GetAsync(userId, tenantId, provider, cancellationToken);
+            record = await _repository.GetAsync(request.UserId, tenantId, request.Provider, cancellationToken);
         }
         catch
         {
             await _boundary.RecordFailureAsync(actor, request.Tenant, false, AccountSecurityOperation.ReadAccountLockout);
             throw;
         }
-        if (record is not null && (record.UserId != userId || record.TenantId != tenantId || record.Provider != provider))
+        if (record is not null && (record.UserId != request.UserId || record.TenantId != tenantId || record.Provider != request.Provider))
         {
             await _boundary.RecordFailureAsync(actor, request.Tenant, false, AccountSecurityOperation.ReadAccountLockout);
             return Result.Failure<AccountLockoutStatus>(AshlarFailureCodes.ValidationError);
         }
         await _boundary.RecordSuccessAsync(actor, request.Tenant, false, AccountSecurityOperation.ReadAccountLockout);
-        return Result.Success(AccountLockoutAdministrationService.ToStatus(userId, tenantId, provider, record, _timeProvider.GetUtcNow()));
+        return Result.Success(AccountLockoutAdministrationService.ToStatus(request.UserId, tenantId, request.Provider, record, _timeProvider.GetUtcNow()));
     }
 }
