@@ -18,29 +18,31 @@ public interface IPasskeyService
     /// <summary>
     /// Starts a passkey registration ceremony.
     /// </summary>
+    /// <param name="verification">The authenticated registration capability.</param>
     /// <param name="request">The registration request.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The browser ceremony options.</returns>
     /// <remarks>
-    /// This is the self-service registration path for the authenticated account owner. The request must include an
+    /// This is the self-service registration path for the authenticated account owner. The verification context must include an
     /// Ashlar-issued fresh-verification proof minted for <c>passkey-registration</c>. Accounts with an existing usable
     /// additional-verification factor require fresh MFA proof; first-passkey setup may use fresh primary-authentication
-    /// proof from the current authenticated session. The target user must exist, be in the requested tenant scope, and
-    /// have an account state that can sign in. Omitted tenant scope is treated as global scope.
+    /// proof from the current authenticated session. The target user must exist, be in the verification tenant scope,
+    /// and have an account state that can sign in.
     /// </remarks>
-    Task<PasskeyCeremonyOptions> StartRegistrationAsync(StartPasskeyRegistrationRequest request, CancellationToken cancellationToken = default);
+    Task<PasskeyCeremonyOptions> StartRegistrationAsync(PasskeyRegistrationVerificationContext verification, StartPasskeyRegistrationRequest request, CancellationToken cancellationToken = default);
     /// <summary>
     /// Completes a passkey registration ceremony.
     /// </summary>
+    /// <param name="verification">The authenticated registration capability.</param>
     /// <param name="request">The completion request.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The operation result.</returns>
     /// <remarks>
     /// The same proof purpose, session, tenant, and user binding is checked again before credential persistence. The
-    /// challenge user is reloaded before credential persistence. The actor user, request tenant, challenge tenant,
+    /// challenge user is reloaded before credential persistence. The actor user, verification tenant, challenge tenant,
     /// proof tenant, and stored user tenant must all match, and the account must still be able to sign in.
     /// </remarks>
-    Task<Result> CompleteRegistrationAsync(CompletePasskeyRegistrationRequest request, CancellationToken cancellationToken = default);
+    Task<Result> CompleteRegistrationAsync(PasskeyRegistrationVerificationContext verification, CompletePasskeyRegistrationRequest request, CancellationToken cancellationToken = default);
     /// <summary>
     /// Starts a passkey authentication ceremony.
     /// </summary>

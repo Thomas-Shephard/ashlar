@@ -6,19 +6,49 @@ namespace Ashlar.Passkeys;
 /// <summary>
 /// Request to start self-service passkey registration for the authenticated account owner.
 /// </summary>
-/// <param name="ActorUserId">Authenticated user performing the self-service operation. This user owns the pending passkey registration.</param>
 /// <param name="DisplayName">The passkey display name.</param>
-/// <param name="Audit">Required audit metadata whose actor must match <paramref name="ActorUserId" />. Do not include proof material or browser ceremony payloads.</param>
-public sealed record StartPasskeyRegistrationRequest(Guid ActorUserId, string DisplayName, AuditContext Audit)
+public sealed record StartPasskeyRegistrationRequest(string DisplayName);
+
+/// <summary>Authenticated capability required for self-service passkey registration.</summary>
+public sealed class PasskeyRegistrationVerificationContext
 {
-    /// <summary>Fresh MFA proof for the current authenticated session. Obtain it from <c>StepUpAuthenticationService.CreateFreshMfaProof</c>; do not bind it from request JSON.</summary>
-    public FreshMfaVerificationProof? FreshMfaProof { get; init; }
-    /// <summary>Fresh primary-authentication proof for passkey registration only when the account has no usable MFA factor. Obtain it from <c>StepUpAuthenticationService.CreateFreshPrimaryAuthenticationProof</c>; do not bind it from request JSON.</summary>
-    public FreshPrimaryAuthenticationProof? FreshPrimaryAuthenticationProof { get; init; }
-    /// <summary>Current Ashlar session ID from the authenticated request. It must match the supplied fresh-verification proof.</summary>
-    public Guid? CurrentSessionId { get; init; }
-    /// <summary>Tenant scope for the registration. Omit or use <see cref="TenantContext.Global" /> for global users; this is not an all-tenant scope.</summary>
-    public TenantContext? Tenant { get; init; }
+    /// <summary>Creates a registration capability bound to exactly one fresh proof.</summary>
+    /// <param name="actorUserId">The authenticated actor and registration owner.</param>
+    /// <param name="tenant">The authenticated tenant or global scope.</param>
+    /// <param name="currentSessionId">The current authenticated session.</param>
+    /// <param name="audit">Required audit metadata.</param>
+    /// <param name="freshMfaProof">Fresh MFA proof when additional verification is available.</param>
+    /// <param name="freshPrimaryAuthenticationProof">Fresh primary-authentication proof otherwise.</param>
+    public PasskeyRegistrationVerificationContext(Guid actorUserId, TenantContext tenant, Guid currentSessionId,
+        AuditContext audit, FreshMfaVerificationProof? freshMfaProof = null,
+        FreshPrimaryAuthenticationProof? freshPrimaryAuthenticationProof = null)
+    {
+        if (actorUserId == Guid.Empty) throw new ArgumentException("Actor user ID cannot be empty.", nameof(actorUserId));
+        if (currentSessionId == Guid.Empty) throw new ArgumentException("Current session ID cannot be empty.", nameof(currentSessionId));
+        ArgumentNullException.ThrowIfNull(tenant);
+        ArgumentNullException.ThrowIfNull(audit);
+        if ((freshMfaProof is null) == (freshPrimaryAuthenticationProof is null))
+            throw new ArgumentException("Exactly one registration proof is required.");
+        ActorUserId = actorUserId;
+        Tenant = tenant;
+        CurrentSessionId = currentSessionId;
+        Audit = audit;
+        FreshMfaVerificationProof = freshMfaProof;
+        FreshPrimaryAuthenticationProof = freshPrimaryAuthenticationProof;
+    }
+
+    /// <summary>Gets the authenticated actor and registration owner.</summary>
+    public Guid ActorUserId { get; }
+    /// <summary>Gets the authenticated tenant or global scope.</summary>
+    public TenantContext Tenant { get; }
+    /// <summary>Gets the current authenticated session.</summary>
+    public Guid CurrentSessionId { get; }
+    /// <summary>Gets required audit metadata.</summary>
+    public AuditContext Audit { get; }
+    /// <summary>Gets the fresh MFA proof, when used.</summary>
+    public FreshMfaVerificationProof? FreshMfaVerificationProof { get; }
+    /// <summary>Gets the fresh primary-authentication proof, when used.</summary>
+    public FreshPrimaryAuthenticationProof? FreshPrimaryAuthenticationProof { get; }
 }
 
 /// <summary>
@@ -27,19 +57,7 @@ public sealed record StartPasskeyRegistrationRequest(Guid ActorUserId, string Di
 /// <param name="ChallengeId">The challenge id.</param>
 /// <param name="CredentialResponse">The browser credential response.</param>
 /// <param name="DisplayName">The optional passkey display name.</param>
-/// <param name="ActorUserId">Authenticated user completing the self-service operation. This user must match the challenge and proof.</param>
-/// <param name="Audit">Required audit metadata whose actor must match <paramref name="ActorUserId" />. Do not include proof material or browser ceremony payloads.</param>
-public sealed record CompletePasskeyRegistrationRequest(Guid ChallengeId, JsonElement CredentialResponse, string? DisplayName, Guid ActorUserId, AuditContext Audit)
-{
-    /// <summary>Fresh MFA proof for the current authenticated session. Obtain it from <c>StepUpAuthenticationService.CreateFreshMfaProof</c>; do not bind it from request JSON.</summary>
-    public FreshMfaVerificationProof? FreshMfaProof { get; init; }
-    /// <summary>Fresh primary-authentication proof for passkey registration only when the account has no usable MFA factor. Obtain it from <c>StepUpAuthenticationService.CreateFreshPrimaryAuthenticationProof</c>; do not bind it from request JSON.</summary>
-    public FreshPrimaryAuthenticationProof? FreshPrimaryAuthenticationProof { get; init; }
-    /// <summary>Current Ashlar session ID from the authenticated request. It must match the supplied fresh-verification proof and stored challenge binding.</summary>
-    public Guid? CurrentSessionId { get; init; }
-    /// <summary>Tenant scope that must match the challenge, proof, and user. Omit or use <see cref="TenantContext.Global" /> for global users only.</summary>
-    public TenantContext? Tenant { get; init; }
-}
+public sealed record CompletePasskeyRegistrationRequest(Guid ChallengeId, JsonElement CredentialResponse, string? DisplayName);
 /// <summary>
 /// Represents a request to start passkey authentication.
 /// </summary>
