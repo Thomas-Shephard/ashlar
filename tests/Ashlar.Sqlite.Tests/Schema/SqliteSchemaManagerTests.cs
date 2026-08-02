@@ -133,6 +133,8 @@ internal sealed class SqliteSchemaManagerTests : SqliteTestBase
 
         await InsertAuthorizationGrantAsync(connection, "role-grant", new() { ["role"] = "admin" });
         await InsertAuthorizationGrantAsync(connection, "permission-grant", new() { ["permission"] = "document.read", ["scope_type"] = "document", ["scope_id"] = "123" });
+
+        Assert.That(await CountAsync(connection, "ashlar_authorization_grants"), Is.EqualTo(2));
     }
 
     [TestCase("version")]
@@ -172,6 +174,8 @@ internal sealed class SqliteSchemaManagerTests : SqliteTestBase
         await using var connection = await OpenConnectionAsync();
 
         await InsertPasskeyChallengeAsync(connection, "valid-challenge");
+
+        Assert.That(await CountAsync(connection, "ashlar_passkey_challenges"), Is.EqualTo(1));
     }
 
     [Test]
