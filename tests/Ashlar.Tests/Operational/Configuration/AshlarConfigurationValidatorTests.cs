@@ -1365,8 +1365,8 @@ internal sealed class AshlarConfigurationValidatorTests
 
     private sealed class FakeAuthorizationGrantService : IAuthorizationGrantService
     {
-        public Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Result<AuthorizationGrant>> CreateGrantAsync(AccountSecurityActorContext actor, CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(AccountSecurityActorContext actor, RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 

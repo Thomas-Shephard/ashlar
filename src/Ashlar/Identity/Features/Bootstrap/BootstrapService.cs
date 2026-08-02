@@ -125,14 +125,14 @@ internal sealed class BootstrapService(
             foreach (var template in grants)
             {
                 var grantResult = await authorizationGrantService.CreateGrantAsync(new CreateAuthorizationGrantRequest(
-                    UserId: userId,
-                    TenantId: template.TenantId,
-                    ScopeType: template.ScopeType,
-                    ScopeId: template.ScopeId,
-                    Role: template.Role,
-                    Permission: template.Permission,
-                    Audit: CreateBootstrapGrantAudit(request.Audit, context)
-                ), cancellationToken);
+                    userId, CreateBootstrapGrantAudit(request.Audit, context), template.TenantId,
+                    new AuthorizationGrantSpecification
+                    {
+                        ScopeType = template.ScopeType,
+                        ScopeId = template.ScopeId,
+                        Role = template.Role,
+                        Permission = template.Permission
+                    }), cancellationToken);
 
                 if (!grantResult.Succeeded)
                 {

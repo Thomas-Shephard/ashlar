@@ -36,8 +36,8 @@ internal sealed class SecurityMutationAuditAtomicityTests
         var actor = await CreateActorAsync(provider);
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await provider.GetRequiredService<IAuthorizationGrantService>().CreateGrantAsync(
-                new CreateAuthorizationGrantRequest(user.Id, actor, actor.Audit, TenantContext.Global, permission: "posts.read")));
+            await provider.GetRequiredService<IAuthorizationGrantService>().CreateGrantAsync(actor,
+                new CreateAuthorizationGrantRequest(user.Id, TenantContext.Global, permission: "posts.read")));
 
         var grants = await provider.GetRequiredService<IAuthorizationGrantRepository>().ListGrantsAsync(new ListAuthorizationGrantsRequest(user.Id));
         Assert.That(grants, Is.Empty);
@@ -65,8 +65,8 @@ internal sealed class SecurityMutationAuditAtomicityTests
         await provider.GetRequiredService<IAuthorizationGrantRepository>().CreateGrantAsync(grant);
 
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await provider.GetRequiredService<IAuthorizationGrantService>().RevokeGrantAsync(
-                new RevokeAuthorizationGrantRequest(grant.Id, actor, actor.Audit, TenantContext.Global)));
+            await provider.GetRequiredService<IAuthorizationGrantService>().RevokeGrantAsync(actor,
+                new RevokeAuthorizationGrantRequest(grant.Id, TenantContext.Global)));
 
         var stored = await provider.GetRequiredService<IAuthorizationGrantRepository>().GetGrantAsync(grant.Id, null);
         Assert.That(stored?.RevokedAt, Is.Null);
