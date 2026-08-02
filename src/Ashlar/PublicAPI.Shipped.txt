@@ -1243,7 +1243,7 @@ Ashlar.Identity.Models.AccountSecurity.RevokeAccountCredentialsRequest.RevokeAcc
 Ashlar.Identity.Models.AccountSecurity.RevokeRememberedMfaDeviceAdministrationRequest
 Ashlar.Identity.Models.AccountSecurity.RevokeRememberedMfaDeviceAdministrationRequest.DeviceId.get -> System.Guid
 Ashlar.Identity.Models.AccountSecurity.RevokeRememberedMfaDeviceAdministrationRequest.Equals(Ashlar.Identity.Models.AccountSecurity.RevokeRememberedMfaDeviceAdministrationRequest? other) -> bool
-Ashlar.Identity.Models.AccountSecurity.RevokeRememberedMfaDeviceAdministrationRequest.RevokeRememberedMfaDeviceAdministrationRequest(System.Guid deviceId, System.Guid targetUserId, Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Identity.Models.Tenants.TenantContext? tenant = null, bool includeAllTenants = false, string? reason = null) -> void
+Ashlar.Identity.Models.AccountSecurity.RevokeRememberedMfaDeviceAdministrationRequest.RevokeRememberedMfaDeviceAdministrationRequest(System.Guid targetUserId, System.Guid deviceId, Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Identity.Models.Tenants.TenantContext? tenant = null, bool includeAllTenants = false, string? reason = null) -> void
 Ashlar.Identity.Models.AccountSecurity.SetUserAccountStateAdministrationRequest
 Ashlar.Identity.Models.AccountSecurity.SetUserAccountStateAdministrationRequest.AccountState.get -> Ashlar.Identity.Models.Authentication.UserAccountState
 Ashlar.Identity.Models.AccountSecurity.SetUserAccountStateAdministrationRequest.Equals(Ashlar.Identity.Models.AccountSecurity.SetUserAccountStateAdministrationRequest? other) -> bool
