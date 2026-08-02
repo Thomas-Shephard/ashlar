@@ -100,6 +100,80 @@ internal sealed class SqliteSchemaManagerTests : SqliteTestBase
         Assert.That(await ExecuteAsync(connection, "UPDATE ashlar_users SET tenant_id = $tenant_id WHERE id = 'immutable-tenant';", tenantId, DateTimeOffset.UtcNow.ToString("O")), Is.EqualTo(1));
     }
 
+    [TestCase("role")]
+    [TestCase("permission")]
+    [TestCase("scope_type")]
+    [TestCase("scope_id")]
+    public async Task AuthorizationGrantTextFieldsRejectWhitespace(string field)
+    {
+        await using var provider = CreateProvider();
+        await provider.InitializeAshlarSqliteSchemaAsync();
+        await using var connection = await OpenConnectionAsync();
+        await InsertUserAsync(connection, "grant-user", "grant@example.com", null);
+
+        var values = new Dictionary<string, string?>
+        {
+            ["role"] = field == "permission" ? null : "admin",
+            ["permission"] = field == "permission" ? "permission.read" : null,
+            ["scope_type"] = field is "scope_type" or "scope_id" ? "resource" : null,
+            ["scope_id"] = field is "scope_type" or "scope_id" ? "123" : null
+        };
+        values[field] = "   ";
+
+        Assert.ThrowsAsync<SqliteException>(async () => await InsertAuthorizationGrantAsync(connection, $"invalid-{field}", values));
+    }
+
+    [Test]
+    public async Task AuthorizationGrantValidRowsStillInsert()
+    {
+        await using var provider = CreateProvider();
+        await provider.InitializeAshlarSqliteSchemaAsync();
+        await using var connection = await OpenConnectionAsync();
+        await InsertUserAsync(connection, "grant-user", "grant@example.com", null);
+
+        await InsertAuthorizationGrantAsync(connection, "role-grant", new() { ["role"] = "admin" });
+        await InsertAuthorizationGrantAsync(connection, "permission-grant", new() { ["permission"] = "document.read", ["scope_type"] = "document", ["scope_id"] = "123" });
+    }
+
+    [TestCase("version")]
+    [TestCase("purpose")]
+    [TestCase("challenge")]
+    [TestCase("relying_party_id")]
+    [TestCase("origin")]
+    [TestCase("handshake_token_hash")]
+    [TestCase("factor_type")]
+    [TestCase("registration_proof_type")]
+    public async Task PasskeyChallengeTextFieldsRejectWhitespace(string field)
+    {
+        await using var provider = CreateProvider();
+        await provider.InitializeAshlarSqliteSchemaAsync();
+        await using var connection = await OpenConnectionAsync();
+        await InsertUserAsync(connection, "passkey-user", "passkey@example.com", null);
+
+        Assert.ThrowsAsync<SqliteException>(async () => await InsertPasskeyChallengeAsync(connection, $"invalid-{field}", field));
+    }
+
+    [TestCase("   ")]
+    [TestCaseSource(nameof(OverlongDisplayNames))]
+    public async Task PasskeyChallengeRejectsInvalidDisplayName(string displayName)
+    {
+        await using var provider = CreateProvider();
+        await provider.InitializeAshlarSqliteSchemaAsync();
+        await using var connection = await OpenConnectionAsync();
+
+        Assert.ThrowsAsync<SqliteException>(async () => await InsertPasskeyChallengeAsync(connection, "invalid-display-name", displayName: displayName));
+    }
+
+    [Test]
+    public async Task PasskeyChallengeAllowsOptionalFieldsToBeOmitted()
+    {
+        await using var provider = CreateProvider();
+        await provider.InitializeAshlarSqliteSchemaAsync();
+        await using var connection = await OpenConnectionAsync();
+
+        await InsertPasskeyChallengeAsync(connection, "valid-challenge");
+    }
+
     [Test]
     public void InitializeAsyncWrapsSchemaFailures()
     {
@@ -174,5 +248,67 @@ internal sealed class SqliteSchemaManagerTests : SqliteTestBase
         command.Parameters.AddWithValue("$now", now);
         command.Parameters.AddWithValue("$expires", DateTimeOffset.Parse(now, System.Globalization.CultureInfo.InvariantCulture).AddHours(1).ToString("O"));
         return await command.ExecuteNonQueryAsync();
+    }
+
+    private static IEnumerable<string> OverlongDisplayNames() => [new string('x', 101)];
+
+    private static async Task InsertAuthorizationGrantAsync(SqliteConnection connection, string id, Dictionary<string, string?> values)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO ashlar_authorization_grants (id, user_id, role, permission, scope_type, scope_id, created_at)
+            VALUES ($id, 'grant-user', $role, $permission, $scope_type, $scope_id, $created_at);
+            """;
+        command.Parameters.AddWithValue("$id", id);
+        foreach (var field in new[] { "role", "permission", "scope_type", "scope_id" })
+        {
+            command.Parameters.AddWithValue($"${field}", values.GetValueOrDefault(field) ?? (object)DBNull.Value);
+        }
+        command.Parameters.AddWithValue("$created_at", DateTimeOffset.UtcNow.ToString("O"));
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task InsertPasskeyChallengeAsync(SqliteConnection connection, string id, string? blankField = null, string? displayName = null)
+    {
+        var values = new Dictionary<string, object?>
+        {
+            ["version"] = "v1",
+            ["purpose"] = "passkey-authentication",
+            ["challenge"] = id,
+            ["relying_party_id"] = "example.com",
+            ["origin"] = "https://example.com",
+            ["user_id"] = null,
+            ["handshake_token_hash"] = null,
+            ["factor_type"] = null,
+            ["registration_proof_type"] = null
+        };
+        if (blankField is "handshake_token_hash" or "factor_type")
+        {
+            values["user_id"] = "passkey-user";
+            values["handshake_token_hash"] = "token-hash";
+            values["factor_type"] = "passkey";
+        }
+        if (blankField != null)
+        {
+            values[blankField] = "   ";
+        }
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO ashlar_passkey_challenges
+                (id, version, purpose, user_id, handshake_token_hash, factor_type, display_name, registration_proof_type, challenge, options_json, relying_party_id, origin, created_at, expires_at)
+            VALUES
+                ($id, $version, $purpose, $user_id, $handshake_token_hash, $factor_type, $display_name, $registration_proof_type, $challenge, '{}', $relying_party_id, $origin, $created_at, $expires_at);
+            """;
+        command.Parameters.AddWithValue("$id", id);
+        foreach (var (field, value) in values)
+        {
+            command.Parameters.AddWithValue($"${field}", value ?? DBNull.Value);
+        }
+        command.Parameters.AddWithValue("$display_name", displayName ?? (object)DBNull.Value);
+        var now = DateTimeOffset.UtcNow;
+        command.Parameters.AddWithValue("$created_at", now.ToString("O"));
+        command.Parameters.AddWithValue("$expires_at", now.AddMinutes(5).ToString("O"));
+        await command.ExecuteNonQueryAsync();
     }
 }
