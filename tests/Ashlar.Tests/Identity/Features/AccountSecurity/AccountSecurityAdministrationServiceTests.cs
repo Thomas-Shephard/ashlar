@@ -276,7 +276,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
 
         var deviceId = Guid.NewGuid();
         await _service.RevokeRememberedMfaDeviceAsync(new RevokeRememberedMfaDeviceAdministrationRequest(
-            deviceId, _targetId, ToActor(request), _tenant));
+            _targetId, deviceId, ToActor(request), _tenant));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_executor.Operation, Is.EqualTo(AccountSecurityOperation.RevokeRememberedMfaDevice));
@@ -285,6 +285,20 @@ internal sealed class AccountSecurityAdministrationServiceTests
 
         await _service.RevokeRememberedMfaDevicesAsync(request);
         Assert.That(_executor.Operation, Is.EqualTo(AccountSecurityOperation.RevokeRememberedMfaDevices));
+    }
+
+    [Test]
+    public void RememberedMfaDeviceRequestAssignsPositionalIdsInAccountSecurityOrder()
+    {
+        var targetUserId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid();
+        var request = new RevokeRememberedMfaDeviceAdministrationRequest(targetUserId, deviceId, ToActor(CreateRequest()), _tenant);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.TargetUserId, Is.EqualTo(targetUserId));
+            Assert.That(request.DeviceId, Is.EqualTo(deviceId));
+        }
     }
 
     [Test]
@@ -311,7 +325,7 @@ internal sealed class AccountSecurityAdministrationServiceTests
             Assert.Throws<ArgumentException>(() => new RevokeAccountCredentialsRequest(
                 _targetId, new AuthenticationProviderKey(ProviderType.Internal, "internal"), new AccountSecurityActorContext(_actorId, _tenant, _sessionId, proof, audit), _tenant));
             Assert.Throws<ArgumentException>(() => new RevokeRememberedMfaDeviceAdministrationRequest(
-                Guid.Empty, _targetId, new AccountSecurityActorContext(_actorId, _tenant, _sessionId, proof, audit), _tenant));
+                _targetId, Guid.Empty, new AccountSecurityActorContext(_actorId, _tenant, _sessionId, proof, audit), _tenant));
         }
     }
 

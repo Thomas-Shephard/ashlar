@@ -267,13 +267,13 @@ public sealed record RevokeAccountCredentialsRequest : AccountSecurityAdministra
 public sealed record RevokeRememberedMfaDeviceAdministrationRequest : AccountSecurityAdministrationRequest
 {
     /// <summary>Creates an actor-bound remembered-device revocation request.</summary>
-    /// <param name="deviceId">The remembered device to revoke.</param>
     /// <param name="targetUserId">The device owner.</param>
+    /// <param name="deviceId">The remembered device to revoke.</param>
     /// <param name="actor">Authenticated actor context.</param>
     /// <param name="tenant">The explicit target tenant or global scope.</param>
     /// <param name="includeAllTenants">Whether the target lookup crosses every tenant scope.</param>
     /// <param name="reason">An optional display-safe reason.</param>
-    public RevokeRememberedMfaDeviceAdministrationRequest(Guid deviceId, Guid targetUserId, AccountSecurityActorContext actor,
+    public RevokeRememberedMfaDeviceAdministrationRequest(Guid targetUserId, Guid deviceId, AccountSecurityActorContext actor,
         TenantContext? tenant = null, bool includeAllTenants = false, string? reason = null)
         : base(targetUserId, actor, tenant, includeAllTenants, reason)
     {
