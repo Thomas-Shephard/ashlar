@@ -255,8 +255,8 @@ Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository.GetGrantAsync(Sy
 Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository.ListGrantsAsync(Ashlar.Authorization.Models.ListAuthorizationGrantsRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Ashlar.Authorization.Models.AuthorizationGrant!>!>!
 Ashlar.Authorization.Abstractions.IAuthorizationGrantRepository.RevokeGrantAsync(System.Guid grantId, System.Guid? tenantId, System.DateTimeOffset revokedAt, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 Ashlar.Authorization.Abstractions.IAuthorizationGrantService
-Ashlar.Authorization.Abstractions.IAuthorizationGrantService.CreateGrantAsync(Ashlar.Authorization.Models.CreateAuthorizationGrantRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Authorization.Models.AuthorizationGrant!>!>!
-Ashlar.Authorization.Abstractions.IAuthorizationGrantService.RevokeGrantAsync(Ashlar.Authorization.Models.RevokeAuthorizationGrantRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Authorization.Models.RevokeAuthorizationGrantResult!>!
+Ashlar.Authorization.Abstractions.IAuthorizationGrantService.CreateGrantAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Authorization.Models.CreateAuthorizationGrantRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Result<Ashlar.Authorization.Models.AuthorizationGrant!>!>!
+Ashlar.Authorization.Abstractions.IAuthorizationGrantService.RevokeGrantAsync(Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext! actor, Ashlar.Authorization.Models.RevokeAuthorizationGrantRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Ashlar.Authorization.Models.RevokeAuthorizationGrantResult!>!
 Ashlar.Authorization.Models.AuthorizationEvaluationRequest
 Ashlar.Authorization.Models.AuthorizationEvaluationRequest.<Clone>$() -> Ashlar.Authorization.Models.AuthorizationEvaluationRequest!
 Ashlar.Authorization.Models.AuthorizationEvaluationRequest.AuthorizationEvaluationRequest(System.Guid UserId, string? Permission = null, string? Role = null, System.Guid? TenantId = null, string? ScopeType = null, string? ScopeId = null) -> void
@@ -398,10 +398,8 @@ Ashlar.Authorization.Models.AuthorizationGrantSpecification.ScopeType.get -> str
 Ashlar.Authorization.Models.AuthorizationGrantSpecification.ScopeType.init -> void
 Ashlar.Authorization.Models.CreateAuthorizationGrantRequest
 Ashlar.Authorization.Models.CreateAuthorizationGrantRequest.<Clone>$() -> Ashlar.Authorization.Models.CreateAuthorizationGrantRequest!
-Ashlar.Authorization.Models.CreateAuthorizationGrantRequest.Actor.get -> Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext?
-Ashlar.Authorization.Models.CreateAuthorizationGrantRequest.Audit.get -> Ashlar.Auditing.AuditContext?
-Ashlar.Authorization.Models.CreateAuthorizationGrantRequest.CreateAuthorizationGrantRequest(System.Guid userId, Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext? actor, Ashlar.Auditing.AuditContext? audit, Ashlar.Identity.Models.Tenants.TenantContext? tenant = null, bool includeAllTenants = false, string? permission = null) -> void
-Ashlar.Authorization.Models.CreateAuthorizationGrantRequest.CreateAuthorizationGrantRequest(System.Guid userId, Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext? actor, Ashlar.Auditing.AuditContext? audit, Ashlar.Identity.Models.Tenants.TenantContext? tenant, Ashlar.Authorization.Models.AuthorizationGrantSpecification? grant, bool includeAllTenants = false) -> void
+Ashlar.Authorization.Models.CreateAuthorizationGrantRequest.CreateAuthorizationGrantRequest(System.Guid userId, Ashlar.Identity.Models.Tenants.TenantContext? tenant = null, bool includeAllTenants = false, string? permission = null) -> void
+Ashlar.Authorization.Models.CreateAuthorizationGrantRequest.CreateAuthorizationGrantRequest(System.Guid userId, Ashlar.Identity.Models.Tenants.TenantContext? tenant, Ashlar.Authorization.Models.AuthorizationGrantSpecification? grant, bool includeAllTenants) -> void
 Ashlar.Authorization.Models.CreateAuthorizationGrantRequest.Equals(Ashlar.Authorization.Models.CreateAuthorizationGrantRequest? other) -> bool
 Ashlar.Authorization.Models.CreateAuthorizationGrantRequest.ExpiresAt.get -> System.DateTimeOffset?
 Ashlar.Authorization.Models.CreateAuthorizationGrantRequest.IncludeAllTenants.get -> bool
@@ -450,12 +448,10 @@ Ashlar.Authorization.Models.MatchedAuthorizationGrantSummary.TenantId.get -> Sys
 Ashlar.Authorization.Models.MatchedAuthorizationGrantSummary.TenantId.init -> void
 Ashlar.Authorization.Models.RevokeAuthorizationGrantRequest
 Ashlar.Authorization.Models.RevokeAuthorizationGrantRequest.<Clone>$() -> Ashlar.Authorization.Models.RevokeAuthorizationGrantRequest!
-Ashlar.Authorization.Models.RevokeAuthorizationGrantRequest.Actor.get -> Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext?
-Ashlar.Authorization.Models.RevokeAuthorizationGrantRequest.Audit.get -> Ashlar.Auditing.AuditContext?
 Ashlar.Authorization.Models.RevokeAuthorizationGrantRequest.Equals(Ashlar.Authorization.Models.RevokeAuthorizationGrantRequest? other) -> bool
 Ashlar.Authorization.Models.RevokeAuthorizationGrantRequest.GrantId.get -> System.Guid
 Ashlar.Authorization.Models.RevokeAuthorizationGrantRequest.IncludeAllTenants.get -> bool
-Ashlar.Authorization.Models.RevokeAuthorizationGrantRequest.RevokeAuthorizationGrantRequest(System.Guid grantId, Ashlar.Identity.Models.AccountSecurity.AccountSecurityActorContext? actor, Ashlar.Auditing.AuditContext? audit, Ashlar.Identity.Models.Tenants.TenantContext? tenant = null, bool includeAllTenants = false) -> void
+Ashlar.Authorization.Models.RevokeAuthorizationGrantRequest.RevokeAuthorizationGrantRequest(System.Guid grantId, Ashlar.Identity.Models.Tenants.TenantContext? tenant = null, bool includeAllTenants = false) -> void
 Ashlar.Authorization.Models.RevokeAuthorizationGrantRequest.TenantId.get -> System.Guid?
 Ashlar.Authorization.Models.RevokeAuthorizationGrantResult
 Ashlar.Authorization.Models.RevokeAuthorizationGrantResult.<Clone>$() -> Ashlar.Authorization.Models.RevokeAuthorizationGrantResult!

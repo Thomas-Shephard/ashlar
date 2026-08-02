@@ -51,52 +51,56 @@ internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IA
             : null;
     }
 
-    public async Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
+    public Task<Result<AuthorizationGrant>> CreateGrantAsync(AccountSecurityActorContext actor, CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(request);
+        return CreateGrantCoreAsync(actor, actor.Audit, request, false, cancellationToken);
+    }
+
+    Task<Result<AuthorizationGrant>> IAuthorizationGrantBootstrapService.CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.Audit is null)
-        {
-            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantCreated, null,
-                AshlarFailureCodes.ValidationError, cancellationToken);
-            return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.ValidationError);
-        }
+        return CreateGrantCoreAsync(null, request.BootstrapAudit!, request, true, cancellationToken);
+    }
 
+    private async Task<Result<AuthorizationGrant>> CreateGrantCoreAsync(AccountSecurityActorContext? actor, AuditContext audit,
+        CreateAuthorizationGrantRequest request, bool infrastructureMutation, CancellationToken cancellationToken)
+    {
         if (request.IsScopeInvalid)
         {
-            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantCreated, request.Audit,
+            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantCreated, audit,
                 AshlarFailureCodes.ValidationError, cancellationToken);
             return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.ValidationError);
         }
 
         if (request.IsGrantMissing)
         {
-            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantCreated, request.Audit,
+            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantCreated, audit,
                 AshlarFailureCodes.ValidationError, cancellationToken);
             return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.ValidationError);
         }
 
-        var actorFailure = await ValidateActorAsync(request.Actor, request.Audit, request.IsInfrastructureMutation, cancellationToken);
+        var actorFailure = await ValidateActorAsync(actor, audit, infrastructureMutation, cancellationToken);
         if (actorFailure is not null)
         {
-            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantCreated, request.Audit,
+            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantCreated, audit,
                 actorFailure.Value, cancellationToken);
             return Result.Failure<AuthorizationGrant>(actorFailure.Value);
         }
 
         if (request.UserId == Guid.Empty)
         {
-            if (request.IsInfrastructureMutation)
-                throw new ArgumentException("User id must not be empty.", nameof(request));
-            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantCreated, request.Audit,
+            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantCreated, audit,
                 AshlarFailureCodes.ValidationError, cancellationToken);
             return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.ValidationError);
         }
 
-        actorFailure = await AuthorizeActorAsync(request.Actor, request.UserId, request.TenantId,
-            AccountSecurityOperation.CreateAuthorizationGrant, request.IsInfrastructureMutation, cancellationToken);
+        actorFailure = await AuthorizeActorAsync(actor, request.UserId, request.TenantId,
+            AccountSecurityOperation.CreateAuthorizationGrant, infrastructureMutation, cancellationToken);
         if (actorFailure is not null)
         {
-            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantCreated, request.Audit,
+            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantCreated, audit,
                 actorFailure.Value, cancellationToken);
             return Result.Failure<AuthorizationGrant>(actorFailure.Value);
         }
@@ -109,7 +113,7 @@ internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IA
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
                 TenantId = request.TenantId,
-                Audit = request.Audit,
+                Audit = audit,
                 FailureReason = AshlarFailureCodes.InvalidGrantShape.Value
             }, cancellationToken);
             return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.InvalidGrantShape);
@@ -135,7 +139,7 @@ internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IA
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
                 TenantId = request.TenantId,
-                Audit = request.Audit,
+                Audit = audit,
                 FailureReason = AshlarFailureCodes.ValidationError.Value
             }, cancellationToken);
             return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.ValidationError);
@@ -149,7 +153,7 @@ internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IA
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
                 TenantId = request.TenantId,
-                Audit = request.Audit,
+                Audit = audit,
                 FailureReason = AshlarFailureCodes.InvalidScopeShape.Value
             }, cancellationToken);
             return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.InvalidScopeShape);
@@ -164,13 +168,13 @@ internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IA
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
                 TenantId = request.TenantId,
-                Audit = request.Audit,
+                Audit = audit,
                 FailureReason = metadataFailure.Value.Value
             }, cancellationToken);
             return Result.Failure<AuthorizationGrant>(metadataFailure.Value);
         }
 
-        var tenantValidation = await ValidateUserTenantAsync(request.UserId, request.TenantId, request.Audit, cancellationToken);
+        var tenantValidation = await ValidateUserTenantAsync(request.UserId, request.TenantId, audit, cancellationToken);
         if (!tenantValidation.Succeeded)
         {
             return Result.Failure<AuthorizationGrant>(tenantValidation.GetFailure());
@@ -198,7 +202,7 @@ internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IA
             Outcome = SecurityEventOutcomes.Success,
             UserId = grant.UserId,
             TenantId = grant.TenantId,
-            Audit = request.Audit,
+            Audit = audit,
             Properties = CreateAuditProperties(grant)
         }, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -242,36 +246,29 @@ internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IA
         return Result.Failure(AshlarFailureCodes.TenantMismatch, "Grant tenant must match the referenced user's tenant.");
     }
 
-    public async Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
+    public async Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(AccountSecurityActorContext actor, RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(request);
-        if (request.Audit is null)
-        {
-            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantRevoked, null,
-                AshlarFailureCodes.ValidationError, cancellationToken);
-            return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.ValidationFailed, request.GrantId, request.TenantId);
-        }
-
+        var audit = actor.Audit;
         if (request.IsScopeInvalid)
         {
-            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantRevoked, request.Audit,
+            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantRevoked, audit,
                 AshlarFailureCodes.ValidationError, cancellationToken);
             return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.ValidationFailed, request.GrantId, request.TenantId);
         }
 
-        var actorFailure = await ValidateActorAsync(request.Actor, request.Audit, request.IsInfrastructureMutation, cancellationToken);
+        var actorFailure = await ValidateActorAsync(actor, audit, false, cancellationToken);
         if (actorFailure is not null)
         {
-            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantRevoked, request.Audit,
+            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantRevoked, audit,
                 actorFailure.Value, cancellationToken);
             return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.ValidationFailed, request.GrantId, request.TenantId);
         }
 
         if (request.GrantId == Guid.Empty)
         {
-            if (request.IsInfrastructureMutation)
-                throw new ArgumentException("Grant id must not be empty.", nameof(request));
-            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantRevoked, request.Audit,
+            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantRevoked, audit,
                 AshlarFailureCodes.ValidationError, cancellationToken);
             return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.ValidationFailed, request.GrantId, request.TenantId);
         }
@@ -279,15 +276,15 @@ internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IA
         var grant = await _repository.GetGrantAsync(request.GrantId, request.TenantId, cancellationToken);
         if (grant == null)
         {
-            await RecordRevokeFailureAsync(request, "grant_not_found", cancellationToken);
+            await RecordRevokeFailureAsync(request, audit, "grant_not_found", cancellationToken);
             return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.NotFound, request.GrantId, request.TenantId);
         }
 
-        actorFailure = await AuthorizeActorAsync(request.Actor, grant.UserId, request.TenantId,
-            AccountSecurityOperation.RevokeAuthorizationGrant, request.IsInfrastructureMutation, cancellationToken);
+        actorFailure = await AuthorizeActorAsync(actor, grant.UserId, request.TenantId,
+            AccountSecurityOperation.RevokeAuthorizationGrant, false, cancellationToken);
         if (actorFailure is not null)
         {
-            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantRevoked, request.Audit,
+            await RecordMutationRejectionAsync(AshlarSecurityEventTypes.AuthorizationGrantRevoked, audit,
                 actorFailure.Value, cancellationToken);
             return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.NotFound, request.GrantId, request.TenantId);
         }
@@ -300,7 +297,7 @@ internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IA
             Outcome = revoked ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
             UserId = grant.UserId,
             TenantId = request.TenantId,
-            Audit = request.Audit,
+            Audit = audit,
             FailureReason = revoked ? null : "grant_not_revoked",
             Properties = CreateAuditProperties(grant)
         }, cancellationToken);
@@ -377,14 +374,14 @@ internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IA
         return properties;
     }
 
-    private Task RecordRevokeFailureAsync(RevokeAuthorizationGrantRequest request, string failureReason, CancellationToken cancellationToken)
+    private Task RecordRevokeFailureAsync(RevokeAuthorizationGrantRequest request, AuditContext audit, string failureReason, CancellationToken cancellationToken)
     {
         return _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.AuthorizationGrantRevoked,
             Outcome = SecurityEventOutcomes.Failure,
             TenantId = request.TenantId,
-            Audit = request.Audit,
+            Audit = audit,
             FailureReason = failureReason,
             Properties = CreateAuditProperties(request.GrantId, null)
         }, cancellationToken);
@@ -427,7 +424,7 @@ internal sealed class AuthorizationGrantService : IAuthorizationGrantService, IA
         bool infrastructureMutation, CancellationToken cancellationToken)
     {
         if (infrastructureMutation) return null;
-        if (actor is null) return AshlarFailureCodes.ValidationError;
+        ArgumentNullException.ThrowIfNull(actor);
         if (audit.ActorUserId != actor.ActorUserId) return AshlarFailureCodes.ValidationError;
 
         return _proofValidator is null

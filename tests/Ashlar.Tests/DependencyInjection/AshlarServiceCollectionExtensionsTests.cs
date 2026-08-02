@@ -1089,12 +1089,12 @@ internal sealed class AshlarServiceCollectionExtensionsTests
 
     private sealed class CustomAuthorizationGrantService : IAuthorizationGrantService
     {
-        public Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
+        public Task<Result<AuthorizationGrant>> CreateGrantAsync(AccountSecurityActorContext actor, CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
+        public Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(AccountSecurityActorContext actor, RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }

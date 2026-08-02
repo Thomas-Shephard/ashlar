@@ -261,13 +261,13 @@ internal static partial class AdminEndpoints
         var actor = new AccountSecurityActorContext(actorUserId, actorTenant, sessionId, freshProof,
             httpContext.ToAuditContext());
 
-        var result = await grants.CreateGrantAsync(new CreateAuthorizationGrantRequest(
-            request.UserId, actor, actor.Audit, tenant, new AuthorizationGrantSpecification
+        var result = await grants.CreateGrantAsync(actor, new CreateAuthorizationGrantRequest(
+            request.UserId, tenant, new AuthorizationGrantSpecification
             {
                 ScopeType = "project",
                 ScopeId = projectId,
                 Permission = "project.manage"
-            }), cancellationToken);
+            }, false), cancellationToken);
 
         return !result.Succeeded || result.Value == null
             ? Results.BadRequest(SampleResultErrors.From(result, "Failed to create grant"))

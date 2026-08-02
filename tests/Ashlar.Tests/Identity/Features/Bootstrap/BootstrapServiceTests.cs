@@ -23,7 +23,7 @@ internal sealed class BootstrapServiceTests
     private Mock<IBootstrapStateRepository> _stateRepository = null!;
     private Mock<IUserRepository> _userRepository = null!;
     private Mock<IAshlarTransactionProvider> _transactionProvider = null!;
-    private Mock<IAuthorizationGrantService> _grantService = null!;
+    private Mock<IAuthorizationGrantBootstrapTestService> _grantService = null!;
     private Mock<IAuthenticationRateLimiter> _rateLimiter = null!;
     private Mock<ISecureTokenGenerator> _tokenGenerator = null!;
     private Mock<ISecureTokenHasher> _tokenHasher = null!;
@@ -40,7 +40,7 @@ internal sealed class BootstrapServiceTests
         _stateRepository = new Mock<IBootstrapStateRepository>();
         _userRepository = new Mock<IUserRepository>();
         _transactionProvider = new Mock<IAshlarTransactionProvider>();
-        _grantService = new Mock<IAuthorizationGrantService>();
+        _grantService = new Mock<IAuthorizationGrantBootstrapTestService>();
         _rateLimiter = new Mock<IAuthenticationRateLimiter>();
         _tokenGenerator = new Mock<ISecureTokenGenerator>();
         _tokenHasher = new Mock<ISecureTokenHasher>();
@@ -458,13 +458,13 @@ internal sealed class BootstrapServiceTests
             r.UserId == result.Value!.UserId &&
             r.TenantId == tenantId &&
             r.Role == "admin" &&
-            r.Audit != null &&
-            r.Audit.ActorUserId == context.UserId &&
-            r.Audit.IpAddress == context.IpAddress &&
-            r.Audit.UserAgent == context.UserAgent &&
-            r.Audit.CorrelationId == context.CorrelationId &&
-            r.Audit.Items != null &&
-            HasAuditItem(r.Audit.Items, "system", "bootstrap")), It.IsAny<CancellationToken>()), Times.Once);
+            r.BootstrapAudit! != null &&
+            r.BootstrapAudit.ActorUserId == context.UserId &&
+            r.BootstrapAudit.IpAddress == context.IpAddress &&
+            r.BootstrapAudit.UserAgent == context.UserAgent &&
+            r.BootstrapAudit.CorrelationId == context.CorrelationId &&
+            r.BootstrapAudit.Items != null &&
+            HasAuditItem(r.BootstrapAudit.Items, "system", "bootstrap")), It.IsAny<CancellationToken>()), Times.Once);
         _stateRepository.Verify(r => r.MarkAsInitializedAsync(result.Value!.UserId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
         transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -491,13 +491,13 @@ internal sealed class BootstrapServiceTests
 
         Assert.That(result.Succeeded, Is.True);
         _grantService.Verify(s => s.CreateGrantAsync(It.Is<CreateAuthorizationGrantRequest>(r =>
-            r.Audit != null &&
-            r.Audit.ActorUserId == null &&
-            r.Audit.IpAddress == null &&
-            r.Audit.UserAgent == null &&
-            r.Audit.CorrelationId == null &&
-            r.Audit.Items != null &&
-            HasAuditItem(r.Audit.Items, "system", "bootstrap")), It.IsAny<CancellationToken>()), Times.Once);
+            r.BootstrapAudit! != null &&
+            r.BootstrapAudit.ActorUserId == null &&
+            r.BootstrapAudit.IpAddress == null &&
+            r.BootstrapAudit.UserAgent == null &&
+            r.BootstrapAudit.CorrelationId == null &&
+            r.BootstrapAudit.Items != null &&
+            HasAuditItem(r.BootstrapAudit.Items, "system", "bootstrap")), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -538,14 +538,14 @@ internal sealed class BootstrapServiceTests
 
         Assert.That(result.Succeeded, Is.True);
         _grantService.Verify(s => s.CreateGrantAsync(It.Is<CreateAuthorizationGrantRequest>(r =>
-            r.Audit != null &&
-            r.Audit.ActorUserId == audit.ActorUserId &&
-            r.Audit.IpAddress == audit.IpAddress &&
-            r.Audit.UserAgent == audit.UserAgent &&
-            r.Audit.CorrelationId == audit.CorrelationId &&
-            r.Audit.Items != null &&
-            HasAuditItem(r.Audit.Items, "source", "operator") &&
-            HasAuditItem(r.Audit.Items, "system", "bootstrap")), It.IsAny<CancellationToken>()), Times.Once);
+            r.BootstrapAudit! != null &&
+            r.BootstrapAudit.ActorUserId == audit.ActorUserId &&
+            r.BootstrapAudit.IpAddress == audit.IpAddress &&
+            r.BootstrapAudit.UserAgent == audit.UserAgent &&
+            r.BootstrapAudit.CorrelationId == audit.CorrelationId &&
+            r.BootstrapAudit.Items != null &&
+            HasAuditItem(r.BootstrapAudit.Items, "source", "operator") &&
+            HasAuditItem(r.BootstrapAudit.Items, "system", "bootstrap")), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -576,13 +576,13 @@ internal sealed class BootstrapServiceTests
 
         Assert.That(result.Succeeded, Is.True);
         _grantService.Verify(s => s.CreateGrantAsync(It.Is<CreateAuthorizationGrantRequest>(r =>
-            r.Audit != null &&
-            r.Audit.ActorUserId == context.UserId &&
-            r.Audit.IpAddress == context.IpAddress &&
-            r.Audit.UserAgent == context.UserAgent &&
-            r.Audit.CorrelationId == context.CorrelationId &&
-            r.Audit.Items != null &&
-            HasAuditItem(r.Audit.Items, "system", "bootstrap")), It.IsAny<CancellationToken>()), Times.Once);
+            r.BootstrapAudit! != null &&
+            r.BootstrapAudit.ActorUserId == context.UserId &&
+            r.BootstrapAudit.IpAddress == context.IpAddress &&
+            r.BootstrapAudit.UserAgent == context.UserAgent &&
+            r.BootstrapAudit.CorrelationId == context.CorrelationId &&
+            r.BootstrapAudit.Items != null &&
+            HasAuditItem(r.BootstrapAudit.Items, "system", "bootstrap")), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -917,7 +917,7 @@ internal sealed class BootstrapServiceTests
             includeGrantService ? new BootstrapGrantService(_grantService.Object) : null);
     }
 
-    private sealed class BootstrapGrantService(IAuthorizationGrantService inner) : IAuthorizationGrantBootstrapService
+    private sealed class BootstrapGrantService(IAuthorizationGrantBootstrapTestService inner) : IAuthorizationGrantBootstrapService
     {
         public Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default) =>
             inner.CreateGrantAsync(request, cancellationToken);
@@ -1001,4 +1001,11 @@ internal sealed class BootstrapServiceTests
     {
         return items.TryGetValue(key, out var actual) && actual == value;
     }
+}
+
+/// <summary>Mockable test seam for the internal bootstrap grant service.</summary>
+public interface IAuthorizationGrantBootstrapTestService
+{
+    /// <summary>Creates a bootstrap grant.</summary>
+    Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default);
 }

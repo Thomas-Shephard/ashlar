@@ -14,18 +14,20 @@ public interface IAuthorizationGrantService
     /// <summary>
     /// Creates a role or permission grant after actor proof, session, audit identity, host authorization, scope, and tenant ownership validation.
     /// </summary>
-    /// <param name="request">Actor-bound grant details with explicit tenant or global scope and required audit metadata.</param>
+    /// <param name="actor">Authenticated actor, current session, fresh proof, and audit provenance.</param>
+    /// <param name="request">Grant details with explicit tenant or global scope.</param>
     /// <param name="cancellationToken">A token that can cancel grant creation.</param>
     /// <returns>Created grant when validation and tenant checks succeed.</returns>
-    Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default);
+    Task<Result<AuthorizationGrant>> CreateGrantAsync(AccountSecurityActorContext actor, CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Revokes a grant after actor proof, session, audit identity, host authorization, and explicit scope validation.
     /// </summary>
-    /// <param name="request">Actor-bound grant identifier with explicit tenant or global scope and required audit metadata.</param>
+    /// <param name="actor">Authenticated actor, current session, fresh proof, and audit provenance.</param>
+    /// <param name="request">Grant identifier with explicit tenant or global scope.</param>
     /// <param name="cancellationToken">A token that can cancel grant revocation.</param>
     /// <returns>Revocation result with the grant id, requested tenant boundary, and outcome.</returns>
-    Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default);
+    Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(AccountSecurityActorContext actor, RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default);
 }
 
 internal interface IAuthorizationGrantBootstrapService

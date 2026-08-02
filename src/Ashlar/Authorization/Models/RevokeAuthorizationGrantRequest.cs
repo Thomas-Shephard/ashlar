@@ -1,34 +1,23 @@
-using Ashlar.Auditing;
-
 namespace Ashlar.Authorization.Models;
 
-/// <summary>Actor-bound request to revoke one authorization grant.</summary>
-/// <remarks>The service verifies the Ashlar-issued proof, current session, audit actor, requested scope, and host authorization before mutation. Missing and unauthorized grants have the same outcome.</remarks>
+/// <summary>Request to revoke one authorization grant.</summary>
 public sealed record RevokeAuthorizationGrantRequest
 {
-    /// <summary>Creates a revocation request bound to an authenticated actor and explicit target scope.</summary>
-    /// <param name="grantId">Grant to revoke.</param><param name="actor">Authenticated actor, current session, and fresh proof.</param><param name="audit">Required audit metadata whose actor must match <paramref name="actor"/>.</param>
+    /// <summary>Creates a revocation request with an explicit target scope.</summary>
+    /// <param name="grantId">Grant to revoke.</param>
     /// <param name="tenant">Explicit tenant or global target scope.</param><param name="includeAllTenants">Whether the lookup may cross all tenants.</param>
-    public RevokeAuthorizationGrantRequest(Guid grantId, AccountSecurityActorContext? actor, AuditContext? audit, TenantContext? tenant = null, bool includeAllTenants = false)
+    public RevokeAuthorizationGrantRequest(Guid grantId, TenantContext? tenant = null, bool includeAllTenants = false)
     {
-        GrantId = grantId; Actor = actor; Audit = audit; TenantId = tenant?.TenantId; IncludeAllTenants = includeAllTenants;
+        GrantId = grantId; TenantId = tenant?.TenantId; IncludeAllTenants = includeAllTenants;
         IsScopeInvalid = tenant is null || includeAllTenants;
     }
 
-    internal RevokeAuthorizationGrantRequest(Guid GrantId, AuditContext Audit, Guid? TenantId = null)
-    { this.GrantId = GrantId; this.Audit = Audit; this.TenantId = TenantId; IsInfrastructureMutation = true; }
-
     /// <summary>Gets the grant identifier.</summary>
     public Guid GrantId { get; }
-    /// <summary>Gets the validated actor capability supplied by an app caller.</summary>
-    public AccountSecurityActorContext? Actor { get; }
-    /// <summary>Gets required audit metadata whose actor must match <see cref="Actor"/>.</summary>
-    public AuditContext? Audit { get; }
     /// <summary>Gets the exact tenant identifier, or <see langword="null"/> for global scope.</summary>
     public Guid? TenantId { get; }
     /// <summary>Gets whether all tenant scopes were requested.</summary>
     public bool IncludeAllTenants { get; }
-    internal bool IsInfrastructureMutation { get; }
     internal bool IsScopeInvalid { get; }
 }
 
