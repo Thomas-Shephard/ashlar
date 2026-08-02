@@ -126,8 +126,14 @@ CREATE TABLE IF NOT EXISTS ashlar_authorization_grants (
     CONSTRAINT ck_ashlar_authorization_grants_role_or_permission CHECK (
         (role IS NOT NULL AND permission IS NULL) OR (role IS NULL AND permission IS NOT NULL)
     ),
+    CONSTRAINT ck_ashlar_authorization_grants_role_or_permission_not_blank CHECK (
+        (role IS NULL OR length(trim(role)) > 0) AND (permission IS NULL OR length(trim(permission)) > 0)
+    ),
     CONSTRAINT ck_ashlar_authorization_grants_scope CHECK (
         (scope_type IS NULL AND scope_id IS NULL) OR (scope_type IS NOT NULL AND scope_id IS NOT NULL)
+    ),
+    CONSTRAINT ck_ashlar_authorization_grants_scope_not_blank CHECK (
+        (scope_type IS NULL OR length(trim(scope_type)) > 0) AND (scope_id IS NULL OR length(trim(scope_id)) > 0)
     )
 );
 
@@ -418,7 +424,8 @@ CREATE TABLE IF NOT EXISTS ashlar_passkey_challenges (
     CONSTRAINT ck_ashlar_passkey_challenges_registration_proof CHECK (purpose <> 'passkey-registration' OR (registration_proof_type IN ('fresh-mfa', 'fresh-primary') AND registration_proof_session_id IS NOT NULL AND registration_proof_expires_at IS NOT NULL)),
     CONSTRAINT ck_ashlar_passkey_challenges_nonregistration_proof CHECK (purpose = 'passkey-registration' OR (registration_proof_type IS NULL AND registration_proof_session_id IS NULL AND registration_proof_expires_at IS NULL)),
     CONSTRAINT ck_ashlar_passkey_challenges_factor_binding CHECK ((handshake_token_hash IS NULL AND factor_type IS NULL) OR (handshake_token_hash IS NOT NULL AND factor_type IS NOT NULL)),
-    CONSTRAINT ck_ashlar_passkey_challenges_factor_shape CHECK (handshake_token_hash IS NULL OR (purpose = 'passkey-authentication' AND user_id IS NOT NULL))
+    CONSTRAINT ck_ashlar_passkey_challenges_factor_shape CHECK (handshake_token_hash IS NULL OR (purpose = 'passkey-authentication' AND user_id IS NOT NULL)),
+    CONSTRAINT ck_ashlar_passkey_challenges_nonblank_fields CHECK (trim(version) <> '' AND trim(purpose) <> '' AND trim(challenge) <> '' AND trim(relying_party_id) <> '' AND trim(origin) <> '' AND (handshake_token_hash IS NULL OR trim(handshake_token_hash) <> '') AND (factor_type IS NULL OR trim(factor_type) <> '') AND (display_name IS NULL OR (trim(display_name) <> '' AND length(display_name) <= 100)) AND (registration_proof_type IS NULL OR trim(registration_proof_type) <> ''))
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_passkey_challenges_active_expires ON ashlar_passkey_challenges (expires_at, id)
