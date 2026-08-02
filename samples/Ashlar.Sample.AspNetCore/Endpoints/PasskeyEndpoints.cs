@@ -28,62 +28,26 @@ internal static class PasskeyEndpoints
 
     private static async Task<IResult> StartRegistrationAsync(PasskeyDisplayNameRequest request, IPasskeyService passkeys, IAccountSecurityService accountSecurity, StepUpAuthenticationService stepUp, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
     {
-        var registrationRequest = await CreateStartRegistrationRequestAsync(request.DisplayName, accountSecurity, stepUp, user, httpContext, cancellationToken);
-        if (registrationRequest == null) return Results.Forbid();
+        var verification = await CreateRegistrationVerificationAsync(accountSecurity, stepUp, user, httpContext, cancellationToken);
+        if (verification == null) return Results.Forbid();
 
-        var result = await passkeys.StartRegistrationAsync(registrationRequest, cancellationToken);
+        var result = await passkeys.StartRegistrationAsync(verification, new StartPasskeyRegistrationRequest(request.DisplayName ?? "Passkey"), cancellationToken);
         return Results.Json(new { result.ChallengeId, result.ExpiresAt, options = JsonDocument.Parse(result.OptionsJson).RootElement });
     }
 
     private static async Task<IResult> CompleteRegistrationAsync(PasskeyCompleteRegistrationSampleRequest request, IPasskeyService passkeys, IAccountSecurityService accountSecurity, StepUpAuthenticationService stepUp, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
     {
-        var registrationRequest = await CreateCompleteRegistrationRequestAsync(request, accountSecurity, stepUp, user, httpContext, cancellationToken);
-        if (registrationRequest == null) return Results.Forbid();
+        var verification = await CreateRegistrationVerificationAsync(accountSecurity, stepUp, user, httpContext, cancellationToken);
+        if (verification == null) return Results.Forbid();
 
-        var result = await passkeys.CompleteRegistrationAsync(registrationRequest, cancellationToken);
+        var result = await passkeys.CompleteRegistrationAsync(verification, new CompletePasskeyRegistrationRequest(request.ChallengeId, request.CredentialResponse, request.DisplayName), cancellationToken);
         return result.Succeeded ? Results.Ok() : Results.BadRequest(SampleResultErrors.From(result));
     }
 
-    private static async Task<StartPasskeyRegistrationRequest?> CreateStartRegistrationRequestAsync(string? displayName, IAccountSecurityService accountSecurity, StepUpAuthenticationService stepUp, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
+    private static async Task<PasskeyRegistrationVerificationContext?> CreateRegistrationVerificationAsync(IAccountSecurityService accountSecurity, StepUpAuthenticationService stepUp, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var userId = user.GetAshlarUserId();
         if (!httpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return null;
-
-        var request = new StartPasskeyRegistrationRequest(userId, displayName ?? "Passkey", httpContext.ToAuditContext())
-        {
-            CurrentSessionId = sessionId,
-            Tenant = httpContext.ToTenantContext()
-        };
-
-        var proof = await CreateRegistrationProofAsync(accountSecurity, stepUp, userId, httpContext, cancellationToken);
-        if (proof == null) return null;
-
-        return proof.FreshMfaProof != null
-            ? request with { FreshMfaProof = proof.FreshMfaProof }
-            : request with { FreshPrimaryAuthenticationProof = proof.FreshPrimaryAuthenticationProof };
-    }
-
-    private static async Task<CompletePasskeyRegistrationRequest?> CreateCompleteRegistrationRequestAsync(PasskeyCompleteRegistrationSampleRequest input, IAccountSecurityService accountSecurity, StepUpAuthenticationService stepUp, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
-    {
-        var userId = user.GetAshlarUserId();
-        if (!httpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return null;
-
-        var request = new CompletePasskeyRegistrationRequest(input.ChallengeId, input.CredentialResponse, input.DisplayName, userId, httpContext.ToAuditContext())
-        {
-            CurrentSessionId = sessionId,
-            Tenant = httpContext.ToTenantContext()
-        };
-
-        var proof = await CreateRegistrationProofAsync(accountSecurity, stepUp, userId, httpContext, cancellationToken);
-        if (proof == null) return null;
-
-        return proof.FreshMfaProof != null
-            ? request with { FreshMfaProof = proof.FreshMfaProof }
-            : request with { FreshPrimaryAuthenticationProof = proof.FreshPrimaryAuthenticationProof };
-    }
-
-    private static async Task<PasskeyRegistrationProof?> CreateRegistrationProofAsync(IAccountSecurityService accountSecurity, StepUpAuthenticationService stepUp, Guid userId, HttpContext httpContext, CancellationToken cancellationToken)
-    {
         var session = httpContext.GetValidatedAuthenticationSession();
         if (session == null || session.UserId != userId) return null;
         var posture = await accountSecurity.GetSecurityPostureAsync(session, cancellationToken: cancellationToken);
@@ -92,11 +56,11 @@ internal static class PasskeyEndpoints
         if (posture.Value.AdditionalVerificationFactors.Any(factor => factor.IsUsable))
         {
             var proof = httpContext.CreateFreshMfaProof(stepUp, SelfServicePasskeyRegistrationRequirement, IPasskeyService.RegistrationProofPurpose);
-            return proof.Succeeded ? new PasskeyRegistrationProof(proof.Value, null) : null;
+            return proof.Succeeded ? new PasskeyRegistrationVerificationContext(userId, httpContext.ToTenantContext(), sessionId, httpContext.ToAuditContext(), freshMfaProof: proof.Value) : null;
         }
 
         var primaryProof = httpContext.CreateFreshPrimaryAuthenticationProof(stepUp, SelfServicePasskeyRegistrationRequirement.FreshnessWindow, IPasskeyService.RegistrationProofPurpose);
-        return primaryProof.Succeeded ? new PasskeyRegistrationProof(null, primaryProof.Value) : null;
+        return primaryProof.Succeeded ? new PasskeyRegistrationVerificationContext(userId, httpContext.ToTenantContext(), sessionId, httpContext.ToAuditContext(), freshPrimaryAuthenticationProof: primaryProof.Value) : null;
     }
 
     private static async Task<IResult> StartAuthenticationAsync(IPasskeyService passkeys, HttpContext httpContext, CancellationToken cancellationToken)
@@ -223,7 +187,6 @@ internal static class PasskeyEndpoints
     }
 
     private sealed record PasskeyDisplayNameRequest(string? DisplayName);
-    private sealed record PasskeyRegistrationProof(FreshMfaVerificationProof? FreshMfaProof, FreshPrimaryAuthenticationProof? FreshPrimaryAuthenticationProof);
     private sealed record PasskeyStartFactorSampleRequest(string HandshakeToken, string? FactorType);
     private sealed record PasskeyCompleteRegistrationSampleRequest(Guid ChallengeId, JsonElement CredentialResponse, string? DisplayName);
     private sealed record PasskeyCompleteAuthenticationSampleRequest(Guid ChallengeId, JsonElement AssertionResponse);
